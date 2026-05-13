@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Edit, Clock, User, Tag, ThumbsUp, ThumbsDown } from "lucide-react";
+import { TiptapRenderer } from "@/components/editor/tiptap-renderer";
 
 interface Article {
   id: string;
@@ -119,12 +120,7 @@ export default function ArticleViewPage() {
       {/* Article Content */}
       <div className="prose dark:prose-invert max-w-none border-t border-zinc-200 dark:border-zinc-800 pt-6">
         {article.content ? (
-          <div className="text-zinc-600 dark:text-zinc-300">
-            {/* TipTap content would be rendered here with a renderer */}
-            <p className="italic text-zinc-400">
-              [Article content renders here — TipTap JSON to HTML rendering]
-            </p>
-          </div>
+          <TiptapRenderer content={article.content} />
         ) : (
           <p className="text-zinc-400 italic">No content yet.</p>
         )}
