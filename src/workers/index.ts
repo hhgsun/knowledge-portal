@@ -1,9 +1,10 @@
 import { db } from "../lib/db";
 import { articles } from "../lib/db/schema";
 import { eq, and, lt, isNotNull } from "drizzle-orm";
-import { chunkDocument } from "../lib/search/chunker";
+import { chunkDocument, extractPlainText } from "../lib/search/chunker";
 import { generateEmbedding } from "../lib/search/embeddings";
 import { ensureCollection, upsertChunks, deleteArticleChunks } from "../lib/search/qdrant";
+import { updateFtsIndex } from "../lib/search/hybrid";
 import { nanoid } from "nanoid";
 
 /**
@@ -84,6 +85,11 @@ async function indexAllArticles() {
       }
 
       await upsertChunks(article.id, vectorChunks);
+
+      // Update FTS5 index
+      const plainText = extractPlainText(article.content as Record<string, unknown>);
+      await updateFtsIndex(article.id, article.title, article.excerpt, plainText).catch(() => {});
+
       indexed++;
     } catch (err) {
       console.warn(`  ⚠ Failed to index article ${article.id}:`, (err as Error).message);

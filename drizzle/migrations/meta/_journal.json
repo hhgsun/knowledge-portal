@@ -8,6 +8,13 @@
       "when": 1778670303573,
       "tag": "0000_fast_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778756703573,
+      "tag": "0001_fts5_search",
+      "breakpoints": true
     }
   ]
 }
