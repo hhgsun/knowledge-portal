@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Save, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { TagSelector } from "@/components/editor/tag-selector";
 
 const TiptapEditor = dynamic(() => import("@/components/editor/tiptap-editor"), {
   ssr: false,
@@ -19,6 +20,7 @@ export default function NewArticlePage() {
   const [contentType, setContentType] = useState("reference");
   const [difficulty, setDifficulty] = useState("beginner");
   const [status, setStatus] = useState("draft");
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,6 +43,7 @@ export default function NewArticlePage() {
         contentType,
         difficulty,
         status,
+        tags,
       }),
     });
 
@@ -142,6 +145,12 @@ export default function NewArticlePage() {
             <option value="in_review">In Review</option>
             <option value="published">Published</option>
           </select>
+        </div>
+
+        {/* Tags */}
+        <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
+          <label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags</label>
+          <TagSelector selectedTags={tags} onChange={setTags} />
         </div>
 
         {/* Editor */}

@@ -14,9 +14,11 @@ import {
   Shield,
   ChevronDown,
   ChevronRight,
+  Folder,
+  Key,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface NavItem {
   label: string;
@@ -50,6 +52,7 @@ const adminNavigation: NavItem[] = [
     href: "/admin/categories",
     icon: <FolderTree size={18} />,
   },
+  { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
   { label: "Settings", href: "/admin/settings", icon: <Settings size={18} /> },
 ];
 
@@ -117,6 +120,9 @@ export function Sidebar() {
           ))}
         </div>
 
+        {/* Categories */}
+        <CategoryTree />
+
         {/* Admin Section */}
         <div className="pt-6">
           <p className="px-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
@@ -135,5 +141,91 @@ export function Sidebar() {
         Knowledge Portal v0.1.0
       </div>
     </aside>
+  );
+}
+
+interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string | null;
+  children?: Category[];
+}
+
+function CategoryTree() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [expanded, setExpanded] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCategories(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (categories.length === 0) return null;
+
+  return (
+    <div className="pt-6">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 px-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 hover:text-zinc-600 w-full"
+      >
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        Categories
+      </button>
+      {expanded && (
+        <div className="space-y-0.5">
+          {categories.map((cat) => (
+            <CategoryNode key={cat.id} category={cat} depth={0} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryNode({ category, depth }: { category: Category; depth: number }) {
+  const pathname = usePathname();
+  const [expanded, setExpanded] = useState(false);
+  const href = `/articles?categoryId=${category.id}`;
+  const isActive = pathname === href;
+  const hasChildren = category.children && category.children.length > 0;
+
+  return (
+    <div>
+      <div className="flex items-center">
+        <Link
+          href={href}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors flex-1",
+            isActive
+              ? "bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-zinc-100"
+              : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100",
+            depth > 0 && "ml-4 text-xs"
+          )}
+        >
+          <Folder size={14} />
+          {category.name}
+        </Link>
+        {hasChildren && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+        )}
+      </div>
+      {hasChildren && expanded && (
+        <div className="mt-0.5">
+          {category.children!.map((child) => (
+            <CategoryNode key={child.id} category={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
