@@ -1,0 +1,42 @@
+# Knowledge Portal — Cline Rules
+
+## Project
+Enterprise knowledge management system. Next.js 16 (App Router), React 19, TypeScript strict, SQLite (@libsql/client), Drizzle ORM, NextAuth v5 beta (JWT), Qdrant, Ollama, TipTap, Tailwind CSS v4.
+
+## Essential Rules
+
+1. **All DB queries are async** — always `await`. Use `.get()` for single row, `.all()` for multiple.
+2. **Middleware is Edge** — `src/middleware.ts` cannot import `fs`, `path`, `crypto`, or DB modules.
+3. **Validate with Zod** — every API route must validate input before processing.
+4. **Check permissions** — use `auth()` + `hasPermission()` at the top of every API handler.
+5. **No native bindings** — never use `better-sqlite3`. Only `@libsql/client`.
+6. **TipTap is dynamic** — always import with `next/dynamic` and `ssr: false`.
+7. **Imports use `@/`** — path alias maps to `./src/`.
+
+## File Patterns
+- Page: `src/app/[route]/page.tsx`
+- API: `src/app/api/[route]/route.ts`
+- Component: `src/components/[domain]/[name].tsx`
+- Library: `src/lib/[module]/[name].ts`
+
+## Commands
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm run db:generate` — generate migration after schema change
+- `npm run db:migrate` — apply migrations
+- `npm run db:seed` — seed admin user
+
+## Key Files
+- Schema: `src/lib/db/schema.ts`
+- Auth: `src/lib/auth/config.ts`
+- RBAC: `src/lib/auth/rbac.ts`
+- Search: `src/lib/search/hybrid.ts`
+- Worker: `src/workers/index.ts`
+
+## Do NOT
+- Use `better-sqlite3`
+- Import Node.js built-ins in middleware
+- Use sync DB patterns
+- Add `"use server"` to API routes
+- Use `auth()` in middleware (use `getToken` instead)
+- Install other CSS frameworks

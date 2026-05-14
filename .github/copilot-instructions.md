@@ -16,12 +16,18 @@ Enterprise knowledge management system with AI-powered semantic search, WYSIWYG 
 ## Critical Patterns
 
 ### Database Queries (Drizzle + libsql)
-All Drizzle queries are **async**. Always `await` and use array destructuring for single results:
+All Drizzle queries are **async**. Always `await`:
 ```ts
-// ✅ Correct
+// ✅ Single result — use .get() (returns T | undefined)
+const user = await db.select().from(users).where(eq(users.id, id)).get();
+
+// ✅ Multiple results — use .all() (returns T[])
+const items = await db.select().from(articles).limit(10).all();
+
+// ✅ Array destructuring alternative for single results
 const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
 
-// ❌ Wrong — .get() doesn't exist, queries are not sync
+// ❌ Wrong — missing await (queries return Promises, never sync)
 const user = db.select().from(users).where(eq(users.id, id)).get();
 ```
 

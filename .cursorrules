@@ -1,0 +1,76 @@
+# Cursor AI Rules — Knowledge Portal
+
+## Project Context
+Enterprise knowledge management system: Next.js 16 App Router, React 19, TypeScript strict, SQLite via @libsql/client, Drizzle ORM, NextAuth v5 beta (JWT), Qdrant vector DB, Ollama LLM, TipTap editor, Tailwind CSS v4.
+
+## Critical Rules
+
+### Database (Drizzle + libsql)
+- ALL queries are async. Always `await`.
+- Single result: `const user = await db.select()...get();` (returns `T | undefined`)
+- Multiple results: `const items = await db.select()...all();` (returns `T[]`)
+- Alternative single: `const [user] = await db.select()...limit(1);`
+- NEVER omit `await` — queries return Promises.
+- NEVER use `better-sqlite3` or any native SQLite binding.
+- Schema is in `src/lib/db/schema.ts`. After changes: `npm run db:generate` → `npm run db:migrate`.
+
+### Middleware (Edge Runtime)
+- `src/middleware.ts` runs in Edge Runtime.
+- CANNOT import `fs`, `path`, `crypto`, or any DB/ORM modules.
+- Use `getToken` from `next-auth/jwt` with explicit `secret: process.env.NEXTAUTH_SECRET`.
+- CANNOT use `auth()` from NextAuth (requires Node.js runtime).
+
+### Authentication & RBAC
+- NextAuth v5 beta with JWT strategy (no DB sessions).
+- Roles: `admin`, `editor`, `viewer`.
+- RBAC helpers: `src/lib/auth/rbac.ts` — `requireAuth()`, `requirePermission()`, `hasPermission()`.
+- JWT token contains `id` and `role` fields (extended in `src/types/next-auth.d.ts`).
+
+### API Routes
+- Located in `src/app/api/` as Next.js Route Handlers.
+- Always validate input with Zod.
+- Always check auth/permissions at the top of each handler.
+- Return `NextResponse.json()` — consistent shape: `{ data }` or `{ error: string }`.
+- NEVER add `"use server"` to API route files.
+
+### Components & Styling
+- Use `cn()` from `src/lib/utils.ts` for conditional classNames.
+- Icons from `lucide-react` only.
+- TipTap editor: dynamically imported with `next/dynamic` and `ssr: false`.
+- Tailwind CSS v4 utility classes only — no CSS modules, no styled-components.
+
+### File Structure
+```
+src/app/[route]/page.tsx      → Page component
+src/app/api/[route]/route.ts  → API handler
+src/components/[domain]/      → Domain components
+src/lib/[module]/             → Shared utilities
+src/types/                    → TypeScript type declarations
+src/workers/                  → Background processes
+```
+
+## Environment Variables
+- `DATABASE_URL` — SQLite path (e.g., `./data/knowledge.db`)
+- `NEXTAUTH_SECRET` — JWT signing secret (required)
+- `NEXTAUTH_URL` — App base URL
+- `QDRANT_URL` — Vector DB endpoint
+- `OLLAMA_URL` — Ollama LLM server endpoint
+
+## Commands
+```bash
+npm run dev          # Dev server (Turbopack)
+npm run build        # Production build
+npm run db:generate  # Generate migration from schema
+npm run db:migrate   # Apply migrations
+npm run db:seed      # Seed initial data (admin user)
+npm run worker       # Background indexing worker
+```
+
+## Do NOT
+- Use `better-sqlite3` (native compilation)
+- Import Node.js built-ins (`fs`, `path`, `crypto`) in middleware
+- Use synchronous DB patterns
+- Add `"use server"` to API route files
+- Use `auth()` in middleware
+- Install additional CSS frameworks (stick to Tailwind)
+- Use relative imports crossing `src/` boundary — use `@/` alias

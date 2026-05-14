@@ -4,12 +4,12 @@ Enterprise knowledge management system with AI-powered semantic search, WYSIWYG 
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15 (App Router) + React 19 + Tailwind CSS
+- **Frontend**: Next.js 16 (App Router, Turbopack) + React 19 + Tailwind CSS v4
 - **Editor**: TipTap (ProseMirror-based WYSIWYG)
-- **Auth**: NextAuth.js v5 (JWT, credentials provider)
-- **Database**: SQLite (WAL mode) via Drizzle ORM + libsql
+- **Auth**: NextAuth.js v5 beta (JWT strategy, credentials provider)
+- **Database**: SQLite (WAL mode) via Drizzle ORM + @libsql/client (pure JS)
 - **Vector DB**: Qdrant (semantic search)
-- **LLM**: Ollama (embeddings + RAG generation)
+- **LLM**: Ollama (embeddings via nomic-embed-text + RAG via llama3)
 - **Deployment**: Docker Compose
 
 ## Quick Start
@@ -21,7 +21,7 @@ npm install
 # Create database + run migrations
 npx drizzle-kit migrate
 
-# Seed with admin user + default categories
+# Seed with admin user
 npm run db:seed
 
 # Start development server
@@ -50,17 +50,20 @@ docker compose exec ollama ollama pull llama3
 ```
 src/
 ├── app/                  # Next.js App Router (pages + API routes)
-│   ├── api/              # REST API (articles, search, auth, analytics, categories)
-│   ├── articles/         # Article browse, create, view
-│   ├── search/           # Search page
-│   ├── analytics/        # Analytics dashboard
+│   ├── api/              # REST API (articles, search, auth, analytics, tags, keys)
+│   ├── articles/         # Article browse, create, view, edit
+│   ├── search/           # Search page (fulltext, semantic, hybrid, RAG)
+│   ├── analytics/        # Analytics dashboard (admin/editor only)
+│   ├── admin/            # User management (admin only)
+│   ├── settings/         # API key management
 │   └── login/register/   # Auth pages
-├── components/           # React components (editor, layout, UI)
+├── components/           # React components (editor, layout)
 ├── lib/
-│   ├── db/               # Drizzle ORM schema + connection
-│   ├── auth/             # NextAuth config + RBAC
-│   └── search/           # Qdrant, embeddings, chunker, RAG
-└── workers/              # Background embedding + staleness checker
+│   ├── db/               # Drizzle ORM schema + connection + seed
+│   ├── auth/             # NextAuth config + RBAC + API key validation
+│   └── search/           # Qdrant, embeddings, chunker, hybrid search, RAG
+├── types/                # TypeScript type extensions (next-auth.d.ts)
+└── workers/              # Background embedding indexer + staleness checker
 ```
 
 ## Available Scripts
