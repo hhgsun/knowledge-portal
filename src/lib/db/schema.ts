@@ -110,6 +110,7 @@ export const articles = sqliteTable("articles", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+  indexedAt: integer("indexed_at", { mode: "timestamp" }),
 });
 
 export const articleVersions = sqliteTable("article_versions", {

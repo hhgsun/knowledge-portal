@@ -1,6 +1,6 @@
 import { db } from "../lib/db";
 import { articles } from "../lib/db/schema";
-import { eq, and, lt, isNotNull } from "drizzle-orm";
+import { eq, and, lt, isNotNull, isNull, or, gt } from "drizzle-orm";
 import { chunkDocument, extractPlainText } from "../lib/search/chunker";
 import { generateEmbedding } from "../lib/search/embeddings";
 import { ensureCollection, upsertChunks, deleteArticleChunks } from "../lib/search/qdrant";
@@ -40,21 +40,36 @@ async function main() {
 }
 
 /**
- * Index all published articles that have content.
+ * Index only articles that have changed since last indexing (incremental).
+ * Articles are eligible if: published, has content, and (never indexed OR updatedAt > indexedAt).
  */
 async function indexAllArticles() {
-  console.log("📄 Indexing articles...");
+  console.log("📄 Checking for articles to index...");
 
-  const publishedArticles = await db
+  const articlesToIndex = await db
     .select()
     .from(articles)
     .where(
-      and(eq(articles.status, "published"), isNotNull(articles.content))
+      and(
+        eq(articles.status, "published"),
+        isNotNull(articles.content),
+        or(
+          isNull(articles.indexedAt),
+          gt(articles.updatedAt, articles.indexedAt)
+        )
+      )
     )
     .all();
 
+  if (articlesToIndex.length === 0) {
+    console.log("  ✓ All articles up to date, nothing to index");
+    return;
+  }
+
+  console.log(`  → ${articlesToIndex.length} article(s) need indexing`);
+
   let indexed = 0;
-  for (const article of publishedArticles) {
+  for (const article of articlesToIndex) {
     try {
       if (!article.content) continue;
 
@@ -90,13 +105,19 @@ async function indexAllArticles() {
       const plainText = extractPlainText(article.content as Record<string, unknown>);
       await updateFtsIndex(article.id, article.title, article.excerpt, plainText).catch(() => {});
 
+      // Mark article as indexed
+      await db
+        .update(articles)
+        .set({ indexedAt: new Date() })
+        .where(eq(articles.id, article.id));
+
       indexed++;
     } catch (err) {
       console.warn(`  ⚠ Failed to index article ${article.id}:`, (err as Error).message);
     }
   }
 
-  console.log(`  ✓ Indexed ${indexed}/${publishedArticles.length} articles`);
+  console.log(`  ✓ Indexed ${indexed}/${articlesToIndex.length} articles`);
 }
 
 /**
