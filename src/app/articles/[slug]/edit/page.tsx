@@ -21,7 +21,6 @@ interface Article {
   status: string;
   contentType: string;
   difficulty: string;
-  categoryId: string | null;
   audience: string | null;
 }
 

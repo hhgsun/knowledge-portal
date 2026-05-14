@@ -43,20 +43,7 @@ export const apiKeys = sqliteTable("api_keys", {
     .$defaultFn(() => new Date()),
 });
 
-// ─── Categories & Tags ──────────────────────────────────────────────────────
-
-export const categories = sqliteTable("categories", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  parentId: text("parent_id"),
-  description: text("description"),
-  icon: text("icon"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
+// ─── Tags ───────────────────────────────────────────────────────────────────
 
 export const tags = sqliteTable("tags", {
   id: text("id").primaryKey(),
@@ -80,7 +67,6 @@ export const articles = sqliteTable("articles", {
   ownerId: text("owner_id")
     .notNull()
     .references(() => users.id),
-  categoryId: text("category_id").references(() => categories.id),
   contentType: text("content_type", {
     enum: [
       "how-to",
@@ -128,15 +114,6 @@ export const articleVersions = sqliteTable("article_versions", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
-
-export const articleCategories = sqliteTable("article_categories", {
-  articleId: text("article_id")
-    .notNull()
-    .references(() => articles.id, { onDelete: "cascade" }),
-  categoryId: text("category_id")
-    .notNull()
-    .references(() => categories.id, { onDelete: "cascade" }),
 });
 
 export const articleTags = sqliteTable("article_tags", {
@@ -206,10 +183,6 @@ export const articlesRelations = relations(articles, ({ one, many }) => ({
     fields: [articles.ownerId],
     references: [users.id],
   }),
-  category: one(categories, {
-    fields: [articles.categoryId],
-    references: [categories.id],
-  }),
   versions: many(articleVersions),
   tags: many(articleTags),
   feedback: many(articleFeedback),
@@ -229,14 +202,6 @@ export const articleVersionsRelations = relations(
     }),
   })
 );
-
-export const categoriesRelations = relations(categories, ({ many, one }) => ({
-  articles: many(articles),
-  parent: one(categories, {
-    fields: [categories.parentId],
-    references: [categories.id],
-  }),
-}));
 
 export const articleTagsRelations = relations(articleTags, ({ one }) => ({
   article: one(articles, {

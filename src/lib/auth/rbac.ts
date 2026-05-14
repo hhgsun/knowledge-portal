@@ -10,7 +10,6 @@ export type Permission =
   | "articles:delete_any"
   | "articles:publish"
   | "articles:archive"
-  | "categories:manage"
   | "tags:manage"
   | "users:manage"
   | "analytics:view"
@@ -25,7 +24,6 @@ const rolePermissions: Record<Role, Permission[]> = {
     "articles:delete_any",
     "articles:publish",
     "articles:archive",
-    "categories:manage",
     "tags:manage",
     "users:manage",
     "analytics:view",

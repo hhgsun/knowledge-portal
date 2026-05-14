@@ -12,7 +12,6 @@ const updateArticleSchema = z.object({
   content: z.record(z.unknown()).optional(),
   excerpt: z.string().max(500).optional(),
   status: z.enum(["draft", "in_review", "published", "archived"]).optional(),
-  categoryId: z.string().nullable().optional(),
   contentType: z
     .enum(["how-to", "reference", "adr", "runbook", "faq", "policy", "onboarding"])
     .optional(),
@@ -113,7 +112,6 @@ export async function PUT(
     if (data.title !== undefined) updates.title = data.title;
     if (data.content !== undefined) updates.content = data.content;
     if (data.excerpt !== undefined) updates.excerpt = data.excerpt;
-    if (data.categoryId !== undefined) updates.categoryId = data.categoryId;
     if (data.contentType !== undefined) updates.contentType = data.contentType;
     if (data.difficulty !== undefined) updates.difficulty = data.difficulty;
     if (data.audience !== undefined) updates.audience = data.audience;

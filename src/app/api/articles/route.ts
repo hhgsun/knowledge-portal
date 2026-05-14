@@ -13,7 +13,6 @@ const createArticleSchema = z.object({
   content: z.record(z.unknown()).optional(),
   excerpt: z.string().max(500).optional(),
   status: z.enum(["draft", "in_review", "published", "archived"]).default("draft"),
-  categoryId: z.string().optional(),
   contentType: z
     .enum(["how-to", "reference", "adr", "runbook", "faq", "policy", "onboarding"])
     .default("reference"),
@@ -32,7 +31,6 @@ export async function GET(request: Request) {
   const page = parseInt(searchParams.get("page") || "1");
   const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 100);
   const status = searchParams.get("status");
-  const categoryId = searchParams.get("categoryId");
   const search = searchParams.get("q");
   const offset = (page - 1) * limit;
 
@@ -40,7 +38,6 @@ export async function GET(request: Request) {
 
   const conditions = [];
   if (status) conditions.push(eq(articles.status, status as "draft" | "in_review" | "published" | "archived"));
-  if (categoryId) conditions.push(eq(articles.categoryId, categoryId));
   if (search) conditions.push(like(articles.title, `%${search}%`));
 
   // Viewers can only see published articles
@@ -110,7 +107,6 @@ export async function POST(request: Request) {
       excerpt: data.excerpt || null,
       status: data.status,
       ownerId: session.user.id,
-      categoryId: data.categoryId || null,
       contentType: data.contentType,
       difficulty: data.difficulty,
       audience: data.audience || null,
