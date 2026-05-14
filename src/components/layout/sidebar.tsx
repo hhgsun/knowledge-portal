@@ -6,7 +6,6 @@ import {
   BookOpen,
   Search,
   BarChart3,
-  Settings,
   Users,
   PlusCircle,
   Home,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 
 interface NavItem {
   label: string;
@@ -46,7 +46,6 @@ const navigation: NavItem[] = [
 const adminNavigation: NavItem[] = [
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
-  { label: "Settings", href: "/admin/settings", icon: <Settings size={18} /> },
 ];
 
 function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
@@ -97,6 +96,11 @@ function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
 }
 
 export function Sidebar() {
+  const { data: session } = useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = role === "admin";
+  const isEditorOrAdmin = role === "admin" || role === "editor";
+
   return (
     <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0">
       {/* Logo */}
@@ -113,17 +117,25 @@ export function Sidebar() {
           ))}
         </div>
 
-        {/* Admin Section */}
-        <div className="pt-6">
-          <p className="px-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-            Admin
-          </p>
-          <div className="space-y-1">
-            {adminNavigation.map((item) => (
-              <NavLink key={item.href} item={item} />
-            ))}
+        {/* Admin Section — visible to admins and editors only */}
+        {isEditorOrAdmin && (
+          <div className="pt-6">
+            <p className="px-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+              Admin
+            </p>
+            <div className="space-y-1">
+              {adminNavigation
+                .filter((item) => {
+                  // Users management: admin only
+                  if (item.href === "/admin/users") return isAdmin;
+                  return true;
+                })
+                .map((item) => (
+                  <NavLink key={item.href} item={item} />
+                ))}
+            </div>
           </div>
-        </div>
+        )}
       </nav>
 
       {/* Footer */}

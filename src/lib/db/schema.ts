@@ -20,14 +20,6 @@ export const users = sqliteTable("users", {
     .$defaultFn(() => new Date()),
 });
 
-export const sessions = sqliteTable("sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
-});
-
 export const apiKeys = sqliteTable("api_keys", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -175,7 +167,6 @@ export const searchQueries = sqliteTable("search_queries", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   articles: many(articles),
-  sessions: many(sessions),
 }));
 
 export const articlesRelations = relations(articles, ({ one, many }) => ({

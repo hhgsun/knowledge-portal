@@ -22,7 +22,10 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetch("/api/analytics")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(res.statusText);
+        return res.json();
+      })
       .then((d) => {
         setData(d);
         setLoading(false);

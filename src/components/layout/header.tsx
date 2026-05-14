@@ -2,6 +2,7 @@
 
 import { Search, Bell, User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { useState } from "react";
 
 export function Header() {
@@ -44,7 +45,11 @@ export function Header() {
           <button className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
             <User size={18} />
           </button>
-          <button className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            title="Sign out"
+          >
             <LogOut size={18} />
           </button>
         </div>

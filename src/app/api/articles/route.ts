@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { articles, articleTags, articleVersions } from "@/lib/db/schema";
 import { auth } from "@/lib/auth/config";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { eq, desc, and, like, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import slugify from "slugify";
@@ -22,8 +23,8 @@ const createArticleSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,14 +35,12 @@ export async function GET(request: Request) {
   const search = searchParams.get("q");
   const offset = (page - 1) * limit;
 
-  let query = db.select().from(articles).orderBy(desc(articles.updatedAt));
-
   const conditions = [];
   if (status) conditions.push(eq(articles.status, status as "draft" | "in_review" | "published" | "archived"));
   if (search) conditions.push(like(articles.title, `%${search}%`));
 
   // Viewers can only see published articles
-  const role = (session.user as { role: Role }).role;
+  const role = reqAuth.role;
   if (role === "viewer") {
     conditions.push(eq(articles.status, "published"));
   }

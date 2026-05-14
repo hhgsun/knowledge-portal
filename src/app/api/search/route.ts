@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { articles, searchQueries } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { like, eq, or, desc, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { ftsSearch, semanticSearch, hybridSearch, fetchArticlesForResults } from "@/lib/search/hybrid";
 import { ragQuery } from "@/lib/search/rag";
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       await db.insert(searchQueries).values({
         id: nanoid(),
         query: trimmedQuery,
-        userId: session.user.id,
+        userId: reqAuth.userId,
         resultsCount: ragResult.sources.length,
         searchType: "rag",
         responseTimeMs,
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
     await db.insert(searchQueries).values({
       id: nanoid(),
       query: trimmedQuery,
-      userId: session.user.id,
+      userId: reqAuth.userId,
       resultsCount: results.length,
       searchType: type as "fulltext" | "semantic" | "hybrid" | "rag",
       responseTimeMs,
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
     await db.insert(searchQueries).values({
       id: nanoid(),
       query: trimmedQuery,
-      userId: session.user.id,
+      userId: reqAuth.userId,
       resultsCount: results.length,
       searchType: "fulltext",
       responseTimeMs,

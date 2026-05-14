@@ -2,11 +2,47 @@ import { db } from "@/lib/db";
 import { apiKeys, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { compareSync } from "bcryptjs";
+import { auth } from "./config";
+import type { Role } from "./rbac";
 
 interface ApiKeyAuth {
   userId: string;
   role: string;
   permissions: string[];
+}
+
+/**
+ * Unified auth: tries session first, falls back to API key.
+ * Returns a normalized user info object or null.
+ */
+export interface RequestAuth {
+  userId: string;
+  role: Role;
+  source: "session" | "api-key";
+}
+
+export async function getAuthFromRequest(request: Request): Promise<RequestAuth | null> {
+  // 1. Try session auth
+  const session = await auth();
+  if (session?.user) {
+    return {
+      userId: session.user.id,
+      role: (session.user as { role: Role }).role,
+      source: "session",
+    };
+  }
+
+  // 2. Try API key auth
+  const apiKeyAuth = await validateApiKey(request);
+  if (apiKeyAuth) {
+    return {
+      userId: apiKeyAuth.userId,
+      role: apiKeyAuth.role as Role,
+      source: "api-key",
+    };
+  }
+
+  return null;
 }
 
 /**

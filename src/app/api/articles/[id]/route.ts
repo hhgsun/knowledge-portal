@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { articles, articleVersions, articleViews } from "@/lib/db/schema";
 import { auth } from "@/lib/auth/config";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
+import { deleteArticleChunks } from "@/lib/search/qdrant";
 import { eq, desc, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -21,11 +23,11 @@ const updateArticleSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -50,7 +52,7 @@ export async function GET(
     await db.insert(articleViews).values({
       id: nanoid(),
       articleId: bySlug.id,
-      userId: session.user.id,
+      userId: reqAuth.userId,
     });
     return NextResponse.json(bySlug);
   }
@@ -59,7 +61,7 @@ export async function GET(
   await db.insert(articleViews).values({
     id: nanoid(),
     articleId: article.id,
-    userId: session.user.id,
+    userId: reqAuth.userId,
   });
 
   return NextResponse.json(article);
@@ -187,6 +189,30 @@ export async function DELETE(
     if (!hasPermission(role, "articles:delete_own")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+  }
+
+  // Clean up Qdrant vectors and FTS5 index before deleting
+  try {
+    await deleteArticleChunks(id);
+  } catch {
+    // Qdrant may not be available — proceed with DB deletion
+  }
+
+  try {
+    const client = (db as unknown as { $client: { execute: (sql: string, args?: unknown[]) => Promise<unknown> } }).$client;
+    const result = await client.execute(
+      `SELECT rowid FROM articles WHERE id = ?`,
+      [id]
+    ) as { rows: unknown[][] };
+    if (result.rows.length > 0) {
+      const rowid = result.rows[0][0] as number;
+      await client.execute(
+        `INSERT INTO articles_fts(articles_fts, rowid, title, excerpt, plain_text) VALUES ('delete', ?, ?, ?, ?)`,
+        [rowid, article.title, article.excerpt || "", ""]
+      );
+    }
+  } catch {
+    // FTS5 table may not exist yet — proceed with DB deletion
   }
 
   await db.delete(articles).where(eq(articles.id, id));
