@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { articles, articleTags, articleVersions } from "@/lib/db/schema";
+import { articles, articleTags, articleVersions, users, apiKeys } from "@/lib/db/schema";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
 import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { eq, desc, and, like, count } from "drizzle-orm";
@@ -45,8 +45,30 @@ export async function GET(request: Request) {
   }
 
   const results = await db
-    .select()
+    .select({
+      id: articles.id,
+      title: articles.title,
+      slug: articles.slug,
+      content: articles.content,
+      excerpt: articles.excerpt,
+      status: articles.status,
+      ownerId: articles.ownerId,
+      contentType: articles.contentType,
+      difficulty: articles.difficulty,
+      audience: articles.audience,
+      readTimeMinutes: articles.readTimeMinutes,
+      publishedAt: articles.publishedAt,
+      lastReviewedAt: articles.lastReviewedAt,
+      createdAt: articles.createdAt,
+      updatedAt: articles.updatedAt,
+      indexedAt: articles.indexedAt,
+      createdViaApiKeyId: articles.createdViaApiKeyId,
+      ownerName: users.name,
+      apiKeyName: apiKeys.name,
+    })
     .from(articles)
+    .leftJoin(users, eq(articles.ownerId, users.id))
+    .leftJoin(apiKeys, eq(articles.createdViaApiKeyId, apiKeys.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(articles.updatedAt))
     .limit(limit)
@@ -105,6 +127,7 @@ export async function POST(request: Request) {
       excerpt: data.excerpt || null,
       status: data.status,
       ownerId: reqAuth.userId,
+      createdViaApiKeyId: reqAuth.source === "api-key" ? reqAuth.apiKeyId ?? null : null,
       contentType: data.contentType,
       difficulty: data.difficulty,
       audience: data.audience || null,

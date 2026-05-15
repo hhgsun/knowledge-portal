@@ -78,6 +78,7 @@ export const articles = sqliteTable("articles", {
     .notNull()
     .default("beginner"),
   audience: text("audience"),
+  createdViaApiKeyId: text("created_via_api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
   readTimeMinutes: integer("read_time_minutes"),
   publishedAt: integer("published_at", { mode: "timestamp" }),
   lastReviewedAt: integer("last_reviewed_at", { mode: "timestamp" }),

@@ -9,6 +9,8 @@ interface ApiKeyAuth {
   userId: string;
   role: string;
   permissions: string[];
+  apiKeyId: string;
+  apiKeyName: string;
 }
 
 /**
@@ -19,6 +21,8 @@ export interface RequestAuth {
   userId: string;
   role: Role;
   source: "session" | "api-key";
+  apiKeyId?: string;
+  apiKeyName?: string;
 }
 
 export async function getAuthFromRequest(request: Request): Promise<RequestAuth | null> {
@@ -31,6 +35,8 @@ export async function getAuthFromRequest(request: Request): Promise<RequestAuth 
         userId: apiKeyAuth.userId,
         role: apiKeyAuth.role as Role,
         source: "api-key",
+        apiKeyId: apiKeyAuth.apiKeyId,
+        apiKeyName: apiKeyAuth.apiKeyName,
       };
     }
     return null;
@@ -94,6 +100,8 @@ export async function validateApiKey(request: Request): Promise<ApiKeyAuth | nul
         userId: user.id,
         role: user.role,
         permissions: (key.permissions as string[]) || [],
+        apiKeyId: key.id,
+        apiKeyName: key.name,
       };
     }
   }

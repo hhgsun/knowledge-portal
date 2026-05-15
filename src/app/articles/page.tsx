@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PlusCircle, Filter, BookOpen } from "lucide-react";
+import { PlusCircle, Filter, BookOpen, User, Key } from "lucide-react";
 
 interface Article {
   id: string;
@@ -13,6 +13,8 @@ interface Article {
   contentType: string;
   difficulty: string;
   updatedAt: string;
+  ownerName: string | null;
+  apiKeyName: string | null;
 }
 
 export default function ArticlesPage() {
@@ -109,6 +111,17 @@ export default function ArticlesPage() {
                     <span className="text-xs text-zinc-400">
                       {article.contentType}
                     </span>
+                    {article.apiKeyName ? (
+                      <span className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400">
+                        <Key size={12} />
+                        {article.apiKeyName}
+                      </span>
+                    ) : article.ownerName ? (
+                      <span className="flex items-center gap-1 text-xs text-zinc-500">
+                        <User size={12} />
+                        {article.ownerName}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <span className="text-xs text-zinc-400 ml-4 whitespace-nowrap">

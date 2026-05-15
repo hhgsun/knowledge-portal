@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Edit, Clock, User, Tag, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown } from "lucide-react";
 import { TiptapRenderer } from "@/components/editor/tiptap-renderer";
 
 interface Article {
@@ -19,6 +19,8 @@ interface Article {
   updatedAt: string;
   publishedAt: string | null;
   lastReviewedAt: string | null;
+  ownerName: string | null;
+  apiKeyName: string | null;
 }
 
 export default function ArticleViewPage() {
@@ -114,6 +116,17 @@ export default function ArticleViewPage() {
           }`}>
             {article.difficulty}
           </span>
+          {article.apiKeyName ? (
+            <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
+              <Key size={14} />
+              {article.apiKeyName}
+            </span>
+          ) : article.ownerName ? (
+            <span className="flex items-center gap-1">
+              <User size={14} />
+              {article.ownerName}
+            </span>
+          ) : null}
         </div>
       </div>
 

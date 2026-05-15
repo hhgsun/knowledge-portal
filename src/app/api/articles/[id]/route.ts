@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { articles, articleVersions, articleViews } from "@/lib/db/schema";
+import { articles, articleVersions, articleViews, users, apiKeys } from "@/lib/db/schema";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
 import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { deleteArticleChunks } from "@/lib/search/qdrant";
@@ -31,29 +31,47 @@ export async function GET(
   }
 
   const { id } = await params;
-  const article = await db
-    .select()
-    .from(articles)
-    .where(eq(articles.id, id))
-    .get();
+
+  // Helper to query article with author info
+  const getArticleWithAuthor = async (condition: ReturnType<typeof eq>) => {
+    return db
+      .select({
+        id: articles.id,
+        title: articles.title,
+        slug: articles.slug,
+        content: articles.content,
+        excerpt: articles.excerpt,
+        status: articles.status,
+        ownerId: articles.ownerId,
+        contentType: articles.contentType,
+        difficulty: articles.difficulty,
+        audience: articles.audience,
+        readTimeMinutes: articles.readTimeMinutes,
+        publishedAt: articles.publishedAt,
+        lastReviewedAt: articles.lastReviewedAt,
+        reviewIntervalDays: articles.reviewIntervalDays,
+        createdAt: articles.createdAt,
+        updatedAt: articles.updatedAt,
+        indexedAt: articles.indexedAt,
+        createdViaApiKeyId: articles.createdViaApiKeyId,
+        ownerName: users.name,
+        apiKeyName: apiKeys.name,
+      })
+      .from(articles)
+      .leftJoin(users, eq(articles.ownerId, users.id))
+      .leftJoin(apiKeys, eq(articles.createdViaApiKeyId, apiKeys.id))
+      .where(condition)
+      .get();
+  };
+
+  let article = await getArticleWithAuthor(eq(articles.id, id));
 
   if (!article) {
     // Try by slug
-    const bySlug = await db
-      .select()
-      .from(articles)
-      .where(eq(articles.slug, id))
-      .get();
-    if (!bySlug) {
+    article = await getArticleWithAuthor(eq(articles.slug, id));
+    if (!article) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    // Record view
-    await db.insert(articleViews).values({
-      id: nanoid(),
-      articleId: bySlug.id,
-      userId: reqAuth.userId,
-    });
-    return NextResponse.json(bySlug);
   }
 
   // Record view
