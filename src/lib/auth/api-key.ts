@@ -22,23 +22,27 @@ export interface RequestAuth {
 }
 
 export async function getAuthFromRequest(request: Request): Promise<RequestAuth | null> {
-  // 1. Try session auth
+  // 1. Try API key first if header is present (avoids auth() consuming request body)
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer kp_")) {
+    const apiKeyAuth = await validateApiKey(request);
+    if (apiKeyAuth) {
+      return {
+        userId: apiKeyAuth.userId,
+        role: apiKeyAuth.role as Role,
+        source: "api-key",
+      };
+    }
+    return null;
+  }
+
+  // 2. Fall back to session auth
   const session = await auth();
   if (session?.user) {
     return {
       userId: session.user.id,
       role: (session.user as { role: Role }).role,
       source: "session",
-    };
-  }
-
-  // 2. Try API key auth
-  const apiKeyAuth = await validateApiKey(request);
-  if (apiKeyAuth) {
-    return {
-      userId: apiKeyAuth.userId,
-      role: apiKeyAuth.role as Role,
-      source: "api-key",
     };
   }
 

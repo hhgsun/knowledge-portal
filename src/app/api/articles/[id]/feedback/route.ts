@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { articleFeedback } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { eq, and, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -15,8 +15,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -35,7 +35,7 @@ export async function POST(
     await db.insert(articleFeedback).values({
       id: nanoid(),
       articleId: id,
-      userId: session.user.id,
+      userId: reqAuth.userId,
       helpful: parsed.data.helpful,
       comment: parsed.data.comment || null,
     });
@@ -50,11 +50,11 @@ export async function POST(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

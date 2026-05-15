@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tags, articleTags } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
 import { eq, asc, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import slugify from "slugify";
 import { z } from "zod";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
+export async function GET(request: Request) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -35,12 +35,12 @@ const createTagSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = (session.user as { role: Role }).role;
+  const role = reqAuth.role;
   if (!hasPermission(role, "tags:manage")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -87,12 +87,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = (session.user as { role: Role }).role;
+  const role = reqAuth.role;
   if (!hasPermission(role, "tags:manage")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

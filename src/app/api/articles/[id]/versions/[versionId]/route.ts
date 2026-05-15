@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { articleVersions } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
+import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { eq, and } from "drizzle-orm";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; versionId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

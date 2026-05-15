@@ -11,6 +11,14 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow API requests with API key (Bearer kp_...) — auth is validated in the route handler
+  if (pathname.startsWith("/api/")) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer kp_")) {
+      return NextResponse.next();
+    }
+  }
+
   // Check JWT token (doesn't require db access)
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {

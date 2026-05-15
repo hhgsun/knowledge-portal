@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { articles, articleTags, articleVersions } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
 import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { eq, desc, and, like, count } from "drizzle-orm";
@@ -72,12 +71,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = (session.user as { role: Role }).role;
+  const role = reqAuth.role;
   if (!hasPermission(role, "articles:create")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -105,7 +104,7 @@ export async function POST(request: Request) {
       content: data.content || null,
       excerpt: data.excerpt || null,
       status: data.status,
-      ownerId: session.user.id,
+      ownerId: reqAuth.userId,
       contentType: data.contentType,
       difficulty: data.difficulty,
       audience: data.audience || null,
@@ -123,7 +122,7 @@ export async function POST(request: Request) {
       articleId: id,
       title: data.title,
       content: data.content || null,
-      changedBy: session.user.id,
+      changedBy: reqAuth.userId,
       changeSummary: "Initial creation",
       version: 1,
     });

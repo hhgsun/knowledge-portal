@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { articles, articleVersions, articleViews } from "@/lib/db/schema";
-import { auth } from "@/lib/auth/config";
 import { hasPermission, type Role } from "@/lib/auth/rbac";
 import { getAuthFromRequest } from "@/lib/auth/api-key";
 import { deleteArticleChunks } from "@/lib/search/qdrant";
@@ -71,8 +70,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -87,8 +86,8 @@ export async function PUT(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const role = (session.user as { role: Role }).role;
-  const isOwner = article.ownerId === session.user.id;
+  const role = reqAuth.role;
+  const isOwner = article.ownerId === reqAuth.userId;
 
   if (!isOwner && !hasPermission(role, "articles:edit_any")) {
     if (!hasPermission(role, "articles:edit_own")) {
@@ -141,7 +140,7 @@ export async function PUT(
         articleId: id,
         title: data.title || article.title,
         content: data.content || article.content,
-        changedBy: session.user.id,
+        changedBy: reqAuth.userId,
         changeSummary: data.changeSummary || "Content updated",
         version: (versionCount?.count || 0) + 1,
       });
@@ -163,11 +162,11 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const reqAuth = await getAuthFromRequest(request);
+  if (!reqAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -182,8 +181,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const role = (session.user as { role: Role }).role;
-  const isOwner = article.ownerId === session.user.id;
+  const role = reqAuth.role;
+  const isOwner = article.ownerId === reqAuth.userId;
 
   if (!isOwner && !hasPermission(role, "articles:delete_any")) {
     if (!hasPermission(role, "articles:delete_own")) {
