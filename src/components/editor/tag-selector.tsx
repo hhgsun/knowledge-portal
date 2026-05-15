@@ -38,6 +38,17 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
 
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
+
+    const duplicate = allTags.find(
+      (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase()
+    );
+    if (duplicate) {
+      handleAdd(duplicate.id);
+      setNewTagName("");
+      setShowInput(false);
+      return;
+    }
+
     const res = await fetch("/api/tags", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -45,7 +56,9 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
     });
     if (res.ok) {
       const tag = await res.json();
-      setAllTags((prev) => [...prev, tag]);
+      setAllTags((prev) =>
+        prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]
+      );
       handleAdd(tag.id);
       setNewTagName("");
       setShowInput(false);
