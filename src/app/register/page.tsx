@@ -33,7 +33,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
+    <div className="w-full min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Shield size={40} className="mx-auto text-blue-600 mb-3" />
