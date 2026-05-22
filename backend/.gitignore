@@ -37,5 +37,5 @@ publish/
 .dotnet/
 
 ## appsettings overrides
-appsettings.Development.json
-appsettings.*.local.json
+#appsettings.Development.json
+#appsettings.*.local.json
