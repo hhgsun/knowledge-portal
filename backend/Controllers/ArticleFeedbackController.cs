@@ -27,7 +27,7 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
         });
         await db.SaveChangesAsync();
 
-        return StatusCode(201, new { success = true });
+        return StatusCode(201, new { message = "Feedback submitted" });
     }
 
     [HttpGet]

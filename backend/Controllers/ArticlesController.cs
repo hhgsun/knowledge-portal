@@ -56,7 +56,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         return Ok(new
         {
             articles,
-            pagination = new { page, limit, total, pages = (int)Math.Ceiling(total / (double)limit) }
+            total
         });
     }
 
@@ -171,7 +171,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         }
 
         var contentChanged = false;
-        if (req.Title != null) { article.Title = req.Title.Trim(); contentChanged = true; }
+        if (req.Title != null) { article.Title = req.Title.Trim(); }
         if (req.Content != null)
         {
             article.Content = JsonSerializer.Serialize(req.Content);
@@ -241,7 +241,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         db.Articles.Remove(article);
         await db.SaveChangesAsync();
 
-        return Ok(new { success = true });
+        return Ok(new { message = "Article deleted" });
     }
 
     private static string GenerateSlug(string title)

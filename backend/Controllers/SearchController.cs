@@ -16,7 +16,7 @@ public class SearchController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Search(
         [FromQuery] string? q,
-        [FromQuery] string type = "hybrid",
+        [FromQuery] string type = "fulltext",
         [FromQuery] int limit = 20)
     {
         if (string.IsNullOrWhiteSpace(q))

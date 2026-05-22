@@ -45,7 +45,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         return Ok(new
         {
             users,
-            pagination = new { page, limit, total, pages = (int)Math.Ceiling(total / (double)limit) }
+            total
         });
     }
 
@@ -133,7 +133,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         db.Users.Remove(user);
         await db.SaveChangesAsync();
 
-        return Ok(new { success = true });
+        return Ok(new { message = "User deleted" });
     }
 }
 

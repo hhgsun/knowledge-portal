@@ -50,7 +50,7 @@ export default function AdminUsersPage() {
     if (res.ok) {
       const data = await res.json();
       setUsers(data.users);
-      setPagination(data.pagination);
+      setPagination({ page, limit: 50, total: data.total, pages: Math.ceil(data.total / 50) });
     } else if (res.status === 403) {
       setError("You don't have permission to manage users");
     }

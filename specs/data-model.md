@@ -1,0 +1,272 @@
+# Data Model
+
+## Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    User ||--o{ Article : "owns"
+    User ||--o{ ApiKey : "has"
+    User ||--o{ ArticleFeedback : "submits"
+    User ||--o{ ArticleView : "records"
+    User ||--o{ ArticleVersion : "changed_by"
+    User ||--o{ SearchQuery : "performs"
+
+    Article ||--o{ ArticleVersion : "has"
+    Article ||--o{ ArticleTag : "tagged"
+    Article ||--o{ ArticleFeedback : "receives"
+    Article ||--o{ ArticleView : "tracked"
+    Article o|--o| ApiKey : "created_via"
+
+    Tag ||--o{ ArticleTag : "applied"
+
+    SearchQuery o|--o| Article : "clicked"
+
+    User {
+        string id PK "21-char truncated GUID"
+        string name
+        string email UK
+        string password_hash
+        string avatar "nullable"
+        string role "default: viewer"
+        datetime created_at
+        datetime updated_at
+    }
+
+    Article {
+        string id PK
+        string title
+        string slug UK
+        string content "nullable, TipTap JSON"
+        string excerpt "nullable"
+        string status "default: draft"
+        string owner_id FK
+        string content_type "default: reference"
+        string difficulty "default: beginner"
+        string audience "nullable"
+        string created_via_api_key_id FK "nullable, SetNull"
+        int read_time_minutes "nullable"
+        datetime published_at "nullable"
+        datetime last_reviewed_at "nullable"
+        int review_interval_days "default: 90"
+        datetime indexed_at "nullable"
+        datetime created_at
+        datetime updated_at
+    }
+
+    ArticleVersion {
+        string id PK
+        string article_id FK "Cascade"
+        string title
+        string content "nullable, TipTap JSON"
+        string changed_by FK
+        string change_summary "nullable"
+        int version
+        datetime created_at
+    }
+
+    Tag {
+        string id PK
+        string name
+        string slug UK
+    }
+
+    ArticleTag {
+        string article_id PK_FK "Cascade"
+        string tag_id PK_FK "Cascade"
+    }
+
+    ArticleFeedback {
+        string id PK
+        string article_id FK "Cascade"
+        string user_id FK "nullable"
+        bool helpful
+        string comment "nullable"
+        datetime created_at
+    }
+
+    ArticleView {
+        string id PK
+        string article_id FK "Cascade"
+        string user_id FK "nullable"
+        string session_id "nullable"
+        datetime created_at
+    }
+
+    ApiKey {
+        string id PK
+        string user_id FK "Cascade"
+        string key_hash "BCrypt"
+        string name
+        string permissions "nullable, JSON array"
+        datetime last_used_at "nullable"
+        datetime expires_at "nullable"
+        datetime created_at
+    }
+
+    SearchQuery {
+        string id PK
+        string query
+        string user_id FK "nullable"
+        int results_count "default: 0"
+        string clicked_article_id FK "nullable"
+        string search_type "default: fulltext"
+        int response_time_ms "nullable"
+        datetime created_at
+    }
+```
+
+## Entity Details
+
+### User
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK, 21 chars | Truncated GUID |
+| Name | `string` | `name` | Required | — |
+| Email | `string` | `email` | Required, Unique index | — |
+| PasswordHash | `string` | `password_hash` | Required | BCrypt (cost 12) |
+| Avatar | `string?` | `avatar` | — | `null` |
+| Role | `string` | `role` | Required | `"viewer"` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+| UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
+
+**Valid roles**: `admin`, `editor`, `viewer`
+
+### Article
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK, 21 chars | Truncated GUID |
+| Title | `string` | `title` | Required | — |
+| Slug | `string` | `slug` | Required, Unique index | Auto-generated from title |
+| Content | `string?` | `content` | — | `null` (serialized TipTap JSON) |
+| Excerpt | `string?` | `excerpt` | — | `null` |
+| Status | `string` | `status` | Required | `"draft"` |
+| OwnerId | `string` | `owner_id` | FK → users.id | — |
+| ContentType | `string` | `content_type` | Required | `"reference"` |
+| Difficulty | `string` | `difficulty` | Required | `"beginner"` |
+| Audience | `string?` | `audience` | — | `null` |
+| CreatedViaApiKeyId | `string?` | `created_via_api_key_id` | FK → api_keys.id (SetNull) | `null` |
+| ReadTimeMinutes | `int?` | `read_time_minutes` | — | `null` |
+| PublishedAt | `DateTime?` | `published_at` | — | `null` |
+| LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` |
+| ReviewIntervalDays | `int` | `review_interval_days` | — | `90` |
+| IndexedAt | `DateTime?` | `indexed_at` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+| UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
+
+**Valid statuses**: `draft`, `in_review`, `published`, `archived`
+**Valid content types**: `reference`, `how-to`, `adr`, `runbook`, `faq`, `policy`, `onboarding`
+**Valid difficulties**: `beginner`, `intermediate`, `advanced`
+
+### ArticleVersion
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK → articles.id (Cascade) | — |
+| Title | `string` | `title` | Required | — |
+| Content | `string?` | `content` | — | `null` |
+| ChangedBy | `string` | `changed_by` | FK → users.id | — |
+| ChangeSummary | `string?` | `change_summary` | — | `null` |
+| Version | `int` | `version` | Required | Sequential |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+### Tag
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| Name | `string` | `name` | Required | — |
+| Slug | `string` | `slug` | Required, Unique index | Auto-generated from name |
+
+### ArticleTag (Join Table)
+
+| Column | C# Type | DB Column | Constraints |
+|--------|---------|-----------|-------------|
+| ArticleId | `string` | `article_id` | Composite PK, FK (Cascade) |
+| TagId | `string` | `tag_id` | Composite PK, FK (Cascade) |
+
+### ArticleFeedback
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK (Cascade) | — |
+| UserId | `string?` | `user_id` | FK → users.id | `null` |
+| Helpful | `bool` | `helpful` | Required | — |
+| Comment | `string?` | `comment` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+### ArticleView
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK (Cascade) | — |
+| UserId | `string?` | `user_id` | FK → users.id | `null` |
+| SessionId | `string?` | `session_id` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+### ApiKey
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| UserId | `string` | `user_id` | FK → users.id (Cascade) | — |
+| KeyHash | `string` | `key_hash` | Required | BCrypt hash |
+| Name | `string` | `name` | Required | — |
+| Permissions | `string?` | `permissions` | — | `null` (JSON array) |
+| LastUsedAt | `DateTime?` | `last_used_at` | — | `null` |
+| ExpiresAt | `DateTime?` | `expires_at` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+**Default permissions on creation**: `["articles:read", "search"]`
+**Key format**: `kp_` + 32 random hex characters
+
+### SearchQuery
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| Query | `string` | `query` | Required | — |
+| UserId | `string?` | `user_id` | FK → users.id | `null` |
+| ResultsCount | `int` | `results_count` | — | `0` |
+| ClickedArticleId | `string?` | `clicked_article_id` | FK → articles.id | `null` |
+| SearchType | `string` | `search_type` | Required | `"fulltext"` |
+| ResponseTimeMs | `int?` | `response_time_ms` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+## Indexes
+
+| Table | Column(s) | Type |
+|-------|-----------|------|
+| `users` | `email` | Unique |
+| `articles` | `slug` | Unique |
+| `tags` | `slug` | Unique |
+
+## Cascade Behavior
+
+| Parent | Child | On Delete |
+|--------|-------|-----------|
+| User | ApiKey | Cascade |
+| User | Article | (no cascade — ownership preserved) |
+| Article | ArticleVersion | Cascade |
+| Article | ArticleTag | Cascade |
+| Article | ArticleFeedback | Cascade |
+| Article | ArticleView | Cascade |
+| ApiKey | Article.CreatedViaApiKeyId | SetNull |
+| Tag | ArticleTag | Cascade |
+
+## Seed Data
+
+On application startup, `DbInitializer.SeedAsync()`:
+
+1. Applies pending EF Core migrations (`MigrateAsync`)
+2. Creates admin user if `admin@knowledge.local` does not exist:
+   - Name: `Admin`
+   - Email: `admin@knowledge.local`
+   - Password: `admin123` (BCrypt, cost 12)
+   - Role: `admin`
+3. Creates 10 default tags if they do not exist:
+   - `getting-started`, `tutorial`, `troubleshooting`, `best-practices`, `api`, `deployment`, `security`, `performance`, `testing`, `monitoring`

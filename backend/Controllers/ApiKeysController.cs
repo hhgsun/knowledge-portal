@@ -92,7 +92,7 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
         db.ApiKeys.Remove(key);
         await db.SaveChangesAsync();
 
-        return Ok(new { success = true });
+        return Ok(new { message = "API key deleted" });
     }
 }
 

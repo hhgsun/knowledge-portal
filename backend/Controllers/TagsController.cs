@@ -20,7 +20,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
             .Select(t => new
             {
                 t.Id, t.Name, t.Slug,
-                ArticleCount = t.ArticleTags.Count
+                articleCount = t.ArticleTags.Count
             })
             .OrderBy(t => t.Name)
             .ToListAsync();
@@ -65,7 +65,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
         db.Tags.Remove(tag);
         await db.SaveChangesAsync();
 
-        return Ok(new { success = true });
+        return Ok(new { message = "Tag deleted" });
     }
 
     [GeneratedRegex(@"[^a-z0-9]+")]
