@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +41,54 @@ function SearchContent() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  // Tag autocomplete state
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [availableTags, setAvailableTags] = useState<{ id: string; name: string; slug: string; articleCount: number }[]>([]);
+  const [filteredTags, setFilteredTags] = useState<{ id: string; name: string; slug: string; articleCount: number }[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Load tags once
+  useEffect(() => {
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((data) => setAvailableTags(data))
+      .catch(() => {});
+  }, []);
+
+  // Filter tag suggestions based on input
+  useEffect(() => {
+    const match = query.match(/^@(\S*)$/);
+    if (match) {
+      const partial = match[1].toLowerCase();
+      const filtered = availableTags.filter(
+        (t) => t.slug.includes(partial) || t.name.toLowerCase().includes(partial)
+      );
+      setFilteredTags(filtered);
+      setShowTagSuggestions(filtered.length > 0);
+    } else {
+      setShowTagSuggestions(false);
+    }
+  }, [query, availableTags]);
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowTagSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectTag = (slug: string) => {
+    setQuery(`@${slug} `);
+    setShowTagSuggestions(false);
+    inputRef.current?.focus();
+  };
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -50,11 +98,16 @@ function SearchContent() {
     setSearched(true);
     setRagResponse(null);
     setResults([]);
+    setActiveTag(null);
 
     const res = await fetch(
       `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}`
     );
     const data = await res.json();
+
+    if (data.tag) {
+      setActiveTag(data.tag);
+    }
 
     if (searchType === "rag") {
       setRagResponse({ answer: data.answer, sources: data.sources || [] });
@@ -78,10 +131,11 @@ function SearchContent() {
             className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400"
           />
           <input
+            ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchType === "rag" ? "Ask a question..." : "Search articles, guides, runbooks..."}
+            placeholder={searchType === "rag" ? "Ask a question..." : "Search articles... (use @tag to filter by tag)"}
             className="w-full pl-11 pr-4 py-3 text-base bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoFocus
           />
@@ -91,6 +145,30 @@ function SearchContent() {
           >
             {searchType === "rag" ? "Ask" : "Search"}
           </button>
+
+          {/* Tag autocomplete dropdown */}
+          {showTagSuggestions && (
+            <div
+              ref={suggestionsRef}
+              className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto"
+            >
+              <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+                Select a tag to filter
+              </div>
+              {filteredTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => selectTag(tag.slug)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  <Tag size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-zinc-900 dark:text-zinc-100">{tag.name}</span>
+                  <span className="ml-auto text-xs text-zinc-400">{tag.articleCount} article{tag.articleCount !== 1 ? "s" : ""}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </form>
 
         {/* Search Type Tabs */}
@@ -177,8 +255,16 @@ function SearchContent() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-zinc-500">
-                  {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;
-                  {query}&rdquo;
+                  {results.length} result{results.length !== 1 ? "s" : ""}
+                  {activeTag && (
+                    <span className="inline-flex items-center gap-1 ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-xs">
+                      <Tag size={10} />
+                      {activeTag}
+                    </span>
+                  )}
+                  {!activeTag && (
+                    <> for &ldquo;{query}&rdquo;</>
+                  )}
                   {responseTime !== null && (
                     <span className="ml-1">({responseTime}ms)</span>
                   )}
