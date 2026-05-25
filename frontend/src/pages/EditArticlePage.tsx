@@ -1,8 +1,9 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Save, ArrowLeft, Loader2 } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Send } from "lucide-react";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
+import { useAuth } from "../contexts/AuthContext";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
 
@@ -22,6 +23,8 @@ export default function EditArticlePage() {
   const params = useParams();
   const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
+  const { user } = useAuth();
+  const isViewer = user?.role === "viewer";
   const [article, setArticle] = useState<Article | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState<Record<string, unknown> | null>(null);
@@ -123,14 +126,26 @@ export default function EditArticlePage() {
           </Link>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Edit Article</h1>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Save size={16} />
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
+        <div className="flex items-center gap-2">
+          {isViewer && (
+            <button
+              onClick={() => { setStatus("pending"); handleSave(); }}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Send size={16} />
+              {saving ? "Submitting..." : "Submit for Review"}
+            </button>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Save size={16} />
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -177,9 +192,15 @@ export default function EditArticlePage() {
           </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
             <option value="draft">Draft</option>
-            <option value="in_review">In Review</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
+            {isViewer ? (
+              <option value="pending">Pending Review</option>
+            ) : (
+              <>
+                <option value="in_review">In Review</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </>
+            )}
           </select>
         </div>
 

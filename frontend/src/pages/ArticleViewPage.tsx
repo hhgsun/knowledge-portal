@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle } from "lucide-react";
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Article {
   id: string;
@@ -25,8 +26,12 @@ interface Article {
 export default function ArticleViewPage() {
   const params = useParams();
   const { fetchWithAuth } = useApi();
+  const { user } = useAuth();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const isApprover = user?.role === "admin" || user?.role === "editor";
 
   useEffect(() => {
     if (params.slug) {
@@ -50,6 +55,26 @@ export default function ArticleViewPage() {
       method: "POST",
       body: JSON.stringify({ helpful }),
     });
+  };
+
+  const handleApprove = async () => {
+    if (!article) return;
+    setActionLoading(true);
+    const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "POST" });
+    if (res.ok) {
+      setArticle({ ...article, status: "published" });
+    }
+    setActionLoading(false);
+  };
+
+  const handleReject = async () => {
+    if (!article) return;
+    setActionLoading(true);
+    const res = await fetchWithAuth(`/api/articles/${article.id}/reject`, { method: "POST" });
+    if (res.ok) {
+      setArticle({ ...article, status: "draft" });
+    }
+    setActionLoading(false);
   };
 
   if (loading) {
@@ -77,6 +102,37 @@ export default function ArticleViewPage() {
         <span className="text-zinc-300">/</span>
         <span className="text-sm text-zinc-700 dark:text-zinc-300">{article.title}</span>
       </div>
+
+      {article.status === "pending" && (
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Pending Approval</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">This article is waiting for editor or admin approval before publishing.</p>
+            </div>
+            {isApprover && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleApprove}
+                  disabled={actionLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                >
+                  <CheckCircle size={14} />
+                  Approve
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={actionLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                >
+                  <XCircle size={14} />
+                  Reject
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <div className="flex items-start justify-between">

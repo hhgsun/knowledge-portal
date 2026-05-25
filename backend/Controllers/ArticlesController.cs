@@ -25,12 +25,14 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         limit = Math.Clamp(limit, 1, 100);
 
         var role = User.GetRole();
+        var userId = User.GetUserId();
         var query = db.Articles.Include(a => a.Owner).Include(a => a.ArticleTags).ThenInclude(at => at.Tag).AsQueryable();
 
-        // Viewers only see published
+        // Viewers see published + their own articles
         if (role == "viewer")
-            query = query.Where(a => a.Status == "published");
-        else if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(a => a.Status == "published" || a.OwnerId == userId);
+
+        if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(a => a.Status == status);
 
         if (!string.IsNullOrWhiteSpace(q))
@@ -78,18 +80,25 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         }
 
         var userId = User.GetUserId();
+        var role = User.GetRole();
+
+        // Viewers can only create as draft or pending
+        var articleStatus = req.Status ?? "draft";
+        if (role == "viewer" && articleStatus != "draft" && articleStatus != "pending")
+            articleStatus = "draft";
+
         var article = new Article
         {
             Title = req.Title.Trim(),
             Slug = slug,
             Content = req.Content != null ? JsonSerializer.Serialize(req.Content) : null,
             Excerpt = req.Excerpt?.Trim(),
-            Status = req.Status ?? "draft",
+            Status = articleStatus,
             OwnerId = userId,
             ContentType = req.ContentType ?? "reference",
             Difficulty = req.Difficulty ?? "beginner",
             CreatedViaApiKeyId = User.GetApiKeyId(),
-            PublishedAt = req.Status == "published" ? DateTime.UtcNow : null,
+            PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
         };
 
         db.Articles.Add(article);
@@ -185,6 +194,10 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (req.Difficulty != null) article.Difficulty = req.Difficulty;
         if (req.Status != null)
         {
+            // Viewers can only set draft or pending
+            if (role == "viewer" && req.Status != "draft" && req.Status != "pending")
+                return StatusCode(403, new { error = "You can only save as draft or submit for review" });
+
             if (req.Status == "published" && article.Status != "published")
                 article.PublishedAt = DateTime.UtcNow;
             article.Status = req.Status;
@@ -257,6 +270,41 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { message = "Article deleted" });
+    }
+
+    [HttpPost("{id}/approve")]
+    [RequirePermission("articles:approve")]
+    public async Task<IActionResult> Approve(string id)
+    {
+        var article = await db.Articles.FindAsync(id);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        if (article.Status != "pending")
+            return BadRequest(new { error = "Only pending articles can be approved" });
+
+        article.Status = "published";
+        article.PublishedAt = DateTime.UtcNow;
+        article.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Article approved and published", article.Id, article.Slug });
+    }
+
+    [HttpPost("{id}/reject")]
+    [RequirePermission("articles:approve")]
+    public async Task<IActionResult> Reject(string id)
+    {
+        var article = await db.Articles.FindAsync(id);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        if (article.Status != "pending")
+            return BadRequest(new { error = "Only pending articles can be rejected" });
+
+        article.Status = "draft";
+        article.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Article rejected and returned to draft", article.Id, article.Slug });
     }
 
     private static string GenerateSlug(string title)

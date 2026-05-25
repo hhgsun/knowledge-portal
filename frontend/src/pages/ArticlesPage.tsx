@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PlusCircle, BookOpen, User, Key, Tag } from "lucide-react";
 import { useApi } from "../hooks/useApi";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Article {
   id: string;
@@ -19,21 +20,27 @@ interface Article {
 
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
+  const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+
+  const isApprover = user?.role === "admin" || user?.role === "editor";
 
   useEffect(() => {
-    fetchWithAuth("/api/articles")
+    const url = statusFilter ? `/api/articles?status=${statusFilter}` : "/api/articles";
+    fetchWithAuth(url)
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, statusFilter]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
+    pending: "bg-amber-100 text-amber-700",
     in_review: "bg-yellow-100 text-yellow-700",
     published: "bg-green-100 text-green-700",
     archived: "bg-red-100 text-red-700",
@@ -60,6 +67,29 @@ export default function ArticlesPage() {
           New Article
         </Link>
       </div>
+
+      {isApprover && (
+        <div className="flex gap-2 mb-4">
+          {[
+            { label: "All", value: "" },
+            { label: "Pending Approval", value: "pending" },
+            { label: "Draft", value: "draft" },
+            { label: "Published", value: "published" },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => { setLoading(true); setStatusFilter(tab.value); }}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                statusFilter === tab.value
+                  ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
+                  : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-zinc-500">Loading...</div>
