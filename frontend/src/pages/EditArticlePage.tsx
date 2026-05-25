@@ -50,6 +50,7 @@ export default function EditArticlePage() {
             setContentType(data.contentType);
             setDifficulty(data.difficulty);
             setStatus(data.status);
+            setTags((data.tags || []).map((t: { id: string }) => t.id));
           }
           setLoading(false);
         })
@@ -80,6 +81,7 @@ export default function EditArticlePage() {
         difficulty,
         status,
         changeSummary: changeSummary.trim() || undefined,
+        tags,
       }),
     });
 

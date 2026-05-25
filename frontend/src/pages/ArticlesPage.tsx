@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 
 interface Article {
@@ -14,6 +14,7 @@ interface Article {
   updatedAt: string;
   ownerName: string | null;
   apiKeyName: string | null;
+  tags: { id: string; name: string; slug: string }[];
 }
 
 export default function ArticlesPage() {
@@ -92,6 +93,19 @@ export default function ArticlesPage() {
                       {article.difficulty}
                     </span>
                     <span className="text-xs text-zinc-400">{article.contentType}</span>
+                    {article.tags?.length > 0 && (
+                      <span className="flex items-center gap-1 flex-wrap">
+                        <Tag size={12} className="text-zinc-400" />
+                        {article.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                     {article.apiKeyName ? (
                       <span className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400">
                         <Key size={12} />

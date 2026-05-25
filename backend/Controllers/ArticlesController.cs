@@ -25,7 +25,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         limit = Math.Clamp(limit, 1, 100);
 
         var role = User.GetRole();
-        var query = db.Articles.Include(a => a.Owner).AsQueryable();
+        var query = db.Articles.Include(a => a.Owner).Include(a => a.ArticleTags).ThenInclude(at => at.Tag).AsQueryable();
 
         // Viewers only see published
         if (role == "viewer")
@@ -49,7 +49,8 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
                 OwnerName = a.Owner.Name,
                 ApiKeyName = a.CreatedViaApiKeyId != null
                     ? db.ApiKeys.Where(k => k.Id == a.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefault()
-                    : null
+                    : null,
+                Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
             })
             .ToListAsync();
 
@@ -123,6 +124,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     {
         var article = await db.Articles
             .Include(a => a.Owner)
+            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
             .FirstOrDefaultAsync(a => a.Id == idOrSlug || a.Slug == idOrSlug);
 
         if (article == null)
@@ -150,7 +152,8 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
             PublishedAt = article.PublishedAt?.ToString("o"),
             LastReviewedAt = article.LastReviewedAt?.ToString("o"),
             OwnerName = article.Owner.Name,
-            ApiKeyName = apiKeyName
+            ApiKeyName = apiKeyName,
+            Tags = article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
         });
     }
 
@@ -204,6 +207,18 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
                 ChangeSummary = req.ChangeSummary?.Trim(),
                 Version = maxVersion + 1
             });
+        }
+
+        // Update tags
+        if (req.Tags != null)
+        {
+            var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
+            db.ArticleTags.RemoveRange(existingTags);
+            foreach (var tagId in req.Tags)
+            {
+                if (await db.Tags.AnyAsync(t => t.Id == tagId))
+                    db.ArticleTags.Add(new ArticleTag { ArticleId = id, TagId = tagId });
+            }
         }
 
         await db.SaveChangesAsync();
@@ -277,4 +292,5 @@ public record UpdateArticleRequest(
     string? Status = null,
     string? ContentType = null,
     string? Difficulty = null,
-    string? ChangeSummary = null);
+    string? ChangeSummary = null,
+    string[]? Tags = null);

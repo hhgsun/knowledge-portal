@@ -19,6 +19,7 @@ interface Article {
   lastReviewedAt: string | null;
   ownerName: string | null;
   apiKeyName: string | null;
+  tags: { id: string; name: string; slug: string }[];
 }
 
 export default function ArticleViewPage() {
@@ -117,6 +118,19 @@ export default function ArticleViewPage() {
             </span>
           ) : null}
         </div>
+        {article.tags?.length > 0 && (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <Tag size={14} className="text-zinc-400" />
+            {article.tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="prose dark:prose-invert max-w-none border-t border-zinc-200 dark:border-zinc-800 pt-6">
