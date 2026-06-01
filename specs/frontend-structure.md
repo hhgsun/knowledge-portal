@@ -34,7 +34,8 @@ frontend/src/
     ├── SearchPage.tsx         # Multi-mode search (fulltext/semantic/hybrid/RAG) + tag autocomplete
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
-    └── SettingsKeysPage.tsx   # API key management: create, copy, delete
+    ├── SettingsKeysPage.tsx   # API key management: create, copy, delete
+    └── NotFoundPage.tsx       # 404 page for unmatched routes
 ```
 
 ## Component Dependency Graph
@@ -100,6 +101,7 @@ graph TD
 | `/analytics` | AnalyticsPage | Protected | AppShell | — |
 | `/admin/users` | AdminUsersPage | Protected | AppShell | Admin (enforced by backend) |
 | `/settings/keys` | SettingsKeysPage | Protected | AppShell | Admin (enforced by backend) |
+| `*` | NotFoundPage | Public | — | — |
 
 ### ProtectedRoute
 

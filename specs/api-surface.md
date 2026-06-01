@@ -295,9 +295,11 @@ Ordered by version number descending.
   ],
   "total": 5,
   "searchType": "fulltext",
-  "responseTimeMs": 12
+  "responseTimeMs": 12,
+  "searchQueryId": "abc123..."
 }
 ```
+> `searchQueryId` is used to track which result was clicked via `POST /api/search/click`.
 
 **200 Response (RAG)**:
 ```json
@@ -306,6 +308,21 @@ Ordered by version number descending.
   "sources": [{ "articleId": "...", "text": "...", "score": 0.95 }]
 }
 ```
+
+---
+
+### `POST /api/search/click`
+**Auth**: Bearer (JWT or API Key)
+
+| Field | Type | Required |
+|-------|------|----------|
+| `searchQueryId` | string | Yes |
+| `articleId` | string | Yes |
+
+**Side effects**: Updates the `SearchQuery` record's `clicked_article_id` field.
+**200 Response**: `{ "message": "Click recorded" }`
+**400**: Missing searchQueryId or articleId.
+**404**: SearchQuery not found.
 
 ---
 

@@ -134,23 +134,23 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/versions/{versionId}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/feedback` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
 | `/api/tags` | GET | ✓ | — | ✗ |
 | `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
-| `/api/tags/{id}` | PUT | ✓ | `tags:manage` | ✗ |
-| `/api/tags/{id}` | DELETE | ✓ | `tags:manage` | ✗ |
+| `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
 | `/api/search` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
 | `/api/analytics` | GET | ✓ | `analytics:view` | ✓ |
 | `/api/dashboard` | GET | ✓ | — | ✗ |
 | `/api/admin/users` | GET | ✓ | `users:manage` | ✓ |
 | `/api/admin/users` | POST | ✓ | `users:manage` | ✓ |
-| `/api/admin/users/{id}` | PUT | ✓ | `users:manage` | ✓ |
-| `/api/admin/users/{id}` | DELETE | ✓ | `users:manage` | ✓ |
-| `/api/api-keys` | GET | ✓ | `api_keys:manage` | ✓ |
-| `/api/api-keys` | POST | ✓ | `api_keys:manage` | ✓ |
-| `/api/api-keys/{id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
+| `/api/admin/users` | PUT | ✓ | `users:manage` | ✓ |
+| `/api/admin/users?id={id}` | DELETE | ✓ | `users:manage` | ✓ |
+| `/api/keys` | GET | ✓ | `api_keys:manage` | ✓ |
+| `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
+| `/api/keys?id={id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
 
 ## Validation Rules
 
@@ -164,7 +164,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `article.status` | — | — | Enum: draft, pending, published, archived |
 | `article.contentType` | — | — | Enum: reference, tutorial, guide, faq |
 | `article.difficulty` | — | — | Enum: beginner, intermediate, advanced |
-| `tag.name` | 1 | — | Required, unique slug generated |
+| `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |
 | `articles.limit` | 1 | 100 | Default 20 |
@@ -193,10 +193,13 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Health Check | ✅ Implemented | GET /api/health |
 | OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
+| 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |
+| Version Diff | ✅ Implemented | Line-based diff comparison between versions |
 | Dark Mode Toggle | ❌ Not implemented | System preference only |
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
 | User Profile Page | ❌ Not implemented | Profile button non-functional |
 | Pagination UI | ❌ Not implemented | Backend supports it, frontend doesn't show controls |
+| Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
 ## Key Behaviors
 
@@ -238,3 +241,6 @@ specs/                    # Detailed specifications (subordinate to this file)
 - Password minimum length is 8 characters everywhere
 - All IDs are 21-character truncated GUIDs (hex, lowercase)
 - Timestamps are ISO 8601 UTC in API responses
+- `useApi` hook returns `{ fetchWithAuth }` — callers chain `.then(r => r.json())` for data
+- Query-param based DELETE: Tags (`?id=`), Admin Users (`?id=`), API Keys (`?id=`)
+- Admin Users PUT: `userId` is in the request body, not in the URL path
