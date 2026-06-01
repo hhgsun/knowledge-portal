@@ -19,7 +19,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Pattern**: Controllers → EF Core DbContext → SQLite
 - **Naming**: PascalCase for C# code, snake_case for DB columns (configured in `AppDbContext.OnModelCreating`)
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
-- **RBAC**: `RequirePermission` attribute with permission strings (e.g. `"articles:write"`)
+- **RBAC**: `RequirePermission` attribute with permission strings (e.g. `"articles:create"`)
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
 - **Entities**: `backend/Models/Entities/` — 9 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery
 - **Seed data**: `DbInitializer.Initialize()` — admin user + 10 default tags

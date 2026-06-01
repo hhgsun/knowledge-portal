@@ -88,19 +88,20 @@ Static role-permission matrix with three roles:
 
 | Permission | admin | editor | viewer |
 |-----------|:-----:|:------:|:------:|
-| `articles:create` | ✓ | ✓ | |
-| `articles:edit_own` | ✓ | ✓ | |
+| `articles:create` | ✓ | ✓ | ✓ |
+| `articles:edit_own` | ✓ | ✓ | ✓ |
 | `articles:edit_any` | ✓ | | |
-| `articles:delete_own` | ✓ | ✓ | |
+| `articles:delete_own` | ✓ | ✓ | ✓ |
 | `articles:delete_any` | ✓ | | |
 | `articles:publish` | ✓ | ✓ | |
 | `articles:archive` | ✓ | ✓ | |
+| `articles:approve` | ✓ | ✓ | |
 | `tags:manage` | ✓ | ✓ | |
 | `users:manage` | ✓ | | |
 | `analytics:view` | ✓ | ✓ | |
 | `api_keys:manage` | ✓ | | |
 
-Viewers have **no explicit permissions** — they can read published articles and use search, controlled implicitly via controller logic rather than RBAC attributes.
+Viewers can **create, edit, and delete their own articles** but are restricted to `draft` or `pending` status only. They cannot publish, archive, or manage tags. Publishing requires editor/admin approval via the `approve` workflow.
 
 ## Frontend Architecture
 

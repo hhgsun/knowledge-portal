@@ -48,13 +48,14 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 
 | Permission | admin | editor | viewer |
 |-----------|:-----:|:------:|:------:|
-| `articles:create` | ✓ | ✓ | |
-| `articles:edit_own` | ✓ | ✓ | |
+| `articles:create` | ✓ | ✓ | ✓ |
+| `articles:edit_own` | ✓ | ✓ | ✓ |
 | `articles:edit_any` | ✓ | | |
-| `articles:delete_own` | ✓ | ✓ | |
+| `articles:delete_own` | ✓ | ✓ | ✓ |
 | `articles:delete_any` | ✓ | | |
 | `articles:publish` | ✓ | ✓ | |
 | `articles:archive` | ✓ | ✓ | |
+| `articles:approve` | ✓ | ✓ | |
 | `tags:manage` | ✓ | ✓ | |
 | `users:manage` | ✓ | | |
 | `analytics:view` | ✓ | ✓ | |

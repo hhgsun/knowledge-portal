@@ -37,7 +37,8 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
 | `password` | string | Yes | 8–128 characters |
 
 **201 Response**: `{ "id", "name", "email" }`
-**400**: Validation error or email already exists.
+**400**: Validation error (missing fields, password length).
+**409**: Email already registered.
 
 ---
 
@@ -136,6 +137,30 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
 
 **200 Response**: `{ "message": "Article deleted" }`
 **403**: Not owner and lacks `articles:delete_any`.
+
+---
+
+### `POST /api/articles/{id}/approve`
+**Auth**: Bearer (JWT or API Key)
+**Permission**: `articles:approve`
+
+Approves a pending article and sets its status to `published`.
+
+**Guards**: Article must be in `pending` status.
+**200 Response**: `{ "message": "Article approved and published", "id": "...", "slug": "..." }`
+**400**: Article is not in pending status.
+
+---
+
+### `POST /api/articles/{id}/reject`
+**Auth**: Bearer (JWT or API Key)
+**Permission**: `articles:approve`
+
+Rejects a pending article and returns it to `draft` status.
+
+**Guards**: Article must be in `pending` status.
+**200 Response**: `{ "message": "Article rejected and returned to draft", "id": "...", "slug": "..." }`
+**400**: Article is not in pending status.
 
 ---
 

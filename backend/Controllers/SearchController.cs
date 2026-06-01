@@ -68,7 +68,7 @@ public class SearchController(AppDbContext db) : ControllerBase
                 Query = q.Trim(),
                 UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
                 ResultsCount = tagResults.Count,
-                SearchType = "fulltext",
+                SearchType = tagSearchType,
                 ResponseTimeMs = (int)sw.ElapsedMilliseconds
             });
             await db.SaveChangesAsync();

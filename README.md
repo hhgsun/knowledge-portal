@@ -83,18 +83,27 @@ frontend/                       # React SPA (Vite)
 | GET | `/api/auth/me` | JWT | Current user info |
 | GET | `/api/articles` | JWT | List articles |
 | POST | `/api/articles` | JWT | Create article |
-| GET | `/api/articles/{id}` | JWT | Get article by ID |
+| GET | `/api/articles/{idOrSlug}` | JWT | Get article by ID or slug |
 | PUT | `/api/articles/{id}` | JWT | Update article |
 | DELETE | `/api/articles/{id}` | JWT | Delete article |
+| POST | `/api/articles/{id}/approve` | JWT | Approve pending article |
+| POST | `/api/articles/{id}/reject` | JWT | Reject pending article |
 | GET | `/api/articles/{id}/versions` | JWT | Version history |
 | POST | `/api/articles/{id}/feedback` | JWT | Submit feedback |
+| GET | `/api/articles/{id}/feedback` | JWT | Get feedback stats |
 | GET | `/api/search` | JWT | Search articles |
 | GET | `/api/tags` | JWT | List tags |
+| POST | `/api/tags` | JWT | Create tag |
+| DELETE | `/api/tags?id={id}` | JWT | Delete tag |
 | GET | `/api/keys` | JWT | List API keys |
 | POST | `/api/keys` | JWT | Create API key |
+| DELETE | `/api/keys?id={id}` | JWT | Delete API key |
 | GET | `/api/analytics` | JWT | Analytics data |
 | GET | `/api/dashboard` | JWT | Dashboard stats |
-| GET | `/api/admin/users` | JWT (admin) | User management |
+| GET | `/api/admin/users` | JWT (admin) | List users |
+| POST | `/api/admin/users` | JWT (admin) | Create user |
+| PUT | `/api/admin/users` | JWT (admin) | Update user |
+| DELETE | `/api/admin/users?id={id}` | JWT (admin) | Delete user |
 
 ## Available Scripts
 

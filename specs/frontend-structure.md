@@ -88,8 +88,8 @@ graph TD
 
 | Path | Component | Auth | Layout | Role Restriction |
 |------|-----------|------|--------|-----------------|
-| `/login` | LoginPage | Public | None (auth pages skip shell) | — |
-| `/register` | RegisterPage | Public | None | — |
+| `/login` | LoginPage | Public | AppShell (renders Outlet only, no Sidebar/Header) | — |
+| `/register` | RegisterPage | Public | AppShell (renders Outlet only, no Sidebar/Header) | — |
 | `/` | HomePage | Protected | AppShell (Sidebar + Header) | — |
 | `/articles` | ArticlesPage | Protected | AppShell | — |
 | `/articles/new` | NewArticlePage | Protected | AppShell | — |

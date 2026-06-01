@@ -16,7 +16,7 @@
 | Web API | ASP.NET Core | 10.0 | Controllers-based, not minimal API |
 | ORM | Entity Framework Core | 10.0.8 | Code-first migrations |
 | SPA | React | 19.2 | StrictMode enabled |
-| Routing | React Router | 7.15 | v7 with `<Outlet>` pattern |
+| Routing | React Router | 7.15 | v7, package: `react-router-dom` with `<Outlet>` pattern |
 | Bundler | Vite | 8.0 | Dev server on port 5173, proxy `/api` → 5174 |
 | CSS | Tailwind CSS | 4.3 | Utility-first, `@theme inline`, v4 Vite plugin |
 | Rich-text editor | TipTap (ProseMirror) | 3.23 | JSON document model |
