@@ -124,6 +124,7 @@ export function Sidebar() {
               {adminNavigation
                 .filter((item) => {
                   if (item.href === "/admin/users") return isAdmin;
+                  if (item.href === "/settings/keys") return isAdmin;
                   return true;
                 })
                 .map((item) => (
