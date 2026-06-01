@@ -155,7 +155,7 @@ erDiagram
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 | UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
 
-**Valid statuses**: `draft`, `pending`, `in_review`, `published`, `archived`
+**Valid statuses**: `draft`, `pending`, `published`, `archived`
 **Valid content types**: `reference`, `how-to`, `adr`, `runbook`, `faq`, `policy`, `onboarding`
 **Valid difficulties**: `beginner`, `intermediate`, `advanced`
 

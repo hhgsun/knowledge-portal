@@ -317,7 +317,7 @@ Ordered by version number descending.
 {
   "overview": {
     "totalArticles": 42,
-    "articlesByStatus": { "draft": 5, "published": 30, "in_review": 4, "archived": 3 },
+    "articlesByStatus": { "draft": 5, "published": 30, "pending": 4, "archived": 3 },
     "viewsThisWeek": 156,
     "searchesToday": 23,
     "staleArticles": 3

@@ -198,7 +198,7 @@ export default function EditArticlePage() {
               <option value="pending">Pending Review</option>
             ) : (
               <>
-                <option value="in_review">In Review</option>
+                <option value="pending">Pending Review</option>
                 <option value="published">Published</option>
                 <option value="archived">Archived</option>
               </>
