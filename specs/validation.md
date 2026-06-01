@@ -1,6 +1,9 @@
 # Current State Validation
 
-This document describes the verifiable baseline state of the Knowledge Portal system as of 2026-05-22. Use it to confirm the system is functioning correctly before making changes, and to run regression checks after modifications.
+> **Last verified**: 2026-06-02
+> **Note**: This is a smoke-test checklist. For authoritative system docs see `AGENTS.md`.
+
+This document describes how to verify the Knowledge Portal is functioning correctly. Use it before making changes (baseline) and after modifications (regression).
 
 ---
 
@@ -81,7 +84,7 @@ This document describes the verifiable baseline state of the Knowledge Portal sy
 |---|--------|----------|
 | 1 | `GET /api/tags` | 200: array with ≥ 10 default tags |
 | 2 | `POST /api/tags` with `{"name":"new-tag"}` | 201: returns `{ id, name, slug }` |
-| 3 | `POST /api/tags` with existing name | 201: returns existing tag (idempotent) |
+| 3 | `POST /api/tags` with existing name | 200: returns existing tag (upsert — 200 if exists, 201 if new) |
 | 4 | `DELETE /api/tags?id={id}` | 200: tag deleted |
 
 ---
@@ -167,5 +170,22 @@ These behaviors are by design in the current baseline and should not be treated 
 | Dark mode follows system only (no toggle) | Dark mode toggle is a backlog item |
 | Notifications bell is non-functional | Visual indicator only; real notifications are backlog |
 | User profile button is non-functional | Profile page is a backlog item |
-| Pagination UI missing in frontend | Backend supports it, frontend doesn't show controls |
-| Register success message not shown | `?registered=true` query param not handled on login page |
+| Frontend doesn't call `POST /api/search/click` | Search click tracking backend exists but frontend not wired |
+| Frontend doesn't call `GET /api/articles/{id}/feedback` | Feedback comments not displayed (only submission works) |
+| Tag deletion not exposed in UI | Backend supports `DELETE /api/tags?id=` but no frontend control |
+
+---
+
+## Automated Test Suite
+
+| Command | Expected |
+|---------|----------|
+| `cd backend.Tests && dotnet test` | 46 tests pass |
+
+### Coverage Gaps (known)
+- No ArticleFeedback tests
+- No ArticleVersions tests
+- Limited Tags scenario testing
+- No Admin corner cases (self-demote, bulk ops)
+- No search click tracking tests
+- No frontend tests (0 coverage)

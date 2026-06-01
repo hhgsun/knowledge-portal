@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -78,6 +79,8 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 // ─── Middleware pipeline ─────────────────────────────────────
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
