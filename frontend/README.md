@@ -1,53 +1,80 @@
-# React + TypeScript + Vite
+# Knowledge Portal — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React SPA powering the Knowledge Portal user interface.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Component | Version |
+|-----------|---------|
+| React | 19 |
+| TypeScript | Strict mode |
+| Vite | 8.x |
+| React Router | v7 |
+| Tailwind CSS | v4 |
+| Editor | TipTap (ProseMirror) |
+| Icons | lucide-react |
+| Notifications | sonner |
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Dev server starts on **http://localhost:5173**. API requests to `/api/*` are proxied to `http://localhost:5174`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
+## Project Structure
+
+```
+src/
+├── App.tsx              # Routes (ProtectedRoute + RoleRoute wrappers)
+├── main.tsx             # Entry point
+├── index.css            # Tailwind CSS imports
+├── contexts/
+│   └── AuthContext.tsx  # JWT auth state (localStorage)
+├── hooks/
+│   └── useApi.ts        # Fetch wrapper (auto-JWT, auto-logout on 401)
+├── components/
+│   ├── layout/          # AppShell, Sidebar, Header
+│   ├── editor/          # TipTap editor components
+│   ├── error-boundary.tsx
+│   └── toast-provider.tsx
+├── pages/               # 13 flat page components
+│   ├── LoginPage.tsx
+│   ├── RegisterPage.tsx
+│   ├── HomePage.tsx
+│   ├── ArticlesPage.tsx
+│   ├── NewArticlePage.tsx
+│   ├── EditArticlePage.tsx
+│   ├── ArticleViewPage.tsx
+│   ├── SearchPage.tsx
+│   ├── VersionsPage.tsx
+│   ├── AnalyticsPage.tsx
+│   ├── AdminUsersPage.tsx
+│   ├── SettingsKeysPage.tsx
+│   └── NotFoundPage.tsx
+└── lib/
+    └── utils.ts         # cn() helper (clsx + tailwind-merge)
+```
+
+## Key Patterns
+
+- **Auth**: JWT stored in localStorage, managed by `AuthContext`
+- **API calls**: Always use `useApi` hook — auto-attaches Bearer token, triggers logout on 401
+- **Notifications**: Use `toast.success()` / `toast.error()` from `sonner`
+- **Routing**: `ProtectedRoute` for auth-required pages, `RoleRoute` for role-restricted pages
+- **Styling**: Tailwind CSS utility-first, `cn()` helper for conditional classes
+
+## Commands
+
+| Task | Command |
+|------|---------|
+| Dev server | `npm run dev` |
+| Build | `npm run build` |
+| Lint | `npm run lint` |
+| Preview build | `npm run preview` |
 import reactDom from 'eslint-plugin-react-dom'
 
 export default defineConfig([

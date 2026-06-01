@@ -72,9 +72,18 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+// ─── OpenAPI / Swagger ───────────────────────────────────────
+builder.Services.AddOpenApi();
+
 var app = builder.Build();
 
 // ─── Middleware pipeline ─────────────────────────────────────
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/openapi/v1.json", "Knowledge Portal API v1"));
+}
+
 app.UseCors();
 app.UseRateLimiter();
 

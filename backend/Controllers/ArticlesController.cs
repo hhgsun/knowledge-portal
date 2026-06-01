@@ -102,6 +102,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
             Difficulty = req.Difficulty ?? "beginner",
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
+            ReadTimeMinutes = CalculateReadTime(req.Content != null ? JsonSerializer.Serialize(req.Content) : null),
         };
 
         db.Articles.Add(article);
@@ -172,7 +173,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
             article.Id, article.Title, article.Slug, article.Excerpt,
             Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
             article.Status, article.ContentType, article.Difficulty,
-            article.OwnerId, article.Audience,
+            article.OwnerId, article.Audience, article.ReadTimeMinutes,
             UpdatedAt = article.UpdatedAt.ToString("o"),
             PublishedAt = article.PublishedAt?.ToString("o"),
             LastReviewedAt = article.LastReviewedAt?.ToString("o"),
@@ -202,6 +203,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (req.Content != null)
         {
             article.Content = JsonSerializer.Serialize(req.Content);
+            article.ReadTimeMinutes = CalculateReadTime(article.Content);
             contentChanged = true;
         }
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
@@ -335,6 +337,53 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    /// <summary>
+    /// Estimates read time based on ~200 words per minute.
+    /// Extracts text from TipTap JSON content.
+    /// </summary>
+    private static int? CalculateReadTime(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
+            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ExtractTextFromJson(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                return element.GetString() ?? "";
+            case JsonValueKind.Object:
+                var sb = new System.Text.StringBuilder();
+                if (element.TryGetProperty("text", out var textProp))
+                    sb.Append(textProp.GetString() ?? "").Append(' ');
+                if (element.TryGetProperty("content", out var contentProp))
+                    sb.Append(ExtractTextFromJson(contentProp));
+                foreach (var prop in element.EnumerateObject())
+                {
+                    if (prop.Name != "text" && prop.Name != "content")
+                        sb.Append(ExtractTextFromJson(prop.Value));
+                }
+                return sb.ToString();
+            case JsonValueKind.Array:
+                var arrSb = new System.Text.StringBuilder();
+                foreach (var item in element.EnumerateArray())
+                    arrSb.Append(ExtractTextFromJson(item)).Append(' ');
+                return arrSb.ToString();
+            default:
+                return "";
+        }
+    }
 }
 
 public record CreateArticleRequest(

@@ -68,17 +68,18 @@ public class SearchController(AppDbContext db) : ControllerBase
             var tagSearchType = string.IsNullOrWhiteSpace(searchQuery) ? "tag" : "tag-search";
 
             // Record search
-            db.SearchQueries.Add(new SearchQuery
+            var tagSearchRecord = new SearchQuery
             {
                 Query = q.Trim(),
                 UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
                 ResultsCount = tagResults.Count,
                 SearchType = tagSearchType,
                 ResponseTimeMs = (int)sw.ElapsedMilliseconds
-            });
+            };
+            db.SearchQueries.Add(tagSearchRecord);
             await db.SaveChangesAsync();
 
-            return Ok(new { results = tagResults, query = q, type = tagSearchType, tag = tagSlug, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count });
+            return Ok(new { results = tagResults, query = q, type = tagSearchType, tag = tagSlug, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count, searchQueryId = tagSearchRecord.Id });
         }
 
         // Standard search (SQL LIKE for now — semantic/hybrid/rag in future phase)
@@ -94,14 +95,15 @@ public class SearchController(AppDbContext db) : ControllerBase
         sw.Stop();
 
         // Record search
-        db.SearchQueries.Add(new SearchQuery
+        var searchRecord = new SearchQuery
         {
             Query = q.Trim(),
             UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
             ResultsCount = results.Count,
             SearchType = type switch { "fulltext" or "hybrid" or "semantic" => type, _ => "fulltext" },
             ResponseTimeMs = (int)sw.ElapsedMilliseconds
-        });
+        };
+        db.SearchQueries.Add(searchRecord);
         await db.SaveChangesAsync();
 
         // RAG placeholder
@@ -117,6 +119,28 @@ public class SearchController(AppDbContext db) : ControllerBase
             });
         }
 
-        return Ok(new { results, query = q, type, responseTimeMs = sw.ElapsedMilliseconds, total = results.Count });
+        return Ok(new { results, query = q, type, responseTimeMs = sw.ElapsedMilliseconds, total = results.Count, searchQueryId = searchRecord.Id });
+    }
+
+    [HttpPost("click")]
+    public async Task<IActionResult> RecordClick([FromBody] RecordClickRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.SearchQueryId) || string.IsNullOrWhiteSpace(req.ArticleId))
+            return BadRequest(new { error = "searchQueryId and articleId are required" });
+
+        var searchQuery = await db.SearchQueries.FindAsync(req.SearchQueryId);
+        if (searchQuery == null)
+            return NotFound(new { error = "Search query not found" });
+
+        var userId = User.GetUserId();
+        if (searchQuery.UserId != userId)
+            return StatusCode(403, new { error = "Cannot update another user's search query" });
+
+        searchQuery.ClickedArticleId = req.ArticleId;
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Click recorded" });
     }
 }
+
+public record RecordClickRequest(string SearchQueryId, string ArticleId);

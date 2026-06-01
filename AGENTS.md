@@ -118,6 +118,57 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `analytics:view` | ✓ | ✓ | |
 | `api_keys:manage` | ✓ | | |
 
+## Endpoint Authorization Matrix
+
+| Endpoint | Method | Auth | Permission | Session-Only |
+|----------|--------|:----:|-----------|:------------:|
+| `/api/health` | GET | ✗ | — | — |
+| `/api/auth/login` | POST | ✗ | — | — |
+| `/api/auth/register` | POST | ✗ | — | — |
+| `/api/auth/me` | GET | ✓ | — | ✗ |
+| `/api/articles` | GET | ✓ | — | ✗ |
+| `/api/articles` | POST | ✓ | `articles:create` | ✗ |
+| `/api/articles/{id}` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
+| `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✗ |
+| `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
+| `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
+| `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/feedback` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
+| `/api/tags` | GET | ✓ | — | ✗ |
+| `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
+| `/api/tags/{id}` | PUT | ✓ | `tags:manage` | ✗ |
+| `/api/tags/{id}` | DELETE | ✓ | `tags:manage` | ✗ |
+| `/api/search` | GET | ✓ | — | ✗ |
+| `/api/search/click` | POST | ✓ | — | ✗ |
+| `/api/analytics` | GET | ✓ | `analytics:view` | ✓ |
+| `/api/dashboard` | GET | ✓ | — | ✗ |
+| `/api/admin/users` | GET | ✓ | `users:manage` | ✓ |
+| `/api/admin/users` | POST | ✓ | `users:manage` | ✓ |
+| `/api/admin/users/{id}` | PUT | ✓ | `users:manage` | ✓ |
+| `/api/admin/users/{id}` | DELETE | ✓ | `users:manage` | ✓ |
+| `/api/api-keys` | GET | ✓ | `api_keys:manage` | ✓ |
+| `/api/api-keys` | POST | ✓ | `api_keys:manage` | ✓ |
+| `/api/api-keys/{id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
+
+## Validation Rules
+
+| Field | Min | Max | Notes |
+|-------|-----|-----|-------|
+| `password` | 8 | 128 | Required for register, login, admin user create/update |
+| `email` | — | — | Valid email format, unique per user |
+| `user.name` | 1 | — | Required |
+| `article.title` | 1 | 300 | Required |
+| `article.excerpt` | — | — | Optional, trimmed |
+| `article.status` | — | — | Enum: draft, pending, published, archived |
+| `article.contentType` | — | — | Enum: reference, tutorial, guide, faq |
+| `article.difficulty` | — | — | Enum: beginner, intermediate, advanced |
+| `tag.name` | 1 | — | Required, unique slug generated |
+| `search.q` | 1 | — | Required |
+| `search.limit` | 1 | 50 | Default 20 |
+| `articles.limit` | 1 | 100 | Default 20 |
+
 ## Feature Status
 
 | Feature | Status | Notes |
@@ -131,6 +182,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Search (semantic) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
 | Search (hybrid) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
 | Search (RAG) | ⏳ Placeholder | Returns stub message |
+| Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
 | API Key Management | ✅ Implemented | Create/list/delete |
@@ -139,6 +191,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
 | Rate Limiting | ✅ Implemented | Login, register, search endpoints |
 | Health Check | ✅ Implemented | GET /api/health |
+| OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
+| Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
 | Dark Mode Toggle | ❌ Not implemented | System preference only |
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
 | User Profile Page | ❌ Not implemented | Profile button non-functional |
@@ -148,10 +202,12 @@ specs/                    # Detailed specifications (subordinate to this file)
 
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
 - **Version creation**: Only triggered when `content` field changes (not title-only edits)
+- **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
+- **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view
 
 ## Rules for AI Agents
