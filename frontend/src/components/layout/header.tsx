@@ -41,7 +41,11 @@ export function Header() {
             <Bell size={18} />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
           </button>
-          <button className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <button
+            onClick={() => navigate("/profile")}
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            title="Profile"
+          >
             <User size={18} />
           </button>
           <button

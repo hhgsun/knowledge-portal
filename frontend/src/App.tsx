@@ -15,6 +15,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import SettingsKeysPage from "./pages/SettingsKeysPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/articles/:slug/edit" element={<EditArticlePage />} />
           <Route path="/articles/:slug/versions" element={<VersionsPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/analytics" element={<RoleRoute roles={["admin", "editor"]}><AnalyticsPage /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
           <Route path="/settings/keys" element={<RoleRoute roles={["admin"]}><SettingsKeysPage /></RoleRoute>} />

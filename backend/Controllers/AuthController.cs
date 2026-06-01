@@ -70,7 +70,53 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
 
         return Ok(new { user.Id, user.Name, user.Email, user.Role, user.Avatar });
     }
+
+    [HttpPut("profile")]
+    [Authorize]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest req)
+    {
+        var userId = User.GetUserId();
+        var user = await db.Users.FindAsync(userId);
+        if (user == null) return Unauthorized(new { error = "User not found" });
+
+        // Update name
+        if (!string.IsNullOrWhiteSpace(req.Name))
+            user.Name = req.Name.Trim();
+
+        // Update email
+        if (!string.IsNullOrWhiteSpace(req.Email))
+        {
+            var normalizedEmail = req.Email.Trim().ToLowerInvariant();
+            if (normalizedEmail != user.Email)
+            {
+                if (await db.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != userId))
+                    return Conflict(new { error = "Email already in use" });
+                user.Email = normalizedEmail;
+            }
+        }
+
+        // Change password
+        if (!string.IsNullOrWhiteSpace(req.NewPassword))
+        {
+            if (string.IsNullOrWhiteSpace(req.CurrentPassword))
+                return BadRequest(new { error = "Current password is required to change password" });
+
+            if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash))
+                return BadRequest(new { error = "Current password is incorrect" });
+
+            if (req.NewPassword.Length < 8 || req.NewPassword.Length > 128)
+                return BadRequest(new { error = "New password must be 8-128 characters" });
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword, 12);
+        }
+
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { user.Id, user.Name, user.Email, user.Role });
+    }
 }
 
 public record LoginRequest(string Email, string Password);
 public record RegisterRequest(string Name, string Email, string Password);
+public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword);
