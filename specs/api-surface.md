@@ -356,7 +356,7 @@ Ordered by version number descending.
 |-------|------|----------|-------------|
 | `name` | string | Yes | — |
 | `email` | string | Yes | Unique |
-| `password` | string | Yes | 6–100 characters |
+| `password` | string | Yes | 8–128 characters |
 | `role` | string | No | Default: `"viewer"` |
 
 **201 Response**: `{ "id", "name", "email", "role", "createdAt" }`
@@ -372,7 +372,7 @@ Ordered by version number descending.
 | `userId` | string | Yes | Target user ID |
 | `name` | string | No | — |
 | `email` | string | No | Unique if changed |
-| `password` | string | No | 6–100 characters if provided |
+| `password` | string | No | 8–128 characters if provided |
 | `role` | string | No | Cannot self-demote from admin |
 
 **200 Response**: `{ "id", "name", "email", "role", "updatedAt" }`

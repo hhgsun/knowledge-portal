@@ -88,7 +88,7 @@ These endpoints explicitly reject API key authentication:
 | Cost factor | 12 |
 | Library | BCrypt.Net-Next 4.2.0 |
 | Registration constraints | 8–128 characters |
-| Admin-created user constraints | 6–100 characters |
+| Admin-created user constraints | 8–128 characters |
 
 ## Known Security Gaps
 
@@ -100,7 +100,6 @@ The following are documented security concerns in the current baseline:
 |---|-------|--------|----------|
 | 1 | **API key verification is O(n)** — middleware iterates all keys with BCrypt compare | DoS vector: each request triggers N BCrypt operations | `ApiKeyMiddleware.cs` |
 | 2 | **No rate limiting** — login, register, search, and API key creation have no request throttling | Brute-force attacks, credential stuffing, resource exhaustion | All controllers |
-| 3 | **Password length consistency** — registration and admin user creation both require 8+ chars | — | `AuthController`, `AdminUsersController` |
 
 ### Medium
 
