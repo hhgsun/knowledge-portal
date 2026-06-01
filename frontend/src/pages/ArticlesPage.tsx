@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -18,25 +18,36 @@ interface Article {
   tags: { id: string; name: string; slug: string }[];
 }
 
+const LIMIT = 20;
+
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
+  const totalPages = Math.ceil(total / LIMIT);
 
   useEffect(() => {
-    const url = statusFilter ? `/api/articles?status=${statusFilter}` : "/api/articles";
-    fetchWithAuth(url)
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(LIMIT));
+    if (statusFilter) params.set("status", statusFilter);
+
+    fetchWithAuth(`/api/articles?${params}`)
       .then((res) => res.json())
       .then((data) => {
         setArticles(data.articles || []);
+        setTotal(data.total || 0);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter]);
+  }, [fetchWithAuth, statusFilter, page]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
@@ -77,7 +88,7 @@ export default function ArticlesPage() {
           ].map((tab) => (
             <button
               key={tab.value}
-              onClick={() => { setLoading(true); setStatusFilter(tab.value); }}
+              onClick={() => { setPage(1); setStatusFilter(tab.value); }}
               className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                 statusFilter === tab.value
                   ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
@@ -154,6 +165,32 @@ export default function ArticlesPage() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+          <span className="text-sm text-zinc-500">
+            {total} article{total !== 1 ? "s" : ""} · Page {page} of {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <ChevronLeft size={14} />
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       )}
     </div>
