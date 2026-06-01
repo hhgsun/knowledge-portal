@@ -36,7 +36,10 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
             query = query.Where(a => a.Status == status);
 
         if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(a => a.Title.Contains(q));
+        {
+            var escaped = q.Replace("%", "\\%").Replace("_", "\\_");
+            query = query.Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\"));
+        }
 
         var total = await query.CountAsync();
         var articles = await query
@@ -64,7 +67,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("articles:create")]
+    [RequirePermission(Permissions.ArticlesCreate)]
     public async Task<IActionResult> Create([FromBody] CreateArticleRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
@@ -145,13 +148,20 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (role == "viewer" && article.Status != "published" && article.OwnerId != userId)
             return NotFound(new { error = "Article not found" });
 
-        // Record view
-        db.ArticleViews.Add(new ArticleView
+        // Record view (deduplicated per user/article within 15 minutes)
+        var fifteenMinutesAgo = DateTime.UtcNow.AddMinutes(-15);
+        var recentView = await db.ArticleViews
+            .AnyAsync(v => v.ArticleId == article.Id && v.UserId == userId && v.CreatedAt > fifteenMinutesAgo);
+
+        if (!recentView)
         {
-            ArticleId = article.Id,
-            UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null
-        });
-        await db.SaveChangesAsync();
+            db.ArticleViews.Add(new ArticleView
+            {
+                ArticleId = article.Id,
+                UserId = userId
+            });
+            await db.SaveChangesAsync();
+        }
 
         var apiKeyName = article.CreatedViaApiKeyId != null
             ? await db.ApiKeys.Where(k => k.Id == article.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefaultAsync()
@@ -182,8 +192,8 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var role = User.GetRole();
         var isOwner = article.OwnerId == userId;
 
-        var canEditAny = RbacService.HasPermission(role, "articles:edit_any");
-        var canEditOwn = RbacService.HasPermission(role, "articles:edit_own") && isOwner;
+        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
+        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
         if (!canEditAny && !canEditOwn)
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
@@ -265,8 +275,8 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var role = User.GetRole();
         var isOwner = article.OwnerId == userId;
 
-        var canDeleteAny = RbacService.HasPermission(role, "articles:delete_any");
-        var canDeleteOwn = RbacService.HasPermission(role, "articles:delete_own") && isOwner;
+        var canDeleteAny = RbacService.HasPermission(role, Permissions.ArticlesDeleteAny);
+        var canDeleteOwn = RbacService.HasPermission(role, Permissions.ArticlesDeleteOwn) && isOwner;
         if (!canDeleteAny && !canDeleteOwn)
             return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
@@ -277,7 +287,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
-    [RequirePermission("articles:approve")]
+    [RequirePermission(Permissions.ArticlesApprove)]
     public async Task<IActionResult> Approve(string id)
     {
         var article = await db.Articles.FindAsync(id);
@@ -295,7 +305,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost("{id}/reject")]
-    [RequirePermission("articles:approve")]
+    [RequirePermission(Permissions.ArticlesApprove)]
     public async Task<IActionResult> Reject(string id)
     {
         var article = await db.Articles.FindAsync(id);

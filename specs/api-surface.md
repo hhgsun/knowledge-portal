@@ -3,6 +3,27 @@
 Base URL: `http://localhost:5174/api`
 All endpoints return JSON. All timestamps are ISO 8601 UTC.
 
+## Rate Limiting
+
+| Policy | Limit | Window | Endpoints |
+|--------|-------|--------|-----------|
+| `auth` | 10 requests | 1 minute | `POST /api/auth/login`, `POST /api/auth/register` |
+| `search` | 30 requests | 1 minute | `GET /api/search` |
+
+When rate limit is exceeded, returns `429 Too Many Requests`.
+
+---
+
+## Health Check
+
+### `GET /api/health`
+**Auth**: None
+
+**200 Response**:
+```json
+{ "status": "healthy", "timestamp": "2026-01-01T00:00:00.0000000Z" }
+```
+
 ---
 
 ## Authentication
@@ -60,10 +81,10 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
 | `page` | int | 1 | Pagination |
 | `limit` | int | 20 | Max results per page |
 | `status` | string | — | Filter by status |
-| `q` | string | — | Search title (LIKE) |
+| `q` | string | — | Search title (LIKE, wildcards `%`/`_` escaped) |
 
 **Visibility rules**:
-- Viewers see only `published` articles
+- Viewers see only `published` articles + their own (any status)
 - Editors/admins see all statuses (filtered if `status` param provided)
 
 **200 Response**:
@@ -73,7 +94,8 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
     {
       "id": "...", "title": "...", "slug": "...", "excerpt": "...",
       "status": "published", "contentType": "reference", "difficulty": "beginner",
-      "updatedAt": "...", "ownerName": "...", "apiKeyName": null
+      "updatedAt": "...", "ownerName": "...", "apiKeyName": null,
+      "tags": [{ "id": "...", "name": "...", "slug": "..." }]
     }
   ],
   "total": 42
@@ -105,7 +127,7 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
 ### `GET /api/articles/{idOrSlug}`
 **Auth**: Bearer (JWT or API Key)
 
-**Side effects**: Records an `ArticleView` entry.
+**Side effects**: Records an `ArticleView` entry (deduplicated: same user+article within 15 minutes counts as 1 view).
 **200 Response**: Full article object with deserialized `content` (TipTap JSON).
 **404**: Article not found.
 

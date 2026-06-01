@@ -29,7 +29,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("tags:manage")]
+    [RequirePermission(Permissions.TagsManage)]
     public async Task<IActionResult> Create([FromBody] CreateTagRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 50)
@@ -49,7 +49,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
     }
 
     [HttpDelete]
-    [RequirePermission("tags:manage")]
+    [RequirePermission(Permissions.TagsManage)]
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
         if (string.IsNullOrWhiteSpace(id))

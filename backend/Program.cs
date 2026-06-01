@@ -1,7 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -32,6 +34,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// ─── Rate Limiting ───────────────────────────────────────────
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+
+    var isTest = builder.Environment.EnvironmentName == "Testing";
+    var authLimit = isTest ? 10000 : 10;
+    var searchLimit = isTest ? 10000 : 30;
+
+    options.AddFixedWindowLimiter("auth", opt =>
+    {
+        opt.PermitLimit = authLimit;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+
+    options.AddFixedWindowLimiter("search", opt =>
+    {
+        opt.PermitLimit = searchLimit;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+});
+
 // ─── CORS ────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
@@ -50,6 +76,7 @@ var app = builder.Build();
 
 // ─── Middleware pipeline ─────────────────────────────────────
 app.UseCors();
+app.UseRateLimiter();
 
 // API key middleware runs before auth — sets ClaimsPrincipal for kp_ tokens
 app.UseMiddleware<ApiKeyMiddleware>();
@@ -59,12 +86,21 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// ─── Health Check ────────────────────────────────────────────
+app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow.ToString("o") }));
+
 // ─── Database init ───────────────────────────────────────────
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();    // Enable WAL mode and busy timeout for concurrent access
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    // Enable WAL mode and busy timeout for concurrent access
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
-    await db.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");    await DbInitializer.SeedAsync(db);
+    await db.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
+    await DbInitializer.SeedAsync(db);
 }
 
 app.Run();
+
+// Marker class for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

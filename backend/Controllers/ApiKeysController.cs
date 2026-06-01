@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 public class ApiKeysController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
-    [RequirePermission("api_keys:manage")]
+    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> List()
     {
         var userId = User.GetUserId();
@@ -37,7 +37,7 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("api_keys:manage")]
+    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Create([FromBody] CreateKeyRequest req)
     {
         if (User.GetSource() == "api-key")
@@ -55,6 +55,7 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
         {
             UserId = User.GetUserId(),
             KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
+            KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
             Name = req.Name.Trim(),
             Permissions = req.Permissions != null
                 ? System.Text.Json.JsonSerializer.Serialize(req.Permissions)
@@ -76,7 +77,7 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 
     [HttpDelete]
-    [RequirePermission("api_keys:manage")]
+    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
         if (User.GetSource() == "api-key")

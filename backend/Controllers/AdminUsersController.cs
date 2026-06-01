@@ -10,7 +10,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/admin/users")]
 [Authorize]
-[RequirePermission("users:manage")]
+[RequirePermission(Permissions.UsersManage)]
 public class AdminUsersController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -27,7 +27,10 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
 
         var query = db.Users.AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(u => u.Name.Contains(q) || u.Email.Contains(q));
+        {
+            var escaped = q.Replace("%", "\\%").Replace("_", "\\_");
+            query = query.Where(u => EF.Functions.Like(u.Name, $"%{escaped}%", "\\") || EF.Functions.Like(u.Email, $"%{escaped}%", "\\"));
+        }
 
         var total = await query.CountAsync();
         var users = await query

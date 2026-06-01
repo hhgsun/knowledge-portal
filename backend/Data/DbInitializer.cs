@@ -7,8 +7,6 @@ public static class DbInitializer
 {
     public static async Task SeedAsync(AppDbContext db)
     {
-        await db.Database.MigrateAsync();
-
         // Admin user
         if (!await db.Users.AnyAsync(u => u.Email == "admin@knowledge.local"))
         {

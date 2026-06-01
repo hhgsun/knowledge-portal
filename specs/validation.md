@@ -118,6 +118,16 @@ This document describes the verifiable baseline state of the Knowledge Portal sy
 
 ---
 
+## Health Check & Rate Limiting
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | `GET /api/health` (no auth) | 200: `{ status: "healthy", timestamp: "..." }` |
+| 2 | 11x `POST /api/auth/login` in 1 minute | 11th request returns 429 |
+| 3 | 31x `GET /api/search?q=test` in 1 minute | 31st request returns 429 |
+
+---
+
 ## Frontend UI Verification
 
 | # | Action | Expected |
@@ -150,11 +160,12 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Behavior | Reason |
 |----------|--------|
-| Semantic search returns empty/stub results | Not yet implemented (placeholder endpoint) |
+| Semantic search returns fulltext results | Not yet implemented (placeholder, needs embedding model) |
+| Hybrid search returns fulltext results | Not yet implemented (placeholder, needs embedding model) |
 | RAG search returns placeholder response | Not yet implemented (placeholder endpoint) |
-| `backend/Services/` directory is empty | No service layer; logic in controllers |
-| No test suite exists | Test infrastructure not yet established |
+| No service layer | Business logic in controllers (design decision) |
 | Dark mode follows system only (no toggle) | Dark mode toggle is a backlog item |
 | Notifications bell is non-functional | Visual indicator only; real notifications are backlog |
 | User profile button is non-functional | Profile page is a backlog item |
+| Pagination UI missing in frontend | Backend supports it, frontend doesn't show controls |
 | Register success message not shown | `?registered=true` query param not handled on login page |

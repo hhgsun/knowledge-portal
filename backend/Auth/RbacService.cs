@@ -6,20 +6,20 @@ public static class RbacService
     {
         ["admin"] =
         [
-            "articles:create", "articles:edit_own", "articles:edit_any",
-            "articles:delete_own", "articles:delete_any",
-            "articles:publish", "articles:archive", "articles:approve",
-            "tags:manage", "users:manage", "analytics:view", "api_keys:manage"
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesEditAny,
+            Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
+            Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
+            Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView, Permissions.ApiKeysManage
         ],
         ["editor"] =
         [
-            "articles:create", "articles:edit_own",
-            "articles:delete_own", "articles:publish", "articles:archive", "articles:approve",
-            "tags:manage", "analytics:view"
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn,
+            Permissions.ArticlesDeleteOwn, Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
+            Permissions.TagsManage, Permissions.AnalyticsView
         ],
         ["viewer"] =
         [
-            "articles:create", "articles:edit_own", "articles:delete_own"
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn
         ]
     };
 

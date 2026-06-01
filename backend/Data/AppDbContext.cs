@@ -41,11 +41,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(k => k.Id).HasColumnName("id");
             e.Property(k => k.UserId).HasColumnName("user_id").IsRequired();
             e.Property(k => k.KeyHash).HasColumnName("key_hash").IsRequired();
+            e.Property(k => k.KeyPrefix).HasColumnName("key_prefix").IsRequired().HasMaxLength(8);
             e.Property(k => k.Name).HasColumnName("name").IsRequired();
             e.Property(k => k.Permissions).HasColumnName("permissions");
             e.Property(k => k.LastUsedAt).HasColumnName("last_used_at");
             e.Property(k => k.ExpiresAt).HasColumnName("expires_at");
             e.Property(k => k.CreatedAt).HasColumnName("created_at").IsRequired();
+            e.HasIndex(k => k.KeyPrefix);
             e.HasOne(k => k.User).WithMany(u => u.ApiKeys).HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

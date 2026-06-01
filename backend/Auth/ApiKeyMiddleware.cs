@@ -12,9 +12,15 @@ public class ApiKeyMiddleware(RequestDelegate next)
         if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer kp_"))
         {
             var rawKey = authHeader["Bearer ".Length..];
-            var allKeys = await db.ApiKeys.Include(k => k.User).ToListAsync();
+            var prefix = rawKey.Length >= 11 ? rawKey[3..11] : rawKey[3..]; // 8 chars after "kp_"
 
-            foreach (var key in allKeys)
+            // Prefix-indexed lookup: only load keys matching this prefix
+            var candidates = await db.ApiKeys
+                .Include(k => k.User)
+                .Where(k => k.KeyPrefix == prefix)
+                .ToListAsync();
+
+            foreach (var key in candidates)
             {
                 if (key.ExpiresAt.HasValue && key.ExpiresAt.Value < DateTime.UtcNow)
                     continue;

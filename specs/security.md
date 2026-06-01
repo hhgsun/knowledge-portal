@@ -35,10 +35,11 @@
 
 **Verification flow** (ApiKeyMiddleware):
 1. Check `Authorization: Bearer kp_*` pattern
-2. Load ALL API keys from database
-3. Skip expired keys
-4. BCrypt-verify raw key against each hash (O(n) scan)
-5. On match: set `HttpContext.User` with claims + `source: "api-key"` discriminator
+2. Extract 8-char prefix after `kp_`
+3. Query database by indexed `key_prefix` column (O(1) lookup)
+4. Skip expired keys
+5. BCrypt-verify raw key against matched hash
+6. On match: set `HttpContext.User` with claims + `source: "api-key"` discriminator
 
 ## Authorization Model
 
@@ -90,32 +91,47 @@ These endpoints explicitly reject API key authentication:
 | Registration constraints | 8–128 characters |
 | Admin-created user constraints | 8–128 characters |
 
+## Rate Limiting
+
+| Policy | Limit | Window | Endpoints |
+|--------|-------|--------|-----------|
+| `auth` | 10 requests | 1 minute | Login, Register |
+| `search` | 30 requests | 1 minute | Search |
+
+Implemented via ASP.NET Core built-in `AddRateLimiter` with `FixedWindowLimiter`.
+Returns `429 Too Many Requests` when exceeded.
+
 ## Known Security Gaps
 
 The following are documented security concerns in the current baseline:
 
 ### Critical
 
-| # | Issue | Impact | Location |
-|---|-------|--------|----------|
-| 1 | **API key verification is O(n)** — middleware iterates all keys with BCrypt compare | DoS vector: each request triggers N BCrypt operations | `ApiKeyMiddleware.cs` |
-| 2 | **No rate limiting** — login, register, search, and API key creation have no request throttling | Brute-force attacks, credential stuffing, resource exhaustion | All controllers |
+All critical issues have been resolved:
+- ~~API key verification O(n)~~ → **Fixed**: prefix-indexed lookup (8-char prefix column)
+- ~~No rate limiting~~ → **Fixed**: auth + search rate limited
 
 ### Medium
 
 | # | Issue | Impact | Location |
 |---|-------|--------|----------|
-| 4 | **SQLite WAL mode** — WAL mode enabled on startup with 5s busy timeout | Concurrent writes handled gracefully | `Program.cs`, connection string |
 | 5 | **JWT secret in appsettings.json** — signing key stored in plain text in config file | Secret exposure if config file is leaked | `appsettings.json` |
-| 6 | **localStorage for JWT** — tokens stored in localStorage are accessible to any JS on the page | XSS attacks can steal tokens | `AuthContext.tsx` |
-| 7 | **LIKE injection** — search queries use SQL LIKE without escaping `%` and `_` wildcards | Unexpected search behavior, minor data leakage | `ArticlesController`, `AdminUsersController`, `SearchController` |
-| 8 | **No CSRF protection** — SPA uses Bearer tokens (not cookies), but CORS is permissive | Mitigated by Bearer auth model, but CORS allows multiple origins | `Program.cs` |
+| 6 | **localStorage for JWT** — tokens stored in localStorage are accessible to any JS on the page | XSS attacks can steal tokens (accepted trade-off for SPA) | `AuthContext.tsx` |
+| 8 | **No CSRF protection** — SPA uses Bearer tokens (not cookies), but CORS is permissive | Mitigated by Bearer auth model | `Program.cs` |
+
+### Resolved
+
+| # | Issue | Resolution |
+|---|-------|-----------|
+| 1 | API key O(n) BCrypt | Fixed: prefix-indexed lookup |
+| 2 | No rate limiting | Fixed: auth + search rate limited |
+| 7 | LIKE wildcard injection | Fixed: `%` and `_` escaped in all LIKE queries |
+| 9 | View tracking no dedup | Fixed: 15-minute deduplication window per user/article |
 
 ### Low
 
 | # | Issue | Impact | Location |
 |---|-------|--------|----------|
-| 9 | **View tracking on every GET** — no deduplication or debouncing | Inflated analytics; disk usage growth | `ArticlesController` |
 | 10 | **Generic catch blocks** — some controllers swallow exceptions silently | Error masking, difficult debugging | Various controllers |
 | 11 | **Default admin credentials** — `admin@knowledge.local` / `admin123` seeded automatically | Insecure if deployed without changing credentials | `DbInitializer.cs` |
 

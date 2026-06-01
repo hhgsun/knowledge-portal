@@ -72,7 +72,14 @@ None. The application is fully self-contained with no external service dependenc
 
 ## Testing Framework
 
-**Not yet established.** No test projects, test runners, or test files exist in the current codebase. This is an explicit known gap (see backlog item #31).
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Test runner | xUnit | Unit + integration tests |
+| Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
+| Database (tests) | SQLite temp file | Isolated per test class, auto-migrated |
+| Test project | `backend.Tests/` | 46 tests (unit + integration) |
+
+Run tests: `cd backend.Tests && dotnet test`
 
 ## Deployment Target
 

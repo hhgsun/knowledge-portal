@@ -4,6 +4,7 @@ using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Controllers;
@@ -11,6 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/search")]
 [Authorize]
+[EnableRateLimiting("search")]
 public class SearchController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -51,7 +53,10 @@ public class SearchController(AppDbContext db) : ControllerBase
                 .Where(a => tagArticleIds.Contains(a.Id) && a.Status == "published");
 
             if (!string.IsNullOrWhiteSpace(searchQuery))
-                tagQuery = tagQuery.Where(a => a.Title.Contains(searchQuery) || (a.Excerpt != null && a.Excerpt.Contains(searchQuery)));
+            {
+                var esc = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+                tagQuery = tagQuery.Where(a => EF.Functions.Like(a.Title, $"%{esc}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{esc}%", "\\")));
+            }
 
             var tagResults = await tagQuery
                 .OrderByDescending(a => a.UpdatedAt)
@@ -77,9 +82,10 @@ public class SearchController(AppDbContext db) : ControllerBase
         }
 
         // Standard search (SQL LIKE for now — semantic/hybrid/rag in future phase)
+        var escapedSearch = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
         var results = await db.Articles
             .Where(a => a.Status == "published" &&
-                (a.Title.Contains(searchQuery) || (a.Excerpt != null && a.Excerpt.Contains(searchQuery))))
+                (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\"))))
             .OrderByDescending(a => a.UpdatedAt)
             .Take(limit)
             .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })

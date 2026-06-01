@@ -1,0 +1,41 @@
+## .NET
+bin/
+obj/
+out/
+
+## User-specific
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## VS / Rider
+.vs/
+.idea/
+*.swp
+*.*~
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+## NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+## Publish
+publish/
+
+## dotnet tool
+.dotnet/
+
+## appsettings overrides
+#appsettings.Development.json
+#appsettings.*.local.json

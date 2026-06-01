@@ -9,7 +9,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/analytics")]
 [Authorize]
-[RequirePermission("analytics:view")]
+[RequirePermission(Permissions.AnalyticsView)]
 public class AnalyticsController(AppDbContext db) : ControllerBase
 {
     [HttpGet]

@@ -5,6 +5,7 @@ public class ApiKey
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string UserId { get; set; } = null!;
     public string KeyHash { get; set; } = null!;
+    public string KeyPrefix { get; set; } = null!; // First 8 chars after "kp_" for indexed lookup
     public string Name { get; set; } = null!;
     public string? Permissions { get; set; } // JSON array string
     public DateTime? LastUsedAt { get; set; }
