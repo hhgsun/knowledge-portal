@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\backend\KnowledgePortal.Api.csproj" />
+    <ProjectReference Include="..\KnowledgePortal.Api.csproj" />
   </ItemGroup>
 
 </Project>

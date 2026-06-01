@@ -62,7 +62,7 @@ backend/
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config
 
-backend.Tests/
+backend/Tests/
 ├── Integration/          # WebApplicationFactory integration tests
 └── Unit/                 # Unit tests (RbacService, JwtService, etc.)
 
@@ -98,7 +98,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 |------|---------|
 | Run backend | `cd backend && dotnet run` |
 | Run frontend | `cd frontend && npm run dev` |
-| Run backend tests | `cd backend.Tests && dotnet test` |
+| Run backend tests | `cd backend/Tests && dotnet test` |
 | Apply migrations | `cd backend && dotnet ef database update` |
 | New migration | `cd backend && dotnet ef migrations add <Name>` |
 | Build frontend | `cd frontend && npm run build` |

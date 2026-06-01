@@ -1,6 +1,6 @@
 using KnowledgePortal.Api.Auth;
 
-namespace backend.Tests.Unit;
+namespace KnowledgePortal.Api.Tests.Unit;
 
 public class RbacServiceTests
 {
