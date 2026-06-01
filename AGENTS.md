@@ -204,6 +204,16 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
+## Known Frontend Gaps
+
+Backend endpoint exists but frontend does not call it yet:
+
+| Backend Endpoint | Status | Impact |
+|-----------------|--------|--------|
+| `POST /api/search/click` | ✅ Wired | Search result clicks tracked for analytics |
+| `GET /api/articles/{id}/feedback` | Not called | Feedback comments not displayed (only submission works) |
+| `DELETE /api/tags?id={id}` | No UI | Tag deletion not exposed — tags accumulate over time |
+
 ## Key Behaviors
 
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)

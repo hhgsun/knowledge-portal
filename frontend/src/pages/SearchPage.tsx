@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
@@ -34,6 +34,8 @@ export default function SearchPage() {
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [availableTags, setAvailableTags] = useState<{ id: string; name: string; slug: string; articleCount: number }[]>([]);
@@ -87,6 +89,7 @@ export default function SearchPage() {
     setRagResponse(null);
     setResults([]);
     setActiveTag(null);
+    setSearchQueryId(null);
 
     const res = await fetchWithAuth(
       `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}`
@@ -94,6 +97,7 @@ export default function SearchPage() {
     const data = await res.json();
 
     if (data.tag) setActiveTag(data.tag);
+    if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
 
     if (searchType === "rag") {
       setRagResponse({ answer: data.answer, sources: data.sources || [] });
@@ -103,6 +107,17 @@ export default function SearchPage() {
     setResponseTime(data.responseTimeMs || null);
     setLoading(false);
   };
+
+  const trackClick = useCallback((articleId: string, slug: string) => {
+    if (searchQueryId) {
+      fetchWithAuth("/api/search/click", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ searchQueryId, articleId }),
+      }).catch(() => {});
+    }
+    navigate(`/articles/${slug}`);
+  }, [searchQueryId, fetchWithAuth, navigate]);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -203,10 +218,10 @@ export default function SearchPage() {
               ) : (
                 <div className="space-y-3">
                   {results.map((result) => (
-                    <Link
+                    <button
                       key={result.id}
-                      to={`/articles/${result.slug}`}
-                      className="block p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                      onClick={() => trackClick(result.id, result.slug)}
+                      className="block w-full text-left p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                     >
                       <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
                       {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
@@ -217,7 +232,7 @@ export default function SearchPage() {
                         <span>·</span>
                         <span>{new Date(result.updatedAt).toLocaleDateString()}</span>
                       </div>
-                    </Link>
+                    </button>
                   ))}
                 </div>
               )}

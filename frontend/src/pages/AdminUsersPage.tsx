@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
-import { toast } from "sonner";
 
 interface User {
   id: string;
