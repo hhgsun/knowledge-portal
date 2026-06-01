@@ -6,7 +6,6 @@ import { toast } from "sonner";
 interface ApiKey {
   id: string;
   name: string;
-  permissions: string[] | null;
   lastUsedAt: string | null;
   expiresAt: string | null;
   createdAt: string;

@@ -40,8 +40,8 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = 429;
 
     var isTest = builder.Environment.EnvironmentName == "Testing";
-    var authLimit = isTest ? 10000 : 10;
-    var searchLimit = isTest ? 10000 : 30;
+    var authLimit = isTest ? 10000 : builder.Configuration.GetValue("RateLimiting:AuthLimit", 10);
+    var searchLimit = isTest ? 10000 : builder.Configuration.GetValue("RateLimiting:SearchLimit", 30);
 
     options.AddFixedWindowLimiter("auth", opt =>
     {

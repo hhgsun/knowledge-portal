@@ -43,7 +43,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(k => k.KeyHash).HasColumnName("key_hash").IsRequired();
             e.Property(k => k.KeyPrefix).HasColumnName("key_prefix").IsRequired().HasMaxLength(8);
             e.Property(k => k.Name).HasColumnName("name").IsRequired();
-            e.Property(k => k.Permissions).HasColumnName("permissions");
             e.Property(k => k.LastUsedAt).HasColumnName("last_used_at");
             e.Property(k => k.ExpiresAt).HasColumnName("expires_at");
             e.Property(k => k.CreatedAt).HasColumnName("created_at").IsRequired();
@@ -141,7 +140,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(v => v.Id).HasColumnName("id");
             e.Property(v => v.ArticleId).HasColumnName("article_id").IsRequired();
             e.Property(v => v.UserId).HasColumnName("user_id");
-            e.Property(v => v.SessionId).HasColumnName("session_id");
             e.Property(v => v.CreatedAt).HasColumnName("created_at").IsRequired();
             e.HasOne(v => v.Article).WithMany(a => a.Views).HasForeignKey(v => v.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId);

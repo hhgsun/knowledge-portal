@@ -29,6 +29,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
 - **Entities**: `backend/Models/Entities/` — 9 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery
+- **Enum Validation**: `contentType` and `difficulty` are validated server-side against allow-lists
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints
@@ -41,6 +42,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **API calls**: `useApi` hook (`src/hooks/useApi.ts`) — auto-attaches JWT, auto-logout on 401
 - **Routing**: React Router v7, `ProtectedRoute` + `RoleRoute` wrappers in `App.tsx`
 - **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (TipTap)
+- **Types**: `src/types/api.ts` — shared TypeScript interfaces for all API responses
 - **Notifications**: `sonner` toast library — use `toast.success()` / `toast.error()` for user feedback
 - **Error Boundary**: `src/components/error-boundary.tsx` wraps the app
 - **Pages**: `src/pages/` — flat directory, one file per page
@@ -67,6 +69,7 @@ backend.Tests/
 frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
 ├── src/hooks/            # useApi (fetch wrapper)
+├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/
 ├── src/pages/            # 13 page components
 ├── src/lib/utils.ts      # cn() helper
@@ -162,7 +165,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `article.title` | 1 | 300 | Required |
 | `article.excerpt` | — | — | Optional, trimmed |
 | `article.status` | — | — | Enum: draft, pending, published, archived |
-| `article.contentType` | — | — | Enum: reference, tutorial, guide, faq |
+| `article.contentType` | — | — | Enum: reference, how-to, adr, runbook, faq, policy, onboarding |
 | `article.difficulty` | — | — | Enum: beginner, intermediate, advanced |
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
@@ -198,7 +201,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Dark Mode Toggle | ❌ Not implemented | System preference only |
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
 | User Profile Page | ❌ Not implemented | Profile button non-functional |
-| Pagination UI | ❌ Not implemented | Backend supports it, frontend doesn't show controls |
+| Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
 ## Key Behaviors
@@ -212,6 +215,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view
+- **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
 
 ## Rules for AI Agents
 
@@ -244,3 +248,5 @@ specs/                    # Detailed specifications (subordinate to this file)
 - `useApi` hook returns `{ fetchWithAuth }` — callers chain `.then(r => r.json())` for data
 - Query-param based DELETE: Tags (`?id=`), Admin Users (`?id=`), API Keys (`?id=`)
 - Admin Users PUT: `userId` is in the request body, not in the URL path
+- Import API types from `src/types/api.ts` for type safety
+- Rate limits are configurable via `appsettings.json` → `RateLimiting:AuthLimit` / `RateLimiting:SearchLimit`

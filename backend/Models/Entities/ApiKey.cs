@@ -7,7 +7,6 @@ public class ApiKey
     public string KeyHash { get; set; } = null!;
     public string KeyPrefix { get; set; } = null!; // First 8 chars after "kp_" for indexed lookup
     public string Name { get; set; } = null!;
-    public string? Permissions { get; set; } // JSON array string
     public DateTime? LastUsedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

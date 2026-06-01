@@ -88,7 +88,6 @@ erDiagram
         string id PK
         string article_id FK "Cascade"
         string user_id FK "nullable"
-        string session_id "nullable"
         datetime created_at
     }
 
@@ -96,8 +95,8 @@ erDiagram
         string id PK
         string user_id FK "Cascade"
         string key_hash "BCrypt"
+        string key_prefix "8-char index"
         string name
-        string permissions "nullable, JSON array"
         datetime last_used_at "nullable"
         datetime expires_at "nullable"
         datetime created_at
@@ -205,7 +204,7 @@ erDiagram
 | Id | `string` | `id` | PK | Truncated GUID |
 | ArticleId | `string` | `article_id` | FK (Cascade) | — |
 | UserId | `string?` | `user_id` | FK → users.id | `null` |
-| SessionId | `string?` | `session_id` | — | `null` |
+
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
 ### ApiKey
@@ -215,13 +214,12 @@ erDiagram
 | Id | `string` | `id` | PK | Truncated GUID |
 | UserId | `string` | `user_id` | FK → users.id (Cascade) | — |
 | KeyHash | `string` | `key_hash` | Required | BCrypt hash |
+| KeyPrefix | `string` | `key_prefix` | Required, 8 chars, Indexed | — |
 | Name | `string` | `name` | Required | — |
-| Permissions | `string?` | `permissions` | — | `null` (JSON array) |
 | LastUsedAt | `DateTime?` | `last_used_at` | — | `null` |
 | ExpiresAt | `DateTime?` | `expires_at` | — | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
-**Default permissions on creation**: `["articles:read", "search"]`
 **Key format**: `kp_` + 32 random hex characters
 
 ### SearchQuery

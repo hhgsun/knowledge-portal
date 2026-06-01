@@ -444,11 +444,10 @@ Ordered by version number descending.
 
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
-| `name` | string | Yes | — |
-| `permissions` | string[] | No | Default: `["articles:read", "search"]` |
+| `name` | string | Yes | 1–100 chars |
 | `expiresInDays` | int | No | 1–365 days, default 90 |
 
-**201 Response**: `{ "id", "key": "kp_abc123...", "name", "permissions", "expiresAt" }`
+**201 Response**: `{ "id", "key": "kp_abc123...", "name", "expiresAt" }`
 > The raw key (`kp_...`) is returned **only once** at creation time.
 
 ---

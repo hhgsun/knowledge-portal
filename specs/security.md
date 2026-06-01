@@ -30,7 +30,7 @@
 | Format | `kp_` + 32 random hex characters |
 | Storage | BCrypt hash in `api_keys.key_hash` column |
 | Expiration | 1–365 days (default 90), checked at runtime |
-| Permissions | JSON array in `permissions` column; default `["articles:read", "search"]` |
+| Lookup | Prefix-indexed: first 8 chars after `kp_` stored in `key_prefix` column |
 | Last-used tracking | `last_used_at` updated on each successful verification |
 
 **Verification flow** (ApiKeyMiddleware):

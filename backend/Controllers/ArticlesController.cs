@@ -14,6 +14,10 @@ namespace KnowledgePortal.Api.Controllers;
 [Authorize]
 public partial class ArticlesController(AppDbContext db) : ControllerBase
 {
+    private static readonly HashSet<string> ValidContentTypes = ["reference", "how-to", "adr", "runbook", "faq", "policy", "onboarding"];
+    private static readonly HashSet<string> ValidDifficulties = ["beginner", "intermediate", "advanced"];
+    private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
+
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1,
@@ -72,6 +76,15 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
             return BadRequest(new { error = "Title is required (1-300 chars)" });
+
+        if (req.ContentType != null && !ValidContentTypes.Contains(req.ContentType))
+            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", ValidContentTypes)}" });
+
+        if (req.Difficulty != null && !ValidDifficulties.Contains(req.Difficulty))
+            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", ValidDifficulties)}" });
+
+        if (req.Status != null && !ValidStatuses.Contains(req.Status))
+            return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
 
         var slug = GenerateSlug(req.Title);
         // Ensure unique slug
@@ -197,6 +210,15 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
         if (!canEditAny && !canEditOwn)
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
+
+        if (req.ContentType != null && !ValidContentTypes.Contains(req.ContentType))
+            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", ValidContentTypes)}" });
+
+        if (req.Difficulty != null && !ValidDifficulties.Contains(req.Difficulty))
+            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", ValidDifficulties)}" });
+
+        if (req.Status != null && !ValidStatuses.Contains(req.Status))
+            return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
 
         var contentChanged = false;
         if (req.Title != null) { article.Title = req.Title.Trim(); }

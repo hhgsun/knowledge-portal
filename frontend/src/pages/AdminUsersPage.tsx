@@ -209,7 +209,7 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Password *</label>
-              <input type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} placeholder="Min 6 characters" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
+              <input type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} placeholder="Min 8 characters" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Role</label>

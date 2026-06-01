@@ -26,7 +26,7 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
             .OrderByDescending(k => k.CreatedAt)
             .Select(k => new
             {
-                k.Id, k.Name, k.Permissions,
+                k.Id, k.Name,
                 LastUsedAt = k.LastUsedAt.HasValue ? k.LastUsedAt.Value.ToString("o") : null,
                 ExpiresAt = k.ExpiresAt.HasValue ? k.ExpiresAt.Value.ToString("o") : null,
                 CreatedAt = k.CreatedAt.ToString("o")
@@ -57,9 +57,6 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
             KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
             KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
             Name = req.Name.Trim(),
-            Permissions = req.Permissions != null
-                ? System.Text.Json.JsonSerializer.Serialize(req.Permissions)
-                : "[\"articles:read\",\"search\"]",
             ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
         };
 
@@ -71,7 +68,6 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
             key.Id,
             Key = rawKey, // Only returned once
             key.Name,
-            key.Permissions,
             ExpiresAt = key.ExpiresAt?.ToString("o")
         });
     }
@@ -97,4 +93,4 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CreateKeyRequest(string Name, string[]? Permissions = null, int? ExpiresInDays = null);
+public record CreateKeyRequest(string Name, int? ExpiresInDays = null);

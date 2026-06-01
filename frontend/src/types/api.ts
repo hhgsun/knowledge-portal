@@ -1,0 +1,170 @@
+// Shared API response types — Single Source of Truth for frontend TypeScript
+
+// ─── Enums ───────────────────────────────────────────────────
+export type ArticleStatus = "draft" | "pending" | "published" | "archived";
+export type ContentType = "reference" | "how-to" | "adr" | "runbook" | "faq" | "policy" | "onboarding";
+export type Difficulty = "beginner" | "intermediate" | "advanced";
+export type UserRole = "admin" | "editor" | "viewer";
+
+// ─── Auth ────────────────────────────────────────────────────
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+export interface RegisterResponse {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// ─── Articles ────────────────────────────────────────────────
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface TagWithCount extends Tag {
+  articleCount: number;
+}
+
+export interface ArticleListItem {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  status: ArticleStatus;
+  contentType: ContentType;
+  difficulty: Difficulty;
+  updatedAt: string;
+  ownerName: string;
+  apiKeyName: string | null;
+  tags: Tag[];
+}
+
+export interface ArticlesResponse {
+  articles: ArticleListItem[];
+  total: number;
+}
+
+export interface Article {
+  id: string;
+  title: string;
+  slug: string;
+  content: unknown | null;
+  excerpt: string | null;
+  status: ArticleStatus;
+  contentType: ContentType;
+  difficulty: Difficulty;
+  ownerName: string;
+  ownerId: string;
+  readTimeMinutes: number | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tags: Tag[];
+  apiKeyName: string | null;
+}
+
+// ─── Article Versions ────────────────────────────────────────
+export interface ArticleVersion {
+  id: string;
+  articleId: string;
+  title: string;
+  content: string | null;
+  changeSummary: string | null;
+  changedByName: string;
+  version: number;
+  createdAt: string;
+}
+
+// ─── Article Feedback ────────────────────────────────────────
+export interface FeedbackSummary {
+  helpful: number;
+  notHelpful: number;
+}
+
+// ─── Search ──────────────────────────────────────────────────
+export interface SearchResult {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  contentType: ContentType;
+  difficulty: Difficulty;
+  updatedAt: string;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  total: number;
+  searchQueryId: string;
+  responseTimeMs: number;
+}
+
+export interface RagResponse {
+  answer: string;
+  sources: { id: string; title: string; relevance: number }[];
+}
+
+// ─── Dashboard ───────────────────────────────────────────────
+export interface DashboardResponse {
+  totalArticles: number;
+  viewsThisWeek: number;
+  searchesToday: number;
+  staleArticles: number;
+  recentArticles: { id: string; title: string; slug: string; contentType: ContentType }[];
+  topSearches: { query: string; count: number }[];
+}
+
+// ─── Analytics ───────────────────────────────────────────────
+export interface AnalyticsResponse {
+  articlesByStatus: Record<ArticleStatus, number>;
+  viewsThisWeek: number;
+  searchesToday: number;
+  staleArticles: number;
+  topSearches: { query: string; count: number }[];
+  failedSearches: { query: string; count: number }[];
+  topArticles: { id: string; title: string; slug: string; views: number }[];
+}
+
+// ─── API Keys ────────────────────────────────────────────────
+export interface ApiKey {
+  id: string;
+  name: string;
+  permissions: string | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateApiKeyResponse extends ApiKey {
+  key: string; // Raw key, only returned once
+}
+
+// ─── Admin Users ─────────────────────────────────────────────
+export interface AdminUsersResponse {
+  users: User[];
+  total: number;
+}
+
+// ─── Common ──────────────────────────────────────────────────
+export interface ApiError {
+  error: string;
+}
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
