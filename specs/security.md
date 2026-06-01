@@ -100,13 +100,13 @@ The following are documented security concerns in the current baseline:
 |---|-------|--------|----------|
 | 1 | **API key verification is O(n)** — middleware iterates all keys with BCrypt compare | DoS vector: each request triggers N BCrypt operations | `ApiKeyMiddleware.cs` |
 | 2 | **No rate limiting** — login, register, search, and API key creation have no request throttling | Brute-force attacks, credential stuffing, resource exhaustion | All controllers |
-| 3 | **Password length inconsistency** — registration requires 8 chars, admin user creation requires 6 | Policy confusion, weaker admin-created passwords | `AuthController`, `AdminUsersController` |
+| 3 | **Password length consistency** — registration and admin user creation both require 8+ chars | — | `AuthController`, `AdminUsersController` |
 
 ### Medium
 
 | # | Issue | Impact | Location |
 |---|-------|--------|----------|
-| 4 | **SQLite no WAL mode** — no write-ahead logging or busy timeout configured | Concurrent write failures under load | `AppDbContext` / connection string |
+| 4 | **SQLite WAL mode** — WAL mode enabled on startup with 5s busy timeout | Concurrent writes handled gracefully | `Program.cs`, connection string |
 | 5 | **JWT secret in appsettings.json** — signing key stored in plain text in config file | Secret exposure if config file is leaked | `appsettings.json` |
 | 6 | **localStorage for JWT** — tokens stored in localStorage are accessible to any JS on the page | XSS attacks can steal tokens | `AuthContext.tsx` |
 | 7 | **LIKE injection** — search queries use SQL LIKE without escaping `%` and `_` wildcards | Unexpected search behavior, minor data leakage | `ArticlesController`, `AdminUsersController`, `SearchController` |

@@ -14,6 +14,7 @@ import SearchPage from "./pages/SearchPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import SettingsKeysPage from "./pages/SettingsKeysPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -24,6 +25,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function RoleRoute({ children, roles }: { children: React.ReactNode; roles: string[] }) {
+  const { user } = useAuth();
+
+  if (!user || !roles.includes(user.role)) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -56,9 +67,10 @@ export default function App() {
           <Route path="/articles/:slug/edit" element={<EditArticlePage />} />
           <Route path="/articles/:slug/versions" element={<VersionsPage />} />
           <Route path="/search" element={<SearchPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/admin/users" element={<AdminUsersPage />} />
-          <Route path="/settings/keys" element={<SettingsKeysPage />} />
+          <Route path="/analytics" element={<RoleRoute roles={["admin", "editor"]}><AnalyticsPage /></RoleRoute>} />
+          <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
+          <Route path="/settings/keys" element={<RoleRoute roles={["admin"]}><SettingsKeysPage /></RoleRoute>} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

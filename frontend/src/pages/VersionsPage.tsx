@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Clock, User, GitCompare } from "lucide-react";
 import { useApi } from "../hooks/useApi";
+import { toast } from "sonner";
 
 interface Version {
   id: string;
@@ -40,7 +41,11 @@ export default function VersionsPage() {
         if (verRes.ok) {
           const verData = await verRes.json();
           setVersions(verData);
+        } else {
+          toast.error("Failed to load versions");
         }
+      } else {
+        toast.error("Article not found");
       }
       setLoading(false);
     }

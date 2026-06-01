@@ -52,7 +52,7 @@ This document describes the verifiable baseline state of the Knowledge Portal sy
 |---|------|--------|----------|
 | 1 | admin | `POST /api/articles` | 201: article created |
 | 2 | editor | `POST /api/articles` | 201: article created |
-| 3 | viewer | `POST /api/articles` | 403: forbidden |
+| 3 | viewer | `POST /api/articles` | 201: article created (status forced to draft) |
 | 4 | admin | `GET /api/admin/users` | 200: user list |
 | 5 | editor | `GET /api/admin/users` | 403: forbidden |
 | 6 | viewer | `GET /api/admin/users` | 403: forbidden |

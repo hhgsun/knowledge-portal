@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
+import { toast } from "sonner";
 
 interface SearchResult {
   id: string;
@@ -44,7 +45,7 @@ export default function SearchPage() {
     fetchWithAuth("/api/tags")
       .then((r) => r.json())
       .then((data) => setAvailableTags(data))
-      .catch(() => {});
+      .catch(() => { toast.error("Failed to load tags"); });
   }, [fetchWithAuth]);
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCirc
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
+import { toast } from "sonner";
 
 interface Article {
   id: string;
@@ -51,10 +52,15 @@ export default function ArticleViewPage() {
 
   const handleFeedback = async (helpful: boolean) => {
     if (!article) return;
-    await fetchWithAuth(`/api/articles/${article.id}/feedback`, {
+    const res = await fetchWithAuth(`/api/articles/${article.id}/feedback`, {
       method: "POST",
       body: JSON.stringify({ helpful }),
     });
+    if (res.ok) {
+      toast.success("Thanks for your feedback!");
+    } else {
+      toast.error("Failed to submit feedback");
+    }
   };
 
   const handleApprove = async () => {
@@ -63,6 +69,10 @@ export default function ArticleViewPage() {
     const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "POST" });
     if (res.ok) {
       setArticle({ ...article, status: "published" });
+      toast.success("Article approved and published");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Failed to approve article");
     }
     setActionLoading(false);
   };
@@ -73,6 +83,10 @@ export default function ArticleViewPage() {
     const res = await fetchWithAuth(`/api/articles/${article.id}/reject`, { method: "POST" });
     if (res.ok) {
       setArticle({ ...article, status: "draft" });
+      toast.success("Article rejected and returned to draft");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Failed to reject article");
     }
     setActionLoading(false);
   };

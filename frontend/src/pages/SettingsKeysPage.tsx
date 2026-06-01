@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle } from "lucide-react";
 import { useApi } from "../hooks/useApi";
+import { toast } from "sonner";
 
 interface ApiKey {
   id: string;
@@ -58,6 +59,9 @@ export default function SettingsKeysPage() {
     const res = await fetchWithAuth(`/api/keys?id=${id}`, { method: "DELETE" });
     if (res.ok) {
       setKeys(keys.filter((k) => k.id !== id));
+      toast.success("API key deleted");
+    } else {
+      toast.error("Failed to delete API key");
     }
   };
 

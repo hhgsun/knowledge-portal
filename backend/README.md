@@ -136,16 +136,20 @@ Search types: `fulltext` (default), `semantic`, `hybrid`, `rag`. Prefix query wi
 | Permission | admin | editor | viewer |
 |-----------|:-----:|:------:|:------:|
 | `articles:read` | ✓ | ✓ | ✓ |
-| `articles:create` | ✓ | ✓ | — |
-| `articles:edit_own` | ✓ | ✓ | — |
+| `articles:create` | ✓ | ✓ | ✓ |
+| `articles:edit_own` | ✓ | ✓ | ✓ |
 | `articles:edit_any` | ✓ | — | — |
-| `articles:delete_own` | ✓ | ✓ | — |
+| `articles:delete_own` | ✓ | ✓ | ✓ |
 | `articles:delete_any` | ✓ | — | — |
 | `articles:publish` | ✓ | ✓ | — |
-| `tags:manage` | ✓ | — | — |
+| `articles:archive` | ✓ | ✓ | — |
+| `articles:approve` | ✓ | ✓ | — |
+| `tags:manage` | ✓ | ✓ | — |
 | `users:manage` | ✓ | — | — |
 | `analytics:view` | ✓ | ✓ | — |
-| `api_keys:manage` | ✓ | ✓ | — |
+| `api_keys:manage` | ✓ | — | — |
+
+> **Note**: Viewers can create articles but their status is restricted to `draft` or `pending` only. Viewers can only edit/delete their own articles.
 
 ## Database
 

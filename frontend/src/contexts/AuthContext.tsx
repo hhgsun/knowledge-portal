@@ -40,7 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Unauthorized");
+        if (!res.ok) {
+          // Only logout on auth errors (401/403), not network issues
+          if (res.status === 401 || res.status === 403) {
+            logout();
+          }
+          throw new Error("Unauthorized");
+        }
         return res.json();
       })
       .then((data) => {
@@ -48,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       })
       .catch(() => {
-        logout();
         setLoading(false);
       });
   }, [token, logout]);

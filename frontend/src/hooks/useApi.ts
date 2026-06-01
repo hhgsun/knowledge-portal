@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { toast } from "sonner";
 
 export function useApi() {
   const { token, logout } = useAuth();
@@ -17,6 +18,7 @@ export function useApi() {
       const res = await fetch(url, { ...options, headers });
 
       if (res.status === 401) {
+        toast.error("Session expired. Please log in again.");
         logout();
       }
 

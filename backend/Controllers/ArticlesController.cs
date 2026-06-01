@@ -139,6 +139,12 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (article == null)
             return NotFound(new { error = "Article not found" });
 
+        // Viewers can only see published articles or their own
+        var role = User.GetRole();
+        var userId = User.GetUserId();
+        if (role == "viewer" && article.Status != "published" && article.OwnerId != userId)
+            return NotFound(new { error = "Article not found" });
+
         // Record view
         db.ArticleViews.Add(new ArticleView
         {
@@ -176,11 +182,10 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var role = User.GetRole();
         var isOwner = article.OwnerId == userId;
 
-        if (!isOwner && !RbacService.HasPermission(role, "articles:edit_any"))
-        {
-            if (!RbacService.HasPermission(role, "articles:edit_own") || !isOwner)
-                return StatusCode(403, new { error = "Forbidden" });
-        }
+        var canEditAny = RbacService.HasPermission(role, "articles:edit_any");
+        var canEditOwn = RbacService.HasPermission(role, "articles:edit_own") && isOwner;
+        if (!canEditAny && !canEditOwn)
+            return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
         var contentChanged = false;
         if (req.Title != null) { article.Title = req.Title.Trim(); }
@@ -260,11 +265,10 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var role = User.GetRole();
         var isOwner = article.OwnerId == userId;
 
-        if (!isOwner && !RbacService.HasPermission(role, "articles:delete_any"))
-        {
-            if (!RbacService.HasPermission(role, "articles:delete_own") || !isOwner)
-                return StatusCode(403, new { error = "Forbidden" });
-        }
+        var canDeleteAny = RbacService.HasPermission(role, "articles:delete_any");
+        var canDeleteOwn = RbacService.HasPermission(role, "articles:delete_own") && isOwner;
+        if (!canDeleteAny && !canDeleteOwn)
+            return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
         db.Articles.Remove(article);
         await db.SaveChangesAsync();

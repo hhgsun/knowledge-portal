@@ -58,8 +58,8 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Name, email, and password are required" });
 
-        if (req.Password.Length < 6 || req.Password.Length > 100)
-            return BadRequest(new { error = "Password must be 6-100 characters" });
+        if (req.Password.Length < 8 || req.Password.Length > 128)
+            return BadRequest(new { error = "Password must be 8-128 characters" });
 
         if (await db.Users.AnyAsync(u => u.Email == req.Email.Trim().ToLowerInvariant()))
             return Conflict(new { error = "Email already exists" });

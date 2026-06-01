@@ -30,8 +30,10 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Language**: TypeScript strict
 - **State**: React Context (`AuthContext`) — no Redux/Zustand
 - **API calls**: `useApi` hook (`src/hooks/useApi.ts`) — auto-attaches JWT, auto-logout on 401
-- **Routing**: React Router v7, `ProtectedRoute` wrapper in `App.tsx`
+- **Routing**: React Router v7, `ProtectedRoute` + `RoleRoute` wrappers in `App.tsx`
 - **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (TipTap)
+- **Notifications**: `sonner` toast library — use `toast.success()` / `toast.error()` for user feedback
+- **Error Boundary**: `src/components/error-boundary.tsx` wraps the app
 - **Pages**: `src/pages/` — flat directory, one file per page
 - **CSS**: Tailwind CSS v4, utility-first, `cn()` helper from `src/lib/utils.ts`
 - **Icons**: `lucide-react` only
@@ -80,8 +82,12 @@ frontend/
 - Do NOT add Next.js, SSR, or server components — this is a pure SPA + REST API architecture
 - Do NOT use ASP.NET Identity — auth is custom JWT via `JwtService`
 - Do NOT add Redux, Zustand, or other state managers — use React Context
-- Do NOT add component libraries (MUI, Chakra, etc.) — use Tailwind CSS + lucide-react
+- Do NOT add component libraries (MUI, Chakra, etc.) — use Tailwind CSS + lucide-react + sonner
 - Keep pages in `frontend/src/pages/` as flat files (no nested folders)
 - Use `useApi` hook for all authenticated API calls
+- Use `toast` from `sonner` for all user feedback (success/error)
 - Use `[Authorize]` + `RequirePermission` for backend RBAC
+- Use `RoleRoute` wrapper for frontend role-restricted pages
 - DB column names are snake_case; C# properties are PascalCase
+- Viewers CAN create articles (status limited to draft/pending)
+- Password minimum length is 8 characters everywhere

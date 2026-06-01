@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BookOpen, TrendingUp, AlertTriangle, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
+import { toast } from "sonner";
 
 interface DashboardData {
   totalArticles: number;
@@ -19,9 +20,12 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchWithAuth("/api/dashboard")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load dashboard");
+        return res.json();
+      })
       .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch((e) => { toast.error(e.message); setLoading(false); });
   }, [fetchWithAuth]);
 
   if (loading) {

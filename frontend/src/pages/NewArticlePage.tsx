@@ -4,6 +4,7 @@ import { Save, ArrowLeft, Send } from "lucide-react";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
+import { toast } from "sonner";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
 
@@ -46,6 +47,7 @@ export default function NewArticlePage() {
 
     if (res.ok) {
       const article = await res.json();
+      toast.success("Article created successfully");
       navigate(`/articles/${article.slug}`);
     } else {
       const data = await res.json();
