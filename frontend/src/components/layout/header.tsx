@@ -1,4 +1,4 @@
-import { Search, Bell, User, LogOut } from "lucide-react";
+import { Search, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useState } from "react";
@@ -37,10 +37,6 @@ export function Header() {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 ml-4">
-          <button className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 relative">
-            <Bell size={18} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
           <button
             onClick={() => navigate("/profile")}
             className="p-2 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"

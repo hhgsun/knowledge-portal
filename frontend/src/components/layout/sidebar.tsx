@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   Search,
@@ -10,6 +10,8 @@ import {
   ChevronDown,
   ChevronRight,
   Key,
+  User,
+  LogOut,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState } from "react";
@@ -93,7 +95,8 @@ function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
 }
 
 export function Sidebar() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const role = user?.role;
   const isAdmin = role === "admin";
   const isEditorOrAdmin = role === "admin" || role === "editor";
@@ -136,8 +139,21 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500">
-        Knowledge Portal v0.1.0
+      <div className="px-3 py-3 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+        <Link
+          to="/profile"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100 transition-colors"
+        >
+          <User size={18} />
+          <span className="truncate">{user?.name ?? "Profile"}</span>
+        </Link>
+        <button
+          onClick={() => { logout(); navigate("/login"); }}
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100 transition-colors w-full"
+        >
+          <LogOut size={18} />
+          Sign out
+        </button>
       </div>
     </aside>
   );
