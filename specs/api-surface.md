@@ -156,14 +156,14 @@ Accepts both article ID and slug for lookup.
 
 ### `PUT /api/articles/{id}`
 **Auth**: Bearer (JWT or API Key)
-**Permission**: Owner of the article, OR `articles:edit_any`
+**Permission**: Owner of the article, OR `articles:edit_any`. Additionally: `articles:publish` required to set status→published, `articles:archive` required to set status→archived.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `title` | string | No | Slug regenerated if title changes |
 | `content` | object | No | TipTap JSON |
 | `excerpt` | string | No | — |
-| `status` | string | No | — |
+| `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
 | `contentType` | string | No | — |
 | `difficulty` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
@@ -171,7 +171,7 @@ Accepts both article ID and slug for lookup.
 
 **Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number.
 **200 Response**: `{ "id", "slug", "title" }`
-**403**: Not owner and lacks `articles:edit_any`.
+**403**: Not owner and lacks `articles:edit_any`, OR lacks `articles:publish`/`articles:archive` for status change.
 
 ---
 

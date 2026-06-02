@@ -32,8 +32,10 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Enum Validation**: `contentType` and `difficulty` are validated server-side against allow-lists
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
-- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints
+- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
+- **Middleware pipeline**: CORS → GlobalExceptionMiddleware → ApiKeyMiddleware → Authentication → Authorization → Controllers
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
+- **Success response shapes**: List endpoints return `{ items[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
 ### Frontend (`frontend/`)
 
@@ -55,12 +57,15 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 ```
 backend/
 ├── Controllers/          # API endpoints (10 controllers)
-├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions
+├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
-├── Models/Entities/      # EF Core entity classes
+├── Middleware/            # GlobalExceptionMiddleware
+├── Models/
+│   ├── Dtos.cs           # All request/response DTOs (C# records)
+│   └── Entities/         # EF Core entity classes (9 models)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
-└── appsettings.json      # Connection strings, JWT config
+└── appsettings.json      # Connection strings, JWT config, RateLimiting
 
 backend/Tests/
 ├── Integration/          # WebApplicationFactory integration tests
@@ -83,8 +88,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 ├── frontend-structure.md # Component tree & dependencies
 ├── mission.md            # Project goals & success metrics
 ├── security.md           # Auth & RBAC detailed docs
-├── tech-stack.md         # All packages & versions
-└── validation.md         # Smoke test checklist
+├── smoke-tests.md        # Startup & smoke test checklist
+└── tech-stack.md         # All packages & versions
 
 .github/
 └── copilot-instructions.md  # VS Code Copilot auto-loaded instructions
@@ -136,7 +141,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles` | GET | ✓ | — | ✗ |
 | `/api/articles` | POST | ✓ | `articles:create` | ✗ |
 | `/api/articles/{idOrSlug}` | GET | ✓ | — | ✗ |
-| `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
+| `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` + `articles:publish` (for status→published) + `articles:archive` (for status→archived) | ✗ |
 | `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✗ |
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
@@ -229,9 +234,11 @@ Backend endpoint exists but frontend does not call it yet:
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
-- **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view
+- **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
+- **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
+- **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission()` for ownership-based or conditional checks (edit/delete/publish/archive)
 
 ## Placeholder Fields (Not Yet Active)
 
@@ -250,7 +257,7 @@ These entity fields exist in the database but are not yet used in business logic
 - Use `Permissions` constants (not magic strings) for RBAC checks
 - Use `useApi` hook for all authenticated frontend API calls
 - Use `toast` from `sonner` for all user feedback (success/error)
-- Use `[Authorize]` + `RequirePermission` for backend RBAC
+- Use `[Authorize]` + `RequirePermission` for backend RBAC (or inline `RbacService.HasPermission()` for ownership/conditional checks)
 - Use `RoleRoute` wrapper for frontend role-restricted pages
 - Keep pages in `frontend/src/pages/` as flat files
 - Return `{ "error": "..." }` for all error responses
@@ -318,7 +325,7 @@ These entity fields exist in the database but are not yet used in business logic
 
 ### CONVENTIONS
 - DB column names are snake_case; C# properties are PascalCase
-- Viewers CAN create articles (status limited to draft/pending)
+- Viewers CAN create articles (status limited to draft/pending on create; publish/archive blocked by permission on update)
 - Password minimum length is 8 characters everywhere
 - All IDs are 21-character truncated GUIDs (hex, lowercase)
 - Timestamps are ISO 8601 UTC in API responses

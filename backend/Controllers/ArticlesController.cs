@@ -234,9 +234,15 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (req.Difficulty != null) article.Difficulty = req.Difficulty;
         if (req.Status != null)
         {
-            // Viewers can only set draft or pending
-            if (role == "viewer" && req.Status != "draft" && req.Status != "pending")
-                return StatusCode(403, new { error = "You can only save as draft or submit for review" });
+            // Publishing requires articles:publish permission
+            if (req.Status == "published" && article.Status != "published"
+                && !RbacService.HasPermission(role, Permissions.ArticlesPublish))
+                return StatusCode(403, new { error = "You do not have permission to publish articles" });
+
+            // Archiving requires articles:archive permission
+            if (req.Status == "archived" && article.Status != "archived"
+                && !RbacService.HasPermission(role, Permissions.ArticlesArchive))
+                return StatusCode(403, new { error = "You do not have permission to archive articles" });
 
             if (req.Status == "published" && article.Status != "published")
                 article.PublishedAt = DateTime.UtcNow;
