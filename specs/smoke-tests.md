@@ -72,8 +72,8 @@ This document describes how to verify the Knowledge Portal is functioning correc
 |---|--------|----------|
 | 1 | Create article (admin): `POST /api/articles` with title | 201: returns `{ id, slug, title }` |
 | 2 | Get article by slug: `GET /api/articles/{slug}` | 200: full article with content |
-| 3 | Update article: `PUT /api/articles/{id}` with new title | 200: updated slug and title |
-| 4 | Check version created: `GET /api/articles/{id}/versions` | Array with ≥ 2 versions |
+| 3 | Update article: `PUT /api/articles/{id}` with new content | 200: updated article |
+| 4 | Check version created: `GET /api/articles/{id}/versions` | Array with ≥ 2 versions (content change triggers version) |
 | 5 | Delete article: `DELETE /api/articles/{id}` | 200: deleted |
 | 6 | Get deleted article | 404 |
 
@@ -170,8 +170,6 @@ These behaviors are by design in the current baseline and should not be treated 
 | No service layer | Business logic in controllers (design decision) |
 | Dark mode follows system only (no toggle) | Dark mode toggle is a backlog item |
 | Notifications bell is non-functional | Visual indicator only; real notifications are backlog |
-| User profile button is non-functional | Profile page is a backlog item |
-| Frontend doesn't call `POST /api/search/click` | Search click tracking backend exists but frontend not wired |
 | Frontend doesn't call `GET /api/articles/{id}/feedback` | Feedback comments not displayed (only submission works) |
 | Tag deletion not exposed in UI | Backend supports `DELETE /api/tags?id=` but no frontend control |
 

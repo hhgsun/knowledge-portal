@@ -18,6 +18,7 @@ public record UpdateArticleRequest(
     string? Status = null,
     string? ContentType = null,
     string? Difficulty = null,
+    string? Audience = null,
     string? ChangeSummary = null,
     string[]? Tags = null);
 

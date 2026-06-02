@@ -114,8 +114,10 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
             OwnerId = userId,
             ContentType = req.ContentType ?? "reference",
             Difficulty = req.Difficulty ?? "beginner",
+            Audience = req.Audience?.Trim(),
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
+            LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             ReadTimeMinutes = CalculateReadTime(req.Content != null ? JsonSerializer.Serialize(req.Content) : null),
         };
 
@@ -232,6 +234,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
         if (req.ContentType != null) article.ContentType = req.ContentType;
         if (req.Difficulty != null) article.Difficulty = req.Difficulty;
+        if (req.Audience != null) article.Audience = req.Audience.Trim();
         if (req.Status != null)
         {
             // Publishing requires articles:publish permission
@@ -246,11 +249,14 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
 
             if (req.Status == "published" && article.Status != "published")
                 article.PublishedAt = DateTime.UtcNow;
+            if (req.Status == "published")
+                article.LastReviewedAt = DateTime.UtcNow;
             article.Status = req.Status;
         }
+
         article.UpdatedAt = DateTime.UtcNow;
 
-        // Create version if content/title changed
+        // Create version if content changed
         if (contentChanged)
         {
             var maxVersion = await db.ArticleVersions
@@ -329,6 +335,7 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
 
         article.Status = "published";
         article.PublishedAt = DateTime.UtcNow;
+        article.LastReviewedAt = DateTime.UtcNow;
         article.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 

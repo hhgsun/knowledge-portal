@@ -147,11 +147,11 @@ erDiagram
 | OwnerId | `string` | `owner_id` | FK → users.id | — |
 | ContentType | `string` | `content_type` | Required | `"reference"` |
 | Difficulty | `string` | `difficulty` | Required | `"beginner"` |
-| Audience | `string?` | `audience` | — | `null` |
+| Audience | `string?` | `audience` | — | `null` (set from create/update request) |
 | CreatedViaApiKeyId | `string?` | `created_via_api_key_id` | FK → api_keys.id (SetNull) | `null` |
 | ReadTimeMinutes | `int?` | `read_time_minutes` | — | `null` |
-| PublishedAt | `DateTime?` | `published_at` | — | `null` |
-| LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` |
+| PublishedAt | `DateTime?` | `published_at` | — | `null` (set on first publish) |
+| LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` (auto-set on publish/approve) |
 | ReviewIntervalDays | `int` | `review_interval_days` | — | `90` |
 | IndexedAt | `DateTime?` | `indexed_at` | — | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
