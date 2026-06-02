@@ -5,24 +5,7 @@ import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
-
-interface Article {
-  id: string;
-  title: string;
-  slug: string;
-  content: Record<string, unknown> | null;
-  excerpt: string | null;
-  status: string;
-  contentType: string;
-  difficulty: string;
-  ownerId: string;
-  updatedAt: string;
-  publishedAt: string | null;
-  lastReviewedAt: string | null;
-  ownerName: string | null;
-  apiKeyName: string | null;
-  tags: { id: string; name: string; slug: string }[];
-}
+import type { Article } from "../types/api";
 
 export default function ArticleViewPage() {
   const params = useParams();

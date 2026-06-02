@@ -146,6 +146,8 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 ### `GET /api/articles/{idOrSlug}`
 **Auth**: Bearer (JWT or API Key)
 
+Accepts both article ID and slug for lookup.
+
 **Side effects**: Records an `ArticleView` entry (deduplicated: same user+article within 15 minutes counts as 1 view).
 **200 Response**: Full article object with deserialized `content` (TipTap JSON).
 **404**: Article not found.
@@ -165,6 +167,7 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 | `contentType` | string | No | — |
 | `difficulty` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
+| `tags` | string[] | No | Array of tag IDs (replaces all existing tags) |
 
 **Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number.
 **200 Response**: `{ "id", "slug", "title" }`

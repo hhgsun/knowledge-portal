@@ -135,7 +135,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/auth/profile` | PUT | ✓ | — | ✗ |
 | `/api/articles` | GET | ✓ | — | ✗ |
 | `/api/articles` | POST | ✓ | `articles:create` | ✗ |
-| `/api/articles/{id}` | GET | ✓ | — | ✗ |
+| `/api/articles/{idOrSlug}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
 | `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✗ |
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
@@ -222,7 +222,7 @@ Backend endpoint exists but frontend does not call it yet:
 ## Key Behaviors
 
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
-- **Version creation**: Triggered when `content` or `title` field changes (not metadata-only edits)
+- **Version creation**: Triggered when `content` field changes (not title-only or metadata-only edits)
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
@@ -231,6 +231,17 @@ Backend endpoint exists but frontend does not call it yet:
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
+- **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
+
+## Placeholder Fields (Not Yet Active)
+
+These entity fields exist in the database but are not yet used in business logic:
+
+| Field | Entity | Purpose | Status |
+|-------|--------|---------|--------|
+| `Audience` | Article | Target audience tagging | Returned in GET response, accepted in Create DTO but never stored from request |
+| `IndexedAt` | Article | Timestamp for semantic search indexing | Never set — awaiting embedding model integration |
+| `ReviewIntervalDays` | Article | Configurable staleness threshold per article | Has DB default (90) but analytics uses hardcoded 90 days |
 
 ## Rules for AI Agents
 

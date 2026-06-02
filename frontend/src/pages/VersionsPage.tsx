@@ -3,16 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Clock, User, GitCompare } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
-
-interface Version {
-  id: string;
-  version: number;
-  title: string;
-  changeSummary: string | null;
-  changedBy: string;
-  changedByName: string | null;
-  createdAt: string;
-}
+import type { ArticleVersionListItem } from "../types/api";
 
 interface ArticleInfo {
   id: string;
@@ -23,7 +14,7 @@ interface ArticleInfo {
 export default function VersionsPage() {
   const params = useParams();
   const { fetchWithAuth } = useApi();
-  const [versions, setVersions] = useState<Version[]>([]);
+  const [versions, setVersions] = useState<ArticleVersionListItem[]>([]);
   const [article, setArticle] = useState<ArticleInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [compareA, setCompareA] = useState<string | null>(null);

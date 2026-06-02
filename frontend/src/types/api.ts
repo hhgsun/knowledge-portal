@@ -17,6 +17,16 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LoginResponse {
   token: string;
   user: User;
@@ -67,25 +77,35 @@ export interface Article {
   status: ArticleStatus;
   contentType: ContentType;
   difficulty: Difficulty;
+  audience: string | null;
   ownerName: string;
   ownerId: string;
   readTimeMinutes: number | null;
   publishedAt: string | null;
-  createdAt: string;
+  lastReviewedAt: string | null;
   updatedAt: string;
   tags: Tag[];
   apiKeyName: string | null;
 }
 
 // ─── Article Versions ────────────────────────────────────────
-export interface ArticleVersion {
+export interface ArticleVersionListItem {
   id: string;
-  articleId: string;
-  title: string;
-  content: string | null;
-  changeSummary: string | null;
-  changedByName: string;
   version: number;
+  title: string;
+  changeSummary: string | null;
+  changedBy: string;
+  changedByName: string | null;
+  createdAt: string;
+}
+
+export interface ArticleVersionDetail {
+  id: string;
+  version: number;
+  title: string;
+  changeSummary: string | null;
+  changedBy: string;
+  content: unknown | null;
   createdAt: string;
 }
 
@@ -143,7 +163,6 @@ export interface AnalyticsResponse {
 export interface ApiKey {
   id: string;
   name: string;
-  permissions: string | null;
   lastUsedAt: string | null;
   expiresAt: string | null;
   createdAt: string;
@@ -155,7 +174,7 @@ export interface CreateApiKeyResponse extends ApiKey {
 
 // ─── Admin Users ─────────────────────────────────────────────
 export interface AdminUsersResponse {
-  users: User[];
+  users: AdminUser[];
   total: number;
 }
 

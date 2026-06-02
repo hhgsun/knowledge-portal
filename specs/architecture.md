@@ -70,7 +70,7 @@ Request → CORS → ApiKeyMiddleware → JwtBearerAuth → Authorization → Co
 ```
 
 1. **CORS** — allows `localhost:5173` and `localhost:3000` with any header/method and credentials.
-2. **ApiKeyMiddleware** — intercepts `Authorization: Bearer kp_*` headers. Iterates all API keys in the database, BCrypt-verifies the raw key, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
+2. **ApiKeyMiddleware** — intercepts `Authorization: Bearer kp_*` headers. Extracts the 8-char prefix after `kp_`, performs a prefix-indexed database lookup, BCrypt-verifies the raw key against matched candidates, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
 3. **JWT Bearer Authentication** — validates standard JWT tokens against configured issuer, audience, and signing key.
 4. **Authorization** — enforces `[Authorize]` and `[RequirePermission("...")]` attributes.
 
@@ -130,6 +130,7 @@ React Router v7 with a single `<BrowserRouter>`:
 | `/articles/:slug/edit` | EditArticlePage | Protected |
 | `/articles/:slug/versions` | VersionsPage | Protected |
 | `/search` | SearchPage | Protected |
+| `/profile` | ProfilePage | Protected |
 | `/analytics` | AnalyticsPage | Protected |
 | `/admin/users` | AdminUsersPage | Protected |
 | `/settings/keys` | SettingsKeysPage | Protected |

@@ -17,6 +17,8 @@ frontend/src/
 ├── lib/
 │   └── utils.ts               # cn() — clsx + tailwind-merge helper
 ├── components/
+│   ├── error-boundary.tsx     # React error boundary with reload button
+│   ├── toast-provider.tsx     # Sonner Toaster wrapper component
 │   ├── layout/
 │   │   ├── app-shell.tsx      # Sidebar + Header + Outlet wrapper (skipped on auth pages)
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section

@@ -2,14 +2,7 @@ import { useState, useEffect } from "react";
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
-
-interface ApiKey {
-  id: string;
-  name: string;
-  lastUsedAt: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-}
+import type { ApiKey } from "../types/api";
 
 export default function SettingsKeysPage() {
   const { fetchWithAuth } = useApi();

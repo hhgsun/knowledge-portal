@@ -3,27 +3,14 @@ import { Link } from "react-router-dom";
 import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
-
-interface Article {
-  id: string;
-  title: string;
-  slug: string;
-  excerpt: string | null;
-  status: string;
-  contentType: string;
-  difficulty: string;
-  updatedAt: string;
-  ownerName: string | null;
-  apiKeyName: string | null;
-  tags: { id: string; name: string; slug: string }[];
-}
+import type { ArticleListItem } from "../types/api";
 
 const LIMIT = 20;
 
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
-  const [articles, setArticles] = useState<Article[]>([]);
+  const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);

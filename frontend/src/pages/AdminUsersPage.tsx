@@ -2,16 +2,7 @@ import { useState, useEffect } from "react";
 import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: "admin" | "editor" | "viewer";
-  avatar: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { AdminUser } from "../types/api";
 
 interface Pagination {
   page: number;
@@ -22,12 +13,12 @@ interface Pagination {
 
 export default function AdminUsersPage() {
   const { fetchWithAuth } = useApi();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, pages: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -90,7 +81,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleEditStart = (user: User) => {
+  const handleEditStart = (user: AdminUser) => {
     setEditingUser(user);
     setEditRole(user.role);
     setEditName(user.name);
@@ -126,7 +117,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleDelete = async (user: User) => {
+  const handleDelete = async (user: AdminUser) => {
     if (!confirm(`Are you sure you want to delete "${user.name}"? This action cannot be undone.`)) return;
 
     const res = await fetchWithAuth(`/api/admin/users?id=${user.id}`, { method: "DELETE" });

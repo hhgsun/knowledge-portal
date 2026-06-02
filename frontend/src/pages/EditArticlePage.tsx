@@ -5,20 +5,9 @@ import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import type { Article } from "../types/api";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
-
-interface Article {
-  id: string;
-  title: string;
-  slug: string;
-  content: Record<string, unknown> | null;
-  excerpt: string | null;
-  status: string;
-  contentType: string;
-  difficulty: string;
-  audience: string | null;
-}
 
 export default function EditArticlePage() {
   const params = useParams();
