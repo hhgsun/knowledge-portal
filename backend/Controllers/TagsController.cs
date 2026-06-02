@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -72,4 +73,3 @@ public partial class TagsController(AppDbContext db) : ControllerBase
     private static partial Regex TagSlugRegex();
 }
 
-public record CreateTagRequest(string Name);

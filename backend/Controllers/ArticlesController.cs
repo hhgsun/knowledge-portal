@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -408,22 +409,3 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CreateArticleRequest(
-    string Title,
-    object? Content = null,
-    string? Excerpt = null,
-    string? Status = null,
-    string? ContentType = null,
-    string? Difficulty = null,
-    string? Audience = null,
-    string[]? Tags = null);
-
-public record UpdateArticleRequest(
-    string? Title = null,
-    object? Content = null,
-    string? Excerpt = null,
-    string? Status = null,
-    string? ContentType = null,
-    string? Difficulty = null,
-    string? ChangeSummary = null,
-    string[]? Tags = null);

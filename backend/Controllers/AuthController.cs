@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -117,6 +118,3 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
     }
 }
 
-public record LoginRequest(string Email, string Password);
-public record RegisterRequest(string Name, string Email, string Password);
-public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword);

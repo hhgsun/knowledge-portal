@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -39,4 +40,3 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     }
 }
 
-public record FeedbackRequest(bool Helpful, string? Comment = null);

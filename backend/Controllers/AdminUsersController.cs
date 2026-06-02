@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -140,5 +141,3 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CreateUserRequest(string Name, string Email, string Password, string? Role = null);
-public record UpdateUserRequest(string UserId, string? Name = null, string? Email = null, string? Password = null, string? Role = null);

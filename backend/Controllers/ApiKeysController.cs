@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -93,4 +94,3 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CreateKeyRequest(string Name, int? ExpiresInDays = null);
