@@ -20,7 +20,8 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Email and password are required" });
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+        var email = req.Email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
         if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
@@ -42,13 +43,14 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
         if (req.Password.Length < 8 || req.Password.Length > 128)
             return BadRequest(new { error = "Password must be 8-128 characters" });
 
-        if (await db.Users.AnyAsync(u => u.Email == req.Email))
+        var email = req.Email.Trim().ToLowerInvariant();
+        if (await db.Users.AnyAsync(u => u.Email == email))
             return Conflict(new { error = "Email already registered" });
 
         var user = new User
         {
             Name = req.Name.Trim(),
-            Email = req.Email.Trim().ToLowerInvariant(),
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
             Role = "viewer"
         };
