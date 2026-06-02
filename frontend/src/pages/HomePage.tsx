@@ -3,19 +3,11 @@ import { BookOpen, TrendingUp, AlertTriangle, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
-
-interface DashboardData {
-  totalArticles: number;
-  viewsThisWeek: number;
-  searchesToday: number;
-  staleCount: number;
-  recentArticles: { id: string; title: string; slug: string; contentType: string }[];
-  topSearches: { query: string; count: number }[];
-}
+import type { DashboardResponse } from "../types/api";
 
 export default function HomePage() {
   const { fetchWithAuth } = useApi();
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

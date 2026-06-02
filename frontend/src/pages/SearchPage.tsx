@@ -4,21 +4,7 @@ import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag } from "lucide-
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
-
-interface SearchResult {
-  id: string;
-  title: string;
-  slug: string;
-  excerpt: string | null;
-  contentType: string;
-  difficulty: string;
-  updatedAt: string;
-}
-
-interface RAGResponse {
-  answer: string;
-  sources: { articleId: string; text: string; score: number }[];
-}
+import type { SearchResult, RagResponse, TagWithCount } from "../types/api";
 
 type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
 
@@ -29,7 +15,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState(initialQuery);
   const [searchType, setSearchType] = useState<SearchType>("hybrid");
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [ragResponse, setRagResponse] = useState<RAGResponse | null>(null);
+  const [ragResponse, setRagResponse] = useState<RagResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -38,8 +24,8 @@ export default function SearchPage() {
   const navigate = useNavigate();
 
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-  const [availableTags, setAvailableTags] = useState<{ id: string; name: string; slug: string; articleCount: number }[]>([]);
-  const [filteredTags, setFilteredTags] = useState<{ id: string; name: string; slug: string; articleCount: number }[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
+  const [filteredTags, setFilteredTags] = useState<TagWithCount[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 

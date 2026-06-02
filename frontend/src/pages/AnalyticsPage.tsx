@@ -2,23 +2,11 @@ import { useEffect, useState } from "react";
 import { BarChart3, Search, Eye, AlertTriangle, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
-
-interface AnalyticsData {
-  overview: {
-    totalArticles: number;
-    articlesByStatus: Record<string, number>;
-    viewsThisWeek: number;
-    searchesToday: number;
-    staleArticles: number;
-  };
-  topSearches: { query: string; count: number }[];
-  failedSearches: { query: string; count: number }[];
-  topArticles: { articleId: string; title: string; slug: string; views: number }[];
-}
+import type { AnalyticsResponse } from "../types/api";
 
 export default function AnalyticsPage() {
   const { fetchWithAuth } = useApi();
-  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

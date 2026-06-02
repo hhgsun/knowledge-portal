@@ -133,7 +133,6 @@ All critical issues have been resolved:
 | JWT token validation | ✓ Full validation | Issuer, audience, lifetime, signing key |
 | RBAC | ✓ Static permission matrix | Covers all sensitive operations |
 | API key expiration | ✓ Checked at runtime | 1–365 day TTL |
-| API key scope limiting | ✓ Permission array | Default: read-only |
 | Session-only endpoint protection | ✓ Source claim check | Admin endpoints block API keys |
 | Input validation | Partial | Length checks on passwords; no comprehensive input sanitization |
 | CORS | ✓ Origin whitelist | `localhost:5173`, `localhost:3000` |
@@ -145,7 +144,6 @@ All critical issues have been resolved:
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| Rate limiting | ✗ | No request throttling on any endpoint |
 | HTTPS enforcement | ✗ | No HSTS or redirect-to-HTTPS |
 | Content Security Policy | ✗ | No CSP headers |
 | Audit logging | ✗ | No structured security event logging |

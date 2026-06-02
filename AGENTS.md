@@ -33,9 +33,9 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
-- **Middleware pipeline**: CORS → GlobalExceptionMiddleware → ApiKeyMiddleware → Authentication → Authorization → Controllers
+- **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
-- **Success response shapes**: List endpoints return `{ items[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
+- **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
 ### Frontend (`frontend/`)
 

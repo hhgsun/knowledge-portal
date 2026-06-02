@@ -135,7 +135,10 @@ export interface SearchResponse {
 
 export interface RagResponse {
   answer: string;
-  sources: { id: string; title: string; relevance: number }[];
+  sources: Array<Record<string, unknown>>;
+  query: string;
+  type: "rag";
+  responseTimeMs: number;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────
@@ -143,20 +146,25 @@ export interface DashboardResponse {
   totalArticles: number;
   viewsThisWeek: number;
   searchesToday: number;
-  staleArticles: number;
+  staleCount: number;
   recentArticles: { id: string; title: string; slug: string; contentType: ContentType }[];
   topSearches: { query: string; count: number }[];
 }
 
 // ─── Analytics ───────────────────────────────────────────────
-export interface AnalyticsResponse {
-  articlesByStatus: Record<ArticleStatus, number>;
+export interface AnalyticsOverview {
+  totalArticles: number;
+  articlesByStatus: Record<string, number>;
   viewsThisWeek: number;
   searchesToday: number;
   staleArticles: number;
+}
+
+export interface AnalyticsResponse {
+  overview: AnalyticsOverview;
   topSearches: { query: string; count: number }[];
   failedSearches: { query: string; count: number }[];
-  topArticles: { id: string; title: string; slug: string; views: number }[];
+  topArticles: { articleId: string; title: string; slug: string; views: number }[];
 }
 
 // ─── API Keys ────────────────────────────────────────────────
