@@ -236,11 +236,25 @@ Rejects a pending article and returns it to `draft` status.
 
 ---
 
+### `PUT /api/tags`
+**Auth**: Bearer (JWT or API Key)
+**Permission**: `tags:manage`
+
+| Field | Type | Required |
+|-------|------|----------|
+| `id` | string | Yes |
+| `name` | string | Yes |
+
+**Side effects**: Regenerates slug from new name. Returns 409 if new slug conflicts with another tag.
+**200 Response**: `{ "id", "name", "slug" }`
+
+---
+
 ### `DELETE /api/tags?id={id}`
 **Auth**: Bearer (JWT or API Key)
 **Permission**: `tags:manage`
 
-**Side effects**: Cascades removal of ArticleTag mappings.
+**Side effects**: Returns 409 if tag has associated articles. Only content-free tags can be deleted.
 **200 Response**: `{ "message": "Tag deleted" }`
 
 ---

@@ -18,6 +18,7 @@ import {
   TreePalm,
   LucideGraduationCap,
   Copyright,
+  Tag,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState } from "react";
@@ -49,6 +50,7 @@ const navigation: NavItem[] = [
 ];
 
 const adminNavigation: NavItem[] = [
+  { label: "Tags", href: "/tags", icon: <Tag size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
 ];
@@ -151,6 +153,7 @@ export function Sidebar() {
                 .filter((item) => {
                   if (item.href === "/admin/users") return isAdmin;
                   if (item.href === "/settings/keys") return isAdmin;
+                  if (item.href === "/tags") return isEditorOrAdmin;
                   return true;
                 })
                 .map((item) => (

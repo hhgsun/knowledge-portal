@@ -76,7 +76,7 @@ frontend/
 ├── src/hooks/            # useApi (fetch wrapper)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/
-├── src/pages/            # 14 page components
+├── src/pages/            # 15 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 └── vite.config.ts        # Proxy config
@@ -151,6 +151,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
 | `/api/tags` | GET | ✓ | — | ✗ |
 | `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
+| `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
 | `/api/search` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
@@ -222,7 +223,6 @@ Backend endpoint exists but frontend does not call it yet:
 | Backend Endpoint | Status | Impact |
 |-----------------|--------|--------|
 | `GET /api/articles/{id}/feedback` | Not called | Feedback comments not displayed (only submission works) |
-| `DELETE /api/tags?id={id}` | No UI | Tag deletion not exposed — tags accumulate over time |
 
 ## Key Behaviors
 
@@ -237,6 +237,8 @@ Backend endpoint exists but frontend does not call it yet:
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
+- **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
+- **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
 - **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
 - **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission()` for ownership-based or conditional checks (edit/delete/publish/archive)
