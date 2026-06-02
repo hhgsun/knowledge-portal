@@ -6,12 +6,12 @@ import {
   Users,
   PlusCircle,
   Home,
-  Shield,
   ChevronDown,
   ChevronRight,
   Key,
   User,
   LogOut,
+  BookSearch,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState } from "react";
@@ -105,8 +105,8 @@ export function Sidebar() {
     <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0">
       {/* Logo */}
       <div className="flex items-center gap-2 px-6 py-5 border-b border-zinc-200 dark:border-zinc-800">
-        <Shield size={24} className="text-blue-600" />
-        <span className="font-bold text-lg">Knowledge Portal</span>
+        <BookSearch size={24} className="text-blue-600" />
+        <span className="font-bold text-md">Knowledge Portal</span>
       </div>
 
       {/* Navigation */}
