@@ -166,6 +166,7 @@ Accepts both article ID and slug for lookup.
 | `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
 | `contentType` | string | No | — |
 | `difficulty` | string | No | — |
+| `audience` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
 | `tags` | string[] | No | Array of tag IDs (replaces all existing tags) |
 
