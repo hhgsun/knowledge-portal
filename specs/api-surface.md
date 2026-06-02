@@ -1,5 +1,8 @@
 # API Surface
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> Endpoint Authorization Matrix → `AGENTS.md` · Validation Rules → `AGENTS.md`
+
 Base URL: `http://localhost:5174/api`
 All endpoints return JSON. All timestamps are ISO 8601 UTC.
 
@@ -68,6 +71,22 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 
 **200 Response**: `{ "id", "name", "email", "role", "avatar" }`
 **401**: Invalid/expired token.
+
+---
+
+### `PUT /api/auth/profile`
+**Auth**: Bearer JWT
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `name` | string | No | Min 1 char, trimmed |
+| `email` | string | No | Valid email, unique |
+| `currentPassword` | string | No | Required if changing password |
+| `newPassword` | string | No | 8–128 characters |
+
+**200 Response**: `{ "id", "name", "email", "role" }`
+**400**: Validation error (password length, current password incorrect).
+**409**: Email already in use.
 
 ---
 

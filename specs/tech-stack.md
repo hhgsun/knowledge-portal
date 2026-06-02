@@ -1,5 +1,8 @@
 # Technology Stack
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> Yeni paket eklendiğinde/kaldırıldığında bu dosya güncellenmelidir.
+
 ## Runtime & Language
 
 | Layer | Technology | Version |

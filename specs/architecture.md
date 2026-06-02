@@ -1,5 +1,8 @@
 # System Architecture
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> Conventions, File Locations, RBAC Matrix → `AGENTS.md`
+
 ## Topology
 
 ```
@@ -53,10 +56,10 @@ The system is a **two-tier split monorepo** with no intermediate service layer:
 | **API** | `backend/Controllers/` | HTTP endpoint mapping, request validation, response shaping |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
-| **Domain** | `backend/Models/` | Entity classes, request records (inline DTOs) |
+| **Domain** | `backend/Models/` | Entity classes, DTO records (`Models/Dtos.cs`) |
 | **Storage** | `data/knowledge.db` | SQLite database file |
 
-There is **no dedicated service/business-logic layer** (`backend/Services/` exists but is empty). All business logic resides in controller action methods.
+There is **no dedicated service/business-logic layer** — no `backend/Services/` directory exists. All business logic resides in controller action methods.
 
 ## Middleware Pipeline
 
@@ -84,22 +87,9 @@ Both produce identical claim sets (`id`, `email`, `name`, `role`) plus a discrim
 
 ## RBAC Model
 
-Static role-permission matrix with three roles:
+Static role-permission matrix with three roles (admin, editor, viewer).
 
-| Permission | admin | editor | viewer |
-|-----------|:-----:|:------:|:------:|
-| `articles:create` | ✓ | ✓ | ✓ |
-| `articles:edit_own` | ✓ | ✓ | ✓ |
-| `articles:edit_any` | ✓ | | |
-| `articles:delete_own` | ✓ | ✓ | ✓ |
-| `articles:delete_any` | ✓ | | |
-| `articles:publish` | ✓ | ✓ | |
-| `articles:archive` | ✓ | ✓ | |
-| `articles:approve` | ✓ | ✓ | |
-| `tags:manage` | ✓ | ✓ | |
-| `users:manage` | ✓ | | |
-| `analytics:view` | ✓ | ✓ | |
-| `api_keys:manage` | ✓ | | |
+> **Full permission matrix**: See `AGENTS.md` → "RBAC Permission Matrix"
 
 Viewers can **create, edit, and delete their own articles** but are restricted to `draft` or `pending` status only. They cannot publish, archive, or manage tags. Publishing requires editor/admin approval via the `approve` workflow.
 
@@ -181,7 +171,7 @@ Supported marks: bold, italic, strikethrough, code, link, highlight.
 
 1. **No service layer** — Business logic lives in controllers. Acceptable for current complexity; becomes a liability if controller methods exceed ~80 lines.
 2. **No external dependencies** — Fully self-contained. Search is SQL LIKE; semantic/RAG endpoints are stubs returning placeholder responses.
-3. **Inline DTOs** — Request/response shapes are C# records defined inside controller files. No shared DTO library.
+3. **Centralized DTOs** — Request/response shapes are C# records defined in `backend/Models/Dtos.cs`.
 4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for single-node SQLite.
 5. **Cascade deletes** — Deleting an article cascades to versions, tags, feedback, and views. Deleting a user cascades to API keys. API key deletion sets `created_via_api_key_id` to null on articles.
 6. **UTC timestamps** — All `DateTime` values stored and transmitted in UTC.

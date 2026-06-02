@@ -1,5 +1,8 @@
 # Security Architecture
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> RBAC Permission Matrix, Endpoint Auth Matrix → `AGENTS.md`
+
 ## Authentication Mechanisms
 
 ### JWT Bearer Tokens (Interactive Sessions)
@@ -47,20 +50,7 @@
 
 Three static roles with a hardcoded permission matrix in `RbacService`:
 
-| Permission | admin | editor | viewer |
-|-----------|:-----:|:------:|:------:|
-| `articles:create` | ✓ | ✓ | ✓ |
-| `articles:edit_own` | ✓ | ✓ | ✓ |
-| `articles:edit_any` | ✓ | | |
-| `articles:delete_own` | ✓ | ✓ | ✓ |
-| `articles:delete_any` | ✓ | | |
-| `articles:publish` | ✓ | ✓ | |
-| `articles:archive` | ✓ | ✓ | |
-| `articles:approve` | ✓ | ✓ | |
-| `tags:manage` | ✓ | ✓ | |
-| `users:manage` | ✓ | | |
-| `analytics:view` | ✓ | ✓ | |
-| `api_keys:manage` | ✓ | | |
+> **Full permission matrix**: See `AGENTS.md` → "RBAC Permission Matrix"
 
 ### Enforcement Points
 

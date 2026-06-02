@@ -1,5 +1,8 @@
 # Frontend Structure
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> File Locations, Conventions → `AGENTS.md`
+
 ## Directory Layout
 
 ```
@@ -35,6 +38,7 @@ frontend/src/
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── SettingsKeysPage.tsx   # API key management: create, copy, delete
+    ├── ProfilePage.tsx        # Profile settings: name/email update + password change
     └── NotFoundPage.tsx       # 404 page for unmatched routes
 ```
 
@@ -75,6 +79,8 @@ graph TD
     AnalyticsPage --> useApi
     AdminUsersPage --> useApi
     SettingsKeysPage --> useApi
+    ProfilePage --> useApi
+    ProfilePage --> useAuth
 
     TagSelector --> useApi
 
@@ -98,9 +104,10 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | — |
-| `/analytics` | AnalyticsPage | Protected | AppShell | — |
-| `/admin/users` | AdminUsersPage | Protected | AppShell | Admin (enforced by backend) |
-| `/settings/keys` | SettingsKeysPage | Protected | AppShell | Admin (enforced by backend) |
+| `/profile` | ProfilePage | Protected | AppShell | — |
+| `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
+| `/admin/users` | AdminUsersPage | Protected | AppShell | admin (RoleRoute) |
+| `/settings/keys` | SettingsKeysPage | Protected | AppShell | admin (RoleRoute) |
 | `*` | NotFoundPage | Public | — | — |
 
 ### ProtectedRoute
@@ -134,6 +141,7 @@ Sidebar navigation is **role-aware**:
 | `login()` | `(email, password) → Promise<{error?}>` | Authenticates and sets user + token |
 | `logout()` | `() → void` | Clears state and localStorage |
 | `register()` | `(name, email, password) → Promise<{error?}>` | Creates account |
+| `refreshUser()` | `() → Promise<void>` | Re-fetches /api/auth/me, updates user state |
 
 **Token lifecycle**:
 1. `login()` calls `POST /api/auth/login`, stores token in `localStorage`

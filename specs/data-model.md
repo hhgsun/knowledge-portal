@@ -1,5 +1,8 @@
 # Data Model
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+> Entity listesi, Validation Rules → `AGENTS.md`
+
 ## Entity-Relationship Diagram
 
 ```mermaid

@@ -1,5 +1,6 @@
 # Current State Validation
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
 > **Last verified**: 2026-06-02
 > **Note**: This is a smoke-test checklist. For authoritative system docs see `AGENTS.md`.
 

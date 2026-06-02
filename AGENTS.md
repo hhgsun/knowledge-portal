@@ -71,7 +71,7 @@ frontend/
 ├── src/hooks/            # useApi (fetch wrapper)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/
-├── src/pages/            # 13 page components
+├── src/pages/            # 14 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 └── vite.config.ts        # Proxy config
@@ -85,6 +85,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 ├── security.md           # Auth & RBAC detailed docs
 ├── tech-stack.md         # All packages & versions
 └── validation.md         # Smoke test checklist
+
+.github/
+└── copilot-instructions.md  # VS Code Copilot auto-loaded instructions
 ```
 
 ## Default Credentials
@@ -129,6 +132,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/auth/login` | POST | ✗ | — | — |
 | `/api/auth/register` | POST | ✗ | — | — |
 | `/api/auth/me` | GET | ✓ | — | ✗ |
+| `/api/auth/profile` | PUT | ✓ | — | ✗ |
 | `/api/articles` | GET | ✓ | — | ✗ |
 | `/api/articles` | POST | ✓ | `articles:create` | ✗ |
 | `/api/articles/{id}` | GET | ✓ | — | ✗ |
@@ -171,6 +175,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |
 | `articles.limit` | 1 | 100 | Default 20 |
+| `profile.name` | 1 | — | Required for profile update |
+| `profile.newPassword` | 8 | 128 | Optional, requires currentPassword |
 
 ## Feature Status
 
@@ -200,7 +206,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Version Diff | ✅ Implemented | Line-based diff comparison between versions |
 | Dark Mode Toggle | ❌ Not implemented | System preference only |
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
-| User Profile Page | ❌ Not implemented | Profile button non-functional |
+| User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
@@ -210,14 +216,13 @@ Backend endpoint exists but frontend does not call it yet:
 
 | Backend Endpoint | Status | Impact |
 |-----------------|--------|--------|
-| `POST /api/search/click` | ✅ Wired | Search result clicks tracked for analytics |
 | `GET /api/articles/{id}/feedback` | Not called | Feedback comments not displayed (only submission works) |
 | `DELETE /api/tags?id={id}` | No UI | Tag deletion not exposed — tags accumulate over time |
 
 ## Key Behaviors
 
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
-- **Version creation**: Only triggered when `content` field changes (not title-only edits)
+- **Version creation**: Triggered when `content` or `title` field changes (not metadata-only edits)
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
@@ -239,7 +244,58 @@ Backend endpoint exists but frontend does not call it yet:
 - Keep pages in `frontend/src/pages/` as flat files
 - Return `{ "error": "..." }` for all error responses
 - Write xUnit integration tests for new backend features
-- Update this file's "Feature Status" table after implementing a feature
+- **After EVERY change, synchronize documentation** (see Documentation Sync Rules below)
+
+### DOCUMENTATION SYNC RULES
+
+> **Her geliştirme sonrası aşağıdaki kurallar uygulanmalıdır. Atlama kabul edilmez.**
+
+#### Trigger → Action Matrix
+
+| Değişiklik | Güncellenmesi Gereken Bölümler |
+|-----------|-------------------------------|
+| Yeni endpoint eklendi | Endpoint Authorization Matrix, `specs/api-surface.md` |
+| Endpoint kaldırıldı | Endpoint Authorization Matrix, `specs/api-surface.md`'den sil |
+| Yeni entity/field eklendi | File Locations (gerekirse), `specs/data-model.md` |
+| Entity/field kaldırıldı | `specs/data-model.md`'den sil, Validation Rules'dan sil |
+| Permission eklendi/kaldırıldı | RBAC Permission Matrix |
+| Yeni sayfa eklendi | File Locations (frontend), `specs/frontend-structure.md` |
+| Sayfa kaldırıldı | File Locations'dan sil, `specs/frontend-structure.md`'den sil |
+| Yeni feature tamamlandı | Feature Status tablosu → ✅ |
+| Feature kaldırıldı | Feature Status tablosundan satırı sil |
+| Yeni validation kuralı | Validation Rules tablosu |
+| DTO değişti (backend) | `frontend/src/types/api.ts` güncelle |
+| Yeni component eklendi | `specs/frontend-structure.md` directory layout |
+| Component kaldırıldı | `specs/frontend-structure.md`'den sil |
+| Config değişikliği (appsettings) | İlgili bölümde belirt (Commands, Conventions vb.) |
+| Yeni paket/kütüphane eklendi | `specs/tech-stack.md` |
+| Paket kaldırıldı | `specs/tech-stack.md`'den sil |
+| Known Frontend Gap kapatıldı | Known Frontend Gaps tablosundan satırı sil |
+| Yeni bilinen eksiklik | Known Frontend Gaps tablosuna ekle |
+
+#### Kurallar
+
+1. **Ekleme**: Yeni bir özellik/endpoint/entity eklendiğinde, ilgili tüm dokümantasyon bölümleri güncellenir. Eğer dosya yoksa oluşturulur.
+2. **Kaldırma**: Bir özellik/endpoint/entity kaldırıldığında, ilgili dokümantasyon satırları/bölümleri silinir. Ölü referans bırakılmaz.
+3. **Değişiklik**: Mevcut davranış değiştiğinde (ör. validation kuralı, enum değeri), eski bilgi güncellenir.
+4. **Tutarlılık**: `specs/` dosyaları AGENTS.md ile çelişemez. Çelişki durumunda AGENTS.md geçerlidir ve `specs/` düzeltilir.
+5. **types/api.ts senkronizasyonu**: Backend DTO değişikliği → `frontend/src/types/api.ts` aynı commit'te güncellenir.
+6. **Ölü kod/field temizliği**: Kullanılmayan entity field, component veya endpoint kaldırıldığında hem kod hem dokümantasyondan silinir.
+7. **Feature Status doğruluğu**: Yarım kalan iş "✅ Implemented" olarak işaretlenmez. Sadece tam çalışan özellikler işaretlenir.
+
+#### Post-Change Validation Checklist (Zorunlu)
+
+> **Her conversation'ın SONUNDA** aşağıdaki checklist uygulanır. Uyumsuzluk varsa düzeltmeden conversation kapatılmaz.
+
+- [ ] Yeni/değişen endpoint → Endpoint Authorization Matrix'te var mı?
+- [ ] Yeni/değişen endpoint → `specs/api-surface.md`'de var mı?
+- [ ] Yeni sayfa/component → `specs/frontend-structure.md`'de var mı?
+- [ ] Feature tamamlandı → Feature Status ✅ olarak güncellendi mi?
+- [ ] Known Gap kapatıldı → Known Frontend Gaps'ten satır silindi mi?
+- [ ] DTO değişti → `frontend/src/types/api.ts` güncellendi mi?
+- [ ] Validation kuralı değişti → Validation Rules tablosu güncellendi mi?
+- [ ] Yeni paket → `specs/tech-stack.md`'ye eklendi mi?
+- [ ] File Locations ağacı hâlâ doğru mu? (sayfa sayısı, controller sayısı vb.)
 
 ### MUST NOT
 - Do NOT add Next.js, SSR, or server components — pure SPA + REST API

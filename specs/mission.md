@@ -1,5 +1,7 @@
 # Mission
 
+> **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
+
 **Knowledge Portal** is an internal knowledge-base platform that enables teams to author, version, search, and review documentation through a rich-text editor and a RESTful API.
 
 ## Target Audience
