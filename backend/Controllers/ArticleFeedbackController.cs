@@ -34,9 +34,27 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get(string articleId)
     {
-        var helpful = await db.ArticleFeedback.CountAsync(f => f.ArticleId == articleId && f.Helpful);
-        var notHelpful = await db.ArticleFeedback.CountAsync(f => f.ArticleId == articleId && !f.Helpful);
-        return Ok(new { helpful, notHelpful });
+        var feedbacks = await db.ArticleFeedback
+            .Where(f => f.ArticleId == articleId)
+            .Include(f => f.User)
+            .OrderByDescending(f => f.CreatedAt)
+            .ToListAsync();
+
+        var helpful = feedbacks.Count(f => f.Helpful);
+        var notHelpful = feedbacks.Count(f => !f.Helpful);
+        var comments = feedbacks
+            .Where(f => !string.IsNullOrWhiteSpace(f.Comment))
+            .Select(f => new
+            {
+                f.Id,
+                f.Helpful,
+                f.Comment,
+                userName = f.User?.Name ?? "Unknown",
+                f.CreatedAt
+            })
+            .ToList();
+
+        return Ok(new { helpful, notHelpful, comments });
     }
 }
 

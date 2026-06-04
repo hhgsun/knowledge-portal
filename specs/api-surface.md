@@ -301,7 +301,16 @@ Ordered by version number descending.
 ### `GET /api/articles/{articleId}/feedback`
 **Auth**: Bearer
 
-**200 Response**: `{ "helpful": 12, "notHelpful": 3 }`
+**200 Response**:
+```json
+{
+  "helpful": 12,
+  "notHelpful": 3,
+  "comments": [
+    { "id": "abc", "helpful": true, "comment": "Very useful", "userName": "John", "createdAt": "2026-01-01T00:00:00Z" }
+  ]
+}
+```
 
 ---
 

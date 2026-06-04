@@ -218,11 +218,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 
 ## Known Frontend Gaps
 
-Backend endpoint exists but frontend does not call it yet:
-
-| Backend Endpoint | Status | Impact |
-|-----------------|--------|--------|
-| `GET /api/articles/{id}/feedback` | Not called | Feedback comments not displayed (only submission works) |
+No known gaps at this time.
 
 ## Key Behaviors
 

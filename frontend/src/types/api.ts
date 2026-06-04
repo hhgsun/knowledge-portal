@@ -110,9 +110,18 @@ export interface ArticleVersionDetail {
 }
 
 // ─── Article Feedback ────────────────────────────────────────
+export interface FeedbackComment {
+  id: string;
+  helpful: boolean;
+  comment: string;
+  userName: string;
+  createdAt: string;
+}
+
 export interface FeedbackSummary {
   helpful: number;
   notHelpful: number;
+  comments: FeedbackComment[];
 }
 
 // ─── Search ──────────────────────────────────────────────────

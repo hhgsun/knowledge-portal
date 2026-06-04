@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare } from "lucide-react";
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
-import type { Article } from "../types/api";
+import type { Article, FeedbackSummary } from "../types/api";
 
 export default function ArticleViewPage() {
   const params = useParams();
@@ -14,6 +14,9 @@ export default function ArticleViewPage() {
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackSummary | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
 
@@ -26,6 +29,7 @@ export default function ArticleViewPage() {
             setArticle(null);
           } else {
             setArticle(data);
+            loadFeedback(data.id);
           }
           setLoading(false);
         })
@@ -37,13 +41,23 @@ export default function ArticleViewPage() {
     if (!article) return;
     const res = await fetchWithAuth(`/api/articles/${article.id}/feedback`, {
       method: "POST",
-      body: JSON.stringify({ helpful }),
+      body: JSON.stringify({ helpful, comment: feedbackComment.trim() || null }),
     });
     if (res.ok) {
       toast.success("Thanks for your feedback!");
+      setFeedbackSubmitted(true);
+      setFeedbackComment("");
+      loadFeedback(article.id);
     } else {
       toast.error("Failed to submit feedback");
     }
+  };
+
+  const loadFeedback = (articleId: string) => {
+    fetchWithAuth(`/api/articles/${articleId}/feedback`)
+      .then((res) => res.json())
+      .then((data) => { if (!data.error) setFeedback(data); })
+      .catch(() => {});
   };
 
   const handleApprove = async () => {
@@ -195,23 +209,74 @@ export default function ArticleViewPage() {
       </div>
 
       <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-        <p className="text-sm text-zinc-500 mb-3">Was this article helpful?</p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleFeedback(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
-          >
-            <ThumbsUp size={14} />
-            Yes
-          </button>
-          <button
-            onClick={() => handleFeedback(false)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
-          >
-            <ThumbsDown size={14} />
-            No
-          </button>
-        </div>
+        {feedback && (feedback.helpful > 0 || feedback.notHelpful > 0) && (
+          <div className="flex items-center gap-4 mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="flex items-center gap-1">
+              <ThumbsUp size={14} className="text-green-600" />
+              {feedback.helpful} helpful
+            </span>
+            <span className="flex items-center gap-1">
+              <ThumbsDown size={14} className="text-red-500" />
+              {feedback.notHelpful} not helpful
+            </span>
+          </div>
+        )}
+
+        {!feedbackSubmitted ? (
+          <div>
+            <p className="text-sm text-zinc-500 mb-3">Was this article helpful?</p>
+            <textarea
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              placeholder="Optional: Add a comment..."
+              rows={2}
+              className="w-full mb-3 px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleFeedback(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
+              >
+                <ThumbsUp size={14} />
+                Yes
+              </button>
+              <button
+                onClick={() => handleFeedback(false)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
+              >
+                <ThumbsDown size={14} />
+                No
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-green-600 dark:text-green-400">Thank you for your feedback!</p>
+        )}
+
+        {feedback && feedback.comments.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5 mb-3">
+              <MessageSquare size={14} />
+              Comments ({feedback.comments.length})
+            </h3>
+            <div className="space-y-3">
+              {feedback.comments.map((c) => (
+                <div key={c.id} className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700">
+                  <div className="flex items-center gap-2 mb-1">
+                    {c.helpful ? (
+                      <ThumbsUp size={12} className="text-green-600" />
+                    ) : (
+                      <ThumbsDown size={12} className="text-red-500" />
+                    )}
+                    <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{c.userName}</span>
+                    <span className="text-xs text-zinc-400">{new Date(c.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">{c.comment}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
