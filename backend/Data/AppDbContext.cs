@@ -103,7 +103,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("article_feedback");
             e.HasKey(f => f.Id);
             e.Property(f => f.ArticleId).IsRequired();
-            e.Property(f => f.Helpful).IsRequired();
+            e.Property(f => f.Helpful).IsRequired(false);
             e.Property(f => f.CreatedAt).IsRequired();
             e.HasOne(f => f.Article).WithMany(a => a.Feedback).HasForeignKey(f => f.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(f => f.User).WithMany().HasForeignKey(f => f.UserId);

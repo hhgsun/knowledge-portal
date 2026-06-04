@@ -5,7 +5,7 @@ public class ArticleFeedback
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string ArticleId { get; set; } = null!;
     public string? UserId { get; set; }
-    public bool Helpful { get; set; }
+    public bool? Helpful { get; set; }
     public string? Comment { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

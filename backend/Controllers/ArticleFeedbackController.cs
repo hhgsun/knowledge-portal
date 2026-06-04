@@ -16,6 +16,9 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(string articleId, [FromBody] FeedbackRequest req)
     {
+        if (req.Helpful is null && string.IsNullOrWhiteSpace(req.Comment))
+            return BadRequest(new { error = "Either helpful vote or comment is required" });
+
         if (!await db.Articles.AnyAsync(a => a.Id == articleId))
             return NotFound(new { error = "Article not found" });
 
@@ -40,8 +43,8 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
             .OrderByDescending(f => f.CreatedAt)
             .ToListAsync();
 
-        var helpful = feedbacks.Count(f => f.Helpful);
-        var notHelpful = feedbacks.Count(f => !f.Helpful);
+        var helpful = feedbacks.Count(f => f.Helpful == true);
+        var notHelpful = feedbacks.Count(f => f.Helpful == false);
         var comments = feedbacks
             .Where(f => !string.IsNullOrWhiteSpace(f.Comment))
             .Select(f => new

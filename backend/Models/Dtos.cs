@@ -35,7 +35,7 @@ public record UpdateUserRequest(string UserId, string? Name = null, string? Emai
 public record CreateKeyRequest(string Name, int? ExpiresInDays = null);
 
 // Article Feedback
-public record FeedbackRequest(bool Helpful, string? Comment = null);
+public record FeedbackRequest(bool? Helpful = null, string? Comment = null);
 
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);

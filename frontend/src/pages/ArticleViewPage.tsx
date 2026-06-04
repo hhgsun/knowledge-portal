@@ -16,7 +16,6 @@ export default function ArticleViewPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackSummary | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
 
@@ -37,7 +36,7 @@ export default function ArticleViewPage() {
     }
   }, [params.slug, fetchWithAuth]);
 
-  const handleFeedback = async (helpful: boolean) => {
+  const handleFeedback = async (helpful: boolean | null) => {
     if (!article) return;
     const res = await fetchWithAuth(`/api/articles/${article.id}/feedback`, {
       method: "POST",
@@ -45,7 +44,6 @@ export default function ArticleViewPage() {
     });
     if (res.ok) {
       toast.success("Thanks for your feedback!");
-      setFeedbackSubmitted(true);
       setFeedbackComment("");
       loadFeedback(article.id);
     } else {
@@ -222,36 +220,41 @@ export default function ArticleViewPage() {
           </div>
         )}
 
-        {!feedbackSubmitted ? (
-          <div>
-            <p className="text-sm text-zinc-500 mb-3">Was this article helpful?</p>
-            <textarea
-              value={feedbackComment}
-              onChange={(e) => setFeedbackComment(e.target.value)}
-              placeholder="Optional: Add a comment..."
-              rows={2}
-              className="w-full mb-3 px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex items-center gap-2">
+        <div>
+          <p className="text-sm text-zinc-500 mb-3">Was this article helpful? Leave a comment or vote.</p>
+          <textarea
+            value={feedbackComment}
+            onChange={(e) => setFeedbackComment(e.target.value)}
+            placeholder="Add a comment..."
+            rows={2}
+            className="w-full mb-3 px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleFeedback(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
+            >
+              <ThumbsUp size={14} />
+              Helpful
+            </button>
+            <button
+              onClick={() => handleFeedback(false)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
+            >
+              <ThumbsDown size={14} />
+              Not Helpful
+            </button>
+            {feedbackComment.trim() && (
               <button
-                onClick={() => handleFeedback(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
+                onClick={() => handleFeedback(null)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 hover:border-blue-300"
               >
-                <ThumbsUp size={14} />
-                Yes
+                <MessageSquare size={14} />
+                Comment Only
               </button>
-              <button
-                onClick={() => handleFeedback(false)}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
-              >
-                <ThumbsDown size={14} />
-                No
-              </button>
-            </div>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-green-600 dark:text-green-400">Thank you for your feedback!</p>
-        )}
+        </div>
 
         {feedback && feedback.comments.length > 0 && (
           <div className="mt-6">
@@ -263,10 +266,12 @@ export default function ArticleViewPage() {
               {feedback.comments.map((c) => (
                 <div key={c.id} className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700">
                   <div className="flex items-center gap-2 mb-1">
-                    {c.helpful ? (
+                    {c.helpful === true ? (
                       <ThumbsUp size={12} className="text-green-600" />
-                    ) : (
+                    ) : c.helpful === false ? (
                       <ThumbsDown size={12} className="text-red-500" />
+                    ) : (
+                      <MessageSquare size={12} className="text-blue-500" />
                     )}
                     <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{c.userName}</span>
                     <span className="text-xs text-zinc-400">{new Date(c.createdAt).toLocaleDateString()}</span>

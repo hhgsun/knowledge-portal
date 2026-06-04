@@ -112,7 +112,7 @@ export interface ArticleVersionDetail {
 // ─── Article Feedback ────────────────────────────────────────
 export interface FeedbackComment {
   id: string;
-  helpful: boolean;
+  helpful: boolean | null;
   comment: string;
   userName: string;
   createdAt: string;

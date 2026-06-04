@@ -291,10 +291,11 @@ Ordered by version number descending.
 
 | Field | Type | Required |
 |-------|------|----------|
-| `helpful` | bool | Yes |
-| `comment` | string | No |
+| `helpful` | bool? | No (at least one of helpful or comment required) |
+| `comment` | string | No (at least one of helpful or comment required) |
 
 **201 Response**: `{ "message": "Feedback submitted" }`
+**400 Response**: `{ "error": "Either helpful vote or comment is required" }`
 
 ---
 
