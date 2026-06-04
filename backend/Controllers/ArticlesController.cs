@@ -359,6 +359,47 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         return Ok(new { message = "Article rejected and returned to draft", article.Id, article.Slug });
     }
 
+    [HttpGet("{id}/related")]
+    public async Task<IActionResult> Related(string id, [FromQuery] int limit = 5)
+    {
+        limit = Math.Clamp(limit, 1, 20);
+
+        var articleTagIds = await db.ArticleTags
+            .Where(at => at.ArticleId == id)
+            .Select(at => at.TagId)
+            .ToListAsync();
+
+        if (articleTagIds.Count == 0)
+            return Ok(new { articles = Array.Empty<object>() });
+
+        var related = await db.ArticleTags
+            .Where(at => articleTagIds.Contains(at.TagId) && at.ArticleId != id)
+            .GroupBy(at => at.ArticleId)
+            .Select(g => new { ArticleId = g.Key, SharedTags = g.Count() })
+            .OrderByDescending(g => g.SharedTags)
+            .Take(limit)
+            .Join(db.Articles.Include(a => a.ArticleTags).ThenInclude(at => at.Tag),
+                g => g.ArticleId,
+                a => a.Id,
+                (g, a) => new { Article = a, g.SharedTags })
+            .Where(x => x.Article.Status == "published")
+            .OrderByDescending(x => x.SharedTags)
+            .Select(x => new
+            {
+                x.Article.Id,
+                x.Article.Title,
+                x.Article.Slug,
+                x.Article.Excerpt,
+                x.Article.ContentType,
+                x.Article.Difficulty,
+                UpdatedAt = x.Article.UpdatedAt.ToString("o"),
+                Tags = x.Article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
+            })
+            .ToListAsync();
+
+        return Ok(new { articles = related });
+    }
+
     private static string GenerateSlug(string title)
     {
         var slug = title.ToLowerInvariant().Trim();

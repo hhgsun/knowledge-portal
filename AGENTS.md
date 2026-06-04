@@ -149,6 +149,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/versions/{versionId}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/feedback` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
+| `/api/articles/{id}/related` | GET | ✓ | — | ✗ |
 | `/api/tags` | GET | ✓ | — | ✗ |
 | `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
@@ -201,7 +202,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
 | API Key Management | ✅ Implemented | Create/list/delete |
-| Article Feedback | ✅ Implemented | Helpful/not-helpful + comments |
+| Article Feedback | ✅ Implemented | Helpful/not-helpful + comments (vote optional) |
+| Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
 | Rate Limiting | ✅ Implemented | Login, register, search endpoints |

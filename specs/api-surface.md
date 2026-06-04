@@ -315,6 +315,24 @@ Ordered by version number descending.
 
 ---
 
+### `GET /api/articles/{id}/related`
+**Auth**: Bearer
+
+| Param | Type | Default | Notes |
+|-------|------|---------|-------|
+| `limit` | int | 5 | Max 20 |
+
+**200 Response**:
+```json
+{
+  "articles": [
+    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "how-to", "difficulty": "intermediate", "updatedAt": "...", "tags": [{ "id": "...", "name": "...", "slug": "..." }] }
+  ]
+}
+```
+
+---
+
 ## Search
 
 ### `GET /api/search`

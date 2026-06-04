@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare } from "lucide-react";
+import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare, FileText } from "lucide-react";
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
-import type { Article, FeedbackSummary } from "../types/api";
+import type { Article, FeedbackSummary, RelatedArticle } from "../types/api";
 
 export default function ArticleViewPage() {
   const params = useParams();
@@ -16,6 +16,7 @@ export default function ArticleViewPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackSummary | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [relatedArticles, setRelatedArticles] = useState<RelatedArticle[]>([]);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
 
@@ -29,6 +30,7 @@ export default function ArticleViewPage() {
           } else {
             setArticle(data);
             loadFeedback(data.id);
+            loadRelated(data.id);
           }
           setLoading(false);
         })
@@ -55,6 +57,13 @@ export default function ArticleViewPage() {
     fetchWithAuth(`/api/articles/${articleId}/feedback`)
       .then((res) => res.json())
       .then((data) => { if (!data.error) setFeedback(data); })
+      .catch(() => {});
+  };
+
+  const loadRelated = (articleId: string) => {
+    fetchWithAuth(`/api/articles/${articleId}/related?limit=2`)
+      .then((res) => res.json())
+      .then((data) => { if (data.articles) setRelatedArticles(data.articles); })
       .catch(() => {});
   };
 
@@ -205,6 +214,41 @@ export default function ArticleViewPage() {
           <p className="text-zinc-400 italic">No content yet.</p>
         )}
       </div>
+
+      {relatedArticles.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5 mb-4">
+            <FileText size={14} />
+            Related Articles
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {relatedArticles.map((ra) => (
+              <Link
+                key={ra.id}
+                to={`/articles/${ra.slug}`}
+                className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors"
+              >
+                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 line-clamp-1">{ra.title}</p>
+                {ra.excerpt && (
+                  <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{ra.excerpt}</p>
+                )}
+                {ra.tags.length > 0 && (
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {ra.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
         {feedback && (feedback.helpful > 0 || feedback.notHelpful > 0) && (

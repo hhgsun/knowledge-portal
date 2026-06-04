@@ -109,6 +109,18 @@ export interface ArticleVersionDetail {
   createdAt: string;
 }
 
+// ─── Related Articles ────────────────────────────────────────
+export interface RelatedArticle {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  contentType: ContentType;
+  difficulty: Difficulty;
+  updatedAt: string;
+  tags: Tag[];
+}
+
 // ─── Article Feedback ────────────────────────────────────────
 export interface FeedbackComment {
   id: string;
