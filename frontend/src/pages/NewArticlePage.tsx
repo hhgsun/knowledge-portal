@@ -5,8 +5,7 @@ import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
-import AttachmentList from "../components/attachments/attachment-list";
-import FileUploadZone from "../components/attachments/file-upload-zone";
+import { PendingFileList } from "../components/attachments/file-upload-zone";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
 
@@ -24,121 +23,83 @@ export default function NewArticlePage() {
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [articleId, setArticleId] = useState<string | null>(null);
-  const [articleSlug, setArticleSlug] = useState<string | null>(null);
-  const contentRef = useRef(content);
-  contentRef.current = content;
-  const articleIdRef = useRef<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  // Auto-save as draft and return article ID (for upload support)
-  // Does NOT set articleId state — callers decide when to trigger render switch
-  const ensureArticleSaved = useCallback(async (): Promise<string | null> => {
-    if (articleIdRef.current) return articleIdRef.current;
+  // Pending image uploads: blobUrl → File
+  const pendingUploadsRef = useRef<Map<string, File>>(new Map());
 
-    if (!title.trim()) {
-      toast.error("Please enter a title before uploading files");
-      return null;
-    }
-
-    const res = await fetchWithAuth("/api/articles", {
-      method: "POST",
-      body: JSON.stringify({
-        title: title.trim(),
-        content: contentRef.current,
-        excerpt: excerpt.trim() || undefined,
-        contentType,
-        difficulty,
-        status: "draft",
-        tags,
-      }),
-    });
-
-    if (res.ok) {
-      const article = await res.json();
-      articleIdRef.current = article.id;
-      setArticleSlug(article.slug);
-      toast.success("Article auto-saved as draft");
-      return article.id;
-    } else {
-      const data = await res.json();
-      toast.error(data.error || "Failed to auto-save article");
-      return null;
-    }
-  }, [title, excerpt, contentType, difficulty, tags, fetchWithAuth]);
-
+  // Deferred upload: create blob URL and store file for later upload
   const uploadImage = useCallback(async (file: File): Promise<string | null> => {
-    const id = await ensureArticleSaved();
-    if (!id) return null;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetchWithAuth(`/api/articles/${id}/attachments`, {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setArticleId(id);
-        return data.downloadUrl;
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Image upload failed");
-        return null;
-      }
-    } catch {
-      toast.error("Image upload failed");
-      return null;
-    }
-  }, [ensureArticleSaved, fetchWithAuth]);
+    const blobUrl = URL.createObjectURL(file);
+    pendingUploadsRef.current.set(blobUrl, file);
+    return blobUrl;
+  }, []);
 
   const deleteImage = useCallback(async (src: string) => {
-    const id = articleIdRef.current;
-    if (!id) return;
-    const match = src.match(/\/api\/attachments\/([^/]+)\/download/);
-    if (!match) return;
-    const attachmentId = match[1];
-    try {
-      await fetchWithAuth(`/api/articles/${id}/attachments/${attachmentId}`, {
-        method: "DELETE",
-      });
-    } catch {
-      // Silent fail
+    // If it's a pending blob URL, just remove from queue
+    if (src.startsWith("blob:")) {
+      pendingUploadsRef.current.delete(src);
+      URL.revokeObjectURL(src);
     }
-  }, [fetchWithAuth]);
+  }, []);
 
-  const handleFileUpload = useCallback(async (files: File[]) => {
-    const id = await ensureArticleSaved();
-    if (!id) return;
+  // Upload all pending images and replace blob URLs in content JSON
+  const uploadPendingImages = useCallback(async (articleId: string, contentJson: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const pending = pendingUploadsRef.current;
+    if (pending.size === 0) return contentJson;
 
-    let successCount = 0;
-    let lastError = "";
-    for (const file of files) {
+    const urlMap = new Map<string, string>(); // blobUrl → real URL
+
+    for (const [blobUrl, file] of pending) {
       const formData = new FormData();
       formData.append("file", file);
       try {
-        const res = await fetchWithAuth(`/api/articles/${id}/attachments`, {
+        const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
           method: "POST",
           body: formData,
         });
         if (res.ok) {
-          successCount++;
+          const data = await res.json();
+          urlMap.set(blobUrl, data.downloadUrl);
         } else {
           const err = await res.json();
-          lastError = err.error || "Upload failed";
+          toast.error(err.error || `Failed to upload ${file.name}`);
         }
       } catch {
-        lastError = "Upload failed";
+        toast.error(`Failed to upload ${file.name}`);
+      }
+      URL.revokeObjectURL(blobUrl);
+    }
+    pending.clear();
+
+    // Replace blob URLs in content JSON
+    if (urlMap.size > 0) {
+      let jsonStr = JSON.stringify(contentJson);
+      for (const [blobUrl, realUrl] of urlMap) {
+        jsonStr = jsonStr.split(blobUrl).join(realUrl);
+      }
+      return JSON.parse(jsonStr);
+    }
+    return contentJson;
+  }, [fetchWithAuth]);
+
+  // Upload pending file attachments
+  const uploadPendingFiles = useCallback(async (articleId: string) => {
+    if (pendingFiles.length === 0) return;
+    for (const file of pendingFiles) {
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, { method: "POST", body: formData });
+        if (!res.ok) {
+          const err = await res.json();
+          toast.error(err.error || `Failed to upload ${file.name}`);
+        }
+      } catch {
+        toast.error(`Failed to upload ${file.name}`);
       }
     }
-    if (successCount > 0) {
-      toast.success(successCount === 1 ? "File uploaded" : `${successCount} files uploaded`);
-      setArticleId(id); // Switch to AttachmentList AFTER uploads complete
-    }
-    if (lastError && successCount < files.length) {
-      toast.error(lastError);
-    }
-  }, [ensureArticleSaved, fetchWithAuth]);
+  }, [pendingFiles, fetchWithAuth]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -149,10 +110,10 @@ export default function NewArticlePage() {
     setSaving(true);
     setError("");
 
-    // If article was auto-saved (for upload), update it instead of creating
-    if (articleIdRef.current) {
-      const res = await fetchWithAuth(`/api/articles/${articleIdRef.current}`, {
-        method: "PUT",
+    try {
+      // Create article
+      const res = await fetchWithAuth("/api/articles", {
+        method: "POST",
         body: JSON.stringify({
           title: title.trim(),
           content,
@@ -165,37 +126,38 @@ export default function NewArticlePage() {
       });
 
       if (res.ok) {
-        const updated = await res.json();
-        toast.success("Article saved successfully");
-        navigate(`/articles/${updated.slug}`);
+        const article = await res.json();
+
+        // Upload pending images and update content if needed
+        const hasPendingImages = pendingUploadsRef.current.size > 0;
+        if (hasPendingImages) {
+          const finalContent = await uploadPendingImages(article.id, content || {});
+          await fetchWithAuth(`/api/articles/${article.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              title: title.trim(),
+              content: finalContent,
+              excerpt: excerpt.trim() || undefined,
+              contentType,
+              difficulty,
+              status,
+              tags,
+            }),
+          });
+        }
+
+        // Upload pending file attachments
+        await uploadPendingFiles(article.id);
+
+        toast.success("Article created successfully");
+        navigate(`/articles/${article.slug}`);
       } else {
         const data = await res.json();
         setError(data.error || "Failed to save article");
         setSaving(false);
       }
-      return;
-    }
-
-    const res = await fetchWithAuth("/api/articles", {
-      method: "POST",
-      body: JSON.stringify({
-        title: title.trim(),
-        content,
-        excerpt: excerpt.trim() || undefined,
-        contentType,
-        difficulty,
-        status,
-        tags,
-      }),
-    });
-
-    if (res.ok) {
-      const article = await res.json();
-      toast.success("Article created successfully");
-      navigate(`/articles/${article.slug}`);
-    } else {
-      const data = await res.json();
-      setError(data.error || "Failed to save article");
+    } catch {
+      setError("An unexpected error occurred");
       setSaving(false);
     }
   };
@@ -292,14 +254,14 @@ export default function NewArticlePage() {
         </div>
 
         <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <TiptapEditor content={content} onChange={(json) => setContent(json)} articleId={articleId ?? undefined} uploadImage={uploadImage} deleteImage={deleteImage} />
+          <TiptapEditor content={content} onChange={(json) => setContent(json)} uploadImage={uploadImage} deleteImage={deleteImage} deferredUpload={true} />
         </Suspense>
 
-        {articleId ? (
-          <AttachmentList articleId={articleId} canEdit={true} />
-        ) : (
-          <FileUploadZone onUpload={handleFileUpload} />
-        )}
+        <PendingFileList
+          files={pendingFiles}
+          onAdd={(newFiles) => setPendingFiles(prev => [...prev, ...newFiles])}
+          onRemove={(index) => setPendingFiles(prev => prev.filter((_, i) => i !== index))}
+        />
       </div>
     </div>
   );

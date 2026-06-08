@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Save, ArrowLeft, Loader2, Send } from "lucide-react";
 import { TagSelector } from "../components/editor/tag-selector";
@@ -28,33 +28,28 @@ export default function EditArticlePage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<Set<string>>(new Set());
 
+  // Pending image uploads: blobUrl → File
+  const pendingUploadsRef = useRef<Map<string, File>>(new Map());
+
+  // Deferred upload: create blob URL and store file for later upload
   const uploadImage = useCallback(async (file: File): Promise<string | null> => {
-    if (!article) return null;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetchWithAuth(`/api/articles/${article.id}/attachments`, {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return data.downloadUrl;
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Image upload failed");
-        return null;
-      }
-    } catch {
-      toast.error("Image upload failed");
-      return null;
-    }
-  }, [article, fetchWithAuth]);
+    const blobUrl = URL.createObjectURL(file);
+    pendingUploadsRef.current.set(blobUrl, file);
+    return blobUrl;
+  }, []);
 
   const deleteImage = useCallback(async (src: string) => {
+    // If it's a pending blob URL, just remove from queue
+    if (src.startsWith("blob:")) {
+      pendingUploadsRef.current.delete(src);
+      URL.revokeObjectURL(src);
+      return;
+    }
+    // If it's an already-uploaded image, delete from backend
     if (!article) return;
-    // Extract attachment ID from URL: /api/attachments/{id}/download
     const match = src.match(/\/api\/attachments\/([^/]+)\/download/);
     if (!match) return;
     const attachmentId = match[1];
@@ -66,6 +61,46 @@ export default function EditArticlePage() {
       // Silent fail — orphan cleanup is not critical
     }
   }, [article, fetchWithAuth]);
+
+  // Upload all pending images and replace blob URLs in content JSON
+  const uploadPendingImages = useCallback(async (articleId: string, contentJson: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const pending = pendingUploadsRef.current;
+    if (pending.size === 0) return contentJson;
+
+    const urlMap = new Map<string, string>(); // blobUrl → real URL
+
+    for (const [blobUrl, file] of pending) {
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          urlMap.set(blobUrl, data.downloadUrl);
+        } else {
+          const err = await res.json();
+          toast.error(err.error || `Failed to upload ${file.name}`);
+        }
+      } catch {
+        toast.error(`Failed to upload ${file.name}`);
+      }
+      URL.revokeObjectURL(blobUrl);
+    }
+    pending.clear();
+
+    // Replace blob URLs in content JSON
+    if (urlMap.size > 0) {
+      let jsonStr = JSON.stringify(contentJson);
+      for (const [blobUrl, realUrl] of urlMap) {
+        jsonStr = jsonStr.split(blobUrl).join(realUrl);
+      }
+      return JSON.parse(jsonStr);
+    }
+    return contentJson;
+  }, [fetchWithAuth]);
 
   useEffect(() => {
     if (params.slug) {
@@ -103,27 +138,59 @@ export default function EditArticlePage() {
     setSaving(true);
     setError("");
 
-    const res = await fetchWithAuth(`/api/articles/${article.id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        title: title.trim(),
-        content,
-        excerpt: excerpt.trim() || undefined,
-        contentType,
-        difficulty,
-        status,
-        changeSummary: changeSummary.trim() || undefined,
-        tags,
-      }),
-    });
+    try {
+      // Upload pending images first, replace blob URLs with real URLs
+      const finalContent = await uploadPendingImages(article.id, content || {});
 
-    if (res.ok) {
-      const updated = await res.json();
-      toast.success("Article saved successfully");
-      navigate(`/articles/${updated.slug}`);
-    } else {
-      const data = await res.json();
-      setError(data.error || "Failed to save article");
+      // Delete attachments marked for removal
+      for (const attachmentId of deletedAttachmentIds) {
+        try {
+          await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, { method: "DELETE" });
+        } catch {
+          // Silent fail on delete
+        }
+      }
+
+      // Upload pending file attachments
+      for (const file of pendingFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const uploadRes = await fetchWithAuth(`/api/articles/${article.id}/attachments`, { method: "POST", body: formData });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            toast.error(err.error || `Failed to upload ${file.name}`);
+          }
+        } catch {
+          toast.error(`Failed to upload ${file.name}`);
+        }
+      }
+
+      const res = await fetchWithAuth(`/api/articles/${article.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: title.trim(),
+          content: finalContent,
+          excerpt: excerpt.trim() || undefined,
+          contentType,
+          difficulty,
+          status,
+          changeSummary: changeSummary.trim() || undefined,
+          tags,
+        }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        toast.success("Article saved successfully");
+        navigate(`/articles/${updated.slug}`);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to save article");
+        setSaving(false);
+      }
+    } catch {
+      setError("An unexpected error occurred");
       setSaving(false);
     }
   };
@@ -250,10 +317,20 @@ export default function EditArticlePage() {
         </div>
 
         <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <TiptapEditor content={content} onChange={(json) => setContent(json)} articleId={article.id} uploadImage={uploadImage} deleteImage={deleteImage} />
+          <TiptapEditor content={content} onChange={(json) => setContent(json)} articleId={article.id} uploadImage={uploadImage} deleteImage={deleteImage} deferredUpload={true} />
         </Suspense>
 
-        <AttachmentList articleId={article.id} canEdit={true} />
+        <AttachmentList
+          articleId={article.id}
+          canEdit={true}
+          hideUpload={true}
+          deletedIds={deletedAttachmentIds}
+          onDeferredDelete={(attachment) => setDeletedAttachmentIds(prev => new Set(prev).add(attachment.id))}
+          onUndoDelete={(id) => setDeletedAttachmentIds(prev => { const next = new Set(prev); next.delete(id); return next; })}
+          pendingFiles={pendingFiles}
+          onAddFiles={(newFiles) => setPendingFiles(prev => [...prev, ...newFiles])}
+          onRemovePendingFile={(index) => setPendingFiles(prev => prev.filter((_, i) => i !== index))}
+        />
       </div>
     </div>
   );

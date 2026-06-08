@@ -35,9 +35,11 @@ interface TiptapEditorProps {
   articleId?: string;
   uploadImage?: (file: File) => Promise<string | null>;
   deleteImage?: (src: string) => Promise<void>;
+  /** When true, image toolbar button works without articleId (deferred upload mode) */
+  deferredUpload?: boolean;
 }
 
-export default function TiptapEditor({ content, onChange, articleId, uploadImage, deleteImage }: TiptapEditorProps) {
+export default function TiptapEditor({ content, onChange, articleId, uploadImage, deleteImage, deferredUpload }: TiptapEditorProps) {
   const { token } = useAuth();
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +68,7 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!uploadRef.current) {
-      toast.error("Save the article first to upload images");
+      toast.error("Image upload not available");
       return;
     }
     const url = await uploadRef.current(file);
@@ -98,7 +100,7 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
       const json = editor.getJSON() as Record<string, unknown>;
       onChange(json);
 
-      // Detect removed images and delete from backend
+      // Detect removed images and delete from backend (only for already-uploaded images)
       const currentSrcs = extractImageSrcs(json);
       const prevSrcs = prevImageSrcsRef.current;
       for (const src of prevSrcs) {
@@ -265,14 +267,14 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
 
         <ToolbarButton
           onClick={() => {
-            if (!articleId || !uploadImage) {
+            if (!deferredUpload && (!articleId || !uploadImage)) {
               toast.error("Save the article first to upload images");
               return;
             }
             imageInputRef.current?.click();
           }}
           title="Insert image"
-          disabled={!articleId}
+          disabled={!deferredUpload && !articleId}
         >
           <ImageIcon size={16} />
         </ToolbarButton>

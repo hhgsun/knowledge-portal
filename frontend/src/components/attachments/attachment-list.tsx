@@ -9,6 +9,8 @@ import {
   Trash2,
   Upload,
   Loader2,
+  Clock,
+  Undo2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type { ArticleAttachment, AttachmentListResponse } from "../../types/api";
@@ -16,6 +18,20 @@ import type { ArticleAttachment, AttachmentListResponse } from "../../types/api"
 interface AttachmentListProps {
   articleId: string;
   canEdit: boolean;
+  /** When set, delete is deferred — calls this instead of immediate API delete */
+  onDeferredDelete?: (attachment: ArticleAttachment) => void;
+  /** Callback to undo a deferred delete */
+  onUndoDelete?: (attachmentId: string) => void;
+  /** Hide the upload button (use pendingFiles + onAddFiles instead) */
+  hideUpload?: boolean;
+  /** Attachment IDs marked for deletion (shown with strikethrough) */
+  deletedIds?: Set<string>;
+  /** Pending files to show inline (not yet uploaded) */
+  pendingFiles?: File[];
+  /** Callback to add new files to pending queue */
+  onAddFiles?: (files: File[]) => void;
+  /** Callback to remove a pending file by index */
+  onRemovePendingFile?: (index: number) => void;
 }
 
 const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.yaml,.json,.csv,.svg";
@@ -32,7 +48,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function AttachmentList({ articleId, canEdit }: AttachmentListProps) {
+export default function AttachmentList({ articleId, canEdit, onDeferredDelete, onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile }: AttachmentListProps) {
   const { fetchWithAuth } = useApi();
   const [attachments, setAttachments] = useState<ArticleAttachment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +125,13 @@ export default function AttachmentList({ articleId, canEdit }: AttachmentListPro
     setDragOver(false);
     if (!canEdit || uploading) return;
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) await uploadFiles(files);
+    if (files.length === 0) return;
+    // If deferred mode (onAddFiles), queue files; otherwise upload immediately
+    if (onAddFiles) {
+      onAddFiles(files);
+    } else {
+      await uploadFiles(files);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -123,6 +145,12 @@ export default function AttachmentList({ articleId, canEdit }: AttachmentListPro
   };
 
   const handleDelete = async (attachment: ArticleAttachment) => {
+    if (onDeferredDelete) {
+      // Deferred mode: just notify parent, don't call API
+      onDeferredDelete(attachment);
+      return;
+    }
+
     if (!confirm(`Delete "${attachment.fileName}"?`)) return;
 
     try {
@@ -172,7 +200,10 @@ export default function AttachmentList({ articleId, canEdit }: AttachmentListPro
     );
   }
 
-  if (attachments.length === 0 && !canEdit) return null;
+  const visibleAttachments = attachments;
+  const totalCount = visibleAttachments.length + (pendingFiles?.length || 0);
+
+  if (totalCount === 0 && !canEdit) return null;
 
   return (
     <div
@@ -188,9 +219,9 @@ export default function AttachmentList({ articleId, canEdit }: AttachmentListPro
     >
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Attachments {attachments.length > 0 && `(${attachments.length})`}
+          Attachments {totalCount > 0 && `(${totalCount})`}
         </h3>
-        {canEdit && (
+        {canEdit && !hideUpload && (
           <label
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg cursor-pointer transition-colors",
@@ -211,42 +242,114 @@ export default function AttachmentList({ articleId, canEdit }: AttachmentListPro
             />
           </label>
         )}
+        {canEdit && onAddFiles && (
+          <label
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg cursor-pointer transition-colors",
+              "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+            )}
+          >
+            <Upload size={14} />
+            Add Files
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_EXTENSIONS}
+              multiple
+              onChange={(e) => { onAddFiles(Array.from(e.target.files || [])); e.target.value = ""; }}
+              className="hidden"
+            />
+          </label>
+        )}
       </div>
 
-      {attachments.length === 0 ? (
+      {totalCount === 0 ? (
         <div className={cn(
           "px-4 py-6 text-center text-sm",
           dragOver ? "text-blue-500" : "text-zinc-400"
         )}>
           {dragOver
-            ? "Drop files here to upload"
+            ? "Drop files here to add"
             : canEdit
-              ? "No attachments yet. Drag & drop files here or click Upload."
+              ? "No attachments yet. Drag & drop files here or click Add Files."
               : "No attachments yet."}
         </div>
       ) : (
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {attachments.map((attachment) => (
-            <li key={attachment.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+          {visibleAttachments.map((attachment) => {
+            const isDeleted = deletedIds?.has(attachment.id);
+            return (
+            <li key={attachment.id} className={cn(
+              "flex items-center gap-3 px-4 py-2.5 transition-colors",
+              isDeleted
+                ? "bg-red-50/50 dark:bg-red-950/20 opacity-60"
+                : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+            )}>
               {getFileIcon(attachment.contentType)}
-              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={attachment.fileName}>
+              <span className={cn(
+                "flex-1 text-sm truncate",
+                isDeleted
+                  ? "line-through text-zinc-400 dark:text-zinc-500"
+                  : "text-zinc-700 dark:text-zinc-300"
+              )} title={attachment.fileName}>
                 {attachment.fileName}
               </span>
+              {isDeleted && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
+                  Kaydedilince silinecek
+                </span>
+              )}
               <span className="text-xs text-zinc-400 whitespace-nowrap">
                 {formatFileSize(attachment.sizeBytes)}
               </span>
-              <button
-                onClick={() => handleDownload(attachment)}
-                className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-                title="Download"
-              >
-                <Download size={14} className="text-zinc-500" />
-              </button>
-              {canEdit && (
+              {!isDeleted && (
+                <button
+                  onClick={() => handleDownload(attachment)}
+                  className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Download"
+                >
+                  <Download size={14} className="text-zinc-500" />
+                </button>
+              )}
+              {canEdit && !isDeleted && (
                 <button
                   onClick={() => handleDelete(attachment)}
                   className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                   title="Delete"
+                >
+                  <Trash2 size={14} className="text-red-500" />
+                </button>
+              )}
+              {canEdit && isDeleted && onUndoDelete && (
+                <button
+                  onClick={() => onUndoDelete(attachment.id)}
+                  className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Geri al"
+                >
+                  <Undo2 size={14} className="text-zinc-600 dark:text-zinc-400" />
+                </button>
+              )}
+            </li>
+            );
+          })}
+          {pendingFiles && pendingFiles.map((file, index) => (
+            <li key={`pending-${file.name}-${index}`} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors">
+              {getFileIcon(file.type || "application/octet-stream")}
+              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={file.name}>
+                {file.name}
+              </span>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                <Clock size={10} />
+                Kaydedilince yüklenecek
+              </span>
+              <span className="text-xs text-zinc-400 whitespace-nowrap">
+                {formatFileSize(file.size)}
+              </span>
+              {onRemovePendingFile && (
+                <button
+                  onClick={() => onRemovePendingFile(index)}
+                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  title="Remove"
                 >
                   <Trash2 size={14} className="text-red-500" />
                 </button>
