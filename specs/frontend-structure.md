@@ -29,7 +29,8 @@ frontend/src/
 │       ├── tiptap-renderer.tsx # TipTap JSON → React element renderer
 │       └── tag-selector.tsx   # Tag picker with inline tag creation
 ├── attachments/
-│   └── attachment-list.tsx    # File list + upload/download/delete UI
+│   ├── attachment-list.tsx    # File list with deferred upload/delete, download UI
+│   └── file-upload-zone.tsx   # PendingFileList component for new articles (no articleId yet)
 └── pages/
     ├── LoginPage.tsx          # Email/password form → POST /api/auth/login
     ├── RegisterPage.tsx       # Registration form → POST /api/auth/register

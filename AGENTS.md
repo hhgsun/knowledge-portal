@@ -249,6 +249,9 @@ No known gaps at this time.
 - **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
 - **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission()` for ownership-based or conditional checks (edit/delete/publish/archive)
 - **Attachment upload**: Files stored on disk at `data/uploads/{articleId}/{storedFileName}`, metadata in `article_attachments` table. Extension whitelist + MIME validation enforced. Max 20MB/file, 20 files/article.
+- **Attachment deferred upload**: Frontend uses deferred upload pattern — files are queued locally and only uploaded when the article is saved. New files show "Kaydedilince yüklenecek" badge with green background.
+- **Attachment deferred delete**: In edit mode, deleting a file marks it with strikethrough + "Kaydedilince silinecek" badge. Undo is available. Actual API DELETE happens on save.
+- **Image deferred upload**: Images pasted/dropped into TipTap editor are stored as blob URLs temporarily. On save, blob URLs are replaced with real `/api/attachments/{id}/download` URLs after upload.
 - **Attachment cascade**: Article deletion removes all attachment DB records (cascade) AND physical files from disk
 - **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.
 
