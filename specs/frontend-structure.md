@@ -11,7 +11,8 @@ frontend/src/
 ├── App.tsx                   # BrowserRouter + route definitions + ProtectedRoute
 ├── index.css                 # Tailwind v4 import + CSS custom properties + dark mode
 ├── contexts/
-│   └── AuthContext.tsx        # JWT auth state, login/logout/register, auto-revalidation
+│   ├── AuthContext.tsx        # JWT auth state, login/logout/register, auto-revalidation
+│   └── ThemeContext.tsx       # Light/Dark/System theme toggle, persisted to localStorage
 ├── hooks/
 │   └── useApi.ts              # fetchWithAuth — JWT injection, auto-logout on 401
 ├── lib/

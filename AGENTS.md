@@ -40,7 +40,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 ### Frontend (`frontend/`)
 
 - **Language**: TypeScript strict
-- **State**: React Context (`AuthContext`) — no Redux/Zustand
+- **State**: React Context (`AuthContext`, `ThemeContext`) — no Redux/Zustand
 - **API calls**: `useApi` hook (`src/hooks/useApi.ts`) — auto-attaches JWT, auto-logout on 401
 - **Routing**: React Router v7, `ProtectedRoute` + `RoleRoute` wrappers in `App.tsx`
 - **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (TipTap)
@@ -212,7 +212,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
 | 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |
 | Version Diff | ✅ Implemented | Line-based diff comparison between versions |
-| Dark Mode Toggle | ❌ Not implemented | System preference only |
+| Dark Mode Toggle | ✅ Implemented | Light/Dark/System toggle, persisted to localStorage |
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |

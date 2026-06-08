@@ -15,14 +15,16 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Heart,
-  TreePalm,
-  LucideGraduationCap,
   Copyright,
   Tag,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface NavItem {
   label: string;
@@ -106,6 +108,7 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const role = user?.role;
   const isAdmin = role === "admin";
@@ -166,17 +169,26 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-3 py-3 border-t border-b border-zinc-200 dark:border-zinc-800 space-y-1">
-        <Link
-          to="/profile"
-          title={collapsed ? (user?.name ?? "Profile") : undefined}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100 transition-colors",
-            collapsed && "justify-center px-2"
-          )}
-        >
-          <User size={18} />
-          {!collapsed && <span className="truncate">{user?.name ?? "Profile"}</span>}
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            to="/profile"
+            title={collapsed ? (user?.name ?? "Profile") : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100 transition-colors flex-1",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <User size={18} />
+            {!collapsed && <span className="truncate">{user?.name ?? "Profile"}</span>}
+          </Link>
+          <button
+            onClick={() => setTheme(theme === "light" ? "dark" : theme === "dark" ? "system" : "light")}
+            title={`Theme: ${theme}`}
+            className="p-2 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0"
+          >
+            {theme === "light" ? <Sun size={16} /> : theme === "dark" ? <Moon size={16} /> : <Monitor size={16} />}
+          </button>
+        </div>
         <button
           onClick={() => { logout(); navigate("/login"); }}
           title={collapsed ? "Sign out" : undefined}
