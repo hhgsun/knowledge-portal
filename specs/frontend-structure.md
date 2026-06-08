@@ -14,7 +14,8 @@ frontend/src/
 │   ├── AuthContext.tsx        # JWT auth state, login/logout/register, auto-revalidation
 │   └── ThemeContext.tsx       # Light/Dark/System theme toggle, persisted to localStorage
 ├── hooks/
-│   └── useApi.ts              # fetchWithAuth — JWT injection, auto-logout on 401
+│   ├── useApi.ts              # fetchWithAuth — JWT injection, auto-logout on 401
+│   └── useArticleImages.ts    # Shared deferred image/file upload logic (blob URL → real URL)
 ├── lib/
 │   └── utils.ts               # cn() — clsx + tailwind-merge helper
 ├── components/
@@ -25,6 +26,7 @@ frontend/src/
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section
 │   │   └── header.tsx         # Top bar: search, notifications, profile, logout
 │   └── editor/
+│       ├── article-form.tsx   # Shared article form (title, metadata, editor, attachments slot)
 │       ├── tiptap-editor.tsx  # Rich-text editor (TipTap) with formatting toolbar + image upload
 │       ├── tiptap-renderer.tsx # TipTap JSON → React element renderer
 │       └── tag-selector.tsx   # Tag picker with inline tag creation
@@ -74,11 +76,14 @@ graph TD
     HomePage --> useApi
     ArticlesPage --> useApi
     NewArticlePage --> useApi
-    NewArticlePage --> TiptapEditor
-    NewArticlePage --> TagSelector
+    NewArticlePage --> ArticleForm
+    NewArticlePage --> useArticleImages
     EditArticlePage --> useApi
-    EditArticlePage --> TiptapEditor
-    EditArticlePage --> TagSelector
+    EditArticlePage --> ArticleForm
+    EditArticlePage --> useArticleImages
+
+    ArticleForm --> TiptapEditor
+    ArticleForm --> TagSelector
     ArticleViewPage --> useApi
     ArticleViewPage --> TiptapRenderer
     VersionsPage --> useApi

@@ -73,7 +73,7 @@ backend/Tests/
 
 frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
-├── src/hooks/            # useApi (fetch wrapper)
+├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
 ├── src/pages/            # 15 page components
