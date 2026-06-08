@@ -1,10 +1,12 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useCallback, useRef, lazy, Suspense } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Save, ArrowLeft, Send } from "lucide-react";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import AttachmentList from "../components/attachments/attachment-list";
+import FileUploadZone from "../components/attachments/file-upload-zone";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
 
@@ -22,6 +24,121 @@ export default function NewArticlePage() {
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [articleId, setArticleId] = useState<string | null>(null);
+  const [articleSlug, setArticleSlug] = useState<string | null>(null);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const articleIdRef = useRef<string | null>(null);
+
+  // Auto-save as draft and return article ID (for upload support)
+  // Does NOT set articleId state — callers decide when to trigger render switch
+  const ensureArticleSaved = useCallback(async (): Promise<string | null> => {
+    if (articleIdRef.current) return articleIdRef.current;
+
+    if (!title.trim()) {
+      toast.error("Please enter a title before uploading files");
+      return null;
+    }
+
+    const res = await fetchWithAuth("/api/articles", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title.trim(),
+        content: contentRef.current,
+        excerpt: excerpt.trim() || undefined,
+        contentType,
+        difficulty,
+        status: "draft",
+        tags,
+      }),
+    });
+
+    if (res.ok) {
+      const article = await res.json();
+      articleIdRef.current = article.id;
+      setArticleSlug(article.slug);
+      toast.success("Article auto-saved as draft");
+      return article.id;
+    } else {
+      const data = await res.json();
+      toast.error(data.error || "Failed to auto-save article");
+      return null;
+    }
+  }, [title, excerpt, contentType, difficulty, tags, fetchWithAuth]);
+
+  const uploadImage = useCallback(async (file: File): Promise<string | null> => {
+    const id = await ensureArticleSaved();
+    if (!id) return null;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithAuth(`/api/articles/${id}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArticleId(id);
+        return data.downloadUrl;
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Image upload failed");
+        return null;
+      }
+    } catch {
+      toast.error("Image upload failed");
+      return null;
+    }
+  }, [ensureArticleSaved, fetchWithAuth]);
+
+  const deleteImage = useCallback(async (src: string) => {
+    const id = articleIdRef.current;
+    if (!id) return;
+    const match = src.match(/\/api\/attachments\/([^/]+)\/download/);
+    if (!match) return;
+    const attachmentId = match[1];
+    try {
+      await fetchWithAuth(`/api/articles/${id}/attachments/${attachmentId}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Silent fail
+    }
+  }, [fetchWithAuth]);
+
+  const handleFileUpload = useCallback(async (files: File[]) => {
+    const id = await ensureArticleSaved();
+    if (!id) return;
+
+    let successCount = 0;
+    let lastError = "";
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetchWithAuth(`/api/articles/${id}/attachments`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          successCount++;
+        } else {
+          const err = await res.json();
+          lastError = err.error || "Upload failed";
+        }
+      } catch {
+        lastError = "Upload failed";
+      }
+    }
+    if (successCount > 0) {
+      toast.success(successCount === 1 ? "File uploaded" : `${successCount} files uploaded`);
+      setArticleId(id); // Switch to AttachmentList AFTER uploads complete
+    }
+    if (lastError && successCount < files.length) {
+      toast.error(lastError);
+    }
+  }, [ensureArticleSaved, fetchWithAuth]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -31,6 +148,33 @@ export default function NewArticlePage() {
 
     setSaving(true);
     setError("");
+
+    // If article was auto-saved (for upload), update it instead of creating
+    if (articleIdRef.current) {
+      const res = await fetchWithAuth(`/api/articles/${articleIdRef.current}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: title.trim(),
+          content,
+          excerpt: excerpt.trim() || undefined,
+          contentType,
+          difficulty,
+          status,
+          tags,
+        }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        toast.success("Article saved successfully");
+        navigate(`/articles/${updated.slug}`);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to save article");
+        setSaving(false);
+      }
+      return;
+    }
 
     const res = await fetchWithAuth("/api/articles", {
       method: "POST",
@@ -148,8 +292,14 @@ export default function NewArticlePage() {
         </div>
 
         <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <TiptapEditor content={content} onChange={(json) => setContent(json)} />
+          <TiptapEditor content={content} onChange={(json) => setContent(json)} articleId={articleId ?? undefined} uploadImage={uploadImage} deleteImage={deleteImage} />
         </Suspense>
+
+        {articleId ? (
+          <AttachmentList articleId={articleId} canEdit={true} />
+        ) : (
+          <FileUploadZone onUpload={handleFileUpload} />
+        )}
       </div>
     </div>
   );
