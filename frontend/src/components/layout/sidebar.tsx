@@ -114,22 +114,30 @@ export function Sidebar() {
   const isAdmin = role === "admin";
   const isEditorOrAdmin = role === "admin" || role === "editor";
   const [collapsed, setCollapsed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <aside className={cn(
-      "hidden lg:flex lg:flex-col lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0 transition-all duration-300",
-      collapsed ? "lg:w-16" : "lg:w-64"
-    )}>
+    <aside
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={cn(
+        "hidden lg:flex lg:flex-col lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0 transition-all duration-300",
+        collapsed ? "lg:w-16" : "lg:w-64"
+      )}>
       {/* Logo + Toggle */}
-      <div className="flex items-center justify-between px-4 py-5 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <BookSearch size={24} className="text-blue-600 shrink-0" />
-          {!collapsed && <span className="font-bold text-md whitespace-nowrap overflow-hidden">Knowledge Portal</span>}
+      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center gap-1 overflow-hidden select-none my-1">
+          <BookSearch size={24} className="text-blue-600 shrink-0 ml-1" />
+          <span className={'font-bold text-md whitespace-nowrap overflow-hidden ' + (!collapsed ? 'block' : 'hidden')}>
+            KnowledgePortal
+          </span>
         </div>
         <button
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0"
+          className={cn("p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0",
+            (!collapsed || (collapsed && isHovered)) ? "block" : "hidden")
+          }
         >
           {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
         </button>
@@ -184,7 +192,10 @@ export function Sidebar() {
           <button
             onClick={() => setTheme(theme === "light" ? "dark" : theme === "dark" ? "system" : "light")}
             title={`Theme: ${theme}`}
-            className="p-2 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0"
+            className={cn(
+              "p-2 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0",
+              collapsed && "hidden"
+            )}
           >
             {theme === "light" ? <Sun size={16} /> : theme === "dark" ? <Moon size={16} /> : <Monitor size={16} />}
           </button>
