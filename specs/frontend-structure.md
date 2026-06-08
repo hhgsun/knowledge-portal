@@ -25,9 +25,11 @@ frontend/src/
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section
 │   │   └── header.tsx         # Top bar: search, notifications, profile, logout
 │   └── editor/
-│       ├── tiptap-editor.tsx  # Rich-text editor (TipTap) with formatting toolbar
+│       ├── tiptap-editor.tsx  # Rich-text editor (TipTap) with formatting toolbar + image upload
 │       ├── tiptap-renderer.tsx # TipTap JSON → React element renderer
 │       └── tag-selector.tsx   # Tag picker with inline tag creation
+├── attachments/
+│   └── attachment-list.tsx    # File list + upload/download/delete UI
 └── pages/
     ├── LoginPage.tsx          # Email/password form → POST /api/auth/login
     ├── RegisterPage.tsx       # Registration form → POST /api/auth/register

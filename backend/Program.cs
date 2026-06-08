@@ -112,6 +112,10 @@ using (var scope = app.Services.CreateScope())
     await DbInitializer.SeedAsync(db);
 }
 
+// ─── Ensure uploads directory ────────────────────────────────
+var uploadsPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), app.Configuration["FileStorage:BasePath"] ?? "../data/uploads"));
+Directory.CreateDirectory(uploadsPath);
+
 app.Run();
 
 // Marker class for WebApplicationFactory<Program> in integration tests

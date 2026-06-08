@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ArticleFeedback> ArticleFeedback => Set<ArticleFeedback>();
     public DbSet<ArticleView> ArticleViews => Set<ArticleView>();
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
+    public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -118,6 +119,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(v => v.CreatedAt).IsRequired();
             e.HasOne(v => v.Article).WithMany(a => a.Views).HasForeignKey(v => v.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId);
+        });
+
+        // ─── ArticleAttachments ─────────────────────────────
+        modelBuilder.Entity<ArticleAttachment>(e =>
+        {
+            e.ToTable("article_attachments");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.ArticleId).IsRequired();
+            e.Property(a => a.FileName).IsRequired();
+            e.Property(a => a.StoredFileName).IsRequired();
+            e.Property(a => a.ContentType).IsRequired();
+            e.Property(a => a.SizeBytes).IsRequired();
+            e.Property(a => a.UploadedById).IsRequired();
+            e.Property(a => a.CreatedAt).IsRequired();
+            e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(a => a.UploadedBy).WithMany().HasForeignKey(a => a.UploadedById);
         });
 
         // ─── SearchQueries ────────────────────────────────

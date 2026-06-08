@@ -18,6 +18,7 @@ erDiagram
     Article ||--o{ ArticleTag : "tagged"
     Article ||--o{ ArticleFeedback : "receives"
     Article ||--o{ ArticleView : "tracked"
+    Article ||--o{ ArticleAttachment : "has"
     Article o|--o| ApiKey : "created_via"
 
     Tag ||--o{ ArticleTag : "applied"
@@ -113,6 +114,17 @@ erDiagram
         string clicked_article_id FK "nullable"
         string search_type "default: fulltext"
         int response_time_ms "nullable"
+        datetime created_at
+    }
+
+    ArticleAttachment {
+        string id PK
+        string article_id FK
+        string file_name
+        string stored_file_name
+        string content_type
+        long size_bytes
+        string uploaded_by_id FK
         datetime created_at
     }
 ```
@@ -238,6 +250,19 @@ erDiagram
 | ResponseTimeMs | `int?` | `response_time_ms` | — | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
+### ArticleAttachment
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK → articles.id, Required | — |
+| FileName | `string` | `file_name` | Required | — |
+| StoredFileName | `string` | `stored_file_name` | Required | GUID-based |
+| ContentType | `string` | `content_type` | Required | — |
+| SizeBytes | `long` | `size_bytes` | Required | — |
+| UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
 ## Indexes
 
 | Table | Column(s) | Type |
@@ -256,6 +281,7 @@ erDiagram
 | Article | ArticleTag | Cascade |
 | Article | ArticleFeedback | Cascade |
 | Article | ArticleView | Cascade |
+| Article | ArticleAttachment | Cascade |
 | ApiKey | Article.CreatedViaApiKeyId | SetNull |
 | Tag | ArticleTag | Cascade |
 

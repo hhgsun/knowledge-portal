@@ -27,4 +27,5 @@ public class Article
     public ICollection<ArticleTag> ArticleTags { get; set; } = [];
     public ICollection<ArticleFeedback> Feedback { get; set; } = [];
     public ICollection<ArticleView> Views { get; set; } = [];
+    public ICollection<ArticleAttachment> Attachments { get; set; } = [];
 }

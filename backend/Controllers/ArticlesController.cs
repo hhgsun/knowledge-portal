@@ -13,7 +13,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles")]
 [Authorize]
-public partial class ArticlesController(AppDbContext db) : ControllerBase
+public partial class ArticlesController(AppDbContext db, IConfiguration config) : ControllerBase
 {
     private static readonly HashSet<string> ValidContentTypes = ["reference", "how-to", "adr", "runbook", "faq", "policy", "onboarding"];
     private static readonly HashSet<string> ValidDifficulties = ["beginner", "intermediate", "advanced"];
@@ -316,6 +316,12 @@ public partial class ArticlesController(AppDbContext db) : ControllerBase
         var canDeleteOwn = RbacService.HasPermission(role, Permissions.ArticlesDeleteOwn) && isOwner;
         if (!canDeleteAny && !canDeleteOwn)
             return StatusCode(403, new { error = "You do not have permission to delete this article" });
+
+        // Clean up attachment files from disk
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var articleDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, id));
+        if (Directory.Exists(articleDir))
+            Directory.Delete(articleDir, true);
 
         db.Articles.Remove(article);
         await db.SaveChangesAsync();

@@ -43,3 +43,7 @@ public record RecordClickRequest(string SearchQueryId, string ArticleId);
 // Tags
 public record CreateTagRequest(string Name);
 public record UpdateTagRequest(string Id, string Name);
+
+// Attachments
+public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);
+public record AttachmentListResponse(AttachmentResponse[] Attachments, int Total);

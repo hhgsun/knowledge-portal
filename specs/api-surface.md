@@ -209,6 +209,48 @@ Rejects a pending article and returns it to `draft` status.
 
 ---
 
+## Attachments
+
+### `GET /api/articles/{id}/attachments`
+**Auth**: Bearer (JWT or API Key)
+
+**200 Response**:
+```json
+{
+  "attachments": [
+    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "createdAt": "2026-01-01T00:00:00Z" }
+  ],
+  "total": 1
+}
+```
+
+### `POST /api/articles/{id}/attachments`
+**Auth**: Bearer (JWT or API Key) — requires `articles:edit_own` (if owner) or `articles:edit_any`
+**Content-Type**: `multipart/form-data`
+**Body**: `file` (IFormFile, max 20MB, extension whitelist enforced)
+
+**201 Response**:
+```json
+{ "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "createdAt": "2026-01-01T00:00:00Z" }
+```
+**400**: Empty file, invalid extension, MIME mismatch, max attachments reached.
+**403**: No edit permission.
+
+### `DELETE /api/articles/{id}/attachments/{attachmentId}`
+**Auth**: Bearer (JWT or API Key) — requires `articles:edit_own` (if owner) or `articles:edit_any`
+
+**200 Response**: `{ "message": "Attachment deleted" }`
+**403**: No edit permission.
+**404**: Article or attachment not found.
+
+### `GET /api/attachments/{id}/download`
+**Auth**: Bearer (JWT or API Key)
+
+Returns the file as a binary stream with appropriate `Content-Type` and `Content-Disposition` headers.
+**404**: Attachment not found or file missing from disk.
+
+---
+
 ## Tags
 
 ### `GET /api/tags`

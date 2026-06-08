@@ -1,0 +1,194 @@
+using KnowledgePortal.Api.Auth;
+using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
+using KnowledgePortal.Api.Models.Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace KnowledgePortal.Api.Controllers;
+
+[ApiController]
+[Authorize]
+public class AttachmentsController(AppDbContext db, IConfiguration config) : ControllerBase
+{
+    private static readonly Dictionary<string, string[]> MimeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".png"] = ["image/png"],
+        [".jpg"] = ["image/jpeg"],
+        [".jpeg"] = ["image/jpeg"],
+        [".gif"] = ["image/gif"],
+        [".webp"] = ["image/webp"],
+        [".svg"] = ["image/svg+xml"],
+        [".pdf"] = ["application/pdf"],
+        [".md"] = ["text/markdown", "text/plain", "application/octet-stream"],
+        [".txt"] = ["text/plain"],
+        [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
+        [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"],
+        [".yaml"] = ["text/yaml", "application/x-yaml", "text/plain", "application/octet-stream"],
+        [".json"] = ["application/json", "text/plain"],
+        [".csv"] = ["text/csv", "text/plain", "application/octet-stream"],
+    };
+
+    [HttpGet("api/articles/{articleId}/attachments")]
+    public async Task<IActionResult> List(string articleId)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == articleId)
+            .OrderByDescending(a => a.CreatedAt)
+            .Select(a => new AttachmentResponse(
+                a.Id,
+                a.FileName,
+                a.ContentType,
+                a.SizeBytes,
+                $"/api/attachments/{a.Id}/download",
+                a.CreatedAt.ToString("o")))
+            .ToArrayAsync();
+
+        return Ok(new AttachmentListResponse(attachments, attachments.Length));
+    }
+
+    [HttpPost("api/articles/{articleId}/attachments")]
+    [RequestSizeLimit(20_971_520)]
+    public async Task<IActionResult> Upload(string articleId, IFormFile file)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        // Permission check: edit_own or edit_any
+        var userId = User.GetUserId();
+        var role = User.GetRole();
+        var isOwner = article.OwnerId == userId;
+        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
+        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
+        if (!canEditAny && !canEditOwn)
+            return StatusCode(403, new { error = "You do not have permission to upload attachments to this article" });
+
+        // Validate file
+        if (file.Length == 0)
+            return BadRequest(new { error = "File is empty" });
+
+        var maxSizeMB = config.GetValue("FileStorage:MaxFileSizeMB", 20);
+        if (file.Length > maxSizeMB * 1024L * 1024L)
+            return BadRequest(new { error = $"File size exceeds {maxSizeMB}MB limit" });
+
+        // Extension whitelist check
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var allowedExtensions = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>()
+            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".yaml", ".json", ".csv", ".svg"];
+
+        if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+            return BadRequest(new { error = $"File type '{extension}' is not allowed" });
+
+        // MIME type validation
+        if (MimeMap.TryGetValue(extension, out var allowedMimes))
+        {
+            if (!allowedMimes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+                return BadRequest(new { error = $"Content type '{file.ContentType}' does not match file extension '{extension}'" });
+        }
+
+        // Max attachments per article check
+        var maxAttachments = config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20);
+        var currentCount = await db.ArticleAttachments.CountAsync(a => a.ArticleId == articleId);
+        if (currentCount >= maxAttachments)
+            return BadRequest(new { error = $"Maximum {maxAttachments} attachments per article reached" });
+
+        // Generate safe stored filename
+        var storedFileName = $"{Guid.NewGuid().ToString("N")[..21]}{extension}";
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var articleDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, articleId));
+        Directory.CreateDirectory(articleDir);
+
+        var filePath = Path.Combine(articleDir, storedFileName);
+
+        // Save file to disk
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // Save metadata to DB
+        var attachment = new ArticleAttachment
+        {
+            ArticleId = articleId,
+            FileName = Path.GetFileName(file.FileName),
+            StoredFileName = storedFileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.Length,
+            UploadedById = userId
+        };
+
+        db.ArticleAttachments.Add(attachment);
+        await db.SaveChangesAsync();
+
+        return StatusCode(201, new AttachmentResponse(
+            attachment.Id,
+            attachment.FileName,
+            attachment.ContentType,
+            attachment.SizeBytes,
+            $"/api/attachments/{attachment.Id}/download",
+            attachment.CreatedAt.ToString("o")));
+    }
+
+    [HttpDelete("api/articles/{articleId}/attachments/{attachmentId}")]
+    public async Task<IActionResult> Delete(string articleId, string attachmentId)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        // Permission check
+        var userId = User.GetUserId();
+        var role = User.GetRole();
+        var isOwner = article.OwnerId == userId;
+        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
+        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
+        if (!canEditAny && !canEditOwn)
+            return StatusCode(403, new { error = "You do not have permission to delete attachments from this article" });
+
+        var attachment = await db.ArticleAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.ArticleId == articleId);
+        if (attachment == null) return NotFound(new { error = "Attachment not found" });
+
+        // Delete file from disk
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, articleId, attachment.StoredFileName));
+        if (System.IO.File.Exists(filePath))
+            System.IO.File.Delete(filePath);
+
+        db.ArticleAttachments.Remove(attachment);
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Attachment deleted" });
+    }
+
+    [HttpGet("api/attachments/{id}/download")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Download(string id, [FromQuery] string? token = null)
+    {
+        // Allow token via query param (for <img> tags that can't send headers)
+        if (!User.Identity?.IsAuthenticated == true)
+        {
+            if (string.IsNullOrEmpty(token))
+                return Unauthorized(new { error = "Authentication required" });
+
+            // Validate the token manually
+            var jwtService = HttpContext.RequestServices.GetRequiredService<JwtService>();
+            var principal = jwtService.ValidateToken(token);
+            if (principal == null)
+                return Unauthorized(new { error = "Invalid token" });
+        }
+
+        var attachment = await db.ArticleAttachments.FindAsync(id);
+        if (attachment == null) return NotFound(new { error = "Attachment not found" });
+
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, attachment.ArticleId, attachment.StoredFileName));
+
+        if (!System.IO.File.Exists(filePath))
+            return NotFound(new { error = "File not found on disk" });
+
+        return PhysicalFile(filePath, attachment.ContentType, attachment.FileName);
+    }
+}

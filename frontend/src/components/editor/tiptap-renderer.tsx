@@ -1,3 +1,5 @@
+import { useAuth } from "../../contexts/AuthContext";
+
 interface TipTapNode {
   type?: string;
   text?: string;
@@ -7,45 +9,46 @@ interface TipTapNode {
 }
 
 export function TiptapRenderer({ content }: { content: Record<string, unknown> }) {
+  const { token } = useAuth();
   const doc = content as unknown as TipTapNode;
   if (!doc.content) return null;
-  return <div className="tiptap-content">{renderNodes(doc.content)}</div>;
+  return <div className="tiptap-content">{renderNodes(doc.content, token)}</div>;
 }
 
-function renderNodes(nodes: TipTapNode[]): React.ReactNode[] {
-  return nodes.map((node, i) => renderNode(node, i));
+function renderNodes(nodes: TipTapNode[], token?: string | null): React.ReactNode[] {
+  return nodes.map((node, i) => renderNode(node, i, token));
 }
 
-function renderNode(node: TipTapNode, key: number): React.ReactNode {
+function renderNode(node: TipTapNode, key: number, token?: string | null): React.ReactNode {
   if (node.type === "text") return renderText(node, key);
 
   switch (node.type) {
     case "paragraph":
-      return <p key={key}>{node.content ? renderNodes(node.content) : null}</p>;
+      return <p key={key}>{node.content ? renderNodes(node.content, token) : null}</p>;
     case "heading": {
       const level = (node.attrs?.level as number) || 1;
       const Tag = (`h${level}`) as keyof React.JSX.IntrinsicElements;
-      return <Tag key={key}>{node.content ? renderNodes(node.content) : null}</Tag>;
+      return <Tag key={key}>{node.content ? renderNodes(node.content, token) : null}</Tag>;
     }
     case "bulletList":
-      return <ul key={key}>{node.content ? renderNodes(node.content) : null}</ul>;
+      return <ul key={key}>{node.content ? renderNodes(node.content, token) : null}</ul>;
     case "orderedList":
-      return <ol key={key}>{node.content ? renderNodes(node.content) : null}</ol>;
+      return <ol key={key}>{node.content ? renderNodes(node.content, token) : null}</ol>;
     case "listItem":
-      return <li key={key}>{node.content ? renderNodes(node.content) : null}</li>;
+      return <li key={key}>{node.content ? renderNodes(node.content, token) : null}</li>;
     case "taskList":
-      return <ul key={key} className="task-list list-none pl-0">{node.content ? renderNodes(node.content) : null}</ul>;
+      return <ul key={key} className="task-list list-none pl-0">{node.content ? renderNodes(node.content, token) : null}</ul>;
     case "taskItem": {
       const checked = node.attrs?.checked as boolean;
       return (
         <li key={key} className="flex items-start gap-2 list-none">
           <input type="checkbox" checked={checked} readOnly className="mt-1.5" />
-          <div>{node.content ? renderNodes(node.content) : null}</div>
+          <div>{node.content ? renderNodes(node.content, token) : null}</div>
         </li>
       );
     }
     case "blockquote":
-      return <blockquote key={key}>{node.content ? renderNodes(node.content) : null}</blockquote>;
+      return <blockquote key={key}>{node.content ? renderNodes(node.content, token) : null}</blockquote>;
     case "codeBlock": {
       const language = (node.attrs?.language as string) || "";
       return (
@@ -62,22 +65,23 @@ function renderNode(node: TipTapNode, key: number): React.ReactNode {
       const src = node.attrs?.src as string;
       const alt = (node.attrs?.alt as string) || "";
       if (!src) return null;
-      return <img key={key} src={src} alt={alt} className="rounded-lg max-w-full" />;
+      const imgSrc = src.startsWith("/api/") && token ? `${src}${src.includes("?") ? "&" : "?"}token=${token}` : src;
+      return <img key={key} src={imgSrc} alt={alt} className="rounded-lg max-w-full" />;
     }
     case "table":
       return (
         <div key={key} className="overflow-x-auto">
-          <table><tbody>{node.content ? renderNodes(node.content) : null}</tbody></table>
+          <table><tbody>{node.content ? renderNodes(node.content, token) : null}</tbody></table>
         </div>
       );
     case "tableRow":
-      return <tr key={key}>{node.content ? renderNodes(node.content) : null}</tr>;
+      return <tr key={key}>{node.content ? renderNodes(node.content, token) : null}</tr>;
     case "tableCell":
-      return <td key={key}>{node.content ? renderNodes(node.content) : null}</td>;
+      return <td key={key}>{node.content ? renderNodes(node.content, token) : null}</td>;
     case "tableHeader":
-      return <th key={key}>{node.content ? renderNodes(node.content) : null}</th>;
+      return <th key={key}>{node.content ? renderNodes(node.content, token) : null}</th>;
     default:
-      if (node.content) return <div key={key}>{renderNodes(node.content)}</div>;
+      if (node.content) return <div key={key}>{renderNodes(node.content, token)}</div>;
       return null;
   }
 }

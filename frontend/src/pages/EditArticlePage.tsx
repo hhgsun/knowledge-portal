@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Save, ArrowLeft, Loader2, Send } from "lucide-react";
 import { TagSelector } from "../components/editor/tag-selector";
@@ -6,6 +6,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import type { Article } from "../types/api";
+import AttachmentList from "../components/attachments/attachment-list";
 
 const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
 
@@ -27,6 +28,44 @@ export default function EditArticlePage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const uploadImage = useCallback(async (file: File): Promise<string | null> => {
+    if (!article) return null;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetchWithAuth(`/api/articles/${article.id}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.downloadUrl;
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Image upload failed");
+        return null;
+      }
+    } catch {
+      toast.error("Image upload failed");
+      return null;
+    }
+  }, [article, fetchWithAuth]);
+
+  const deleteImage = useCallback(async (src: string) => {
+    if (!article) return;
+    // Extract attachment ID from URL: /api/attachments/{id}/download
+    const match = src.match(/\/api\/attachments\/([^/]+)\/download/);
+    if (!match) return;
+    const attachmentId = match[1];
+    try {
+      await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Silent fail — orphan cleanup is not critical
+    }
+  }, [article, fetchWithAuth]);
 
   useEffect(() => {
     if (params.slug) {
@@ -211,8 +250,10 @@ export default function EditArticlePage() {
         </div>
 
         <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <TiptapEditor content={content} onChange={(json) => setContent(json)} />
+          <TiptapEditor content={content} onChange={(json) => setContent(json)} articleId={article.id} uploadImage={uploadImage} deleteImage={deleteImage} />
         </Suspense>
+
+        <AttachmentList articleId={article.id} canEdit={true} />
       </div>
     </div>
   );

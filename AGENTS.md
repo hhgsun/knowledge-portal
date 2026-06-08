@@ -28,7 +28,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 9 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery
+- **Entities**: `backend/Models/Entities/` — 10 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery, ArticleAttachment
 - **Enum Validation**: `contentType` and `difficulty` are validated server-side against allow-lists
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
@@ -56,13 +56,13 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 ```
 backend/
-├── Controllers/          # API endpoints (10 controllers)
+├── Controllers/          # API endpoints (11 controllers)
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
-│   └── Entities/         # EF Core entity classes (9 models)
+│   └── Entities/         # EF Core entity classes (10 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery, ArticleAttachment)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
@@ -75,7 +75,7 @@ frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
 ├── src/hooks/            # useApi (fetch wrapper)
 ├── src/types/            # Shared TypeScript API types
-├── src/components/       # layout/ + editor/
+├── src/components/       # layout/ + editor/ + attachments/
 ├── src/pages/            # 15 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
@@ -150,6 +150,10 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/feedback` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
 | `/api/articles/{id}/related` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/attachments` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/attachments` | POST | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
+| `/api/articles/{id}/attachments/{attachmentId}` | DELETE | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
+| `/api/attachments/{id}/download` | GET | ✓ | — | ✗ |
 | `/api/tags` | GET | ✓ | — | ✗ |
 | `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
@@ -184,6 +188,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `articles.limit` | 1 | 100 | Default 20 |
 | `profile.name` | 1 | — | Required for profile update |
 | `profile.newPassword` | 8 | 128 | Optional, requires currentPassword |
+| `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
+| `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .yaml, .json, .csv, .svg |
+| `attachment.maxPerArticle` | — | 20 | Configurable via appsettings.json |
 
 ## Feature Status
 
@@ -216,6 +223,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Notifications | ❌ Not implemented | Bell icon is cosmetic only |
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
+| Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
 | Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
 ## Known Frontend Gaps
@@ -240,6 +248,9 @@ No known gaps at this time.
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
 - **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
 - **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission()` for ownership-based or conditional checks (edit/delete/publish/archive)
+- **Attachment upload**: Files stored on disk at `data/uploads/{articleId}/{storedFileName}`, metadata in `article_attachments` table. Extension whitelist + MIME validation enforced. Max 20MB/file, 20 files/article.
+- **Attachment cascade**: Article deletion removes all attachment DB records (cascade) AND physical files from disk
+- **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.
 
 ## Placeholder Fields (Not Yet Active)
 

@@ -216,3 +216,18 @@ export interface PaginationParams {
   page?: number;
   limit?: number;
 }
+
+// ─── Attachments ─────────────────────────────────────────────
+export interface ArticleAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  createdAt: string;
+}
+
+export interface AttachmentListResponse {
+  attachments: ArticleAttachment[];
+  total: number;
+}

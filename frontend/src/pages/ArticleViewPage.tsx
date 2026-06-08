@@ -6,6 +6,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import type { Article, FeedbackSummary, RelatedArticle } from "../types/api";
+import AttachmentList from "../components/attachments/attachment-list";
 
 export default function ArticleViewPage() {
   const params = useParams();
@@ -214,6 +215,8 @@ export default function ArticleViewPage() {
           <p className="text-zinc-400 italic">No content yet.</p>
         )}
       </div>
+
+      <AttachmentList articleId={article.id} canEdit={false} />
 
       {relatedArticles.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
