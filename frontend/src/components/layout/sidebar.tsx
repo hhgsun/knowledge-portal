@@ -129,7 +129,8 @@ export function Sidebar() {
         <div className="flex items-center gap-1 overflow-hidden select-none my-1">
           <BookSearch size={24} className="text-blue-600 shrink-0 ml-1" />
           <span className={'font-bold text-md whitespace-nowrap overflow-hidden ' + (!collapsed ? 'block' : 'hidden')}>
-            KnowledgePortal
+            <span>Knowledge</span>
+            <span className="text-blue-600">Portal</span>
           </span>
         </div>
         <button
