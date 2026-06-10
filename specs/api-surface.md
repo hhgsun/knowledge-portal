@@ -136,7 +136,7 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 | `contentType` | string | No | Default: `"reference"` |
 | `difficulty` | string | No | Default: `"beginner"` |
 | `audience` | string | No | — |
-| `tags` | string[] | No | Array of tag IDs |
+| `tags` | string[] | No | Array of tag ID, name, or slug (resolved in that priority) |
 
 **Side effects**: Creates version 1 with the initial content.
 **201 Response**: `{ "id", "slug", "title" }`
@@ -168,7 +168,7 @@ Accepts both article ID and slug for lookup.
 | `difficulty` | string | No | — |
 | `audience` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
-| `tags` | string[] | No | Array of tag IDs (replaces all existing tags) |
+| `tags` | string[] | No | Array of tag ID, name, or slug (replaces all existing tags) |
 
 **Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number.
 **200 Response**: `{ "id", "slug", "title" }`

@@ -134,13 +134,23 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             Version = 1
         });
 
-        // Tags
+        // Tags (supports ID, name, or slug; auto-creates when via API key)
         if (req.Tags?.Length > 0)
         {
-            foreach (var tagId in req.Tags)
+            var isApiKey = User.GetSource() == "api-key";
+            foreach (var tagInput in req.Tags)
             {
-                if (await db.Tags.AnyAsync(t => t.Id == tagId))
-                    db.ArticleTags.Add(new ArticleTag { ArticleId = article.Id, TagId = tagId });
+                var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
+                       ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
+                if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
+                {
+                    var tagSlug = GenerateTagSlug(tagInput);
+                    tag = new Tag { Name = tagInput.Trim(), Slug = tagSlug };
+                    db.Tags.Add(tag);
+                    await db.SaveChangesAsync();
+                }
+                if (tag != null)
+                    db.ArticleTags.Add(new ArticleTag { ArticleId = article.Id, TagId = tag.Id });
             }
         }
 
@@ -274,15 +284,25 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             });
         }
 
-        // Update tags
+        // Update tags (supports ID, name, or slug; auto-creates when via API key)
         if (req.Tags != null)
         {
+            var isApiKey = User.GetSource() == "api-key";
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
-            foreach (var tagId in req.Tags)
+            foreach (var tagInput in req.Tags)
             {
-                if (await db.Tags.AnyAsync(t => t.Id == tagId))
-                    db.ArticleTags.Add(new ArticleTag { ArticleId = id, TagId = tagId });
+                var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
+                       ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
+                if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
+                {
+                    var tagSlug = GenerateTagSlug(tagInput);
+                    tag = new Tag { Name = tagInput.Trim(), Slug = tagSlug };
+                    db.Tags.Add(tag);
+                    await db.SaveChangesAsync();
+                }
+                if (tag != null)
+                    db.ArticleTags.Add(new ArticleTag { ArticleId = id, TagId = tag.Id });
             }
         }
 
@@ -415,11 +435,20 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         return slug.Length > 100 ? slug[..100] : slug;
     }
 
+    private static string GenerateTagSlug(string name)
+    {
+        var slug = TagSlugRegex().Replace(name.ToLowerInvariant().Trim(), "-").Trim('-');
+        return slug.Length > 50 ? slug[..50] : slug;
+    }
+
     [GeneratedRegex(@"[^a-z0-9\s-]")]
     private static partial Regex SlugRegex();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"[^a-z0-9]+")]
+    private static partial Regex TagSlugRegex();
 
     /// <summary>
     /// Estimates read time based on ~200 words per minute.

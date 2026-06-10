@@ -239,6 +239,7 @@ No known gaps at this time.
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
 - **Article list tags**: GET /api/articles response includes `tags` array per article
+- **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
