@@ -152,6 +152,7 @@ export interface SearchResponse {
   total: number;
   searchQueryId: string;
   responseTimeMs: number;
+  tags?: string[];
 }
 
 export interface RagResponse {

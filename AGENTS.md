@@ -201,7 +201,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
 | Search (fulltext) | ✅ Implemented | SQL LIKE on title/excerpt with wildcard escaping |
-| Search (tag-based) | ✅ Implemented | @tag prefix syntax |
+| Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
 | Search (hybrid) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
 | Search (RAG) | ⏳ Placeholder | Returns stub message |
@@ -241,6 +241,7 @@ No known gaps at this time.
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
+- **Search multi-tag**: Multiple `@tag` prefixes can be used (e.g. `@react @typescript query`). Articles must match ALL specified tags (AND logic). Response returns `tags: string[]` array instead of single `tag` field.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag

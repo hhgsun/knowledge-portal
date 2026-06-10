@@ -19,7 +19,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -37,11 +37,14 @@ export default function SearchPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    const match = query.match(/^@(\S*)$/);
+    // Detect @partial at end of query for tag suggestions
+    const match = query.match(/@(\S*)$/);
     if (match) {
       const partial = match[1].toLowerCase();
+      // Exclude already selected tags
+      const existingTags = [...query.matchAll(/@(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
       const filtered = availableTags.filter(
-        (t) => t.slug.includes(partial) || t.name.toLowerCase().includes(partial)
+        (t) => (t.slug.includes(partial) || t.name.toLowerCase().includes(partial)) && !existingTags.includes(t.slug)
       );
       setFilteredTags(filtered);
       setShowTagSuggestions(filtered.length > 0);
@@ -61,7 +64,9 @@ export default function SearchPage() {
   }, []);
 
   const selectTag = (slug: string) => {
-    setQuery(`@${slug} `);
+    // Replace the incomplete @partial at end with the selected tag
+    const newQuery = query.replace(/@\S*$/, `@${slug} `);
+    setQuery(newQuery);
     setShowTagSuggestions(false);
     inputRef.current?.focus();
   };
@@ -74,7 +79,7 @@ export default function SearchPage() {
     setSearched(true);
     setRagResponse(null);
     setResults([]);
-    setActiveTag(null);
+    setActiveTags([]);
     setSearchQueryId(null);
 
     const res = await fetchWithAuth(
@@ -82,7 +87,7 @@ export default function SearchPage() {
     );
     const data = await res.json();
 
-    if (data.tag) setActiveTag(data.tag);
+    if (data.tags) setActiveTags(data.tags);
     if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
 
     if (searchType === "rag") {
@@ -116,7 +121,7 @@ export default function SearchPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchType === "rag" ? "Ask a question..." : "Search articles... (use @tag to filter by tag)"}
+            placeholder={searchType === "rag" ? "Ask a question..." : "Search articles... (use @tag to filter, multiple tags supported)"}
             className="w-full pl-11 pr-4 py-3 text-base bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoFocus
           />
@@ -185,13 +190,13 @@ export default function SearchPage() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-zinc-500">
                   {results.length} result{results.length !== 1 ? "s" : ""}
-                  {activeTag && (
-                    <span className="inline-flex items-center gap-1 ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-xs">
+                  {activeTags.length > 0 && activeTags.map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-xs">
                       <Tag size={10} />
-                      {activeTag}
+                      {tag}
                     </span>
-                  )}
-                  {!activeTag && <> for &ldquo;{query}&rdquo;</>}
+                  ))}
+                  {activeTags.length === 0 && <> for &ldquo;{query}&rdquo;</>}
                   {responseTime !== null && <span className="ml-1">({responseTime}ms)</span>}
                 </p>
               </div>

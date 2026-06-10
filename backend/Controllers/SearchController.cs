@@ -28,26 +28,34 @@ public class SearchController(AppDbContext db) : ControllerBase
         limit = Math.Clamp(limit, 1, 50);
         var sw = Stopwatch.StartNew();
 
-        // Parse @tag syntax
-        string? tagSlug = null;
+        // Parse @tag syntax (supports multiple: @tag1 @tag2 query)
+        var tagSlugs = new List<string>();
         var searchQuery = q.Trim();
-        if (searchQuery.StartsWith('@'))
+        var words = searchQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var remainingWords = new List<string>();
+        foreach (var word in words)
         {
-            var parts = searchQuery.Split(' ', 2);
-            tagSlug = parts[0][1..]; // Remove @
-            searchQuery = parts.Length > 1 ? parts[1].Trim() : "";
+            if (word.StartsWith('@') && word.Length > 1)
+                tagSlugs.Add(word[1..]);
+            else
+                remainingWords.Add(word);
         }
+        searchQuery = string.Join(' ', remainingWords).Trim();
 
         // Tag-based search
-        if (tagSlug != null)
+        if (tagSlugs.Count > 0)
         {
-            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Slug == tagSlug);
-            if (tag == null)
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tag = tagSlug, responseTimeMs = sw.ElapsedMilliseconds, total = 0 });
+            var tags = await db.Tags.Where(t => tagSlugs.Contains(t.Slug)).ToListAsync();
+            if (tags.Count == 0)
+                return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = 0 });
 
+            // Find articles that have ALL specified tags (AND logic)
+            var foundTagIds = tags.Select(t => t.Id).ToList();
             var tagArticleIds = await db.ArticleTags
-                .Where(at => at.TagId == tag.Id)
-                .Select(at => at.ArticleId)
+                .Where(at => foundTagIds.Contains(at.TagId))
+                .GroupBy(at => at.ArticleId)
+                .Where(g => g.Count() >= foundTagIds.Count)
+                .Select(g => g.Key)
                 .ToListAsync();
 
             var tagQuery = db.Articles
@@ -80,7 +88,7 @@ public class SearchController(AppDbContext db) : ControllerBase
             db.SearchQueries.Add(tagSearchRecord);
             await db.SaveChangesAsync();
 
-            return Ok(new { results = tagResults, query = q, type = tagSearchType, tag = tagSlug, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count, searchQueryId = tagSearchRecord.Id });
+            return Ok(new { results = tagResults, query = q, type = tagSearchType, tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count, searchQueryId = tagSearchRecord.Id });
         }
 
         // Standard search (SQL LIKE for now — semantic/hybrid/rag in future phase)
