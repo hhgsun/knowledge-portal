@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import type { ArticleListItem } from "../types/api";
@@ -15,6 +15,8 @@ export default function ArticlesPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [contentTypeFilter, setContentTypeFilter] = useState<string>("");
+  const [difficultyFilter, setDifficultyFilter] = useState<string>("");
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const totalPages = Math.ceil(total / LIMIT);
@@ -25,6 +27,8 @@ export default function ArticlesPage() {
     params.set("page", String(page));
     params.set("limit", String(LIMIT));
     if (statusFilter) params.set("status", statusFilter);
+    if (contentTypeFilter) params.set("contentType", contentTypeFilter);
+    if (difficultyFilter) params.set("difficulty", difficultyFilter);
 
     fetchWithAuth(`/api/articles?${params}`)
       .then((res) => res.json())
@@ -34,7 +38,7 @@ export default function ArticlesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, page]);
+  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, page]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
@@ -65,28 +69,58 @@ export default function ArticlesPage() {
         </Link>
       </div>
 
-      {isApprover && (
-        <div className="flex gap-2 mb-4">
-          {[
-            { label: "All", value: "" },
-            { label: "Pending Approval", value: "pending" },
-            { label: "Draft", value: "draft" },
-            { label: "Published", value: "published" },
-          ].map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => { setPage(1); setStatusFilter(tab.value); }}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                statusFilter === tab.value
-                  ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
-                  : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {isApprover && (
+          <div className="flex gap-2">
+            {[
+              { label: "All", value: "" },
+              { label: "Pending Approval", value: "pending" },
+              { label: "Draft", value: "draft" },
+              { label: "Published", value: "published" },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => { setPage(1); setStatusFilter(tab.value); }}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  statusFilter === tab.value
+                    ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
+                    : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 ml-auto">
+          <Filter size={14} className="text-zinc-400" />
+          <select
+            value={contentTypeFilter}
+            onChange={(e) => { setPage(1); setContentTypeFilter(e.target.value); }}
+            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
+          >
+            <option value="">All Types</option>
+            <option value="reference">Reference</option>
+            <option value="how-to">How-To</option>
+            <option value="adr">ADR</option>
+            <option value="runbook">Runbook</option>
+            <option value="faq">FAQ</option>
+            <option value="policy">Policy</option>
+            <option value="onboarding">Onboarding</option>
+          </select>
+          <select
+            value={difficultyFilter}
+            onChange={(e) => { setPage(1); setDifficultyFilter(e.target.value); }}
+            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
+          >
+            <option value="">All Levels</option>
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
         </div>
-      )}
+      </div>
 
       {loading ? (
         <div className="text-center py-12 text-zinc-500">Loading...</div>

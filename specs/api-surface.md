@@ -100,6 +100,8 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 | `page` | int | 1 | Pagination |
 | `limit` | int | 20 | Max results per page |
 | `status` | string | — | Filter by status |
+| `contentType` | string | — | Filter by content type (reference, how-to, adr, runbook, faq, policy, onboarding) |
+| `difficulty` | string | — | Filter by difficulty (beginner, intermediate, advanced) |
 | `q` | string | — | Search title (LIKE, wildcards `%`/`_` escaped) |
 
 **Visibility rules**:

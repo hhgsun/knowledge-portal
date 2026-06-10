@@ -24,6 +24,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         [FromQuery] int page = 1,
         [FromQuery] int limit = 20,
         [FromQuery] string? status = null,
+        [FromQuery] string? contentType = null,
+        [FromQuery] string? difficulty = null,
         [FromQuery] string? q = null)
     {
         page = Math.Max(1, page);
@@ -39,6 +41,12 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
 
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(a => a.Status == status);
+
+        if (!string.IsNullOrWhiteSpace(contentType) && ValidContentTypes.Contains(contentType))
+            query = query.Where(a => a.ContentType == contentType);
+
+        if (!string.IsNullOrWhiteSpace(difficulty) && ValidDifficulties.Contains(difficulty))
+            query = query.Where(a => a.Difficulty == difficulty);
 
         if (!string.IsNullOrWhiteSpace(q))
         {
