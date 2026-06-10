@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Clock, User, GitCompare } from "lucide-react";
+import { ArrowLeft, Clock, User, GitCompare, Eye, RotateCcw, X } from "lucide-react";
+import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import type { ArticleVersionListItem } from "../types/api";
@@ -9,6 +10,16 @@ interface ArticleInfo {
   id: string;
   title: string;
   slug: string;
+}
+
+interface VersionDetail {
+  id: string;
+  version: number;
+  title: string;
+  changeSummary: string | null;
+  changedBy: string;
+  content: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 export default function VersionsPage() {
@@ -20,6 +31,8 @@ export default function VersionsPage() {
   const [compareA, setCompareA] = useState<string | null>(null);
   const [compareB, setCompareB] = useState<string | null>(null);
   const [diff, setDiff] = useState<{ added: string[]; removed: string[] } | null>(null);
+  const [viewingVersion, setViewingVersion] = useState<VersionDetail | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -61,6 +74,36 @@ export default function VersionsPage() {
       const textB = extractText(dataB.content);
       setDiff(computeSimpleDiff(textA, textB));
     }
+  };
+
+  const handleViewVersion = async (versionId: string) => {
+    if (!article) return;
+    const res = await fetchWithAuth(`/api/articles/${article.id}/versions/${versionId}`);
+    if (res.ok) {
+      const data = await res.json();
+      setViewingVersion(data);
+    } else {
+      toast.error("Failed to load version content");
+    }
+  };
+
+  const handleRestore = async (versionId: string) => {
+    if (!article) return;
+    setRestoring(true);
+    const res = await fetchWithAuth(`/api/articles/${article.id}/versions/${versionId}/restore`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      toast.success("Article restored to selected version");
+      setViewingVersion(null);
+      // Reload versions
+      const verRes = await fetchWithAuth(`/api/articles/${article.id}/versions`);
+      if (verRes.ok) setVersions(await verRes.json());
+    } else {
+      const err = await res.json();
+      toast.error(err.error || "Failed to restore version");
+    }
+    setRestoring(false);
   };
 
   if (loading) {
@@ -160,7 +203,25 @@ export default function VersionsPage() {
                   <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Version {v.version}</span>
                   {v.changeSummary && <p className="text-sm text-zinc-500 mt-0.5">{v.changeSummary}</p>}
                 </div>
-                <span className="text-xs text-zinc-400 shrink-0">{new Date(v.createdAt).toLocaleString()}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleViewVersion(v.id)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  >
+                    <Eye size={12} />
+                    View
+                  </button>
+                  {v.version !== versions[0]?.version && (
+                    <button
+                      onClick={() => handleRestore(v.id)}
+                      disabled={restoring}
+                      className="flex items-center gap-1 px-2 py-1 text-xs border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 disabled:opacity-50"
+                    >
+                      <RotateCcw size={12} />
+                      Restore
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
                 <span className="flex items-center gap-1">
@@ -169,11 +230,54 @@ export default function VersionsPage() {
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock size={12} />
-                  {v.title}
+                  {new Date(v.createdAt).toLocaleString()}
                 </span>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {viewingVersion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 w-full max-w-3xl max-h-[80vh] flex flex-col mx-4">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+              <div>
+                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  Version {viewingVersion.version} — {viewingVersion.title}
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {new Date(viewingVersion.createdAt).toLocaleString()}
+                  {viewingVersion.changeSummary && ` • ${viewingVersion.changeSummary}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {viewingVersion.version !== versions[0]?.version && (
+                  <button
+                    onClick={() => handleRestore(viewingVersion.id)}
+                    disabled={restoring}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg"
+                  >
+                    <RotateCcw size={12} />
+                    Restore this version
+                  </button>
+                )}
+                <button
+                  onClick={() => setViewingVersion(null)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 overflow-y-auto prose dark:prose-invert max-w-none">
+              {viewingVersion.content ? (
+                <TiptapRenderer content={viewingVersion.content} />
+              ) : (
+                <p className="text-zinc-400 italic">No content in this version.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

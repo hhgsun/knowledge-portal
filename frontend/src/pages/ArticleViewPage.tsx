@@ -221,13 +221,22 @@ export default function ArticleViewPage() {
       <div className="mb-6">
         <div className="flex items-start justify-between">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">{article.title}</h1>
-          <Link
-            to={`/articles/${article.slug}/edit`}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
-          >
-            <Edit size={14} />
-            Edit
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/articles/${article.slug}/versions`}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <Clock size={14} />
+              History
+            </Link>
+            <Link
+              to={`/articles/${article.slug}/edit`}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <Edit size={14} />
+              Edit
+            </Link>
+          </div>
         </div>
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
         <div className="flex items-center gap-4 mt-4 text-sm text-zinc-500">

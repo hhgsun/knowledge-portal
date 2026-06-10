@@ -65,4 +65,87 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
             CreatedAt = version.CreatedAt.ToString("o")
         });
     }
+
+    [HttpPost("{versionId}/restore")]
+    public async Task<IActionResult> Restore(string articleId, string versionId)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return NotFound(new { error = "Article not found" });
+
+        var userId = User.GetUserId();
+        var role = User.GetRole();
+
+        // Check edit permission (same logic as article update)
+        var isOwner = article.OwnerId == userId;
+        if (!isOwner && !RbacService.HasPermission(role, Permissions.ArticlesEditAny))
+            return StatusCode(403, new { error = "You do not have permission to edit this article" });
+        if (isOwner && !RbacService.HasPermission(role, Permissions.ArticlesEditOwn))
+            return StatusCode(403, new { error = "You do not have permission to edit this article" });
+
+        var version = await db.ArticleVersions
+            .Where(v => v.ArticleId == articleId && v.Id == versionId)
+            .FirstOrDefaultAsync();
+
+        if (version == null) return NotFound(new { error = "Version not found" });
+
+        // Apply version content to article
+        article.Title = version.Title;
+        article.Content = version.Content;
+        article.UpdatedAt = DateTime.UtcNow;
+        article.ReadTimeMinutes = CalculateReadTime(version.Content);
+
+        // Create a new version recording the restore
+        var maxVersion = await db.ArticleVersions
+            .Where(v => v.ArticleId == articleId)
+            .MaxAsync(v => (int?)v.Version) ?? 0;
+
+        db.ArticleVersions.Add(new Models.Entities.ArticleVersion
+        {
+            ArticleId = articleId,
+            Title = version.Title,
+            Content = version.Content,
+            ChangedBy = userId,
+            ChangeSummary = $"Restored to version {version.Version}",
+            Version = maxVersion + 1
+        });
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Article restored to selected version", version = maxVersion + 1 });
+    }
+
+    private static int? CalculateReadTime(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
+            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ExtractTextFromJson(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                return element.GetString() ?? "";
+            case JsonValueKind.Object:
+                var sb = new System.Text.StringBuilder();
+                if (element.TryGetProperty("text", out var textProp))
+                    sb.Append(textProp.GetString() ?? "").Append(' ');
+                if (element.TryGetProperty("content", out var contentProp))
+                    sb.Append(ExtractTextFromJson(contentProp));
+                return sb.ToString();
+            case JsonValueKind.Array:
+                return string.Join(' ', element.EnumerateArray().Select(ExtractTextFromJson));
+            default:
+                return "";
+        }
+    }
 }

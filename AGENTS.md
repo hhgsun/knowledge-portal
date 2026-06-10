@@ -147,6 +147,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/versions/{versionId}` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/versions/{versionId}/restore` | POST | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
 | `/api/articles/{id}/vote` | POST | ✓ | — | ✗ |
 | `/api/articles/{id}/vote` | DELETE | ✓ | — | ✗ |
 | `/api/articles/{id}/votes` | GET | ✓ | — | ✗ |
@@ -238,6 +239,7 @@ No known gaps at this time.
 
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
 - **Version creation**: Triggered when `content` field changes (not title-only or metadata-only edits)
+- **Version restore**: POST `/api/articles/{id}/versions/{versionId}/restore` copies version content/title back to article, creates a new version with "Restored to version N" summary, recalculates read time
 - **LastReviewedAt**: Automatically set to UTC now when article status becomes `published` (via direct update or approve action)
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
