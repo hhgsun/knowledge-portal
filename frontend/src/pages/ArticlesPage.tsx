@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import type { ArticleListItem } from "../types/api";
@@ -17,6 +17,7 @@ export default function ArticlesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [contentTypeFilter, setContentTypeFilter] = useState<string>("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("");
+  const [mineFilter, setMineFilter] = useState(false);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const totalPages = Math.ceil(total / LIMIT);
@@ -29,6 +30,7 @@ export default function ArticlesPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (contentTypeFilter) params.set("contentType", contentTypeFilter);
     if (difficultyFilter) params.set("difficulty", difficultyFilter);
+    if (mineFilter) params.set("mine", "true");
 
     fetchWithAuth(`/api/articles?${params}`)
       .then((res) => res.json())
@@ -38,7 +40,7 @@ export default function ArticlesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, page]);
+  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, mineFilter, page]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
@@ -81,11 +83,10 @@ export default function ArticlesPage() {
               <button
                 key={tab.value}
                 onClick={() => { setPage(1); setStatusFilter(tab.value); }}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                  statusFilter === tab.value
-                    ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
-                    : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                }`}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${statusFilter === tab.value
+                  ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
+                  : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
               >
                 {tab.label}
               </button>
@@ -94,7 +95,16 @@ export default function ArticlesPage() {
         )}
 
         <div className="flex items-center gap-2 ml-auto">
-          <Filter size={14} className="text-zinc-400" />
+          <button
+            onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${mineFilter
+              ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
+              : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700"
+              }`}
+          >
+            <User size={14} className="inline-block mr-1" />
+            My Articles
+          </button>
           <select
             value={contentTypeFilter}
             onChange={(e) => { setPage(1); setContentTypeFilter(e.target.value); }}

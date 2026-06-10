@@ -102,6 +102,7 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 | `status` | string | — | Filter by status |
 | `contentType` | string | — | Filter by content type (reference, how-to, adr, runbook, faq, policy, onboarding) |
 | `difficulty` | string | — | Filter by difficulty (beginner, intermediate, advanced) |
+| `mine` | bool | false | If true, return only articles owned by the current user |
 | `q` | string | — | Search title (LIKE, wildcards `%`/`_` escaped) |
 
 **Visibility rules**:

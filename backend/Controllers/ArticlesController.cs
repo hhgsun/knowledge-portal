@@ -26,6 +26,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         [FromQuery] string? status = null,
         [FromQuery] string? contentType = null,
         [FromQuery] string? difficulty = null,
+        [FromQuery] bool mine = false,
         [FromQuery] string? q = null)
     {
         page = Math.Max(1, page);
@@ -38,6 +39,9 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         // Viewers see published + their own articles
         if (role == "viewer")
             query = query.Where(a => a.Status == "published" || a.OwnerId == userId);
+
+        if (mine)
+            query = query.Where(a => a.OwnerId == userId);
 
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(a => a.Status == status);
