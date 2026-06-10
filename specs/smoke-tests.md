@@ -170,7 +170,6 @@ These behaviors are by design in the current baseline and should not be treated 
 | No service layer | Business logic in controllers (design decision) |
 | Dark mode follows system only (no toggle) | Dark mode toggle is a backlog item |
 | Notifications bell is non-functional | Visual indicator only; real notifications are backlog |
-| Frontend doesn't call `GET /api/articles/{id}/feedback` | Feedback comments not displayed (only submission works) |
 | Tag deletion not exposed in UI | Backend supports `DELETE /api/tags?id=` but no frontend control |
 
 ---

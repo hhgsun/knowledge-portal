@@ -9,14 +9,16 @@
 erDiagram
     User ||--o{ Article : "owns"
     User ||--o{ ApiKey : "has"
-    User ||--o{ ArticleFeedback : "submits"
+    User ||--o{ ArticleVote : "votes"
+    User ||--o{ ArticleComment : "comments"
     User ||--o{ ArticleView : "records"
     User ||--o{ ArticleVersion : "changed_by"
     User ||--o{ SearchQuery : "performs"
 
     Article ||--o{ ArticleVersion : "has"
     Article ||--o{ ArticleTag : "tagged"
-    Article ||--o{ ArticleFeedback : "receives"
+    Article ||--o{ ArticleVote : "voted"
+    Article ||--o{ ArticleComment : "commented"
     Article ||--o{ ArticleView : "tracked"
     Article ||--o{ ArticleAttachment : "has"
     Article o|--o| ApiKey : "created_via"
@@ -79,12 +81,21 @@ erDiagram
         string tag_id PK_FK "Cascade"
     }
 
-    ArticleFeedback {
+    ArticleVote {
         string id PK
         string article_id FK "Cascade"
-        string user_id FK "nullable"
-        bool helpful
-        string comment "nullable"
+        string user_id FK
+        bool is_helpful
+        string reason "nullable, only when is_helpful=false"
+        datetime created_at
+        datetime updated_at
+    }
+
+    ArticleComment {
+        string id PK
+        string article_id FK "Cascade"
+        string user_id FK
+        string comment
         datetime created_at
     }
 

@@ -72,13 +72,24 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
                 ApiKeyName = a.CreatedViaApiKeyId != null
                     ? db.ApiKeys.Where(k => k.Id == a.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefault()
                     : null,
-                Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
+                Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
+                ViewCount = db.ArticleViews.Count(v => v.ArticleId == a.Id),
+                HelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && v.IsHelpful),
+                NotHelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && !v.IsHelpful)
             })
             .ToListAsync();
 
+        var articlesWithScore = articles.Select(a => new
+        {
+            a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
+            a.ContentType, a.Difficulty, a.UpdatedAt,
+            a.OwnerName, a.ApiKeyName, a.Tags, a.ViewCount,
+            WilsonScore = CalculateWilsonScore(a.HelpfulCount, a.NotHelpfulCount)
+        });
+
         return Ok(new
         {
-            articles,
+            articles = articlesWithScore,
             total
         });
     }
@@ -206,6 +217,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             ? await db.ApiKeys.Where(k => k.Id == article.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefaultAsync()
             : null;
 
+        var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
+
         return Ok(new
         {
             article.Id, article.Title, article.Slug, article.Excerpt,
@@ -217,7 +230,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             LastReviewedAt = article.LastReviewedAt?.ToString("o"),
             OwnerName = article.Owner.Name,
             ApiKeyName = apiKeyName,
-            Tags = article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
+            Tags = article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
+            ViewCount = viewCount
         });
     }
 
@@ -507,6 +521,20 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             default:
                 return "";
         }
+    }
+
+    private static double CalculateWilsonScore(int positive, int negative)
+    {
+        var n = positive + negative;
+        if (n == 0) return 0;
+
+        const double z = 1.96;
+        var phat = (double)positive / n;
+        var denominator = 1 + z * z / n;
+        var centre = phat + z * z / (2 * n);
+        var spread = z * Math.Sqrt((phat * (1 - phat) + z * z / (4 * n)) / n);
+
+        return Math.Round((centre - spread) / denominator, 4);
     }
 }
 

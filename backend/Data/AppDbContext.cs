@@ -11,7 +11,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<ArticleVersion> ArticleVersions => Set<ArticleVersion>();
     public DbSet<ArticleTag> ArticleTags => Set<ArticleTag>();
-    public DbSet<ArticleFeedback> ArticleFeedback => Set<ArticleFeedback>();
+    public DbSet<ArticleVote> ArticleVotes => Set<ArticleVote>();
+    public DbSet<ArticleComment> ArticleComments => Set<ArticleComment>();
     public DbSet<ArticleView> ArticleViews => Set<ArticleView>();
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
@@ -98,16 +99,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(at => at.Tag).WithMany(t => t.ArticleTags).HasForeignKey(at => at.TagId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        // ─── ArticleFeedback ──────────────────────────────
-        modelBuilder.Entity<ArticleFeedback>(e =>
+        // ─── ArticleVotes ─────────────────────────────────────────
+        modelBuilder.Entity<ArticleVote>(e =>
         {
-            e.ToTable("article_feedback");
-            e.HasKey(f => f.Id);
-            e.Property(f => f.ArticleId).IsRequired();
-            e.Property(f => f.Helpful).IsRequired(false);
-            e.Property(f => f.CreatedAt).IsRequired();
-            e.HasOne(f => f.Article).WithMany(a => a.Feedback).HasForeignKey(f => f.ArticleId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(f => f.User).WithMany().HasForeignKey(f => f.UserId);
+            e.ToTable("article_votes");
+            e.HasKey(v => v.Id);
+            e.Property(v => v.ArticleId).IsRequired();
+            e.Property(v => v.UserId).IsRequired();
+            e.Property(v => v.IsHelpful).IsRequired();
+            e.Property(v => v.CreatedAt).IsRequired();
+            e.Property(v => v.UpdatedAt).IsRequired();
+            e.HasIndex(v => new { v.ArticleId, v.UserId }).IsUnique();
+            e.HasOne(v => v.Article).WithMany(a => a.Votes).HasForeignKey(v => v.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId);
+        });
+
+        // ─── ArticleComments ──────────────────────────────────────
+        modelBuilder.Entity<ArticleComment>(e =>
+        {
+            e.ToTable("article_comments");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.ArticleId).IsRequired();
+            e.Property(c => c.UserId).IsRequired();
+            e.Property(c => c.Comment).IsRequired();
+            e.Property(c => c.CreatedAt).IsRequired();
+            e.HasOne(c => c.Article).WithMany(a => a.Comments).HasForeignKey(c => c.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(c => c.User).WithMany().HasForeignKey(c => c.UserId);
         });
 
         // ─── ArticleViews ─────────────────────────────────

@@ -244,7 +244,7 @@ Tag picker with inline creation capability.
 | ArticlesPage | `GET /api/articles` |
 | NewArticlePage | `POST /api/articles`, `GET /api/tags`, `POST /api/tags` |
 | EditArticlePage | `GET /api/articles/:slug`, `PUT /api/articles/:id`, `GET /api/tags`, `POST /api/tags` |
-| ArticleViewPage | `GET /api/articles/:slug`, `POST /api/articles/:id/feedback` |
+| ArticleViewPage | `GET /api/articles/:slug`, `POST /api/articles/:id/vote`, `GET /api/articles/:id/votes`, `GET /api/articles/:id/comments`, `POST /api/articles/:id/comments` |
 | VersionsPage | `GET /api/articles/:slug`, `GET /api/articles/:id/versions`, `GET /api/articles/:id/versions/:vid` |
 | SearchPage | `GET /api/search`, `GET /api/tags` |
 | AnalyticsPage | `GET /api/analytics` |

@@ -28,7 +28,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 10 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery, ArticleAttachment
+- **Entities**: `backend/Models/Entities/` — 11 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment
 - **Enum Validation**: `contentType` and `difficulty` are validated server-side against allow-lists
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
@@ -62,7 +62,7 @@ backend/
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
-│   └── Entities/         # EF Core entity classes (10 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleFeedback, ApiKey, SearchQuery, ArticleAttachment)
+│   └── Entities/         # EF Core entity classes (11 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
@@ -147,8 +147,12 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/versions/{versionId}` | GET | ✓ | — | ✗ |
-| `/api/articles/{id}/feedback` | GET | ✓ | — | ✗ |
-| `/api/articles/{id}/feedback` | POST | ✓ | — | ✗ |
+| `/api/articles/{id}/vote` | POST | ✓ | — | ✗ |
+| `/api/articles/{id}/vote` | DELETE | ✓ | — | ✗ |
+| `/api/articles/{id}/votes` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/comments` | GET | ✓ | — | ✗ |
+| `/api/articles/{id}/comments` | POST | ✓ | — | ✗ |
+| `/api/articles/{id}/comments/{commentId}` | DELETE | ✓ | — | ✗ |
 | `/api/articles/{id}/related` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/attachments` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/attachments` | POST | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
@@ -209,7 +213,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
 | API Key Management | ✅ Implemented | Create/list/delete |
-| Article Feedback | ✅ Implemented | Helpful/not-helpful + comments (vote optional) |
+| Article Feedback | ✅ Implemented | Vote (1 per user/article, toggle) + Comments (independent, multiple). Wilson Score. View count in responses. |
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
@@ -244,6 +248,11 @@ No known gaps at this time.
 - **Search multi-tag**: Multiple `@tag` prefixes can be used (e.g. `@react @typescript query`). Articles must match ALL specified tags (AND logic). Response returns `tags: string[]` array instead of single `tag` field.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
+- **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).
+- **Vote reason**: `reason` field is only accepted when `isHelpful: false`. Free-text, optional.
+- **Wilson Score**: Lower bound of Wilson score confidence interval (95%, z=1.96). Returned in article list and votes endpoint.
+- **Comments independent of votes**: Users can leave comments without voting. Multiple comments per user allowed. Own comments can be deleted; admins can delete any.
+- **View count in responses**: `GET /api/articles` list and `GET /api/articles/{idOrSlug}` detail both include `viewCount` field.
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
 - **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted

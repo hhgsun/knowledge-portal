@@ -329,22 +329,31 @@ Ordered by version number descending.
 
 ---
 
-## Article Feedback
+## Article Votes & Comments
 
-### `POST /api/articles/{articleId}/feedback`
+### `POST /api/articles/{articleId}/vote`
 **Auth**: Bearer
 
-| Field | Type | Required |
-|-------|------|----------|
-| `helpful` | bool? | No (at least one of helpful or comment required) |
-| `comment` | string | No (at least one of helpful or comment required) |
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `isHelpful` | bool | Yes | true = helpful, false = not helpful |
+| `reason` | string | No | Only accepted when isHelpful=false |
 
-**201 Response**: `{ "message": "Feedback submitted" }`
-**400 Response**: `{ "error": "Either helpful vote or comment is required" }`
+**201 Response** (new vote): `{ "action": "created" }`
+**200 Response** (toggle off): `{ "action": "removed" }`
+**200 Response** (changed): `{ "action": "changed" }`
 
 ---
 
-### `GET /api/articles/{articleId}/feedback`
+### `DELETE /api/articles/{articleId}/vote`
+**Auth**: Bearer
+
+**200 Response**: `{ "message": "Vote removed" }`
+**404 Response**: `{ "error": "No vote found" }`
+
+---
+
+### `GET /api/articles/{articleId}/votes`
 **Auth**: Bearer
 
 **200 Response**:
@@ -352,11 +361,46 @@ Ordered by version number descending.
 {
   "helpful": 12,
   "notHelpful": 3,
+  "wilsonScore": 0.6842,
+  "userVote": true,
+  "reasons": ["Güncel değil", "Eksik bilgi"]
+}
+```
+
+---
+
+### `POST /api/articles/{articleId}/comments`
+**Auth**: Bearer
+
+| Field | Type | Required |
+|-------|------|----------|
+| `comment` | string | Yes |
+
+**201 Response**: `{ "message": "Comment added" }`
+**400 Response**: `{ "error": "Comment is required" }`
+
+---
+
+### `GET /api/articles/{articleId}/comments`
+**Auth**: Bearer
+
+**200 Response**:
+```json
+{
   "comments": [
-    { "id": "abc", "helpful": true, "comment": "Very useful", "userName": "John", "createdAt": "2026-01-01T00:00:00Z" }
+    { "id": "abc", "comment": "Very useful", "userName": "John", "createdAt": "2026-01-01T00:00:00Z", "isOwn": false }
   ]
 }
 ```
+
+---
+
+### `DELETE /api/articles/{articleId}/comments/{commentId}`
+**Auth**: Bearer
+
+**200 Response**: `{ "message": "Comment deleted" }`
+**403 Response**: `{ "error": "You can only delete your own comments" }`
+**404 Response**: `{ "error": "Comment not found" }`
 
 ---
 

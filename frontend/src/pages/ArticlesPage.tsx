@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import type { ArticleListItem } from "../types/api";
@@ -18,6 +18,7 @@ export default function ArticlesPage() {
   const [contentTypeFilter, setContentTypeFilter] = useState<string>("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("");
   const [mineFilter, setMineFilter] = useState(false);
+  const [sortBy, setSortBy] = useState<string>("updatedAt");
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const totalPages = Math.ceil(total / LIMIT);
@@ -35,12 +36,18 @@ export default function ArticlesPage() {
     fetchWithAuth(`/api/articles?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        setArticles(data.articles || []);
+        let items: ArticleListItem[] = data.articles || [];
+        if (sortBy === "wilsonScore") {
+          items = [...items].sort((a, b) => b.wilsonScore - a.wilsonScore);
+        } else if (sortBy === "viewCount") {
+          items = [...items].sort((a, b) => b.viewCount - a.viewCount);
+        }
+        setArticles(items);
         setTotal(data.total || 0);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, mineFilter, page]);
+  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, mineFilter, page, sortBy]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
@@ -129,6 +136,15 @@ export default function ArticlesPage() {
             <option value="intermediate">Intermediate</option>
             <option value="advanced">Advanced</option>
           </select>
+          <select
+            value={sortBy}
+            onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
+            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
+          >
+            <option value="updatedAt">Son Güncellenen</option>
+            <option value="wilsonScore">En Faydalı</option>
+            <option value="viewCount">En Çok Görüntülenen</option>
+          </select>
         </div>
       </div>
 
@@ -164,6 +180,16 @@ export default function ArticlesPage() {
                       {article.difficulty}
                     </span>
                     <span className="text-xs text-zinc-400">{article.contentType}</span>
+                    <span className="flex items-center gap-0.5 text-xs text-zinc-400">
+                      <Eye size={12} />
+                      {article.viewCount}
+                    </span>
+                    {article.wilsonScore > 0 && (
+                      <span className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400">
+                        <ThumbsUp size={12} />
+                        {(article.wilsonScore * 100).toFixed(0)}%
+                      </span>
+                    )}
                     {article.tags?.length > 0 && (
                       <span className="flex items-center gap-1 flex-wrap">
                         <Tag size={12} className="text-zinc-400" />

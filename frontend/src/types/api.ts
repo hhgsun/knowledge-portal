@@ -61,6 +61,8 @@ export interface ArticleListItem {
   ownerName: string;
   apiKeyName: string | null;
   tags: Tag[];
+  viewCount: number;
+  wilsonScore: number;
 }
 
 export interface ArticlesResponse {
@@ -86,6 +88,7 @@ export interface Article {
   updatedAt: string;
   tags: Tag[];
   apiKeyName: string | null;
+  viewCount: number;
 }
 
 // ─── Article Versions ────────────────────────────────────────
@@ -121,19 +124,21 @@ export interface RelatedArticle {
   tags: Tag[];
 }
 
-// ─── Article Feedback ────────────────────────────────────────
-export interface FeedbackComment {
+// ─── Article Votes & Comments ────────────────────────────────
+export interface VoteSummary {
+  helpful: number;
+  notHelpful: number;
+  wilsonScore: number;
+  userVote: boolean | null;
+  reasons: string[];
+}
+
+export interface ArticleCommentItem {
   id: string;
-  helpful: boolean | null;
   comment: string;
   userName: string;
   createdAt: string;
-}
-
-export interface FeedbackSummary {
-  helpful: number;
-  notHelpful: number;
-  comments: FeedbackComment[];
+  isOwn: boolean;
 }
 
 // ─── Search ──────────────────────────────────────────────────
