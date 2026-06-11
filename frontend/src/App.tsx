@@ -17,6 +17,7 @@ import SettingsKeysPage from "./pages/SettingsKeysPage";
 import TagsPage from "./pages/TagsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
+import LookupsPage from "./pages/LookupsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/tags" element={<RoleRoute roles={["admin", "editor"]}><TagsPage /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
           <Route path="/settings/keys" element={<RoleRoute roles={["admin"]}><SettingsKeysPage /></RoleRoute>} />
+          <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

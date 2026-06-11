@@ -39,5 +39,51 @@ public static class DbInitializer
             }
         }
         await db.SaveChangesAsync();
+
+        // Default lookup values
+        if (!await db.LookupValues.AnyAsync())
+        {
+            var contentTypes = new (string value, string label, int order)[]
+            {
+                ("reference", "Reference", 1),
+                ("how-to", "How-To Guide", 2),
+                ("adr", "ADR", 3),
+                ("runbook", "Runbook", 4),
+                ("faq", "FAQ", 5),
+                ("policy", "Policy", 6),
+                ("onboarding", "Onboarding", 7),
+            };
+
+            foreach (var (value, label, order) in contentTypes)
+            {
+                db.LookupValues.Add(new LookupValue
+                {
+                    Category = "content_type",
+                    Value = value,
+                    Label = label,
+                    SortOrder = order
+                });
+            }
+
+            var difficulties = new (string value, string label, int order)[]
+            {
+                ("beginner", "Beginner", 1),
+                ("intermediate", "Intermediate", 2),
+                ("advanced", "Advanced", 3),
+            };
+
+            foreach (var (value, label, order) in difficulties)
+            {
+                db.LookupValues.Add(new LookupValue
+                {
+                    Category = "difficulty",
+                    Value = value,
+                    Label = label,
+                    SortOrder = order
+                });
+            }
+
+            await db.SaveChangesAsync();
+        }
     }
 }

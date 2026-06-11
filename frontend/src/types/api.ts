@@ -2,9 +2,19 @@
 
 // ─── Enums ───────────────────────────────────────────────────
 export type ArticleStatus = "draft" | "pending" | "published" | "archived";
-export type ContentType = "reference" | "how-to" | "adr" | "runbook" | "faq" | "policy" | "onboarding";
-export type Difficulty = "beginner" | "intermediate" | "advanced";
+export type ContentType = string;
+export type Difficulty = string;
 export type UserRole = "admin" | "editor" | "viewer";
+
+// ─── Lookups ─────────────────────────────────────────────────
+export interface LookupValue {
+  id: string;
+  category: string;
+  value: string;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+}
 
 // ─── Auth ────────────────────────────────────────────────────
 export interface User {

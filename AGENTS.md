@@ -28,8 +28,8 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 11 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment
-- **Enum Validation**: `contentType` and `difficulty` are validated server-side against allow-lists
+- **Entities**: `backend/Models/Entities/` — 12 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue
+- **Enum Validation**: `contentType` and `difficulty` are validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
@@ -56,13 +56,13 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 ```
 backend/
-├── Controllers/          # API endpoints (11 controllers)
+├── Controllers/          # API endpoints (12 controllers)
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
-│   └── Entities/         # EF Core entity classes (11 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment)
+│   └── Entities/         # EF Core entity classes (12 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
@@ -73,10 +73,10 @@ backend/Tests/
 
 frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
-├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload)
+├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types & difficulties)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
-├── src/pages/            # 15 page components
+├── src/pages/            # 16 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 └── vite.config.ts        # Proxy config
@@ -174,6 +174,10 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/keys` | GET | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys?id={id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
+| `/api/lookups` | GET | ✓ | — | ✗ |
+| `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
+| `/api/lookups` | PUT | ✓ | `tags:manage` | ✗ |
+| `/api/lookups?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
 
 ## Validation Rules
 
@@ -185,8 +189,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `article.title` | 1 | 300 | Required |
 | `article.excerpt` | — | — | Optional, trimmed |
 | `article.status` | — | — | Enum: draft, pending, published, archived |
-| `article.contentType` | — | — | Enum: reference, how-to, adr, runbook, faq, policy, onboarding |
-| `article.difficulty` | — | — | Enum: beginner, intermediate, advanced |
+| `article.contentType` | — | — | DB-driven via `lookup_values` table (category: content_type) |
+| `article.difficulty` | — | — | DB-driven via `lookup_values` table (category: difficulty) |
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |

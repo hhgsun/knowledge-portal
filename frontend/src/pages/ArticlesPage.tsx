@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
+import { useLookups } from "../hooks/useLookups";
 import type { ArticleListItem } from "../types/api";
 
 const LIMIT = 20;
@@ -10,6 +11,7 @@ const LIMIT = 20;
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
+  const { contentTypes, difficulties } = useLookups();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -118,13 +120,9 @@ export default function ArticlesPage() {
             className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
           >
             <option value="">All Types</option>
-            <option value="reference">Reference</option>
-            <option value="how-to">How-To</option>
-            <option value="adr">ADR</option>
-            <option value="runbook">Runbook</option>
-            <option value="faq">FAQ</option>
-            <option value="policy">Policy</option>
-            <option value="onboarding">Onboarding</option>
+            {contentTypes.map((ct) => (
+              <option key={ct.value} value={ct.value}>{ct.label}</option>
+            ))}
           </select>
           <select
             value={difficultyFilter}
@@ -132,9 +130,9 @@ export default function ArticlesPage() {
             className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
           >
             <option value="">All Levels</option>
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
+            {difficulties.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
           </select>
           <select
             value={sortBy}

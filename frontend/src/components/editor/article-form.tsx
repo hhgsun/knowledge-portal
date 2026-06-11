@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Save, ArrowLeft, Send } from "lucide-react";
 import { TagSelector } from "./tag-selector";
+import { useLookups } from "../../hooks/useLookups";
 
 const TiptapEditor = lazy(() => import("./tiptap-editor"));
 
@@ -67,6 +68,8 @@ export function ArticleForm({
   onChangeSummaryChange,
   attachmentSection,
 }: ArticleFormProps) {
+  const { contentTypes, difficulties } = useLookups();
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -129,18 +132,14 @@ export function ArticleForm({
 
         <div className="flex flex-wrap gap-3 pb-4 border-b border-zinc-200 dark:border-zinc-800">
           <select value={contentType} onChange={(e) => onContentTypeChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-            <option value="reference">Reference</option>
-            <option value="how-to">How-To Guide</option>
-            <option value="adr">ADR</option>
-            <option value="runbook">Runbook</option>
-            <option value="faq">FAQ</option>
-            <option value="policy">Policy</option>
-            <option value="onboarding">Onboarding</option>
+            {contentTypes.map((ct) => (
+              <option key={ct.value} value={ct.value}>{ct.label}</option>
+            ))}
           </select>
           <select value={difficulty} onChange={(e) => onDifficultyChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
+            {difficulties.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
           </select>
           <select value={status} onChange={(e) => onStatusChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
             <option value="draft">Draft</option>

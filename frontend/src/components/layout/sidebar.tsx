@@ -20,6 +20,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Settings2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState } from "react";
@@ -53,6 +54,7 @@ const navigation: NavItem[] = [
 
 const adminNavigation: NavItem[] = [
   { label: "Tags", href: "/tags", icon: <Tag size={18} /> },
+  { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
 ];
@@ -166,6 +168,7 @@ export function Sidebar() {
                   if (item.href === "/admin/users") return isAdmin;
                   if (item.href === "/settings/keys") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
+                  if (item.href === "/settings/lookups") return isEditorOrAdmin;
                   return true;
                 })
                 .map((item) => (

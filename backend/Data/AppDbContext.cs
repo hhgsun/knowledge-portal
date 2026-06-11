@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ArticleView> ArticleViews => Set<ArticleView>();
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
+    public DbSet<LookupValue> LookupValues => Set<LookupValue>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -152,6 +153,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.CreatedAt).IsRequired();
             e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(a => a.UploadedBy).WithMany().HasForeignKey(a => a.UploadedById);
+        });
+
+        // ─── LookupValues ─────────────────────────────────
+        modelBuilder.Entity<LookupValue>(e =>
+        {
+            e.ToTable("lookup_values");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Category).IsRequired();
+            e.Property(l => l.Value).IsRequired();
+            e.Property(l => l.Label).IsRequired();
+            e.Property(l => l.SortOrder).HasDefaultValue(0);
+            e.Property(l => l.IsActive).HasDefaultValue(true);
+            e.Property(l => l.CreatedAt).IsRequired();
+            e.HasIndex(l => new { l.Category, l.Value }).IsUnique();
         });
 
         // ─── SearchQueries ────────────────────────────────

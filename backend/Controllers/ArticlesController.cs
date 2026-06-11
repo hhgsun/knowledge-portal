@@ -15,9 +15,13 @@ namespace KnowledgePortal.Api.Controllers;
 [Authorize]
 public partial class ArticlesController(AppDbContext db, IConfiguration config) : ControllerBase
 {
-    private static readonly HashSet<string> ValidContentTypes = ["reference", "how-to", "adr", "runbook", "faq", "policy", "onboarding"];
-    private static readonly HashSet<string> ValidDifficulties = ["beginner", "intermediate", "advanced"];
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
+
+    private async Task<HashSet<string>> GetValidContentTypesAsync()
+        => (await db.LookupValues.Where(l => l.Category == "content_type" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
+
+    private async Task<HashSet<string>> GetValidDifficultiesAsync()
+        => (await db.LookupValues.Where(l => l.Category == "difficulty" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
 
     [HttpGet]
     public async Task<IActionResult> List(
@@ -46,11 +50,19 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(a => a.Status == status);
 
-        if (!string.IsNullOrWhiteSpace(contentType) && ValidContentTypes.Contains(contentType))
-            query = query.Where(a => a.ContentType == contentType);
+        if (!string.IsNullOrWhiteSpace(contentType))
+        {
+            var validContentTypes = await GetValidContentTypesAsync();
+            if (validContentTypes.Contains(contentType))
+                query = query.Where(a => a.ContentType == contentType);
+        }
 
-        if (!string.IsNullOrWhiteSpace(difficulty) && ValidDifficulties.Contains(difficulty))
-            query = query.Where(a => a.Difficulty == difficulty);
+        if (!string.IsNullOrWhiteSpace(difficulty))
+        {
+            var validDifficulties = await GetValidDifficultiesAsync();
+            if (validDifficulties.Contains(difficulty))
+                query = query.Where(a => a.Difficulty == difficulty);
+        }
 
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -101,11 +113,13 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
             return BadRequest(new { error = "Title is required (1-300 chars)" });
 
-        if (req.ContentType != null && !ValidContentTypes.Contains(req.ContentType))
-            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", ValidContentTypes)}" });
+        var validContentTypes = await GetValidContentTypesAsync();
+        if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
+            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
 
-        if (req.Difficulty != null && !ValidDifficulties.Contains(req.Difficulty))
-            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", ValidDifficulties)}" });
+        var validDifficulties = await GetValidDifficultiesAsync();
+        if (req.Difficulty != null && !validDifficulties.Contains(req.Difficulty))
+            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", validDifficulties)}" });
 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
@@ -250,11 +264,13 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (!canEditAny && !canEditOwn)
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
-        if (req.ContentType != null && !ValidContentTypes.Contains(req.ContentType))
-            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", ValidContentTypes)}" });
+        var validContentTypes = await GetValidContentTypesAsync();
+        if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
+            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
 
-        if (req.Difficulty != null && !ValidDifficulties.Contains(req.Difficulty))
-            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", ValidDifficulties)}" });
+        var validDifficulties = await GetValidDifficultiesAsync();
+        if (req.Difficulty != null && !validDifficulties.Contains(req.Difficulty))
+            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", validDifficulties)}" });
 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
