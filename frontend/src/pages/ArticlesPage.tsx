@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
@@ -111,7 +111,7 @@ export default function ArticlesPage() {
               : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700"
               }`}
           >
-            <User size={14} className="inline-block mr-1" />
+            <UserLockIcon size={14} className="inline-block mr-1" />
             My Articles
           </button>
           <select

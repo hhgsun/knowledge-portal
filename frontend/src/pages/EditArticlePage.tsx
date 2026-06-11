@@ -59,6 +59,12 @@ export default function EditArticlePage() {
           if (data.error) {
             setError("Article not found");
           } else {
+            // Viewers can only edit their own articles
+            if (user?.role === "viewer" && data.ownerId !== user?.id) {
+              toast.error("You do not have permission to edit this article");
+              navigate(`/articles/${params.slug}`);
+              return;
+            }
             setArticle(data);
             setTitle(data.title);
             setContent(data.content);

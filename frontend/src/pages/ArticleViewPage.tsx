@@ -23,6 +23,7 @@ export default function ArticleViewPage() {
   const [relatedArticles, setRelatedArticles] = useState<RelatedArticle[]>([]);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
+  const canEdit = user?.role === "admin" || (article && article.ownerId === user?.id);
 
   useEffect(() => {
     if (params.slug) {
@@ -229,13 +230,15 @@ export default function ArticleViewPage() {
               <Clock size={14} />
               History
             </Link>
-            <Link
-              to={`/articles/${article.slug}/edit`}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
-            >
-              <Edit size={14} />
-              Edit
-            </Link>
+            {canEdit && (
+              <Link
+                to={`/articles/${article.slug}/edit`}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                <Edit size={14} />
+                Edit
+              </Link>
+            )}
           </div>
         </div>
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
