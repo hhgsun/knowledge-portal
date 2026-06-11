@@ -117,21 +117,21 @@ export default function ArticleViewPage() {
     fetchWithAuth(`/api/articles/${articleId}/votes`)
       .then((res) => res.json())
       .then((data) => { if (!data.error) setVotes(data); })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const loadComments = (articleId: string) => {
     fetchWithAuth(`/api/articles/${articleId}/comments`)
       .then((res) => res.json())
       .then((data) => { if (data.comments) setComments(data.comments); })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const loadRelated = (articleId: string) => {
     fetchWithAuth(`/api/articles/${articleId}/related?limit=2`)
       .then((res) => res.json())
       .then((data) => { if (data.articles) setRelatedArticles(data.articles); })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const handleApprove = async () => {
@@ -200,7 +200,7 @@ export default function ArticleViewPage() {
                 <button
                   onClick={handleApprove}
                   disabled={actionLoading}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
                 >
                   <CheckCircle size={14} />
                   Approve
@@ -208,7 +208,7 @@ export default function ArticleViewPage() {
                 <button
                   onClick={handleReject}
                   disabled={actionLoading}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
                 >
                   <XCircle size={14} />
                   Reject
@@ -221,11 +221,11 @@ export default function ArticleViewPage() {
 
       <div className="mb-6">
         <div className="flex items-start justify-between">
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">{article.title}</h1>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mr-1">{article.title}</h1>
           <div className="flex items-center gap-2">
             <Link
               to={`/articles/${article.slug}/versions`}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              className="flex items-center gap-1 px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
             >
               <Clock size={14} />
               History
@@ -233,7 +233,7 @@ export default function ArticleViewPage() {
             {canEdit && (
               <Link
                 to={`/articles/${article.slug}/edit`}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                className="flex items-center gap-1 px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
               >
                 <Edit size={14} />
                 Edit
@@ -251,11 +251,10 @@ export default function ArticleViewPage() {
             <Tag size={14} />
             {article.contentType}
           </span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${
-            article.difficulty === "beginner" ? "bg-blue-100 text-blue-700" :
+          <span className={`px-2 py-0.5 rounded-full text-xs ${article.difficulty === "beginner" ? "bg-blue-100 text-blue-700" :
             article.difficulty === "intermediate" ? "bg-orange-100 text-orange-700" :
-            "bg-red-100 text-red-700"
-          }`}>
+              "bg-red-100 text-red-700"
+            }`}>
             {article.difficulty}
           </span>
           {article.apiKeyName ? (
@@ -360,11 +359,10 @@ export default function ArticleViewPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleVote(true)}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg transition-colors ${
-                votes?.userVote === true
-                  ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:border-green-600 dark:text-green-300"
-                  : "border-zinc-300 dark:border-zinc-700 hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
-              }`}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg transition-colors ${votes?.userVote === true
+                ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:border-green-600 dark:text-green-300"
+                : "border-zinc-300 dark:border-zinc-700 hover:bg-green-50 dark:hover:bg-green-950 hover:border-green-300"
+                }`}
             >
               <ThumbsUp size={14} />
               Faydalı
@@ -378,11 +376,10 @@ export default function ArticleViewPage() {
                   setShowReasonInput(true);
                 }
               }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg transition-colors ${
-                votes?.userVote === false
-                  ? "bg-red-100 border-red-400 text-red-700 dark:bg-red-950 dark:border-red-600 dark:text-red-300"
-                  : "border-zinc-300 dark:border-zinc-700 hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
-              }`}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg transition-colors ${votes?.userVote === false
+                ? "bg-red-100 border-red-400 text-red-700 dark:bg-red-950 dark:border-red-600 dark:text-red-300"
+                : "border-zinc-300 dark:border-zinc-700 hover:bg-red-50 dark:hover:bg-red-950 hover:border-red-300"
+                }`}
             >
               <ThumbsDown size={14} />
               Faydalı Değil

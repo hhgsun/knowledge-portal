@@ -302,6 +302,9 @@ export default function AttachmentList({ articleId, canEdit, onDeferredDelete, o
               <span className="text-xs text-zinc-400 whitespace-nowrap">
                 {formatFileSize(attachment.sizeBytes)}
               </span>
+              <span className="text-xs text-zinc-400 whitespace-nowrap" title={new Date(attachment.createdAt).toLocaleString()}>
+                {new Date(attachment.createdAt).toLocaleDateString()}
+              </span>
               {!isDeleted && (
                 <button
                   onClick={() => handleDownload(attachment)}
