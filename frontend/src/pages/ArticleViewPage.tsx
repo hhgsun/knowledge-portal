@@ -178,7 +178,7 @@ export default function ArticleViewPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <div className="flex items-center gap-2 mb-6">
         <Link to="/articles" className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700">
           <ArrowLeft size={14} />

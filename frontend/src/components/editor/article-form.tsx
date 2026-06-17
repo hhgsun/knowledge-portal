@@ -71,7 +71,7 @@ export function ArticleForm({
   const { contentTypes, difficulties } = useLookups();
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link to={backLink} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800">

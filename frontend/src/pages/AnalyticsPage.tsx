@@ -23,7 +23,7 @@ export default function AnalyticsPage() {
   if (!data) return <div className="text-center py-12 text-zinc-500">Failed to load analytics</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-6">Analytics Dashboard</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

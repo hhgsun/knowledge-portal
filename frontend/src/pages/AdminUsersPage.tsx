@@ -144,7 +144,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Users size={24} className="text-zinc-400" />
