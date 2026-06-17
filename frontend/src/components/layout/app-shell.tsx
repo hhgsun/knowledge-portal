@@ -14,7 +14,7 @@ export function AppShell() {
   return (
     <>
       <Sidebar />
-      <main className="flex-1 p-6 min-h-screen overflow-y-auto">
+      <main className="flex-1 p-6 pt-14 lg:pt-6 min-h-screen overflow-y-auto">
         <Outlet />
       </main>
     </>

@@ -23,7 +23,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -112,20 +112,32 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const role = user?.role;
   const isAdmin = role === "admin";
   const isEditorOrAdmin = role === "admin" || role === "editor";
   const [collapsed, setCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <aside
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={cn(
-        "hidden lg:flex lg:flex-col lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0 transition-all duration-300",
-        collapsed ? "lg:w-16" : "lg:w-64"
-      )}>
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Close mobile sidebar on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    if (mobileOpen) {
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
+    }
+  }, [mobileOpen]);
+
+  const sidebarContent = (
+    <>
       {/* Logo + Toggle */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-1 overflow-hidden select-none my-1">
@@ -135,14 +147,22 @@ export function Sidebar() {
             <span className="text-blue-600">Portal</span>
           </span>
         </div>
+        {/* Desktop: collapse/expand toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className={cn("p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0",
-            (!collapsed || (collapsed && isHovered)) ? "block" : "hidden")
+          className={cn("p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0 hidden lg:block",
+            (!collapsed || (collapsed && isHovered)) ? "lg:block" : "lg:hidden")
           }
         >
           {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
+        {/* Mobile: close button */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="p-1.5 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0 lg:hidden"
+        >
+          <PanelLeftClose size={18} />
         </button>
       </div>
 
@@ -229,6 +249,51 @@ export function Sidebar() {
         <Heart size={14} />
         {!collapsed && <span>DWH</span>}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile: hamburger button (visible when sidebar is closed) */}
+      {!mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="fixed top-3 left-3 z-40 p-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors lg:hidden"
+          title="Open menu"
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+      )}
+
+      {/* Mobile: backdrop overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile: sidebar overlay */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 transition-transform duration-300 lg:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop: static sidebar */}
+      <aside
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={cn(
+          "hidden lg:flex lg:flex-col lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 h-screen sticky top-0 transition-all duration-300",
+          collapsed ? "lg:w-16" : "lg:w-64"
+        )}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }
