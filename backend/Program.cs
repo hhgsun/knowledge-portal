@@ -3,10 +3,13 @@ using System.Threading.RateLimiting;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Middleware;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.IdentityModel.Tokens;
+using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +76,25 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+// ─── Ollama AI Services ──────────────────────────────────────
+if (builder.Configuration.GetValue("Ollama:Enabled", false))
+{
+    var ollamaBaseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+    var embeddingModel = builder.Configuration["Ollama:EmbeddingModel"] ?? "nomic-embed-text";
+    var chatModel = builder.Configuration["Ollama:ChatModel"] ?? "llama3.2";
+
+    var embeddingClient = new OllamaApiClient(new Uri(ollamaBaseUrl), embeddingModel);
+    builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(embeddingClient);
+
+    var chatClientInstance = new OllamaApiClient(new Uri(ollamaBaseUrl), chatModel);
+    builder.Services.AddSingleton<IChatClient>(chatClientInstance);
+
+    builder.Services.AddScoped<EmbeddingService>();
+    builder.Services.AddSingleton<VectorSearchService>();
+    builder.Services.AddScoped<RagService>();
+    builder.Services.AddHostedService<EmbeddingBackgroundService>();
+}
+
 // ─── OpenAPI / Swagger ───────────────────────────────────────
 builder.Services.AddOpenApi();
 
@@ -99,7 +121,33 @@ app.UseAuthorization();
 app.MapControllers();
 
 // ─── Health Check ────────────────────────────────────────────
-app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow.ToString("o") }));
+app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
+{
+    var ollamaEnabled = cfg.GetValue("Ollama:Enabled", false);
+    string ollamaStatus = "disabled";
+    if (ollamaEnabled)
+    {
+        try
+        {
+            using var scope = sp.CreateScope();
+            var embeddingService = scope.ServiceProvider.GetService<EmbeddingService>();
+            ollamaStatus = embeddingService != null && await embeddingService.IsOllamaAvailableAsync()
+                ? "connected" : "unavailable";
+        }
+        catch { ollamaStatus = "unavailable"; }
+    }
+    using var dbScope = sp.CreateScope();
+    var dbCtx = dbScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var pendingEmbeddings = await dbCtx.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt == null);
+    return Results.Ok(new
+    {
+        status = "healthy",
+        timestamp = DateTime.UtcNow.ToString("o"),
+        ollamaStatus,
+        embeddingModel = cfg["Ollama:EmbeddingModel"] ?? "nomic-embed-text",
+        pendingEmbeddings
+    });
+});
 
 // ─── Database init ───────────────────────────────────────────
 using (var scope = app.Services.CreateScope())

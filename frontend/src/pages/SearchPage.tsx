@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
-import type { SearchResult, RagResponse, TagWithCount } from "../types/api";
+import type { SearchResult, RagResponse, RagSource, TagWithCount } from "../types/api";
 
 type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
 
@@ -21,6 +21,8 @@ export default function SearchPage() {
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
+  const [indexingPending, setIndexingPending] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
@@ -81,6 +83,8 @@ export default function SearchPage() {
     setResults([]);
     setActiveTags([]);
     setSearchQueryId(null);
+    setIndexingPending(false);
+    setWarning(null);
 
     const res = await fetchWithAuth(
       `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}`
@@ -89,9 +93,11 @@ export default function SearchPage() {
 
     if (data.tags) setActiveTags(data.tags);
     if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
+    if (data.indexingPending) setIndexingPending(data.indexingPending);
+    if (data.warning) setWarning(data.warning);
 
     if (searchType === "rag") {
-      setRagResponse({ answer: data.answer, sources: data.sources || [] });
+      setRagResponse({ answer: data.answer, sources: data.sources || [], query: data.query, type: "rag", responseTimeMs: data.responseTimeMs, indexingPending: data.indexingPending });
     } else {
       setResults(data.results || []);
     }
@@ -157,9 +163,22 @@ export default function SearchPage() {
       </div>
 
       {loading ? (
-        <div className="text-center py-8 text-zinc-500">{searchType === "rag" ? "Thinking..." : "Searching..."}</div>
+        <div className="text-center py-8 text-zinc-500">{searchType === "rag" ? "AI düşünüyor..." : "Searching..."}</div>
       ) : searched ? (
         <div>
+          {indexingPending && (
+            <div className="flex items-center gap-2 mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={16} />
+              <span>Bazı makaleler henüz indekslenmedi. Sonuçlar tam olmayabilir.</span>
+            </div>
+          )}
+          {warning && (
+            <div className="flex items-center gap-2 mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-600 dark:text-zinc-400">
+              <AlertTriangle size={16} />
+              <span>{warning}</span>
+            </div>
+          )}
+
           {searchType === "rag" && ragResponse ? (
             <div className="space-y-4">
               <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl">
@@ -174,12 +193,17 @@ export default function SearchPage() {
               {ragResponse.sources.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Sources ({ragResponse.sources.length})</h3>
-                  <div className="space-y-2">
-                    {ragResponse.sources.map((source, i) => (
-                      <div key={i} className="p-3 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm">
-                        <p className="text-zinc-600 dark:text-zinc-400 line-clamp-2">{source.text}</p>
-                        <span className="text-xs text-zinc-400 mt-1 inline-block">Relevance: {(source.score * 100).toFixed(0)}%</span>
-                      </div>
+                  <div className="flex flex-wrap gap-2">
+                    {ragResponse.sources.map((source: RagSource) => (
+                      <button
+                        key={source.articleId}
+                        onClick={() => navigate(`/articles/${source.slug}`)}
+                        className="inline-flex items-center gap-2 px-3 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                      >
+                        <FileText size={14} className="text-blue-500" />
+                        <span className="text-zinc-900 dark:text-zinc-100">{source.title}</span>
+                        <span className="text-xs text-purple-500 font-medium">{(source.score * 100).toFixed(0)}%</span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -214,7 +238,21 @@ export default function SearchPage() {
                       onClick={() => trackClick(result.id, result.slug)}
                       className="block w-full text-left p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                     >
-                      <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {result.score != null && (
+                            <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded font-medium">
+                              {(result.score * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          {result.matchType && result.matchType !== "fulltext" && (
+                            <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", result.matchType === "both" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" : "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300")}>
+                              {result.matchType === "both" ? "hybrid" : "semantic"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
                       <div className="flex items-center gap-2 mt-2 text-xs text-zinc-400">
                         <span>{result.contentType}</span>

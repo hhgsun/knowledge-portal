@@ -160,6 +160,8 @@ export interface SearchResult {
   contentType: ContentType;
   difficulty: Difficulty;
   updatedAt: string;
+  score?: number;
+  matchType?: "fulltext" | "semantic" | "both";
 }
 
 export interface SearchResponse {
@@ -168,14 +170,24 @@ export interface SearchResponse {
   searchQueryId: string;
   responseTimeMs: number;
   tags?: string[];
+  indexingPending?: boolean;
+  warning?: string;
+}
+
+export interface RagSource {
+  articleId: string;
+  title: string;
+  slug: string;
+  score: number;
 }
 
 export interface RagResponse {
   answer: string;
-  sources: Array<Record<string, unknown>>;
+  sources: RagSource[];
   query: string;
   type: "rag";
   responseTimeMs: number;
+  indexingPending?: boolean;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────

@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+    public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -180,6 +181,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.CreatedAt).IsRequired();
             e.HasOne(s => s.User).WithMany().HasForeignKey(s => s.UserId);
             e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId);
+        });
+
+        // ─── ArticleEmbeddings ────────────────────────────
+        modelBuilder.Entity<ArticleEmbedding>(e =>
+        {
+            e.ToTable("article_embeddings");
+            e.HasKey(ae => ae.Id);
+            e.Property(ae => ae.ArticleId).IsRequired();
+            e.Property(ae => ae.Embedding).IsRequired();
+            e.Property(ae => ae.EmbeddingNorm).IsRequired();
+            e.Property(ae => ae.ModelName).IsRequired();
+            e.Property(ae => ae.TextHash).IsRequired();
+            e.Property(ae => ae.Dimensions).IsRequired();
+            e.Property(ae => ae.CreatedAt).IsRequired();
+            e.HasIndex(ae => ae.ArticleId).IsUnique();
+            e.HasOne(ae => ae.Article).WithOne(a => a.ArticleEmbedding).HasForeignKey<ArticleEmbedding>(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

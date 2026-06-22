@@ -23,17 +23,18 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 ### Backend (`backend/`)
 
 - **Language**: C# 13, .NET 10, nullable enabled
-- **Pattern**: Controllers → EF Core DbContext → SQLite (no service layer)
+- **Pattern**: Controllers → EF Core DbContext → SQLite (service layer for AI/embedding only)
 - **Naming**: PascalCase for C# code, snake_case for DB columns (configured in `AppDbContext.OnModelCreating`)
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 12 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue
+- **Entities**: `backend/Models/Entities/` — 13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
 - **Enum Validation**: `contentType` and `difficulty` are validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
 - **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
+- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. VectorSearchService caches embeddings in-memory for SIMD cosine similarity.
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
@@ -60,9 +61,10 @@ backend/
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
+├── Services/             # ContentExtractor, EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
-│   └── Entities/         # EF Core entity classes (12 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue)
+│   └── Entities/         # EF Core entity classes (13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
@@ -165,6 +167,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
 | `/api/search` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
+| `/api/search/reindex` | POST | ✓ | `users:manage` | ✓ |
+| `/api/search/embedding-status` | GET | ✓ | `users:manage` | ✓ |
 | `/api/analytics` | GET | ✓ | `analytics:view` | ✓ |
 | `/api/dashboard` | GET | ✓ | — | ✗ |
 | `/api/admin/users` | GET | ✓ | `users:manage` | ✓ |
@@ -211,9 +215,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Tags | ✅ Implemented | CRUD + article tagging |
 | Search (fulltext) | ✅ Implemented | SQL LIKE on title/excerpt with wildcard escaping |
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
-| Search (semantic) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
-| Search (hybrid) | ⏳ Placeholder | Returns fulltext results, needs embedding model |
-| Search (RAG) | ⏳ Placeholder | Returns stub message |
+| Search (semantic) | ✅ Implemented | Ollama embedding + SIMD cosine similarity, VectorSearchService cache |
+| Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60) |
+| Search (RAG) | ✅ Implemented | Ollama llama3.2, top-5 context, source citations |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
@@ -253,6 +257,11 @@ No known gaps at this time.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search multi-tag**: Multiple `@tag` prefixes can be used (e.g. `@react @typescript query`). Articles must match ALL specified tags (AND logic). Response returns `tags: string[]` array instead of single `tag` field.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
+- **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
+- **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
+- **Search RAG**: Top-5 semantic results → article context (max 3000 words) → Ollama llama3.2 → answer with source citations. Response includes `sources: [{articleId, title, slug, score}]`.
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings.
+- **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).
 - **Vote reason**: `reason` field is only accepted when `isHelpful: false`. Free-text, optional.
@@ -278,7 +287,6 @@ These entity fields exist in the database but are not yet used in business logic
 
 | Field | Entity | Purpose | Status |
 |-------|--------|---------|--------|
-| `IndexedAt` | Article | Timestamp for semantic search indexing | Never set — awaiting embedding model integration |
 | `ReviewIntervalDays` | Article | Configurable staleness threshold per article | Has DB default (90) but analytics uses hardcoded 90 days |
 
 ## Rules for AI Agents

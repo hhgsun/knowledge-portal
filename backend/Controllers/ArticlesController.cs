@@ -4,6 +4,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -192,6 +193,12 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         }
 
         await db.SaveChangesAsync();
+
+        // Dirty flag: if published, queue for embedding
+        if (article.Status == "published")
+            article.IndexedAt = null;
+
+        await db.SaveChangesAsync();
         return StatusCode(201, new { article.Id, article.Slug, article.Title });
     }
 
@@ -300,13 +307,30 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
                 return StatusCode(403, new { error = "You do not have permission to archive articles" });
 
             if (req.Status == "published" && article.Status != "published")
+            {
                 article.PublishedAt = DateTime.UtcNow;
+                article.IndexedAt = null; // Dirty flag: newly published → queue for embedding
+            }
             if (req.Status == "published")
                 article.LastReviewedAt = DateTime.UtcNow;
+
+            // Unpublishing: remove embedding
+            if (req.Status != "published" && article.Status == "published")
+            {
+                article.IndexedAt = null;
+                var embedding = await db.ArticleEmbeddings.FirstOrDefaultAsync(e => e.ArticleId == id);
+                if (embedding != null)
+                    db.ArticleEmbeddings.Remove(embedding);
+            }
+
             article.Status = req.Status;
         }
 
         article.UpdatedAt = DateTime.UtcNow;
+
+        // Dirty flag: content changed on published article → re-embed
+        if (contentChanged && article.Status == "published")
+            article.IndexedAt = null;
 
         // Create version if content changed
         if (contentChanged)
@@ -405,6 +429,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         article.PublishedAt = DateTime.UtcNow;
         article.LastReviewedAt = DateTime.UtcNow;
         article.UpdatedAt = DateTime.UtcNow;
+        article.IndexedAt = null; // Dirty flag: approved → queue for embedding
         await db.SaveChangesAsync();
 
         return Ok(new { message = "Article approved and published", article.Id, article.Slug });
@@ -501,41 +526,13 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (string.IsNullOrWhiteSpace(contentJson)) return null;
         try
         {
-            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
+            var text = ContentExtractor.ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
             var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
             return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
         }
         catch
         {
             return null;
-        }
-    }
-
-    private static string ExtractTextFromJson(JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String:
-                return element.GetString() ?? "";
-            case JsonValueKind.Object:
-                var sb = new System.Text.StringBuilder();
-                if (element.TryGetProperty("text", out var textProp))
-                    sb.Append(textProp.GetString() ?? "").Append(' ');
-                if (element.TryGetProperty("content", out var contentProp))
-                    sb.Append(ExtractTextFromJson(contentProp));
-                foreach (var prop in element.EnumerateObject())
-                {
-                    if (prop.Name != "text" && prop.Name != "content")
-                        sb.Append(ExtractTextFromJson(prop.Value));
-                }
-                return sb.ToString();
-            case JsonValueKind.Array:
-                var arrSb = new System.Text.StringBuilder();
-                foreach (var item in element.EnumerateArray())
-                    arrSb.Append(ExtractTextFromJson(item)).Append(' ');
-                return arrSb.ToString();
-            default:
-                return "";
         }
     }
 

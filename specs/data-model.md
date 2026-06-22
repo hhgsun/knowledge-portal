@@ -21,6 +21,7 @@ erDiagram
     Article ||--o{ ArticleComment : "commented"
     Article ||--o{ ArticleView : "tracked"
     Article ||--o{ ArticleAttachment : "has"
+    Article ||--o| ArticleEmbedding : "embedded"
     Article o|--o| ApiKey : "created_via"
 
     Tag ||--o{ ArticleTag : "applied"
@@ -274,12 +275,26 @@ erDiagram
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
+### ArticleEmbedding
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK → articles.id (Cascade), Unique | — |
+| Embedding | `byte[]` | `embedding` | Required | — (serialized float[]) |
+| EmbeddingNorm | `double` | `embedding_norm` | Required | — (precomputed L2 norm) |
+| ModelName | `string` | `model_name` | Required | — |
+| TextHash | `string` | `text_hash` | Required | — (SHA256 hex) |
+| Dimensions | `int` | `dimensions` | Required | — |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
 ## Indexes
 
 | Table | Column(s) | Type |
 |-------|-----------|------|
 | `users` | `email` | Unique |
 | `articles` | `slug` | Unique |
+| `article_embeddings` | `article_id` | Unique |
 | `tags` | `slug` | Unique |
 
 ## Cascade Behavior
@@ -293,6 +308,7 @@ erDiagram
 | Article | ArticleFeedback | Cascade |
 | Article | ArticleView | Cascade |
 | Article | ArticleAttachment | Cascade |
+| Article | ArticleEmbedding | Cascade |
 | ApiKey | Article.CreatedViaApiKeyId | SetNull |
 | Tag | ArticleTag | Cascade |
 

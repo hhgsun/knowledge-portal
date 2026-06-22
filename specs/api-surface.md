@@ -480,6 +480,34 @@ Ordered by version number descending.
 
 ---
 
+### `POST /api/search/reindex`
+**Auth**: Bearer (session only, rejects API key)
+**Permission**: `users:manage`
+
+Marks all published articles for re-embedding by clearing `IndexedAt` and deleting all existing embeddings. The background service will re-process them.
+
+**200 Response**: `{ "message": "Reindex queued", "articlesQueued": 42 }`
+**503**: Ollama not enabled.
+
+---
+
+### `GET /api/search/embedding-status`
+**Auth**: Bearer (session only, rejects API key)
+**Permission**: `users:manage`
+
+**200 Response**:
+```json
+{
+  "totalPublished": 42,
+  "totalIndexed": 38,
+  "pendingCount": 4,
+  "ollamaEnabled": true,
+  "modelName": "nomic-embed-text"
+}
+```
+
+---
+
 ## Dashboard
 
 ### `GET /api/dashboard`

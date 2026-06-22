@@ -34,6 +34,8 @@
 | `Microsoft.EntityFrameworkCore.Sqlite` | 10.0.8 | SQLite database provider |
 | `Microsoft.EntityFrameworkCore.Design` | 10.0.8 | Migration CLI tooling |
 | `BCrypt.Net-Next` | 4.2.0 | Password hashing (cost 12) and API key verification |
+| `OllamaSharp` | 5.4.25 | Ollama client (implements IChatClient + IEmbeddingGenerator from Microsoft.Extensions.AI) |
+| `System.Numerics.Tensors` | 10.0.9 | SIMD-accelerated TensorPrimitives for cosine similarity |
 
 ### Frontend
 
