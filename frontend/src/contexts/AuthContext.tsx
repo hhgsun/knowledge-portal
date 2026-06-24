@@ -7,6 +7,7 @@ interface User {
   name: string;
   email: string;
   role: string;
+  isAzureUser?: boolean;
 }
 
 interface AuthContextType {

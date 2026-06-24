@@ -201,7 +201,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `search.limit` | 1 | 50 | Default 20 |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `profile.name` | 1 | — | Required for profile update |
-| `profile.newPassword` | 8 | 128 | Optional, requires currentPassword |
+| `profile.newPassword` | 8 | 128 | Optional, requires currentPassword (not required for Azure users first-time set) |
 | `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
 | `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .yaml, .json, .csv, .svg |
 | `attachment.maxPerArticle` | — | 20 | Configurable via appsettings.json |
@@ -255,6 +255,8 @@ No known gaps at this time.
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **Azure AD login**: Frontend uses MSAL.js popup/silent flow → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. If user has active Azure session, login page auto-attempts silent login.
 - **Azure AD user linking**: First Azure login links by email if user exists, otherwise creates new viewer user. AzureObjectId stored for future logins. Profile name synced from Azure on each login.
+- **Azure AD password set**: Azure users can set a local password via PUT `/api/auth/profile` without providing `currentPassword` (first-time set). After setting, both Azure and email+password login work.
+- **`/api/auth/me` response**: Includes `isAzureUser` boolean field (true if user has AzureObjectId linked).
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.

@@ -23,6 +23,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string | null;
+  isAzureUser?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -74,7 +74,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         var user = await db.Users.FindAsync(userId);
         if (user == null) return Unauthorized(new { error = "User not found" });
 
-        return Ok(new { user.Id, user.Name, user.Email, user.Role, user.Avatar });
+        return Ok(new { user.Id, user.Name, user.Email, user.Role, user.Avatar, isAzureUser = user.AzureObjectId != null });
     }
 
     [HttpPut("profile")]
@@ -104,14 +104,21 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         // Change password
         if (!string.IsNullOrWhiteSpace(req.NewPassword))
         {
-            if (string.IsNullOrWhiteSpace(req.CurrentPassword))
-                return BadRequest(new { error = "Current password is required to change password" });
-
-            if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash))
-                return BadRequest(new { error = "Current password is incorrect" });
-
             if (req.NewPassword.Length < 8 || req.NewPassword.Length > 128)
                 return BadRequest(new { error = "New password must be 8-128 characters" });
+
+            // Azure users setting password for the first time don't need currentPassword
+            var isAzureUser = user.AzureObjectId != null;
+            var isFirstPasswordSet = isAzureUser && string.IsNullOrWhiteSpace(req.CurrentPassword);
+
+            if (!isFirstPasswordSet)
+            {
+                if (string.IsNullOrWhiteSpace(req.CurrentPassword))
+                    return BadRequest(new { error = "Current password is required to change password" });
+
+                if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash))
+                    return BadRequest(new { error = "Current password is incorrect" });
+            }
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword, 12);
         }

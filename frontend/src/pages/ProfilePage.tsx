@@ -9,6 +9,8 @@ export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const { fetchWithAuth } = useApi();
 
+  const isAzureUser = user?.isAzureUser ?? false;
+
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [saving, setSaving] = useState(false);
@@ -44,7 +46,7 @@ export default function ProfilePage() {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentPassword) {
+    if (!isAzureUser && !currentPassword) {
       toast.error("Current password is required");
       return;
     }
@@ -58,9 +60,13 @@ export default function ProfilePage() {
     }
     setChangingPassword(true);
     try {
+      const body: Record<string, string> = { newPassword };
+      if (!isAzureUser) {
+        body.currentPassword = currentPassword;
+      }
       const res = await fetchWithAuth("/api/auth/profile", {
         method: "PUT",
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -68,7 +74,7 @@ export default function ProfilePage() {
         return;
       }
       await refreshUser();
-      toast.success("Password changed successfully");
+      toast.success(isAzureUser ? "Password set successfully" : "Password changed successfully");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -126,19 +132,29 @@ export default function ProfilePage() {
           <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
             <Lock size={20} />
           </div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Change Password</h2>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            {isAzureUser ? "Set Password" : "Change Password"}
+          </h2>
         </div>
 
+        {isAzureUser && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            You signed in with Microsoft. You can set a password to also sign in with email and password.
+          </p>
+        )}
+
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Current Password</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          {!isAzureUser && (
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">New Password</label>
             <input
@@ -165,7 +181,7 @@ export default function ProfilePage() {
           disabled={changingPassword}
           className="mt-4 px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {changingPassword ? "Changing..." : "Change Password"}
+          {changingPassword ? "Saving..." : isAzureUser ? "Set Password" : "Change Password"}
         </button>
       </form>
     </div>

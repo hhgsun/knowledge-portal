@@ -90,7 +90,7 @@ Behavior:
 ### `GET /api/auth/me`
 **Auth**: Bearer JWT
 
-**200 Response**: `{ "id", "name", "email", "role", "avatar" }`
+**200 Response**: `{ "id", "name", "email", "role", "avatar", "isAzureUser" }`
 **401**: Invalid/expired token.
 
 ---
@@ -102,7 +102,7 @@ Behavior:
 |-------|------|----------|-------------|
 | `name` | string | No | Min 1 char, trimmed |
 | `email` | string | No | Valid email, unique |
-| `currentPassword` | string | No | Required if changing password |
+| `currentPassword` | string | No | Required if changing password (not required for Azure users setting password first time) |
 | `newPassword` | string | No | 8–128 characters |
 
 **200 Response**: `{ "id", "name", "email", "role" }`
