@@ -44,6 +44,28 @@
 5. BCrypt-verify raw key against matched hash
 6. On match: set `HttpContext.User` with claims + `source: "api-key"` discriminator
 
+### Azure AD (Microsoft Entra ID)
+
+| Property | Value |
+|----------|-------|
+| Library (Frontend) | `@azure/msal-browser` + `@azure/msal-react` |
+| Flow | MSAL popup/silent → Azure access token → backend validation |
+| Validation | Backend calls Microsoft Graph `/me` with the access token |
+| User linking | Matches by `AzureObjectId` first, then by email |
+| Auto-create | If no match, creates new viewer user from Azure profile |
+| Profile sync | Display name synced from Azure on each login |
+| Config | `AzureAd:Enabled`, `AzureAd:TenantId`, `AzureAd:ClientId` in appsettings.json |
+| Frontend config | `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID` in `.env` |
+| Silent login | Login page auto-attempts silent auth if user has active Azure session |
+
+**Flow**:
+1. Frontend calls `msalInstance.acquireTokenPopup/Silent({ scopes: ["User.Read"] })`
+2. Azure AD returns access token
+3. Frontend POSTs `{ accessToken }` to `/api/auth/azure-login`
+4. Backend calls Microsoft Graph `GET /v1.0/me` with the token
+5. Backend finds/creates local user by AzureObjectId or email
+6. Backend returns local JWT + user object
+
 ## Authorization Model
 
 ### Role-Based Access Control (RBAC)

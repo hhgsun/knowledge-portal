@@ -13,7 +13,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Layer | Stack |
 |-------|-------|
 | Backend | ASP.NET Core (.NET 10), EF Core, SQLite |
-| Auth | JWT Bearer + API Key (kp_ prefix) |
+| Auth | JWT Bearer + API Key (kp_ prefix) + Azure AD (MSAL) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
@@ -28,7 +28,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
+- **Entities**: `backend/Models/Entities/` — 13 models: User (with AzureObjectId), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
 - **Enum Validation**: `contentType` and `difficulty` are validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
@@ -138,6 +138,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/health` | GET | ✗ | — | — |
 | `/api/auth/login` | POST | ✗ | — | — |
 | `/api/auth/register` | POST | ✗ | — | — |
+| `/api/auth/azure-login` | POST | ✗ | — | — |
 | `/api/auth/me` | GET | ✓ | — | ✗ |
 | `/api/auth/profile` | PUT | ✓ | — | ✗ |
 | `/api/articles` | GET | ✓ | — | ✗ |
@@ -210,6 +211,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Feature | Status | Notes |
 |---------|--------|-------|
 | JWT Auth | ✅ Implemented | 24h expiry, HMAC-SHA256 |
+| Azure AD Auth | ✅ Implemented | MSAL popup/silent, auto-creates user from Azure profile |
 | API Key Auth | ✅ Implemented | kp_ prefix, BCrypt hash, prefix-indexed lookup |
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
@@ -251,6 +253,8 @@ No known gaps at this time.
 - **LastReviewedAt**: Automatically set to UTC now when article status becomes `published` (via direct update or approve action)
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
+- **Azure AD login**: Frontend uses MSAL.js popup/silent flow → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. If user has active Azure session, login page auto-attempts silent login.
+- **Azure AD user linking**: First Azure login links by email if user exists, otherwise creates new viewer user. AzureObjectId stored for future logins. Profile name synced from Azure on each login.
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.

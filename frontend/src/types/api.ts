@@ -42,6 +42,10 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface AzureLoginRequest {
+  accessToken: string;
+}
+
 export interface RegisterResponse {
   id: string;
   name: string;

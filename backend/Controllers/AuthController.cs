@@ -6,12 +6,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Identity.Web;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
 
 namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwt, IConfiguration config) : ControllerBase
 {
     [HttpPost("login")]
     [EnableRateLimiting("auth")]
@@ -118,5 +121,80 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
 
         return Ok(new { user.Id, user.Name, user.Email, user.Role });
     }
+
+    [HttpPost("azure-login")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> AzureLogin([FromBody] AzureLoginRequest req)
+    {
+        if (!config.GetValue("AzureAd:Enabled", false))
+            return BadRequest(new { error = "Azure AD login is not enabled" });
+
+        if (string.IsNullOrWhiteSpace(req.AccessToken))
+            return BadRequest(new { error = "Access token is required" });
+
+        // Validate the Azure AD access token by calling Microsoft Graph
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", req.AccessToken);
+
+        var graphResponse = await httpClient.GetAsync("https://graph.microsoft.com/v1.0/me");
+        if (!graphResponse.IsSuccessStatusCode)
+            return Unauthorized(new { error = "Invalid Azure AD token" });
+
+        var graphUser = await graphResponse.Content.ReadFromJsonAsync<AzureGraphUser>();
+        if (graphUser == null || string.IsNullOrWhiteSpace(graphUser.Id))
+            return Unauthorized(new { error = "Could not retrieve user info from Azure AD" });
+
+        var email = (graphUser.Mail ?? graphUser.UserPrincipalName)?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "Azure AD account has no email address" });
+
+        // Find existing user by AzureObjectId or email
+        var user = await db.Users.FirstOrDefaultAsync(u => u.AzureObjectId == graphUser.Id)
+                   ?? await db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user == null)
+        {
+            // Auto-create user from Azure AD profile
+            user = new User
+            {
+                Name = graphUser.DisplayName ?? email,
+                Email = email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), 12),
+                Role = "viewer",
+                AzureObjectId = graphUser.Id
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+        else
+        {
+            // Link Azure Object ID if not set and update profile from Azure
+            var changed = false;
+            if (user.AzureObjectId == null)
+            {
+                user.AzureObjectId = graphUser.Id;
+                changed = true;
+            }
+            if (!string.IsNullOrWhiteSpace(graphUser.DisplayName) && user.Name != graphUser.DisplayName)
+            {
+                user.Name = graphUser.DisplayName;
+                changed = true;
+            }
+            if (changed)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        var token = jwt.GenerateToken(user);
+        return Ok(new
+        {
+            token,
+            user = new { user.Id, user.Name, user.Email, user.Role }
+        });
+    }
+
+    private record AzureGraphUser(string? Id, string? DisplayName, string? Mail, string? UserPrincipalName, string? JobTitle, string? Department);
 }
 

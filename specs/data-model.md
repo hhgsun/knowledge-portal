@@ -153,6 +153,7 @@ erDiagram
 | PasswordHash | `string` | `password_hash` | Required | BCrypt (cost 12) |
 | Avatar | `string?` | `avatar` | — | `null` |
 | Role | `string` | `role` | Required | `"viewer"` |
+| AzureObjectId | `string?` | `azure_object_id` | Unique (nullable) | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 | UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
 

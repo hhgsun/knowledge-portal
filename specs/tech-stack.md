@@ -31,6 +31,7 @@
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | 10.0.8 | JWT token validation |
+| `Microsoft.Identity.Web` | 3.8.3 | Azure AD token validation helper |
 | `Microsoft.EntityFrameworkCore.Sqlite` | 10.0.8 | SQLite database provider |
 | `Microsoft.EntityFrameworkCore.Design` | 10.0.8 | Migration CLI tooling |
 | `BCrypt.Net-Next` | 4.2.0 | Password hashing (cost 12) and API key verification |
@@ -47,6 +48,8 @@
 | TipTap extensions | 3.23.x | code-block-lowlight, heading, highlight, image, link, placeholder, table (row/cell/header), task-list, task-item, text-align, underline |
 | `lowlight` | 3.3.0 | Syntax highlighting in code blocks |
 | `lucide-react` | 1.16.0 | Icon library (sole icon source) |
+| `@azure/msal-browser` | latest | MSAL.js v2 browser library for Azure AD auth |
+| `@azure/msal-react` | latest | React wrapper for MSAL.js |
 | `clsx` | 2.1.1 | Conditional class names |
 | `tailwind-merge` | 3.6.0 | Tailwind class deduplication |
 

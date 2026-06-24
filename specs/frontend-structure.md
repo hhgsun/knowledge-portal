@@ -7,11 +7,13 @@
 
 ```
 frontend/src/
-├── main.tsx                  # Entry point: StrictMode + AuthProvider + App
+├── main.tsx                  # Entry point: MsalProvider + AuthProvider + App
 ├── App.tsx                   # BrowserRouter + route definitions + ProtectedRoute
 ├── index.css                 # Tailwind v4 import + CSS custom properties + dark mode
+├── config/
+│   └── msalConfig.ts          # MSAL.js configuration (Azure AD clientId, tenantId, scopes)
 ├── contexts/
-│   ├── AuthContext.tsx        # JWT auth state, login/logout/register, auto-revalidation
+│   ├── AuthContext.tsx        # JWT auth state, login/logout/register/loginWithAzure, auto-revalidation
 │   └── ThemeContext.tsx       # Light/Dark/System theme toggle, persisted to localStorage
 ├── hooks/
 │   ├── useApi.ts              # fetchWithAuth — JWT injection, auto-logout on 401

@@ -25,6 +25,7 @@ public record UpdateArticleRequest(
 // Auth
 public record LoginRequest(string Email, string Password);
 public record RegisterRequest(string Name, string Email, string Password);
+public record AzureLoginRequest(string AccessToken);
 public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword);
 
 // Admin Users

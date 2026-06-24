@@ -10,7 +10,7 @@ All endpoints return JSON. All timestamps are ISO 8601 UTC.
 
 | Policy | Limit | Window | Endpoints |
 |--------|-------|--------|-----------|
-| `auth` | 10 requests | 1 minute | `POST /api/auth/login`, `POST /api/auth/register` |
+| `auth` | 10 requests | 1 minute | `POST /api/auth/login`, `POST /api/auth/register`, `POST /api/auth/azure-login` |
 | `search` | 30 requests | 1 minute | `GET /api/search` |
 
 When rate limit is exceeded, returns `429 Too Many Requests`.
@@ -63,6 +63,27 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 **201 Response**: `{ "id", "name", "email" }`
 **400**: Validation error (missing fields, password length).
 **409**: Email already registered.
+
+---
+
+### `POST /api/auth/azure-login`
+**Auth**: None
+**Rate Limit**: `auth` (10/min)
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `accessToken` | string | Yes | Valid Azure AD access token with User.Read scope |
+
+**200 Response**: `{ "token", "user": { "id", "name", "email", "role" } }`
+**400**: Azure AD not enabled, missing token, or account has no email.
+**401**: Invalid Azure AD token (Microsoft Graph validation failed).
+
+Behavior:
+- Validates token against Microsoft Graph `/me` endpoint
+- Finds existing user by AzureObjectId or email
+- If not found, auto-creates a viewer user
+- Links AzureObjectId on first Azure login for existing email users
+- Syncs display name from Azure AD profile on each login
 
 ---
 
