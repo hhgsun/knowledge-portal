@@ -65,24 +65,6 @@ public static class DbInitializer
                 });
             }
 
-            var difficulties = new (string value, string label, int order)[]
-            {
-                ("beginner", "Beginner", 1),
-                ("intermediate", "Intermediate", 2),
-                ("advanced", "Advanced", 3),
-            };
-
-            foreach (var (value, label, order) in difficulties)
-            {
-                db.LookupValues.Add(new LookupValue
-                {
-                    Category = "difficulty",
-                    Value = value,
-                    Label = label,
-                    SortOrder = order
-                });
-            }
-
             await db.SaveChangesAsync();
         }
     }

@@ -3,7 +3,6 @@
 // ─── Enums ───────────────────────────────────────────────────
 export type ArticleStatus = "draft" | "pending" | "published" | "archived";
 export type ContentType = string;
-export type Difficulty = string;
 export type UserRole = "admin" | "editor" | "viewer";
 
 // ─── Lookups ─────────────────────────────────────────────────
@@ -71,7 +70,6 @@ export interface ArticleListItem {
   excerpt: string | null;
   status: ArticleStatus;
   contentType: ContentType;
-  difficulty: Difficulty;
   updatedAt: string;
   ownerName: string;
   apiKeyName: string | null;
@@ -93,7 +91,6 @@ export interface Article {
   excerpt: string | null;
   status: ArticleStatus;
   contentType: ContentType;
-  difficulty: Difficulty;
   audience: string | null;
   ownerName: string;
   ownerId: string;
@@ -134,7 +131,6 @@ export interface RelatedArticle {
   slug: string;
   excerpt: string | null;
   contentType: ContentType;
-  difficulty: Difficulty;
   updatedAt: string;
   tags: Tag[];
 }
@@ -163,7 +159,6 @@ export interface SearchResult {
   slug: string;
   excerpt: string | null;
   contentType: ContentType;
-  difficulty: Difficulty;
   updatedAt: string;
   score?: number;
   matchType?: "fulltext" | "semantic" | "both";

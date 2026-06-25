@@ -64,7 +64,7 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
             }
 
             var tagResults = await tagQuery.OrderByDescending(a => a.UpdatedAt).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
             sw.Stop();
@@ -127,11 +127,11 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
                 var articleIds = semanticResults.Select(r => r.ArticleId).ToList();
                 var articles = await db.Articles
                     .Where(a => articleIds.Contains(a.Id) && a.Status == "published")
-                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })
+                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
                     .ToListAsync();
 
                 var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }; })
+                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }; })
                     .Where(r => r != null).ToList();
 
                 sw.Stop();
@@ -154,7 +154,7 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
             var fulltextTask = db.Articles
                 .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedHybrid}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedHybrid}%", "\\"))))
                 .OrderByDescending(a => a.UpdatedAt).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
             List<VectorSearchService.VectorSearchResult>? semanticHits = null;
@@ -191,11 +191,11 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
             var allIds = rrfScores.Keys.ToList();
             var allArticles = await db.Articles
                 .Where(a => allIds.Contains(a.Id) && a.Status == "published")
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }; })
+                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }; })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
@@ -212,7 +212,7 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
         var ftResults = await db.Articles
             .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\"))))
             .OrderByDescending(a => a.UpdatedAt).Take(limit)
-            .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Difficulty, UpdatedAt = a.UpdatedAt.ToString("o") })
+            .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
             .ToListAsync();
 
         sw.Stop();

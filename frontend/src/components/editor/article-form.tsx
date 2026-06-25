@@ -16,8 +16,6 @@ export interface ArticleFormProps {
   onExcerptChange: (v: string) => void;
   contentType: string;
   onContentTypeChange: (v: string) => void;
-  difficulty: string;
-  onDifficultyChange: (v: string) => void;
   status: string;
   onStatusChange: (v: string) => void;
   tags: string[];
@@ -49,8 +47,6 @@ export function ArticleForm({
   onExcerptChange,
   contentType,
   onContentTypeChange,
-  difficulty,
-  onDifficultyChange,
   status,
   onStatusChange,
   tags,
@@ -68,7 +64,7 @@ export function ArticleForm({
   onChangeSummaryChange,
   attachmentSection,
 }: ArticleFormProps) {
-  const { contentTypes, difficulties } = useLookups();
+  const { contentTypes } = useLookups();
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -134,11 +130,6 @@ export function ArticleForm({
           <select value={contentType} onChange={(e) => onContentTypeChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
             {contentTypes.map((ct) => (
               <option key={ct.value} value={ct.value}>{ct.label}</option>
-            ))}
-          </select>
-          <select value={difficulty} onChange={(e) => onDifficultyChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-            {difficulties.map((d) => (
-              <option key={d.value} value={d.value}>{d.label}</option>
             ))}
           </select>
           <select value={status} onChange={(e) => onStatusChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">

@@ -20,7 +20,6 @@ export default function EditArticlePage() {
   const [content, setContent] = useState<Record<string, unknown> | null>(null);
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
-  const [difficulty, setDifficulty] = useState("beginner");
   const [status, setStatus] = useState("draft");
   const [changeSummary, setChangeSummary] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -70,7 +69,6 @@ export default function EditArticlePage() {
             setContent(data.content);
             setExcerpt(data.excerpt || "");
             setContentType(data.contentType);
-            setDifficulty(data.difficulty);
             setStatus(data.status);
             setTags((data.tags || []).map((t: { id: string }) => t.id));
           }
@@ -116,7 +114,6 @@ export default function EditArticlePage() {
           content: finalContent,
           excerpt: excerpt.trim() || undefined,
           contentType,
-          difficulty,
           status,
           changeSummary: changeSummary.trim() || undefined,
           tags,
@@ -168,8 +165,6 @@ export default function EditArticlePage() {
       onExcerptChange={setExcerpt}
       contentType={contentType}
       onContentTypeChange={setContentType}
-      difficulty={difficulty}
-      onDifficultyChange={setDifficulty}
       status={status}
       onStatusChange={setStatus}
       tags={tags}

@@ -11,14 +11,13 @@ const LIMIT = 20;
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
-  const { contentTypes, difficulties } = useLookups();
+  const { contentTypes } = useLookups();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [contentTypeFilter, setContentTypeFilter] = useState<string>("");
-  const [difficultyFilter, setDifficultyFilter] = useState<string>("");
   const [mineFilter, setMineFilter] = useState(false);
   const [sortBy, setSortBy] = useState<string>("updatedAt");
 
@@ -32,7 +31,6 @@ export default function ArticlesPage() {
     params.set("limit", String(LIMIT));
     if (statusFilter) params.set("status", statusFilter);
     if (contentTypeFilter) params.set("contentType", contentTypeFilter);
-    if (difficultyFilter) params.set("difficulty", difficultyFilter);
     if (mineFilter) params.set("mine", "true");
 
     fetchWithAuth(`/api/articles?${params}`)
@@ -49,19 +47,13 @@ export default function ArticlesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, contentTypeFilter, difficultyFilter, mineFilter, page, sortBy]);
+  }, [fetchWithAuth, statusFilter, contentTypeFilter, mineFilter, page, sortBy]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
     pending: "bg-amber-100 text-amber-700",
     published: "bg-green-100 text-green-700",
     archived: "bg-red-100 text-red-700",
-  };
-
-  const difficultyColors: Record<string, string> = {
-    beginner: "bg-blue-100 text-blue-700",
-    intermediate: "bg-orange-100 text-orange-700",
-    advanced: "bg-red-100 text-red-700",
   };
 
   return (
@@ -125,16 +117,6 @@ export default function ArticlesPage() {
             ))}
           </select>
           <select
-            value={difficultyFilter}
-            onChange={(e) => { setPage(1); setDifficultyFilter(e.target.value); }}
-            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
-          >
-            <option value="">All Levels</option>
-            {difficulties.map((d) => (
-              <option key={d.value} value={d.value}>{d.label}</option>
-            ))}
-          </select>
-          <select
             value={sortBy}
             onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
             className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
@@ -173,9 +155,6 @@ export default function ArticlesPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
                       {article.status}
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${difficultyColors[article.difficulty] || ""}`}>
-                      {article.difficulty}
                     </span>
                     <span className="text-xs text-zinc-400">{article.contentType}</span>
                     <span className="flex items-center gap-0.5 text-xs text-zinc-400">

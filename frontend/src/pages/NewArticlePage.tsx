@@ -16,7 +16,6 @@ export default function NewArticlePage() {
   const [content, setContent] = useState<Record<string, unknown> | null>(null);
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
-  const [difficulty, setDifficulty] = useState("beginner");
   const [status, setStatus] = useState("draft");
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -42,7 +41,6 @@ export default function NewArticlePage() {
           content,
           excerpt: excerpt.trim() || undefined,
           contentType,
-          difficulty,
           status,
           tags,
         }),
@@ -61,7 +59,6 @@ export default function NewArticlePage() {
               content: finalContent,
               excerpt: excerpt.trim() || undefined,
               contentType,
-              difficulty,
               status,
               tags,
             }),
@@ -95,8 +92,6 @@ export default function NewArticlePage() {
       onExcerptChange={setExcerpt}
       contentType={contentType}
       onContentTypeChange={setContentType}
-      difficulty={difficulty}
-      onDifficultyChange={setDifficulty}
       status={status}
       onStatusChange={setStatus}
       tags={tags}

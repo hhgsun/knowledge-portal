@@ -69,7 +69,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.Status).IsRequired().HasDefaultValue("draft");
             e.Property(a => a.OwnerId).IsRequired();
             e.Property(a => a.ContentType).IsRequired().HasDefaultValue("reference");
-            e.Property(a => a.Difficulty).IsRequired().HasDefaultValue("beginner");
             e.Property(a => a.ReviewIntervalDays).HasDefaultValue(90);
             e.Property(a => a.CreatedAt).IsRequired();
             e.Property(a => a.UpdatedAt).IsRequired();

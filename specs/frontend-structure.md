@@ -39,7 +39,7 @@ frontend/src/
     ├── LoginPage.tsx          # Email/password form → POST /api/auth/login
     ├── RegisterPage.tsx       # Registration form → POST /api/auth/register
     ├── HomePage.tsx           # Dashboard stats + recent articles + top searches
-    ├── ArticlesPage.tsx       # Article list with status/difficulty badges
+    ├── ArticlesPage.tsx       # Article list with status badges
     ├── NewArticlePage.tsx     # Create article form with TipTap editor
     ├── EditArticlePage.tsx    # Edit article form with versioning + change summary
     ├── ArticleViewPage.tsx    # Article reader with TipTap renderer + feedback
@@ -232,7 +232,7 @@ Tag picker with inline creation capability.
 - **Icons**: `lucide-react` exclusively (no other icon libraries)
 - **Color patterns**:
   - Status badges: draft=zinc, pending=amber, published=green, archived=red
-  - Difficulty badges: beginner=blue, intermediate=orange, advanced=red
+  - Status badges: draft=gray, pending=amber, published=green, archived=red
   - Role badges: admin=red, editor=blue, viewer=gray
   - Dashboard stat cards: blue, green, amber, purple
 

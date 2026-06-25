@@ -257,8 +257,6 @@ export default function SearchPage() {
                       <div className="flex items-center gap-2 mt-2 text-xs text-zinc-400">
                         <span>{result.contentType}</span>
                         <span>·</span>
-                        <span>{result.difficulty}</span>
-                        <span>·</span>
                         <span>{new Date(result.updatedAt).toLocaleDateString()}</span>
                       </div>
                     </button>

@@ -251,12 +251,6 @@ export default function ArticleViewPage() {
             <Tag size={14} />
             {article.contentType}
           </span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${article.difficulty === "beginner" ? "bg-blue-100 text-blue-700" :
-            article.difficulty === "intermediate" ? "bg-orange-100 text-orange-700" :
-              "bg-red-100 text-red-700"
-            }`}>
-            {article.difficulty}
-          </span>
           {article.apiKeyName ? (
             <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
               <Key size={14} />

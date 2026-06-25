@@ -122,7 +122,6 @@ Behavior:
 | `limit` | int | 20 | Max results per page |
 | `status` | string | — | Filter by status |
 | `contentType` | string | — | Filter by content type (reference, how-to, adr, runbook, faq, policy, onboarding) |
-| `difficulty` | string | — | Filter by difficulty (beginner, intermediate, advanced) |
 | `mine` | bool | false | If true, return only articles owned by the current user |
 | `q` | string | — | Search title (LIKE, wildcards `%`/`_` escaped) |
 
@@ -136,7 +135,7 @@ Behavior:
   "articles": [
     {
       "id": "...", "title": "...", "slug": "...", "excerpt": "...",
-      "status": "published", "contentType": "reference", "difficulty": "beginner",
+      "status": "published", "contentType": "reference",
       "updatedAt": "...", "ownerName": "...", "apiKeyName": null,
       "tags": [{ "id": "...", "name": "...", "slug": "..." }]
     }
@@ -158,7 +157,6 @@ Behavior:
 | `excerpt` | string | No | — |
 | `status` | string | No | Default: `"draft"` |
 | `contentType` | string | No | Default: `"reference"` |
-| `difficulty` | string | No | Default: `"beginner"` |
 | `audience` | string | No | — |
 | `tags` | string[] | No | Array of tag ID, name, or slug (resolved in that priority) |
 
@@ -189,7 +187,6 @@ Accepts both article ID and slug for lookup.
 | `excerpt` | string | No | — |
 | `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
 | `contentType` | string | No | — |
-| `difficulty` | string | No | — |
 | `audience` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
 | `tags` | string[] | No | Array of tag ID, name, or slug (replaces all existing tags) |
@@ -436,7 +433,7 @@ Ordered by version number descending.
 ```json
 {
   "articles": [
-    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "how-to", "difficulty": "intermediate", "updatedAt": "...", "tags": [{ "id": "...", "name": "...", "slug": "..." }] }
+    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "how-to", "updatedAt": "...", "tags": [{ "id": "...", "name": "...", "slug": "..." }] }
   ]
 }
 ```
@@ -466,7 +463,7 @@ Ordered by version number descending.
 ```json
 {
   "results": [
-    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "...", "difficulty": "...", "updatedAt": "..." }
+    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "...", "updatedAt": "..." }
   ],
   "total": 5,
   "searchType": "fulltext",

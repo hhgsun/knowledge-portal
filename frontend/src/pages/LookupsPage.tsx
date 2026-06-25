@@ -76,7 +76,6 @@ export default function LookupsPage() {
   };
 
   const contentTypes = lookups.filter((l) => l.category === "content_type");
-  const difficulties = lookups.filter((l) => l.category === "difficulty");
 
   if (loading) return <div className="text-center py-12 text-zinc-500">Loading...</div>;
 
@@ -85,7 +84,7 @@ export default function LookupsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Lookup Values</h1>
-          <p className="text-sm text-zinc-500 mt-1">Manage article content types and difficulty levels</p>
+          <p className="text-sm text-zinc-500 mt-1">Manage article content types</p>
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
@@ -107,7 +106,6 @@ export default function LookupsPage() {
                 className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
               >
                 <option value="content_type">Content Type</option>
-                <option value="difficulty">Difficulty</option>
               </select>
             </div>
             <div>
@@ -140,7 +138,6 @@ export default function LookupsPage() {
 
       <div className="space-y-6">
         <LookupSection title="Content Types" items={contentTypes} onToggle={handleToggle} onDelete={handleDelete} />
-        <LookupSection title="Difficulty Levels" items={difficulties} onToggle={handleToggle} onDelete={handleDelete} />
       </div>
     </div>
   );

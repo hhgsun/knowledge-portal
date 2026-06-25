@@ -29,7 +29,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
 - **Entities**: `backend/Models/Entities/` — 13 models: User (with AzureObjectId), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
-- **Enum Validation**: `contentType` and `difficulty` are validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
+- **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
@@ -195,7 +195,6 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `article.excerpt` | — | — | Optional, trimmed |
 | `article.status` | — | — | Enum: draft, pending, published, archived |
 | `article.contentType` | — | — | DB-driven via `lookup_values` table (category: content_type) |
-| `article.difficulty` | — | — | DB-driven via `lookup_values` table (category: difficulty) |
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |

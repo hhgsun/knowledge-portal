@@ -21,16 +21,12 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
     private async Task<HashSet<string>> GetValidContentTypesAsync()
         => (await db.LookupValues.Where(l => l.Category == "content_type" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
 
-    private async Task<HashSet<string>> GetValidDifficultiesAsync()
-        => (await db.LookupValues.Where(l => l.Category == "difficulty" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
-
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1,
         [FromQuery] int limit = 20,
         [FromQuery] string? status = null,
         [FromQuery] string? contentType = null,
-        [FromQuery] string? difficulty = null,
         [FromQuery] bool mine = false,
         [FromQuery] string? q = null)
     {
@@ -58,13 +54,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
                 query = query.Where(a => a.ContentType == contentType);
         }
 
-        if (!string.IsNullOrWhiteSpace(difficulty))
-        {
-            var validDifficulties = await GetValidDifficultiesAsync();
-            if (validDifficulties.Contains(difficulty))
-                query = query.Where(a => a.Difficulty == difficulty);
-        }
-
         if (!string.IsNullOrWhiteSpace(q))
         {
             var escaped = q.Replace("%", "\\%").Replace("_", "\\_");
@@ -79,7 +68,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             .Select(a => new
             {
                 a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
-                a.ContentType, a.Difficulty,
+                a.ContentType,
                 UpdatedAt = a.UpdatedAt.ToString("o"),
                 OwnerName = a.Owner.Name,
                 ApiKeyName = a.CreatedViaApiKeyId != null
@@ -95,7 +84,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         var articlesWithScore = articles.Select(a => new
         {
             a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
-            a.ContentType, a.Difficulty, a.UpdatedAt,
+            a.ContentType, a.UpdatedAt,
             a.OwnerName, a.ApiKeyName, a.Tags, a.ViewCount,
             WilsonScore = CalculateWilsonScore(a.HelpfulCount, a.NotHelpfulCount)
         });
@@ -117,10 +106,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         var validContentTypes = await GetValidContentTypesAsync();
         if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
             return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
-
-        var validDifficulties = await GetValidDifficultiesAsync();
-        if (req.Difficulty != null && !validDifficulties.Contains(req.Difficulty))
-            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", validDifficulties)}" });
 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
@@ -151,7 +136,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             Status = articleStatus,
             OwnerId = userId,
             ContentType = req.ContentType ?? "reference",
-            Difficulty = req.Difficulty ?? "beginner",
             Audience = req.Audience?.Trim(),
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
@@ -244,7 +228,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         {
             article.Id, article.Title, article.Slug, article.Excerpt,
             Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
-            article.Status, article.ContentType, article.Difficulty,
+            article.Status, article.ContentType,
             article.OwnerId, article.Audience, article.ReadTimeMinutes,
             UpdatedAt = article.UpdatedAt.ToString("o"),
             PublishedAt = article.PublishedAt?.ToString("o"),
@@ -275,10 +259,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
             return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
 
-        var validDifficulties = await GetValidDifficultiesAsync();
-        if (req.Difficulty != null && !validDifficulties.Contains(req.Difficulty))
-            return BadRequest(new { error = $"Invalid difficulty. Allowed: {string.Join(", ", validDifficulties)}" });
-
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
 
@@ -292,7 +272,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         }
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
         if (req.ContentType != null) article.ContentType = req.ContentType;
-        if (req.Difficulty != null) article.Difficulty = req.Difficulty;
         if (req.Audience != null) article.Audience = req.Audience.Trim();
         if (req.Status != null)
         {
@@ -484,7 +463,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
                 x.Article.Slug,
                 x.Article.Excerpt,
                 x.Article.ContentType,
-                x.Article.Difficulty,
                 UpdatedAt = x.Article.UpdatedAt.ToString("o"),
                 Tags = x.Article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList()
             })

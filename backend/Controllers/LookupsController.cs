@@ -36,7 +36,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Category) || string.IsNullOrWhiteSpace(req.Value) || string.IsNullOrWhiteSpace(req.Label))
             return BadRequest(new { error = "Category, value, and label are required" });
 
-        var allowedCategories = new[] { "content_type", "difficulty" };
+        var allowedCategories = new[] { "content_type" };
         if (!allowedCategories.Contains(req.Category))
             return BadRequest(new { error = $"Invalid category. Allowed: {string.Join(", ", allowedCategories)}" });
 
@@ -98,8 +98,6 @@ public class LookupsController(AppDbContext db) : ControllerBase
         bool inUse = false;
         if (lookup.Category == "content_type")
             inUse = await db.Articles.AnyAsync(a => a.ContentType == lookup.Value);
-        else if (lookup.Category == "difficulty")
-            inUse = await db.Articles.AnyAsync(a => a.Difficulty == lookup.Value);
 
         if (inUse)
             return Conflict(new { error = "Cannot delete: this value is in use by existing articles. Deactivate it instead." });

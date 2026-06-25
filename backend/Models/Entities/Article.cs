@@ -10,7 +10,6 @@ public class Article
     public string Status { get; set; } = "draft";
     public string OwnerId { get; set; } = null!;
     public string ContentType { get; set; } = "reference";
-    public string Difficulty { get; set; } = "beginner";
     public string? Audience { get; set; }
     public string? CreatedViaApiKeyId { get; set; }
     public int? ReadTimeMinutes { get; set; }

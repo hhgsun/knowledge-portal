@@ -24,11 +24,10 @@ export function useLookups() {
   }, [fetchWithAuth]);
 
   const contentTypes = lookups.filter((l) => l.category === "content_type");
-  const difficulties = lookups.filter((l) => l.category === "difficulty");
 
   const invalidateCache = () => {
     cache = null;
   };
 
-  return { lookups, contentTypes, difficulties, loading, invalidateCache };
+  return { lookups, contentTypes, loading, invalidateCache };
 }
