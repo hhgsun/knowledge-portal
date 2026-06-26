@@ -285,6 +285,7 @@ No known gaps at this time.
 - **Image deferred upload**: Images pasted/dropped into TipTap editor are stored as blob URLs temporarily. On save, blob URLs are replaced with real `/api/attachments/{id}/download` URLs after upload.
 - **Attachment cascade**: Article deletion removes all attachment DB records (cascade) AND physical files from disk
 - **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.
+- **Lookup color/icon**: LookupValue entity has optional `Color` (Tailwind color key) and `Icon` (Lucide icon name) fields. Frontend renders content type badges with colored backgrounds and icons via `ContentTypeBadge` component. Color picker supports all 20 Tailwind color keys dynamically. Icon picker dynamically loads all lucide-react icons with search/filter. Utilities in `src/lib/lookup-utils.ts`, picker components in `src/components/lookup-pickers.tsx`.
 
 ## Placeholder Fields (Not Yet Active)
 

@@ -23,7 +23,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         var results = await query
             .OrderBy(l => l.Category)
             .ThenBy(l => l.SortOrder)
-            .Select(l => new { l.Id, l.Category, l.Value, l.Label, l.SortOrder, l.IsActive })
+            .Select(l => new { l.Id, l.Category, l.Value, l.Label, l.Color, l.Icon, l.SortOrder, l.IsActive })
             .ToListAsync();
 
         return Ok(results);
@@ -53,6 +53,8 @@ public class LookupsController(AppDbContext db) : ControllerBase
             Category = req.Category,
             Value = req.Value.Trim().ToLowerInvariant(),
             Label = req.Label.Trim(),
+            Color = req.Color?.Trim(),
+            Icon = req.Icon?.Trim(),
             SortOrder = req.SortOrder ?? (maxOrder + 1),
             IsActive = true
         };
@@ -60,7 +62,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         db.LookupValues.Add(lookup);
         await db.SaveChangesAsync();
 
-        return Created($"/api/lookups/{lookup.Id}", new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.SortOrder });
+        return Created($"/api/lookups/{lookup.Id}", new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder });
     }
 
     [HttpPut]
@@ -75,12 +77,14 @@ public class LookupsController(AppDbContext db) : ControllerBase
             return NotFound(new { error = "Lookup not found" });
 
         if (req.Label != null) lookup.Label = req.Label.Trim();
+        if (req.Color != null) lookup.Color = req.Color.Trim();
+        if (req.Icon != null) lookup.Icon = req.Icon.Trim();
         if (req.SortOrder.HasValue) lookup.SortOrder = req.SortOrder.Value;
         if (req.IsActive.HasValue) lookup.IsActive = req.IsActive.Value;
 
         await db.SaveChangesAsync();
 
-        return Ok(new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.SortOrder, lookup.IsActive });
+        return Ok(new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder, lookup.IsActive });
     }
 
     [HttpDelete]
@@ -109,5 +113,5 @@ public class LookupsController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CreateLookupRequest(string Category, string Value, string Label, int? SortOrder = null);
-public record UpdateLookupRequest(string Id, string? Label = null, int? SortOrder = null, bool? IsActive = null);
+public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
+public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);

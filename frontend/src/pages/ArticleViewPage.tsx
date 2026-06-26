@@ -5,6 +5,7 @@ import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
 
@@ -247,10 +248,7 @@ export default function ArticleViewPage() {
             <Clock size={14} />
             {new Date(article.updatedAt).toLocaleDateString()}
           </span>
-          <span className="flex items-center gap-1">
-            <Tag size={14} />
-            {article.contentType}
-          </span>
+          <ContentTypeBadge contentType={article.contentType} size="md" />
           {article.apiKeyName ? (
             <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
               <Key size={14} />

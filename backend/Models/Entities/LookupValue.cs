@@ -6,6 +6,8 @@ public class LookupValue
     public string Category { get; set; } = null!; // "content_type"
     public string Value { get; set; } = null!;    // e.g. "reference", "how-to"
     public string Label { get; set; } = null!;    // Display label e.g. "How-To Guide"
+    public string? Color { get; set; }            // Tailwind color key e.g. "blue", "green", "red"
+    public string? Icon { get; set; }             // Lucide icon name e.g. "book-open", "code", "lightbulb"
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

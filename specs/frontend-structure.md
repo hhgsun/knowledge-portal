@@ -19,10 +19,13 @@ frontend/src/
 │   ├── useApi.ts              # fetchWithAuth — JWT injection, auto-logout on 401
 │   └── useArticleImages.ts    # Shared deferred image/file upload logic (blob URL → real URL)
 ├── lib/
-│   └── utils.ts               # cn() — clsx + tailwind-merge helper
+│   ├── utils.ts               # cn() — clsx + tailwind-merge helper
+│   └── lookup-utils.ts        # Dynamic color map (20 Tailwind colors) + icon resolver (all lucide-react icons)
 ├── components/
 │   ├── error-boundary.tsx     # React error boundary with reload button
 │   ├── toast-provider.tsx     # Sonner Toaster wrapper component
+│   ├── ContentTypeBadge.tsx   # Colored badge with icon for content types (uses LookupValue color/icon)
+│   ├── lookup-pickers.tsx     # ColorPicker (20-color grid popup) + IconPicker (searchable all lucide icons)
 │   ├── layout/
 │   │   ├── app-shell.tsx      # Sidebar + Header + Outlet wrapper (skipped on auth pages)
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section

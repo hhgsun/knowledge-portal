@@ -4,6 +4,7 @@ import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, T
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
+import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import type { ArticleListItem } from "../types/api";
 
 const LIMIT = 20;
@@ -156,7 +157,7 @@ export default function ArticlesPage() {
                     <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
                       {article.status}
                     </span>
-                    <span className="text-xs text-zinc-400">{article.contentType}</span>
+                    <ContentTypeBadge contentType={article.contentType} />
                     <span className="flex items-center gap-0.5 text-xs text-zinc-400">
                       <Eye size={12} />
                       {article.viewCount}

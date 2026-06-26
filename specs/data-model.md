@@ -287,6 +287,20 @@ erDiagram
 | Dimensions | `int` | `dimensions` | Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
+### LookupValue
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| Category | `string` | `category` | Required | — |
+| Value | `string` | `value` | Required | — |
+| Label | `string` | `label` | Required | — |
+| Color | `string?` | `color` | — | `null` (Tailwind color key) |
+| Icon | `string?` | `icon` | — | `null` (Lucide icon name) |
+| SortOrder | `int` | `sort_order` | Required | Sequential |
+| IsActive | `bool` | `is_active` | Required | `true` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
 ## Indexes
 
 | Table | Column(s) | Type |

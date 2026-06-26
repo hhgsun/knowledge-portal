@@ -11,6 +11,8 @@ export interface LookupValue {
   category: string;
   value: string;
   label: string;
+  color?: string;
+  icon?: string;
   sortOrder: number;
   isActive: boolean;
 }
