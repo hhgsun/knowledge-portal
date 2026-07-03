@@ -12,8 +12,8 @@ import "./index.css";
 const msalInstance = new PublicClientApplication(msalConfig);
 
 msalInstance.initialize().then(() => {
-  // Must resolve any pending redirect before starting interactions
-  return msalInstance.handleRedirectPromise();
+  // Handle any pending redirect/popup response; ignore stale cache errors
+  return msalInstance.handleRedirectPromise().catch(() => null);
 }).then(() => {
   createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
