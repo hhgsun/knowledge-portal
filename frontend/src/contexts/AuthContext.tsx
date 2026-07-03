@@ -33,7 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setToken(null);
     localStorage.removeItem("token");
-  }, []);
+    // Clear MSAL account cache to prevent auto-silent login after logout
+    msalInstance.clearCache();
+  }, [msalInstance]);
 
   // Load user on mount / token change
   useEffect(() => {
