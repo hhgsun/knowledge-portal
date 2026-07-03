@@ -211,7 +211,7 @@ export function Sidebar() {
             )}
           >
             <User size={18} />
-            {!collapsed && <span className="truncate">{user?.name ?? "Profile"}</span>}
+            {!collapsed && <span className="truncate max-w-[140px]">{user?.name ?? "Profile"}</span>}
           </Link>
           <button
             onClick={() => setTheme(theme === "light" ? "dark" : theme === "dark" ? "system" : "light")}
