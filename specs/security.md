@@ -58,13 +58,32 @@
 | Frontend config | `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID` in `.env` |
 | Silent login | Login page auto-attempts silent auth if user has active Azure session |
 
-**Flow**:
-1. Frontend calls `msalInstance.acquireTokenPopup/Silent({ scopes: ["User.Read"] })`
-2. Azure AD returns access token
-3. Frontend POSTs `{ accessToken }` to `/api/auth/azure-login`
-4. Backend calls Microsoft Graph `GET /v1.0/me` with the token
-5. Backend finds/creates local user by AzureObjectId or email
-6. Backend returns local JWT + user object
+**Flow (MSAL v5 redirect-bridge pattern)**:
+1. Frontend calls `msalInstance.acquireTokenPopup({ scopes: ["User.Read"] })`
+2. Popup opens → Azure AD login → redirects to `/auth-popup-callback.html#code=...`
+3. Popup page calls `broadcastResponseToMainFrame()` (from `@azure/msal-browser/redirect-bridge`)
+4. Auth response broadcast to parent window via `BroadcastChannel`
+5. Parent exchanges auth code for access token (PKCE)
+6. Frontend POSTs `{ accessToken }` to `/api/auth/azure-login`
+7. Backend calls Microsoft Graph `GET /v1.0/me` with the token
+8. Backend finds/creates local user by AzureObjectId or email
+9. Backend returns local JWT + user object
+
+**Azure Portal — App Registration (Deployment)**:
+
+| Setting | Value |
+|---------|-------|
+| Display name | `knowledge-portal` |
+| Application (client) ID | `da617abd-249a-4130-8514-8e90b010cca0` |
+| Directory (tenant) ID | `83ad3b45-d663-443b-a431-2a825740c73d` |
+| Supported account types | Single tenant (My organization only) |
+| Platform | Single-page application (SPA) |
+| Redirect URIs (dev) | `http://localhost:5173/auth-popup-callback.html`, `http://localhost:5173` |
+| Redirect URIs (prod) | `https://knowledge.finagotech.com.tr/auth-popup-callback.html`, `https://knowledge.finagotech.com.tr` |
+| API permissions | `Microsoft Graph → User.Read` (delegated) |
+| Client credentials | Not required (SPA uses PKCE, no client secret needed) |
+
+**Logout behavior**: `msalInstance.clearCache()` is called on logout to prevent auto-silent login on next visit.
 
 ## Authorization Model
 

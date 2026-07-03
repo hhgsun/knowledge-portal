@@ -6,12 +6,15 @@
 ## Directory Layout
 
 ```
-frontend/src/
-├── main.tsx                  # Entry point: MsalProvider + AuthProvider + App
-├── App.tsx                   # BrowserRouter + route definitions + ProtectedRoute
-├── index.css                 # Tailwind v4 import + CSS custom properties + dark mode
-├── config/
-│   └── msalConfig.ts          # MSAL.js configuration (Azure AD clientId, tenantId, scopes)
+frontend/
+├── auth-popup-callback.html   # Vite multi-page entry: Azure AD popup redirect target (no React)
+└── src/
+    ├── main.tsx                  # Entry point: MsalProvider + AuthProvider + App
+    ├── auth-popup-callback.ts    # Popup callback: broadcastResponseToMainFrame (MSAL v5 redirect bridge)
+    ├── App.tsx                   # BrowserRouter + route definitions + ProtectedRoute
+    ├── index.css                 # Tailwind v4 import + CSS custom properties + dark mode
+    ├── config/
+    │   └── msalConfig.ts          # MSAL.js configuration (Azure AD clientId, tenantId, scopes)
 ├── contexts/
 │   ├── AuthContext.tsx        # JWT auth state, login/logout/register/loginWithAzure, auto-revalidation
 │   └── ThemeContext.tsx       # Light/Dark/System theme toggle, persisted to localStorage

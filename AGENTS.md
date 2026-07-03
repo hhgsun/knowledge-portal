@@ -13,7 +13,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Layer | Stack |
 |-------|-------|
 | Backend | ASP.NET Core (.NET 10), EF Core, SQLite |
-| Auth | JWT Bearer + API Key (kp_ prefix) + Azure AD (MSAL) |
+| Auth | JWT Bearer + API Key (kp_ prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
@@ -81,7 +81,8 @@ frontend/
 ├── src/pages/            # 16 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
-└── vite.config.ts        # Proxy config
+├── auth-popup-callback.html  # Vite multi-page entry: Azure AD popup redirect target
+└── vite.config.ts        # Proxy + multi-page build config
 
 specs/                    # Detailed specifications (subordinate to this file)
 ├── api-surface.md        # Complete API contract
@@ -210,7 +211,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Feature | Status | Notes |
 |---------|--------|-------|
 | JWT Auth | ✅ Implemented | 24h expiry, HMAC-SHA256 |
-| Azure AD Auth | ✅ Implemented | MSAL popup/silent, auto-creates user from Azure profile |
+| Azure AD Auth | ✅ Implemented | MSAL v5 redirect-bridge popup, auto-creates user from Azure profile |
 | API Key Auth | ✅ Implemented | kp_ prefix, BCrypt hash, prefix-indexed lookup |
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
@@ -252,7 +253,8 @@ No known gaps at this time.
 - **LastReviewedAt**: Automatically set to UTC now when article status becomes `published` (via direct update or approve action)
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
-- **Azure AD login**: Frontend uses MSAL.js popup/silent flow → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. If user has active Azure session, login page auto-attempts silent login.
+- **Azure AD login**: Frontend uses MSAL.js v5 redirect-bridge popup flow → popup opens → Azure AD auth → popup calls `broadcastResponseToMainFrame()` via BroadcastChannel → parent receives auth code → PKCE exchange → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. Popup callback page: `/auth-popup-callback.html` (Vite multi-page entry). If user has active Azure session, login page auto-attempts silent login.
+- **Azure AD logout**: `msalInstance.clearCache()` called on logout to prevent auto-silent re-login.
 - **Azure AD user linking**: First Azure login links by email if user exists, otherwise creates new viewer user. AzureObjectId stored for future logins. Profile name synced from Azure on each login.
 - **Azure AD password set**: Azure users can set a local password via PUT `/api/auth/profile` without providing `currentPassword` (first-time set). After setting, both Azure and email+password login work.
 - **`/api/auth/me` response**: Includes `isAzureUser` boolean field (true if user has AzureObjectId linked).

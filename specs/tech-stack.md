@@ -48,8 +48,8 @@
 | TipTap extensions | 3.23.x | code-block-lowlight, heading, highlight, image, link, placeholder, table (row/cell/header), task-list, task-item, text-align, underline |
 | `lowlight` | 3.3.0 | Syntax highlighting in code blocks |
 | `lucide-react` | 1.16.0 | Icon library (sole icon source) |
-| `@azure/msal-browser` | latest | MSAL.js v2 browser library for Azure AD auth |
-| `@azure/msal-react` | latest | React wrapper for MSAL.js |
+| `@azure/msal-browser` | 5.15.0 | MSAL.js v5 browser library for Azure AD auth (redirect-bridge popup pattern) |
+| `@azure/msal-react` | 5.5.0 | React hooks wrapper for MSAL.js v5 |
 | `clsx` | 2.1.1 | Conditional class names |
 | `tailwind-merge` | 3.6.0 | Tailwind class deduplication |
 
