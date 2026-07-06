@@ -92,5 +92,34 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
 
         return Ok(new { message = "API key deleted" });
     }
+
+    [HttpPost("{id}/rotate")]
+    [RequirePermission(Permissions.ApiKeysManage)]
+    public async Task<IActionResult> Rotate(string id)
+    {
+        if (User.GetSource() == "api-key")
+            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
+
+        var userId = User.GetUserId();
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
+        if (key == null) return NotFound(new { error = "Key not found" });
+
+        // Generate new raw key
+        var rawKey = "kp_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
+        // Update hash and prefix, reset expiration
+        key.KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12);
+        key.KeyPrefix = rawKey[3..11];
+        key.ExpiresAt = DateTime.UtcNow.AddDays(90);
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            key.Id,
+            Key = rawKey,
+            key.Name,
+            ExpiresAt = key.ExpiresAt?.ToString("o")
+        });
+    }
 }
 

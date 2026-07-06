@@ -179,6 +179,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/admin/users?id={id}` | DELETE | ✓ | `users:manage` | ✓ |
 | `/api/keys` | GET | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
+| `/api/keys/{id}/rotate` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys?id={id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
 | `/api/lookups` | GET | ✓ | — | ✗ |
 | `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
@@ -223,7 +224,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
-| API Key Management | ✅ Implemented | Create/list/delete |
+| API Key Management | ✅ Implemented | Create/list/rotate/delete |
 | Article Feedback | ✅ Implemented | Vote (1 per user/article, toggle) + Comments (independent, multiple). Wilson Score. View count in responses. |
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |

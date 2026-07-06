@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Key, Plus, Trash2, Copy, Check, AlertTriangle } from "lucide-react";
+import { Key, Plus, Trash2, Copy, Check, AlertTriangle, RotateCw } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import type { ApiKey } from "../types/api";
@@ -54,6 +54,18 @@ export default function SettingsKeysPage() {
       toast.success("API key deleted");
     } else {
       toast.error("Failed to delete API key");
+    }
+  };
+
+  const handleRotate = async (id: string) => {
+    const res = await fetchWithAuth(`/api/keys/${id}/rotate`, { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      setCreatedKey(data.key);
+      loadKeys();
+      toast.success("API key rotated");
+    } else {
+      toast.error("Failed to rotate API key");
     }
   };
 
@@ -141,9 +153,14 @@ export default function SettingsKeysPage() {
                   )}
                 </div>
               </div>
-              <button onClick={() => handleDelete(key.id)} className="p-2 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950">
-                <Trash2 size={16} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleRotate(key.id)} title="Rotate key" className="p-2 text-zinc-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950">
+                  <RotateCw size={16} />
+                </button>
+                <button onClick={() => handleDelete(key.id)} title="Delete key" className="p-2 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950">
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

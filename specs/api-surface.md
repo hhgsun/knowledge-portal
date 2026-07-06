@@ -652,6 +652,18 @@ Marks all published articles for re-embedding by clearing `IndexedAt` and deleti
 
 ---
 
+### `POST /api/keys/{id}/rotate`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage`
+
+Generates a new key value for an existing API key. The old key is immediately invalidated. Expiration is reset to 90 days from rotation.
+
+**200 Response**: `{ "id", "key", "name", "expiresAt" }`
+
+> ⚠️ The `key` field is only returned once — store it securely.
+
+---
+
 ### `DELETE /api/keys?id={id}`
 **Auth**: Bearer (session only)
 **Permission**: `api_keys:manage`
