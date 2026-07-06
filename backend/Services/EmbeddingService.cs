@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -56,7 +57,7 @@ public class EmbeddingService(
         for (int i = 0; i < chunks.Count; i++)
         {
             var vector = embedResults[i].Vector.ToArray();
-            var norm = ComputeNorm(vector);
+            var norm = VectorMath.ComputeNorm(vector);
             db.ArticleEmbeddings.Add(new ArticleEmbedding
             {
                 ArticleId = article.Id,
@@ -156,14 +157,6 @@ public class EmbeddingService(
         }
 
         return chunks;
-    }
-
-    private static double ComputeNorm(float[] vector)
-    {
-        double sum = 0;
-        for (int i = 0; i < vector.Length; i++)
-            sum += (double)vector[i] * vector[i];
-        return Math.Sqrt(sum);
     }
 
     public static byte[] SerializeEmbedding(float[] vector)

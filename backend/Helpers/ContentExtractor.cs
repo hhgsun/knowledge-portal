@@ -2,10 +2,29 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace KnowledgePortal.Api.Services;
+namespace KnowledgePortal.Api.Helpers;
 
 public static class ContentExtractor
 {
+    /// <summary>
+    /// Estimates read time based on ~200 words per minute.
+    /// Extracts text from TipTap JSON content.
+    /// </summary>
+    public static int? CalculateReadTime(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
+            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static string ExtractSearchableText(string title, string? excerpt, string? contentJson)
     {
         var sb = new StringBuilder();

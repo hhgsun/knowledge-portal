@@ -2,6 +2,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -87,7 +88,7 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
 
         var helpful = votes.Count(v => v.IsHelpful);
         var notHelpful = votes.Count(v => !v.IsHelpful);
-        var wilsonScore = CalculateWilsonScore(helpful, notHelpful);
+        var wilsonScore = SlugHelper.WilsonScore(helpful, notHelpful);
 
         var userVote = votes.FirstOrDefault(v => v.UserId == userId);
         bool? userVoteValue = userVote?.IsHelpful;
@@ -161,22 +162,6 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
         db.ArticleComments.Remove(comment);
         await db.SaveChangesAsync();
         return Ok(new { message = "Comment deleted" });
-    }
-
-    // ─── Wilson Score ─────────────────────────────────────────
-
-    private static double CalculateWilsonScore(int positive, int negative)
-    {
-        var n = positive + negative;
-        if (n == 0) return 0;
-
-        const double z = 1.96; // 95% confidence
-        var phat = (double)positive / n;
-        var denominator = 1 + z * z / n;
-        var centre = phat + z * z / (2 * n);
-        var spread = z * Math.Sqrt((phat * (1 - phat) + z * z / (4 * n)) / n);
-
-        return Math.Round((centre - spread) / denominator, 4);
     }
 }
 

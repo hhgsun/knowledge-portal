@@ -10,14 +10,12 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/analytics")]
 [Authorize]
 [RequirePermission(Permissions.AnalyticsView)]
+[RequireSessionAuth]
 public class AnalyticsController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "Analytics requires session auth" });
-
         var now = DateTime.UtcNow;
         var weekAgo = now.AddDays(-7);
         var dayAgo = now.AddDays(-1);

@@ -4,6 +4,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -56,7 +57,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var escaped = q.Replace("%", "\\%").Replace("_", "\\_");
+            var escaped = SlugHelper.EscapeLikePattern(q);
             query = query.Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\"));
         }
 
@@ -86,7 +87,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
             a.ContentType, a.UpdatedAt,
             a.OwnerName, a.ApiKeyName, a.Tags, a.ViewCount,
-            WilsonScore = CalculateWilsonScore(a.HelpfulCount, a.NotHelpfulCount)
+            WilsonScore = SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount)
         });
 
         return Ok(new
@@ -139,7 +140,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
-            ReadTimeMinutes = CalculateReadTime(req.Content != null ? JsonSerializer.Serialize(req.Content) : null),
+            ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.Content != null ? JsonSerializer.Serialize(req.Content) : null),
         };
 
         db.Articles.Add(article);
@@ -270,7 +271,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         if (req.Content != null)
         {
             article.Content = JsonSerializer.Serialize(req.Content);
-            article.ReadTimeMinutes = CalculateReadTime(article.Content);
+            article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
             contentChanged = true;
         }
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
@@ -484,7 +485,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
     private static string GenerateSlug(string title)
     {
-        var slug = title.ToLowerInvariant().Trim();
+        var slug = SlugHelper.Transliterate(title.ToLowerInvariant().Trim());
         slug = SlugRegex().Replace(slug, "");
         slug = WhitespaceRegex().Replace(slug, "-");
         slug = slug.Trim('-');
@@ -493,9 +494,12 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
     private static string GenerateTagSlug(string name)
     {
-        var slug = TagSlugRegex().Replace(name.ToLowerInvariant().Trim(), "-").Trim('-');
+        var slug = SlugHelper.Transliterate(name.ToLowerInvariant().Trim());
+        slug = TagSlugRegex().Replace(slug, "-").Trim('-');
         return slug.Length > 50 ? slug[..50] : slug;
     }
+
+
 
     [GeneratedRegex(@"[^a-z0-9\s-]")]
     private static partial Regex SlugRegex();
@@ -505,38 +509,5 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex TagSlugRegex();
-
-    /// <summary>
-    /// Estimates read time based on ~200 words per minute.
-    /// Extracts text from TipTap JSON content.
-    /// </summary>
-    private static int? CalculateReadTime(string? contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
-        {
-            var text = ContentExtractor.ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
-            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static double CalculateWilsonScore(int positive, int negative)
-    {
-        var n = positive + negative;
-        if (n == 0) return 0;
-
-        const double z = 1.96;
-        var phat = (double)positive / n;
-        var denominator = 1 + z * z / n;
-        var centre = phat + z * z / (2 * n);
-        var spread = z * Math.Sqrt((phat * (1 - phat) + z * z / (4 * n)) / n);
-
-        return Math.Round((centre - spread) / denominator, 4);
-    }
 }
 

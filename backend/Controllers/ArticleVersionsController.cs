@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -92,7 +93,7 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
         article.Title = version.Title;
         article.Content = version.Content;
         article.UpdatedAt = DateTime.UtcNow;
-        article.ReadTimeMinutes = CalculateReadTime(version.Content);
+        article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(version.Content);
 
         // Create a new version recording the restore
         var maxVersion = await db.ArticleVersions
@@ -112,40 +113,5 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { message = "Article restored to selected version", version = maxVersion + 1 });
-    }
-
-    private static int? CalculateReadTime(string? contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
-        {
-            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
-            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string ExtractTextFromJson(JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String:
-                return element.GetString() ?? "";
-            case JsonValueKind.Object:
-                var sb = new System.Text.StringBuilder();
-                if (element.TryGetProperty("text", out var textProp))
-                    sb.Append(textProp.GetString() ?? "").Append(' ');
-                if (element.TryGetProperty("content", out var contentProp))
-                    sb.Append(ExtractTextFromJson(contentProp));
-                return sb.ToString();
-            case JsonValueKind.Array:
-                return string.Join(' ', element.EnumerateArray().Select(ExtractTextFromJson));
-            default:
-                return "";
-        }
     }
 }

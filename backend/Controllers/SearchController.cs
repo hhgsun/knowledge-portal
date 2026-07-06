@@ -3,6 +3,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -59,7 +60,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             var tagQuery = db.Articles.Where(a => tagArticleIds.Contains(a.Id) && a.Status == "published");
             if (!string.IsNullOrWhiteSpace(searchQuery))
             {
-                var esc = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+                var esc = SlugHelper.EscapeLikePattern(searchQuery);
                 tagQuery = tagQuery.Where(a => EF.Functions.Like(a.Title, $"%{esc}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{esc}%", "\\")));
             }
 
@@ -170,7 +171,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             }
             else
             {
-                var escapedHybrid = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+                var escapedHybrid = SlugHelper.EscapeLikePattern(searchQuery);
                 var likeResults = await db.Articles
                     .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedHybrid}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedHybrid}%", "\\"))))
                     .OrderByDescending(a => a.UpdatedAt).Take(limit)
@@ -249,7 +250,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
         else
         {
             // Fallback to LIKE if FTS returns nothing (handles special chars better)
-            var escapedSearch = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+            var escapedSearch = SlugHelper.EscapeLikePattern(searchQuery);
             ftFinalResults = (await db.Articles
                 .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\"))))
                 .OrderByDescending(a => a.UpdatedAt).Take(limit)
@@ -285,10 +286,9 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
 
     [HttpPost("reindex")]
     [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
     public async Task<IActionResult> Reindex()
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "This endpoint requires session authentication" });
         if (!config.GetValue("Ollama:Enabled", false))
             return StatusCode(503, new { error = "Ollama is not enabled" });
 
@@ -307,11 +307,9 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
 
     [HttpGet("embedding-status")]
     [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
     public async Task<IActionResult> EmbeddingStatus()
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "This endpoint requires session authentication" });
-
         var totalPublished = await db.Articles.CountAsync(a => a.Status == "published");
         var totalIndexed = await db.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt != null);
 

@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Numerics.Tensors;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 
@@ -27,7 +28,7 @@ public sealed class VectorSearchService(
 
         var queryResults = await embeddingGenerator.GenerateAsync([queryText], cancellationToken: ct);
         var queryVector = queryResults[0].Vector.ToArray();
-        var queryNorm = ComputeNorm(queryVector);
+        var queryNorm = VectorMath.ComputeNorm(queryVector);
         if (queryNorm == 0) return [];
 
         var results = new List<VectorSearchResult>();
@@ -102,13 +103,5 @@ public sealed class VectorSearchService(
         if (normA == 0 || normB == 0) return 0;
         var dot = TensorPrimitives.Dot(a, b);
         return dot / (normA * normB);
-    }
-
-    private static double ComputeNorm(float[] vector)
-    {
-        double sum = 0;
-        for (int i = 0; i < vector.Length; i++)
-            sum += (double)vector[i] * vector[i];
-        return Math.Sqrt(sum);
     }
 }

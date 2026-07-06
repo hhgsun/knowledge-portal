@@ -2,6 +2,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/admin/users")]
 [Authorize]
 [RequirePermission(Permissions.UsersManage)]
+[RequireSessionAuth]
 public class AdminUsersController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -20,16 +22,13 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int limit = 50)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "User management requires session auth" });
-
         page = Math.Max(1, page);
         limit = Math.Clamp(limit, 1, 100);
 
         var query = db.Users.AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var escaped = q.Replace("%", "\\%").Replace("_", "\\_");
+            var escaped = SlugHelper.EscapeLikePattern(q);
             query = query.Where(u => EF.Functions.Like(u.Name, $"%{escaped}%", "\\") || EF.Functions.Like(u.Email, $"%{escaped}%", "\\"));
         }
 
@@ -57,8 +56,6 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest req)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "User management requires session auth" });
 
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Name, email, and password are required" });
@@ -86,8 +83,6 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
     [HttpPut]
     public async Task<IActionResult> Update([FromBody] UpdateUserRequest req)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "User management requires session auth" });
 
         if (string.IsNullOrWhiteSpace(req.UserId))
             return BadRequest(new { error = "userId is required" });
@@ -122,8 +117,6 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
     [HttpDelete]
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "User management requires session auth" });
 
         if (string.IsNullOrWhiteSpace(id))
             return BadRequest(new { error = "User id is required" });

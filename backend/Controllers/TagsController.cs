@@ -3,6 +3,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 50)
             return BadRequest(new { error = "Name is required (1-50 chars)" });
 
-        var slug = TagSlugRegex().Replace(req.Name.ToLowerInvariant().Trim(), "-").Trim('-');
+        var slug = TagSlugRegex().Replace(SlugHelper.Transliterate(req.Name.ToLowerInvariant().Trim()), "-").Trim('-');
 
         var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
         if (existing != null)
@@ -62,7 +63,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
         var tag = await db.Tags.FindAsync(req.Id);
         if (tag == null) return NotFound(new { error = "Tag not found" });
 
-        var newSlug = TagSlugRegex().Replace(req.Name.ToLowerInvariant().Trim(), "-").Trim('-');
+        var newSlug = TagSlugRegex().Replace(SlugHelper.Transliterate(req.Name.ToLowerInvariant().Trim()), "-").Trim('-');
 
         var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == newSlug && t.Id != req.Id);
         if (existing != null)
@@ -97,5 +98,6 @@ public partial class TagsController(AppDbContext db) : ControllerBase
 
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex TagSlugRegex();
+
 }
 

@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 
