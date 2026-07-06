@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
-public class FullTextSearchService(AppDbContext db, ILogger<FullTextSearchService> logger)
+public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogger<FullTextSearchService> logger)
 {
     public record FtsResult(string ArticleId, double Rank);
 
@@ -39,9 +39,13 @@ public class FullTextSearchService(AppDbContext db, ILogger<FullTextSearchServic
             .Select(a => new { a.Id, a.Title, a.Excerpt, a.Content })
             .ToListAsync(ct);
 
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
+
         foreach (var article in articles)
         {
-            var contentText = ContentExtractor.ExtractSearchableText(article.Title ?? "", article.Excerpt, article.Content);
+            var attachmentText = await GetAttachmentTextAsync(article.Id, baseDir, ct);
+            var contentText = ContentExtractor.ExtractSearchableText(article.Title ?? "", article.Excerpt, article.Content, attachmentText);
             await db.Database.ExecuteSqlRawAsync(
                 "INSERT INTO articles_fts(article_id, title, excerpt, content_text) VALUES ({0}, {1}, {2}, {3})",
                 article.Id, article.Title ?? "", article.Excerpt ?? "", contentText);
@@ -61,7 +65,11 @@ public class FullTextSearchService(AppDbContext db, ILogger<FullTextSearchServic
 
         if (article.Status == "published")
         {
-            var contentText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content);
+            var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+            var baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
+            var attachmentText = await GetAttachmentTextAsync(article.Id, baseDir);
+
+            var contentText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
             await db.Database.ExecuteSqlRawAsync(
                 "INSERT INTO articles_fts(article_id, title, excerpt, content_text) VALUES ({0}, {1}, {2}, {3})",
                 article.Id, article.Title ?? "", article.Excerpt ?? "", contentText);
@@ -96,6 +104,33 @@ public class FullTextSearchService(AppDbContext db, ILogger<FullTextSearchServic
 
         // FTS5 rank is negative (more negative = more relevant), convert to positive score
         return results.Select(r => new FtsResult(r.ArticleId, -r.Rank)).ToList();
+    }
+
+    private async Task<string> GetAttachmentTextAsync(string articleId, string baseDir, CancellationToken ct = default)
+    {
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == articleId)
+            .Select(a => new { a.StoredFileName, a.FileName })
+            .ToListAsync(ct);
+
+        if (attachments.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        var articleDir = Path.Combine(baseDir, articleId);
+
+        foreach (var att in attachments)
+        {
+            var extension = Path.GetExtension(att.FileName).ToLowerInvariant();
+            var filePath = Path.Combine(articleDir, att.StoredFileName);
+            var text = AttachmentTextExtractor.ExtractText(filePath, extension);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append(text);
+                sb.Append(' ');
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static string BuildFtsQuery(string input)

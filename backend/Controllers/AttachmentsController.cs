@@ -2,6 +2,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,7 @@ namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Authorize]
-public class AttachmentsController(AppDbContext db, IConfiguration config) : ControllerBase
+public class AttachmentsController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
 {
     private static readonly Dictionary<string, string[]> MimeMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -124,6 +125,14 @@ public class AttachmentsController(AppDbContext db, IConfiguration config) : Con
         db.ArticleAttachments.Add(attachment);
         await db.SaveChangesAsync();
 
+        // Trigger re-indexing if article is published
+        if (article.Status == "published")
+        {
+            article.IndexedAt = null;
+            await db.SaveChangesAsync();
+            await ftsService.SyncArticleAsync(article);
+        }
+
         return StatusCode(201, new AttachmentResponse(
             attachment.Id,
             attachment.FileName,
@@ -159,6 +168,14 @@ public class AttachmentsController(AppDbContext db, IConfiguration config) : Con
 
         db.ArticleAttachments.Remove(attachment);
         await db.SaveChangesAsync();
+
+        // Trigger re-indexing if article is published
+        if (article.Status == "published")
+        {
+            article.IndexedAt = null;
+            await db.SaveChangesAsync();
+            await ftsService.SyncArticleAsync(article);
+        }
 
         return Ok(new { message = "Attachment deleted" });
     }

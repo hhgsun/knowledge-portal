@@ -27,6 +27,11 @@ public static class ContentExtractor
 
     public static string ExtractSearchableText(string title, string? excerpt, string? contentJson)
     {
+        return ExtractSearchableText(title, excerpt, contentJson, null);
+    }
+
+    public static string ExtractSearchableText(string title, string? excerpt, string? contentJson, string? attachmentText)
+    {
         var sb = new StringBuilder();
         sb.Append(title);
 
@@ -51,6 +56,12 @@ public static class ContentExtractor
             {
                 // Malformed JSON — skip content extraction
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(attachmentText))
+        {
+            sb.Append(". ");
+            sb.Append(attachmentText.Trim());
         }
 
         return sb.ToString();

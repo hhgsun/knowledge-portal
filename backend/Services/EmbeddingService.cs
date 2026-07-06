@@ -18,7 +18,8 @@ public class EmbeddingService(
 
     public async Task<bool> EmbedArticleAsync(Article article, CancellationToken ct = default)
     {
-        var text = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content);
+        var attachmentText = await GetAttachmentTextAsync(article.Id, ct);
+        var text = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
         if (string.IsNullOrWhiteSpace(text))
         {
             logger.LogWarning("Article {ArticleId} has no extractable text, skipping embedding", article.Id);
@@ -76,6 +77,36 @@ public class EmbeddingService(
         logger.LogInformation("Embedded article {ArticleId} ({Chunks} chunks, {Dimensions} dims, model={Model})",
             article.Id, chunks.Count, embedResults[0].Vector.Length, _modelName);
         return true;
+    }
+
+    private async Task<string> GetAttachmentTextAsync(string articleId, CancellationToken ct)
+    {
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
+
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == articleId)
+            .Select(a => new { a.StoredFileName, a.FileName })
+            .ToListAsync(ct);
+
+        if (attachments.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        var articleDir = Path.Combine(baseDir, articleId);
+
+        foreach (var att in attachments)
+        {
+            var extension = Path.GetExtension(att.FileName).ToLowerInvariant();
+            var filePath = Path.Combine(articleDir, att.StoredFileName);
+            var text = AttachmentTextExtractor.ExtractText(filePath, extension);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append(text);
+                sb.Append(' ');
+            }
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>

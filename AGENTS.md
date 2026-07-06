@@ -61,7 +61,8 @@ backend/
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
-├── Services/             # ContentExtractor, EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService
+├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
+├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
 │   └── Entities/         # EF Core entity classes (13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding)
@@ -267,7 +268,7 @@ No known gaps at this time.
 - **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
 - **Search RAG**: Top-5 semantic results → article context (max 3000 words) → Ollama llama3.2 → answer with source citations. Response includes `sources: [{articleId, title, slug, score}]`.
-- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. FTS5 index synced on publish/update/delete/approve.
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. FTS5 index synced on publish/update/delete/approve/attachment-change.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).
@@ -286,6 +287,7 @@ No known gaps at this time.
 - **Attachment deferred delete**: In edit mode, deleting a file marks it with strikethrough + "Kaydedilince silinecek" badge. Undo is available. Actual API DELETE happens on save.
 - **Image deferred upload**: Images pasted/dropped into TipTap editor are stored as blob URLs temporarily. On save, blob URLs are replaced with real `/api/attachments/{id}/download` URLs after upload.
 - **Attachment cascade**: Article deletion removes all attachment DB records (cascade) AND physical files from disk
+- **Attachment indexing**: Text content of attachments (.pdf, .docx, .txt, .md, .csv, .json, .yaml) is extracted and included in both FTS5 and embedding indexes. Max 50K chars per attachment. Unsupported/corrupted files are silently skipped. Adding/removing attachments on published articles triggers re-indexing.
 - **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.
 - **Lookup color/icon**: LookupValue entity has optional `Color` (Tailwind color key) and `Icon` (Lucide icon name) fields. Frontend renders content type badges with colored backgrounds and icons via `ContentTypeBadge` component. Color picker supports all 20 Tailwind color keys dynamically. Icon picker dynamically loads all lucide-react icons with search/filter. Utilities in `src/lib/lookup-utils.ts`, picker components in `src/components/lookup-pickers.tsx`.
 
