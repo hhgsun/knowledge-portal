@@ -235,7 +235,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |
 | Version Diff | ✅ Implemented | Line-based diff comparison between versions |
 | Dark Mode Toggle | ✅ Implemented | Light/Dark/System toggle, persisted to localStorage |
-| Notifications | ❌ Not implemented | Bell icon is cosmetic only |
+
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
