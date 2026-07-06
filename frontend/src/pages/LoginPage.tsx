@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Shield } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { BookSearch } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../config/msalConfig";
@@ -82,7 +82,7 @@ export default function LoginPage() {
     <div className="w-full min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Shield size={40} className="mx-auto text-blue-600 mb-3" />
+          <BookSearch size={40} className="mx-auto text-blue-600 mb-3" />
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
             Knowledge Portal
           </h1>
@@ -165,12 +165,12 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-xs text-zinc-500 mt-4">
+        {/* <p className="text-center text-xs text-zinc-500 mt-4">
           Don&apos;t have an account?{" "}
           <Link to="/register" className="text-blue-600 hover:underline">
             Register
           </Link>
-        </p>
+        </p> */}
       </div>
     </div>
   );

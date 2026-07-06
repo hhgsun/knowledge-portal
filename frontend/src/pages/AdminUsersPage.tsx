@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X, Cloud } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import type { AdminUser } from "../types/api";
@@ -271,7 +271,15 @@ export default function AdminUsersPage() {
                       {user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                     </div>
                     <div>
-                      <p className="font-medium text-zinc-900 dark:text-zinc-100">{user.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-zinc-900 dark:text-zinc-100">{user.name}</p>
+                        {user.isAzureUser && (
+                          <span title="Azure AD" className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                            <Cloud size={10} />
+                            Azure
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-zinc-400">{user.email}</p>
                     </div>
                   </div>

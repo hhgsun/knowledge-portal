@@ -41,6 +41,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
             .Select(u => new
             {
                 u.Id, u.Name, u.Email, u.Role,
+                IsAzureUser = u.AzureObjectId != null,
                 CreatedAt = u.CreatedAt.ToString("o"),
                 UpdatedAt = u.UpdatedAt.ToString("o")
             })

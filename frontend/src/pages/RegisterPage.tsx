@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Shield } from "lucide-react";
+import { BookSearch } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function RegisterPage() {
@@ -28,10 +28,19 @@ export default function RegisterPage() {
   };
 
   return (
+    // kayıt olma özelliği iptal edildi
+    <div className="w-full min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
+      <p className="text-center text-sm text-zinc-500">
+        Registration is currently disabled.
+      </p>
+    </div>
+  );
+
+  return (
     <div className="w-full min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Shield size={40} className="mx-auto text-blue-600 mb-3" />
+          <BookSearch size={40} className="mx-auto text-blue-600 mb-3" />
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
             Create Account
           </h1>
