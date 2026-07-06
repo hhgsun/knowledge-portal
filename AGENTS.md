@@ -239,7 +239,6 @@ specs/                    # Detailed specifications (subordinate to this file)
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
-| Avatar Upload | ❌ Not implemented | Avatar field exists but no upload endpoint |
 
 ## Known Frontend Gaps
 

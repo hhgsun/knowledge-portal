@@ -6,7 +6,6 @@ public class User
     public string Name { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;
-    public string? Avatar { get; set; }
     public string Role { get; set; } = "viewer";
     public string? AzureObjectId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

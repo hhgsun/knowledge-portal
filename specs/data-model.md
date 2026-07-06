@@ -33,7 +33,6 @@ erDiagram
         string name
         string email UK
         string password_hash
-        string avatar "nullable"
         string role "default: viewer"
         datetime created_at
         datetime updated_at
@@ -150,7 +149,6 @@ erDiagram
 | Name | `string` | `name` | Required | — |
 | Email | `string` | `email` | Required, Unique index | — |
 | PasswordHash | `string` | `password_hash` | Required | BCrypt (cost 12) |
-| Avatar | `string?` | `avatar` | — | `null` |
 | Role | `string` | `role` | Required | `"viewer"` |
 | AzureObjectId | `string?` | `azure_object_id` | Unique (nullable) | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |

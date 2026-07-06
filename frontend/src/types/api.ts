@@ -23,7 +23,6 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  avatar?: string | null;
   isAzureUser?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -34,7 +33,6 @@ export interface AdminUser {
   name: string;
   email: string;
   role: UserRole;
-  avatar: string | null;
   createdAt: string;
   updatedAt: string;
 }

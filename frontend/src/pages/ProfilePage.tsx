@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useApi } from "../hooks/useApi";
 
 import { toast } from "sonner";
-import { User, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
@@ -90,8 +90,8 @@ export default function ProfilePage() {
       {/* Profile Info */}
       <form onSubmit={handleProfileUpdate} className="mb-10">
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
-            <User size={20} />
+          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-sm font-semibold text-blue-700 dark:text-blue-300">
+            {user?.name ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'}
           </div>
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Personal Information</h2>
         </div>

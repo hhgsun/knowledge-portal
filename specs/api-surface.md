@@ -90,7 +90,7 @@ Behavior:
 ### `GET /api/auth/me`
 **Auth**: Bearer JWT
 
-**200 Response**: `{ "id", "name", "email", "role", "avatar", "isAzureUser" }`
+**200 Response**: `{ "id", "name", "email", "role", "isAzureUser" }`
 **401**: Invalid/expired token.
 
 ---

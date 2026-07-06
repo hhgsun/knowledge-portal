@@ -40,7 +40,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
             .Take(limit)
             .Select(u => new
             {
-                u.Id, u.Name, u.Email, u.Role, u.Avatar,
+                u.Id, u.Name, u.Email, u.Role,
                 CreatedAt = u.CreatedAt.ToString("o"),
                 UpdatedAt = u.UpdatedAt.ToString("o")
             })

@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   Key,
-  User,
   LogOut,
   BookSearch,
   PanelLeftClose,
@@ -210,7 +209,9 @@ export function Sidebar() {
               collapsed && "justify-center px-2"
             )}
           >
-            <User size={18} />
+            <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-[10px] font-semibold text-blue-700 dark:text-blue-300 shrink-0">
+              {user?.name ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'}
+            </div>
             {!collapsed && <span className="truncate max-w-[140px]">{user?.name ?? "Profile"}</span>}
           </Link>
           <button

@@ -74,7 +74,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         var user = await db.Users.FindAsync(userId);
         if (user == null) return Unauthorized(new { error = "User not found" });
 
-        return Ok(new { user.Id, user.Name, user.Email, user.Role, user.Avatar, isAzureUser = user.AzureObjectId != null });
+        return Ok(new { user.Id, user.Name, user.Email, user.Role, isAzureUser = user.AzureObjectId != null });
     }
 
     [HttpPut("profile")]

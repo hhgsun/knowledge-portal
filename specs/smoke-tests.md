@@ -37,7 +37,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 |---|--------|----------|
 | 1 | `POST /api/auth/login` with `{"email":"admin@knowledge.local","password":"admin123"}` | 200: returns `{ token, user }` with `role: "admin"` |
 | 2 | `POST /api/auth/login` with wrong password | 401: returns `{ error }` |
-| 3 | `GET /api/auth/me` with valid Bearer token | 200: returns `{ id, name, email, role, avatar }` |
+| 3 | `GET /api/auth/me` with valid Bearer token | 200: returns `{ id, name, email, role, isAzureUser }` |
 | 4 | `GET /api/auth/me` with no token | 401 |
 
 ### Registration

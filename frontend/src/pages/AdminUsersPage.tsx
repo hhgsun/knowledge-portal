@@ -268,7 +268,7 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                      {user.name.charAt(0).toUpperCase()}
+                      {user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                     </div>
                     <div>
                       <p className="font-medium text-zinc-900 dark:text-zinc-100">{user.name}</p>
