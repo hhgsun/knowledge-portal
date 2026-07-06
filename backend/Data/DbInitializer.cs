@@ -1,6 +1,7 @@
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace KnowledgePortal.Api.Data;
 
@@ -76,6 +77,80 @@ public static class DbInitializer
             }
 
             await db.SaveChangesAsync();
+        }
+
+        // Seed articles (only if no articles exist)
+        if (!await db.Articles.AnyAsync())
+        {
+            await SeedArticlesAsync(db);
+        }
+    }
+
+    private static async Task SeedArticlesAsync(AppDbContext db)
+    {
+        var seedPath = Path.Combine(AppContext.BaseDirectory, "SeedData", "articles");
+        if (!Directory.Exists(seedPath)) return;
+
+        var admin = await db.Users.FirstAsync(u => u.Email == "admin@knowledge.local");
+        var allTags = await db.Tags.ToListAsync();
+
+        var files = Directory.GetFiles(seedPath, "*.json").OrderBy(f => f);
+
+        foreach (var file in files)
+        {
+            var json = await File.ReadAllTextAsync(file);
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var title = root.GetProperty("title").GetString()!;
+            var baseSlug = SlugHelper.GenerateSlug(title);
+            var slug = baseSlug;
+            var counter = 1;
+            while (await db.Articles.AnyAsync(a => a.Slug == slug))
+            {
+                slug = $"{baseSlug}-{counter}";
+                counter++;
+            }
+            var contentType = root.GetProperty("contentType").GetString() ?? "reference";
+            var excerpt = root.TryGetProperty("excerpt", out var exc) ? exc.GetString() : null;
+            var status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "published" : "published";
+            var contentJson = root.GetProperty("content").GetRawText();
+
+            var article = new Article
+            {
+                Title = title,
+                Slug = slug,
+                Content = contentJson,
+                Excerpt = excerpt,
+                ContentType = contentType,
+                Status = status,
+                OwnerId = admin.Id,
+                ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentJson),
+                PublishedAt = status == "published" ? DateTime.UtcNow : null,
+                LastReviewedAt = status == "published" ? DateTime.UtcNow : null,
+            };
+
+            db.Articles.Add(article);
+            await db.SaveChangesAsync();
+
+            // Assign tags
+            if (root.TryGetProperty("tags", out var tagsEl))
+            {
+                foreach (var tagEl in tagsEl.EnumerateArray())
+                {
+                    var tagSlug = tagEl.GetString();
+                    var tag = allTags.FirstOrDefault(t => t.Slug == tagSlug);
+                    if (tag != null)
+                    {
+                        db.ArticleTags.Add(new ArticleTag
+                        {
+                            ArticleId = article.Id,
+                            TagId = tag.Id
+                        });
+                    }
+                }
+                await db.SaveChangesAsync();
+            }
         }
     }
 

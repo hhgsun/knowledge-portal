@@ -1,0 +1,58 @@
+{
+  "title": "Azure AD ile Kurumsal Giriş",
+  "contentType": "how-to",
+  "tags": ["project-knowledge-portal", "security", "deployment"],
+  "excerpt": "Azure Active Directory ile SSO entegrasyonu, MSAL yapılandırması ve kullanıcı eşleme mekanizması.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Genel Bakış" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal, Microsoft Azure Active Directory (Azure AD / Entra ID) ile tek oturum açma (SSO) desteği sunar. Kullanıcılar kurumsal Microsoft hesaplarıyla doğrudan giriş yapabilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Giriş Akışı" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Azure AD girişi MSAL.js v5 redirect-bridge popup akışı ile çalışır:" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Kullanıcı 'Microsoft ile Giriş Yap' butonuna tıklar." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Popup penceresi açılır ve Azure AD kimlik doğrulama sayfasına yönlendirir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Kullanıcı Microsoft hesabıyla giriş yapar." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Popup, BroadcastChannel üzerinden ana pencereye auth kodunu iletir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "PKCE exchange ile access token alınır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Access token POST /api/auth/azure-login endpoint'ine gönderilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Backend Microsoft Graph /me ile token'ı doğrular." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Yerel kullanıcı bulunur veya oluşturulur, JWT token döner." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Kullanıcı Eşleme" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Azure AD ile giriş yapıldığında kullanıcı eşleme şu şekilde çalışır:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "İlk giriş (yeni kullanıcı):" }, { "type": "text", "text": " Azure'dan gelen e-posta ile mevcut kullanıcı aranır. Bulunursa AzureObjectId ile bağlanır. Bulunamazsa viewer rolüyle yeni kullanıcı oluşturulur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Sonraki girişler:" }, { "type": "text", "text": " AzureObjectId ile doğrudan eşleştirilir. Profil adı Azure'dan güncellenir." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Sessiz Giriş (Auto-Login)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Kullanıcının aktif Azure oturumu varsa, login sayfası otomatik olarak sessiz giriş dener. Başarılı olursa kullanıcı giriş formunu bile görmeden sisteme yönlendirilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Çıkış" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Çıkış yapıldığında msalInstance.clearCache() çağrılarak MSAL cache'i temizlenir. Bu, bir sonraki girişte otomatik sessiz login'in tekrar yapılmamasını sağlar." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Şifre Belirleme" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Azure AD ile oluşturulan kullanıcıların başlangıçta yerel şifresi yoktur. Profil sayfasından (PUT /api/auth/profile) ilk kez şifre belirlenebilir — bu durumda mevcut şifre (currentPassword) gerekmez. Şifre belirlendikten sonra hem Azure AD hem de e-posta + şifre ile giriş yapılabilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Yapılandırma" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Azure AD entegrasyonu için gerekli yapılandırma:" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Azure Portal" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Azure Portal'da bir App Registration oluşturun." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Redirect URI olarak http://localhost:5173/auth-popup-callback.html ekleyin (SPA tipi)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Application (client) ID ve Directory (tenant) ID'yi not edin." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Frontend Ayarları" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Frontend environment değişkenlerinde MSAL yapılandırmasını belirtin:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "VITE_AZURE_CLIENT_ID" }, { "type": "text", "text": " — Application (client) ID" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "VITE_AZURE_TENANT_ID" }, { "type": "text", "text": " — Directory (tenant) ID" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Güvenlik Notları" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Access token doğrulaması Microsoft Graph API üzerinden yapılır (backend)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "PKCE (Proof Key for Code Exchange) kullanılarak token güvenliği sağlanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Popup callback sayfası (auth-popup-callback.html) Vite multi-page entry olarak build edilir." }] }] }
+      ]}
+    ]
+  }
+}

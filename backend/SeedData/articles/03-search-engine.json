@@ -1,0 +1,68 @@
+{
+  "title": "Arama Motoru — Fulltext, Semantic, Hybrid ve RAG",
+  "contentType": "reference",
+  "tags": ["project-knowledge-portal", "best-practices", "performance"],
+  "excerpt": "Knowledge Portal'ın dört farklı arama modunun detaylı açıklaması, kullanım senaryoları ve yapılandırması.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Arama Modları" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal dört farklı arama modu sunar. Her mod farklı senaryolar için optimize edilmiştir. Varsayılan mod fulltext'tir ve Ollama olmadan çalışır." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "1. Fulltext Arama (FTS5)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "SQLite FTS5 sanal tablosu kullanılarak BM25 algoritması ile sıralanan tam metin aramasıdır. Ollama gerektirmez." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Nasıl Çalışır?" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale başlığı, özet, içerik metni ve ek dosya içerikleri FTS5 indeksine eklenir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Arama sorgusu tokenize edilir ve BM25 skoru hesaplanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "FTS5 kullanılamayan durumlarda LIKE fallback devreye girer." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Wildcard karakterleri (% ve _) otomatik olarak escape edilir." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Ne Zaman Kullanmalı?" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Kesin kelime eşleşmesi aradığınızda, teknik terimler veya hata kodları gibi spesifik metinleri bulmak istediğinizde kullanın." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "2. Semantic Arama" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Ollama nomic-embed-text modeli ile metin embedding'leri oluşturulur ve SIMD cosine similarity ile en benzer içerikler bulunur." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Nasıl Çalışır?" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makaleler ~500 kelimelik chunk'lara bölünür (50 kelime overlap)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Her chunk için 768 boyutlu embedding vektörü oluşturulur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Arama sorgusu da embedding'e dönüştürülür." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Cosine similarity ile en yüksek skorlu chunk'lar (min 0.3) döner." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Her makale için en iyi chunk skoru kullanılır (best-chunk scoring)." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Ne Zaman Kullanmalı?" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Anlamsal olarak benzer içerikler aradığınızda, tam kelime eşleşmesi olmasa bile kavramsal yakınlık istediğinizde kullanın. Örneğin 'container yönetimi' araması 'Docker orchestration' içeren makaleleri de bulabilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "3. Hybrid Arama" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Fulltext ve semantic aramanın sonuçlarını Reciprocal Rank Fusion (RRF) algoritması ile birleştirir." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "RRF Parametreleri" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "α (alpha):" }, { "type": "text", "text": " 0.4 — Fulltext ağırlığı" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "β (beta):" }, { "type": "text", "text": " 0.6 — Semantic ağırlığı" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "k:" }, { "type": "text", "text": " 60 — RRF smoothing parametresi" }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Her sonuç matchType alanı ile hangi kaynaklardan geldiğini belirtir: fulltext, semantic veya both." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Ne Zaman Kullanmalı?" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "En kapsamlı arama deneyimi için önerilir. Hem kelime eşleşmesi hem de anlamsal benzerlik bir arada değerlendirilir. Ollama kullanılamadığında otomatik olarak sadece fulltext'e düşer." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "4. RAG Arama (AI Yanıtlı)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Retrieval-Augmented Generation: Semantic arama ile bulunan en ilgili makaleler bağlam olarak kullanılarak Ollama llama3.2 modeli ile doğal dilde yanıt üretilir." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Nasıl Çalışır?" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Semantic arama ile en ilgili 5 makale bulunur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Bu makalelerin içeriği (max 3000 kelime) bağlam olarak hazırlanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Ollama llama3.2 modeline sorgu + bağlam gönderilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Model, bağlamdaki bilgilere dayanarak yanıt üretir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Yanıt ile birlikte kaynak makaleler (sources) döner." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Arama Filtre Sözdizimi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Arama sorgusunda özel sözdizimi ile filtreler ekleyebilirsiniz:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "#etiket-slug" }, { "type": "text", "text": " — Etiket filtresi (AND mantığı, birden fazla kullanılabilir)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "@yazar-slug" }, { "type": "text", "text": " — Yazar filtresi (OR mantığı, birden fazla kullanılabilir)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "##icerik-turu" }, { "type": "text", "text": " — İçerik türü filtresi (OR mantığı)" }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Örnek: " }, { "type": "text", "marks": [{ "type": "code" }], "text": "@admin #tutorial ##how-to react hooks" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "İndeksleme" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makaleler yayınlandığında, içerik değiştiğinde veya ek dosya eklendiğinde/silindiğinde otomatik olarak indekslenir. Background service her 5 saniyede bir kontrol eder ve batch olarak (10'lu gruplar) işler. İndeksleme durumu API üzerinden sorgulanabilir." }] }
+    ]
+  }
+}

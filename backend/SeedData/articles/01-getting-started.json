@@ -1,0 +1,57 @@
+{
+  "title": "Knowledge Portal — Başlangıç Rehberi",
+  "contentType": "onboarding",
+  "tags": ["project-knowledge-portal", "getting-started", "tutorial"],
+  "excerpt": "Knowledge Portal'ı kullanmaya başlamak için temel bilgiler, ilk makale oluşturma ve sistem tanıtımı.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Knowledge Portal Nedir?" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal, kurumsal bilgi birikimini organize etmek, aramak ve paylaşmak için tasarlanmış modern bir bilgi yönetim platformudur. Ekip üyeleri makaleler oluşturabilir, etiketleyebilir, versiyonlayabilir ve gelişmiş arama yetenekleri (fulltext, semantic, hybrid, RAG) ile içeriklere hızlıca ulaşabilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Temel Özellikler" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Zengin İçerik Editörü:" }, { "type": "text", "text": " TipTap tabanlı editör ile başlıklar, listeler, kod blokları, görseller ve tablolar oluşturabilirsiniz." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Gelişmiş Arama:" }, { "type": "text", "text": " FTS5 fulltext, semantic (Ollama embedding), hybrid (RRF) ve RAG (AI yanıtları) arama modları." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Versiyon Kontrolü:" }, { "type": "text", "text": " Her içerik değişikliği otomatik olarak versiyonlanır. Önceki sürümlere geri dönebilirsiniz." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Etiket Sistemi:" }, { "type": "text", "text": " Makaleleri etiketlerle kategorize edin, arama sırasında #etiket sözdizimi ile filtreleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Dosya Ekleri:" }, { "type": "text", "text": " Makalelere resim, PDF, Word ve diğer dosyaları ekleyebilirsiniz. Metin içerikli dosyalar arama indeksine dahil edilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Geri Bildirim:" }, { "type": "text", "text": " Makalelere oy verin (faydalı/faydasız) ve yorum bırakın." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Sisteme Giriş" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Sisteme iki farklı yöntemle giriş yapabilirsiniz:" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta ve Şifre:" }, { "type": "text", "text": " Kayıt olurken belirlediğiniz e-posta ve şifre ile giriş yapın." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Azure AD:" }, { "type": "text", "text": " Kurumsal Microsoft hesabınız ile tek tıkla giriş yapın. İlk girişte otomatik hesap oluşturulur." }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "İlk kurulumda varsayılan admin hesabı kullanılabilir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta:" }, { "type": "text", "text": " admin@knowledge.local" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Şifre:" }, { "type": "text", "text": " admin123" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "İlk Makalenizi Oluşturun" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Sol menüden 'Yeni Makale' butonuna tıklayın." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale başlığını girin — URL-dostu slug otomatik oluşturulur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "İçerik türünü seçin (Reference, How-To Guide, FAQ, Runbook, vb.)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "İlgili etiketleri ekleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "TipTap editörü ile zengin içerik yazın." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Taslak olarak kaydedin veya yayınlama yetkisiniz varsa doğrudan yayınlayın." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Roller ve Yetkiler" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Sistemde üç temel rol bulunur:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Admin:" }, { "type": "text", "text": " Tüm yetkilere sahiptir. Kullanıcı yönetimi, API key yönetimi, herhangi bir makaleyi düzenleme/silme yapabilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Editor:" }, { "type": "text", "text": " Makale yayınlama, arşivleme, onaylama, etiket yönetimi ve analitik görüntüleme yetkisine sahiptir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Viewer:" }, { "type": "text", "text": " Makale oluşturabilir (taslak/pending), kendi makalelerini düzenleyebilir ve silebilir. Yayınlama yetkisi yoktur." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Sonraki Adımlar" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Bu rehberi okuduktan sonra aşağıdaki makalelere göz atmanızı öneririz:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "API Kullanım Kılavuzu — Programatik erişim için" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Arama Motoru Rehberi — Gelişmiş arama özelliklerini keşfedin" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale Yönetimi — Versiyonlama, durum geçişleri ve iş akışları" }] }] }
+      ]}
+    ]
+  }
+}

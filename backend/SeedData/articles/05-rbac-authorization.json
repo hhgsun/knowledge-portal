@@ -1,0 +1,72 @@
+{
+  "title": "RBAC ve Yetkilendirme Sistemi",
+  "contentType": "reference",
+  "tags": ["project-knowledge-portal", "security", "best-practices"],
+  "excerpt": "Rol tabanlı erişim kontrolü (RBAC), yetki matrisi ve güvenlik mimarisi açıklaması.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "RBAC Mimarisi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal, rol tabanlı erişim kontrolü (Role-Based Access Control) kullanır. Her kullanıcı bir role atanır ve bu rol, kullanıcının hangi işlemleri yapabileceğini belirler." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Roller" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Admin" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Sistem yöneticisi rolü. Tüm yetkilere sahiptir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Tüm makaleleri düzenleme ve silme" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale yayınlama, arşivleme ve onaylama" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Kullanıcı yönetimi (oluşturma, düzenleme, silme, rol atama)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "API key yönetimi" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Etiket yönetimi" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Analitik görüntüleme" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Editor" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "İçerik editörü rolü. Kendi makalelerini tam kontrol eder, ek olarak:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale yayınlama ve arşivleme" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Pending makaleleri onaylama/reddetme" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Etiket yönetimi" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Analitik görüntüleme" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Viewer" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Temel kullanıcı rolü. Yeni kayıtlarda varsayılan rol:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale oluşturma (draft veya pending olarak)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Kendi makalelerini düzenleme ve silme" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Yayınlanmış makaleleri ve kendi makalelerini görüntüleme" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Oy verme ve yorum yapma" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Yetki Matrisi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Aşağıda tüm yetkiler ve hangi rollerin bunlara sahip olduğu listelenmiştir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:create" }, { "type": "text", "text": " — admin, editor, viewer" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:edit_own" }, { "type": "text", "text": " — admin, editor, viewer" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:edit_any" }, { "type": "text", "text": " — admin" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:delete_own" }, { "type": "text", "text": " — admin, editor, viewer" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:delete_any" }, { "type": "text", "text": " — admin" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:publish" }, { "type": "text", "text": " — admin, editor" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:archive" }, { "type": "text", "text": " — admin, editor" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "articles:approve" }, { "type": "text", "text": " — admin, editor" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "tags:manage" }, { "type": "text", "text": " — admin, editor" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "users:manage" }, { "type": "text", "text": " — admin" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "analytics:view" }, { "type": "text", "text": " — admin, editor" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "api_keys:manage" }, { "type": "text", "text": " — admin" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Uygulama Desenleri" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "RBAC iki farklı desende uygulanır:" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Attribute-based:" }, { "type": "text", "text": " [RequirePermission(\"permission\")] attribute'u ile basit kontroller. Endpoint seviyesinde uygulanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Inline:" }, { "type": "text", "text": " RbacService.HasPermission() ile sahiplik tabanlı veya koşullu kontroller. Örneğin: edit_own kontrolünde makalenin sahibi mi diye bakılır." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Session-Only Endpoint'ler" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Bazı hassas endpoint'ler sadece JWT session ile erişilebilir, API key ile erişilemez:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Admin kullanıcı yönetimi (/api/admin/users)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Analitik (/api/analytics)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "API key yönetimi (/api/keys)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Arama reindex ve embedding durumu" }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "API key ile bu endpoint'lere erişim denendiğinde HTTP 403 yanıtı döner." }] }
+    ]
+  }
+}

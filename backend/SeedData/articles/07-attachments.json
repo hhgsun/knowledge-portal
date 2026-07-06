@@ -1,0 +1,56 @@
+{
+  "title": "Dosya Ekleri (Attachments) Kullanımı",
+  "contentType": "how-to",
+  "tags": ["project-knowledge-portal", "tutorial"],
+  "excerpt": "Makalelere dosya ekleme, görsel yapıştırma, desteklenen formatlar ve indeksleme davranışı.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Genel Bakış" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal makalelere dosya eklemenize olanak tanır. Eklenen dosyalar güvenli bir şekilde sunucuda saklanır, metin içerikli dosyalar (PDF, Word, Markdown vb.) otomatik olarak arama indeksine dahil edilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Desteklenen Dosya Formatları" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Aşağıdaki uzantılara sahip dosyalar yüklenebilir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Görseller:" }, { "type": "text", "text": " .png, .jpg, .jpeg, .gif, .webp, .svg" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Dokümanlar:" }, { "type": "text", "text": " .pdf, .docx, .txt, .md" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Veri dosyaları:" }, { "type": "text", "text": " .xlsx, .csv, .json, .yaml" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Sınırlamalar" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Maksimum dosya boyutu:" }, { "type": "text", "text": " 20 MB" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Makale başına maksimum dosya:" }, { "type": "text", "text": " 20 adet" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Uzantı whitelist dışındaki dosyalar reddedilir." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Frontend'de Dosya Ekleme" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Dosya Yükleme" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale düzenleme sayfasında 'Ekler' bölümüne gidin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Dosya seçin veya sürükle-bırak ile ekleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Dosyalar 'Kaydedilince yüklenecek' badge'i ile gösterilir (deferred upload)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makaleyi kaydettiğinizde dosyalar sunucuya yüklenir." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Görsel Yapıştırma (Paste/Drop)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "TipTap editörüne doğrudan görsel yapıştırabilir veya sürükleyebilirsiniz:" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Bir görseli kopyalayın (Ctrl+C) veya dosyayı editöre sürükleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Görsel geçici blob URL ile editörde gösterilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Makale kaydedildiğinde blob URL'ler gerçek download URL'lerine dönüştürülür." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Dosya Silme" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Düzenleme modunda bir eki sildiğinizde, dosya hemen silinmez — üzeri çizili olarak işaretlenir ve 'Kaydedilince silinecek' badge'i gösterilir. Geri alma (undo) mümkündür. Asıl silme işlemi makale kaydedildiğinde gerçekleşir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "API ile Dosya İşlemleri" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Dosya yükleme (multipart/form-data)\ncurl -X POST http://localhost:5174/api/articles/{articleId}/attachments \\\n  -H \"Authorization: Bearer {token}\" \\\n  -F \"file=@document.pdf\"\n\n# Ek listesi\nGET /api/articles/{articleId}/attachments\n\n# Dosya indirme\nGET /api/attachments/{attachmentId}/download\n\n# Dosya silme\nDELETE /api/articles/{articleId}/attachments/{attachmentId}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "İndeksleme Davranışı" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Metin içerikli dosyalar otomatik olarak arama indeksine dahil edilir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "İndekslenen formatlar:" }, { "type": "text", "text": " .pdf, .docx, .txt, .md, .csv, .json, .yaml" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Maksimum metin:" }, { "type": "text", "text": " Her ek için en fazla 50.000 karakter çıkarılır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Desteklenmeyen veya bozuk dosyalar sessizce atlanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Yayınlanmış makalelere ek ekleme/silme, FTS5 ve embedding indekslerinin yeniden oluşturulmasını tetikler." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Depolama" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Dosyalar disk üzerinde data/uploads/{articleId}/ dizininde saklanır. Makale silindiğinde tüm fiziksel dosyalar ve veritabanı kayıtları cascade ile temizlenir." }] }
+    ]
+  }
+}

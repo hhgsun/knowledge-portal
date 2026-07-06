@@ -1,0 +1,44 @@
+{
+  "title": "API Kullanım Kılavuzu",
+  "contentType": "reference",
+  "tags": ["project-knowledge-portal", "api", "tutorial"],
+  "excerpt": "Knowledge Portal REST API'sinin kullanımı, kimlik doğrulama yöntemleri, endpoint'ler ve örnek istekler.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "API Genel Bakış" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal, tüm işlemler için RESTful bir API sunar. Tüm endpoint'ler /api/ prefix'i altında bulunur. API, JSON formatında istek ve yanıt kullanır." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Kimlik Doğrulama" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "API'ye erişmek için iki farklı kimlik doğrulama yöntemi desteklenir:" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "1. JWT Token (Session-Based)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Login endpoint'i ile JWT token alın ve sonraki isteklerde Authorization header'ında kullanın:" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Login\ncurl -X POST http://localhost:5174/api/auth/login \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"email\": \"admin@knowledge.local\", \"password\": \"admin123\"}'\n\n# Yanıt: {\"token\": \"eyJ...\", \"user\": {...}}\n\n# Token ile istek\ncurl http://localhost:5174/api/articles \\\n  -H \"Authorization: Bearer eyJ...\"" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "2. API Key" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Otomasyon ve entegrasyon senaryoları için API key kullanılabilir. API key'ler 'kp_' prefix'i ile başlar ve X-API-Key header'ında gönderilir:" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "curl http://localhost:5174/api/articles \\\n  -H \"X-API-Key: kp_your_api_key_here\"" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Not: API key ile erişimde bazı session-only endpoint'ler (admin users, analytics, API key yönetimi) kullanılamaz." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Temel Endpoint'ler" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Makaleler" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Makale listesi\nGET /api/articles?page=1&limit=20&status=published\n\n# Makale detayı (ID veya slug ile)\nGET /api/articles/{idOrSlug}\n\n# Yeni makale oluştur\nPOST /api/articles\n{\n  \"title\": \"Yeni Makale\",\n  \"content\": {\"type\": \"doc\", \"content\": [...]},\n  \"excerpt\": \"Kısa açıklama\",\n  \"status\": \"draft\",\n  \"contentType\": \"how-to\",\n  \"tags\": [\"tutorial\", \"api\"]\n}\n\n# Makale güncelle\nPUT /api/articles/{id}\n{\n  \"title\": \"Güncel Başlık\",\n  \"content\": {\"type\": \"doc\", \"content\": [...]},\n  \"status\": \"published\",\n  \"changeSummary\": \"Başlık ve içerik güncellendi\"\n}\n\n# Makale sil\nDELETE /api/articles/{id}" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Arama" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Fulltext arama\nGET /api/search?q=kubernetes deployment&type=fulltext\n\n# Semantic arama (Ollama gerektirir)\nGET /api/search?q=container orchestration&type=semantic\n\n# Hybrid arama (fulltext + semantic birleşimi)\nGET /api/search?q=docker compose&type=hybrid\n\n# RAG arama (AI yanıtı + kaynaklar)\nGET /api/search?q=nasıl deploy edilir&type=rag\n\n# Tag filtresi ile arama\nGET /api/search?q=react #tutorial #best-practices\n\n# Yazar filtresi ile arama\nGET /api/search?q=deployment @admin\n\n# İçerik türü filtresi\nGET /api/search?q=kurulum ##how-to" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Etiketler" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Etiket listesi\nGET /api/tags\n\n# Yeni etiket oluştur\nPOST /api/tags\n{\"name\": \"kubernetes\"}\n\n# Etiket güncelle\nPUT /api/tags\n{\"id\": \"abc123\", \"name\": \"k8s\"}\n\n# Etiket sil (makale bağlantısı yoksa)\nDELETE /api/tags?id=abc123" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Yanıt Formatları" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Başarılı yanıtlar endpoint'e göre değişir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Liste:" }, { "type": "text", "text": " { articles: [...], total: 42 }" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Oluşturma/Güncelleme:" }, { "type": "text", "text": " { id: \"...\", slug: \"...\", title: \"...\" }" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Hata:" }, { "type": "text", "text": " { error: \"Human-readable message\" }" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Rate Limiting" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "API'nin aşırı kullanımını önlemek için rate limiting uygulanır:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Auth endpoint'leri:" }, { "type": "text", "text": " Dakikada 10 istek (login, register)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Search endpoint'leri:" }, { "type": "text", "text": " Dakikada 30 istek" }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Rate limit aşıldığında HTTP 429 (Too Many Requests) yanıtı döner." }] }
+    ]
+  }
+}

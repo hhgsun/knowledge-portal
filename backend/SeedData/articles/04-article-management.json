@@ -1,0 +1,60 @@
+{
+  "title": "Makale Yönetimi — Oluşturma, Düzenleme ve Versiyonlama",
+  "contentType": "how-to",
+  "tags": ["project-knowledge-portal", "tutorial", "getting-started"],
+  "excerpt": "Makale yaşam döngüsü, durum geçişleri, versiyon kontrolü ve içerik yönetimi rehberi.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Makale Yaşam Döngüsü" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Her makale dört durumdan birinde bulunabilir. Durum geçişleri kullanıcı rolüne göre kısıtlanmıştır." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Durumlar" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "draft (Taslak):" }, { "type": "text", "text": " Yeni oluşturulan makalelerin varsayılan durumu. Sadece sahibi görebilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "pending (Onay Bekliyor):" }, { "type": "text", "text": " İnceleme için gönderilmiş makaleler. Editor veya admin onaylayabilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "published (Yayında):" }, { "type": "text", "text": " Herkesin görebildiği aktif makaleler. Arama indeksine dahildir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "archived (Arşivlenmiş):" }, { "type": "text", "text": " Güncelliğini yitirmiş ama silinmemiş makaleler." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Durum Geçiş Kuralları" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "draft → pending: Tüm roller yapabilir" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "draft/pending → published: articles:publish yetkisi gerekir (admin, editor)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "published → archived: articles:archive yetkisi gerekir (admin, editor)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "pending → published (onay): articles:approve yetkisi gerekir" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Makale Oluşturma" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Yeni makale oluştururken aşağıdaki alanlar kullanılabilir:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "title (zorunlu):" }, { "type": "text", "text": " 1-300 karakter. Slug otomatik oluşturulur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "content:" }, { "type": "text", "text": " TipTap JSON formatında zengin içerik." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "excerpt:" }, { "type": "text", "text": " İsteğe bağlı kısa özet." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "contentType:" }, { "type": "text", "text": " İçerik türü (reference, how-to, adr, runbook, faq, policy, onboarding)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "tags:" }, { "type": "text", "text": " Etiket dizisi — ID, isim veya slug kabul eder." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "status:" }, { "type": "text", "text": " Başlangıç durumu (yetkilere göre kısıtlı)." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Versiyon Kontrolü" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makale içeriği (content alanı) her değiştiğinde otomatik olarak yeni bir versiyon oluşturulur. Sadece başlık veya metadata değişikliklerinde versiyon oluşturulmaz." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Versiyon İşlemleri" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Listeleme:" }, { "type": "text", "text": " GET /api/articles/{id}/versions — Tüm versiyonları kronolojik sırada görüntüleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Detay:" }, { "type": "text", "text": " GET /api/articles/{id}/versions/{versionId} — Belirli bir versiyonun içeriğini görüntüleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Geri Yükleme:" }, { "type": "text", "text": " POST /api/articles/{id}/versions/{versionId}/restore — Önceki bir versiyona geri dönün." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Diff:" }, { "type": "text", "text": " Frontend'de iki versiyon arasındaki farkları satır bazında karşılaştırabilirsiniz." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Geri Yükleme Davranışı" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Bir versiyon geri yüklendiğinde:" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Versiyonun içeriği ve başlığı makaleye kopyalanır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "'Restored to version N' özeti ile yeni bir versiyon oluşturulur." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Okuma süresi yeniden hesaplanır." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Slug Yönetimi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makale başlığından otomatik olarak URL-dostu slug üretilir. Türkçe karakterler (ş→s, ç→c, ğ→g, ü→u, ö→o, ı→i) translitere edilir. Başlık değiştiğinde slug yeniden üretilir; ancak aynı slug başka bir makalede varsa mevcut slug korunur." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Okuma Süresi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makalenin tahmini okuma süresi, içerik metninden otomatik hesaplanır (~200 kelime/dakika). Oluşturma ve içerik değişikliğinde güncellenir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Görüntüleme Takibi" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makale görüntülendiğinde otomatik olarak sayılır. Aynı kullanıcının aynı makaleyi 15 dakika içinde tekrar görüntülemesi tek görüntüleme olarak sayılır (deduplication)." }] }
+    ]
+  }
+}
