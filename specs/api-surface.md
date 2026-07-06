@@ -157,7 +157,6 @@ Behavior:
 | `excerpt` | string | No | — |
 | `status` | string | No | Default: `"draft"` |
 | `contentType` | string | No | Default: `"reference"` |
-| `audience` | string | No | — |
 | `tags` | string[] | No | Array of tag ID, name, or slug (resolved in that priority) |
 
 **Side effects**: Creates version 1 with the initial content.
@@ -187,7 +186,6 @@ Accepts both article ID and slug for lookup.
 | `excerpt` | string | No | — |
 | `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
 | `contentType` | string | No | — |
-| `audience` | string | No | — |
 | `changeSummary` | string | No | Stored in version record |
 | `tags` | string[] | No | Array of tag ID, name, or slug (replaces all existing tags) |
 

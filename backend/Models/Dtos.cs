@@ -7,7 +7,6 @@ public record CreateArticleRequest(
     string? Excerpt = null,
     string? Status = null,
     string? ContentType = null,
-    string? Audience = null,
     string[]? Tags = null);
 
 public record UpdateArticleRequest(
@@ -16,7 +15,6 @@ public record UpdateArticleRequest(
     string? Excerpt = null,
     string? Status = null,
     string? ContentType = null,
-    string? Audience = null,
     string? ChangeSummary = null,
     string[]? Tags = null);
 

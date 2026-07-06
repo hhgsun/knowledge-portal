@@ -91,7 +91,6 @@ export interface Article {
   excerpt: string | null;
   status: ArticleStatus;
   contentType: ContentType;
-  audience: string | null;
   ownerName: string;
   ownerId: string;
   readTimeMinutes: number | null;

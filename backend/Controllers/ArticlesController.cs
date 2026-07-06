@@ -136,7 +136,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             Status = articleStatus,
             OwnerId = userId,
             ContentType = req.ContentType ?? "reference",
-            Audience = req.Audience?.Trim(),
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
@@ -229,7 +228,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             article.Id, article.Title, article.Slug, article.Excerpt,
             Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
             article.Status, article.ContentType,
-            article.OwnerId, article.Audience, article.ReadTimeMinutes,
+            article.OwnerId, article.ReadTimeMinutes,
             UpdatedAt = article.UpdatedAt.ToString("o"),
             PublishedAt = article.PublishedAt?.ToString("o"),
             LastReviewedAt = article.LastReviewedAt?.ToString("o"),
@@ -272,7 +271,6 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         }
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
         if (req.ContentType != null) article.ContentType = req.ContentType;
-        if (req.Audience != null) article.Audience = req.Audience.Trim();
         if (req.Status != null)
         {
             // Publishing requires articles:publish permission

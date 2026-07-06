@@ -47,7 +47,6 @@ erDiagram
         string status "default: draft"
         string owner_id FK
         string content_type "default: reference"
-        string audience "nullable"
         string created_via_api_key_id FK "nullable, SetNull"
         int read_time_minutes "nullable"
         datetime published_at "nullable"
@@ -168,7 +167,6 @@ erDiagram
 | Status | `string` | `status` | Required | `"draft"` |
 | OwnerId | `string` | `owner_id` | FK → users.id | — |
 | ContentType | `string` | `content_type` | Required | `"reference"` |
-| Audience | `string?` | `audience` | — | `null` (set from create/update request) |
 | CreatedViaApiKeyId | `string?` | `created_via_api_key_id` | FK → api_keys.id (SetNull) | `null` |
 | ReadTimeMinutes | `int?` | `read_time_minutes` | — | `null` |
 | PublishedAt | `DateTime?` | `published_at` | — | `null` (set on first publish) |
