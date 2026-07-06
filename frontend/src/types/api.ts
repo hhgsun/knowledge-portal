@@ -90,6 +90,7 @@ export interface Article {
   title: string;
   slug: string;
   content: unknown | null;
+  contentText: string | null;
   excerpt: string | null;
   status: ArticleStatus;
   contentType: ContentType;
@@ -102,6 +103,7 @@ export interface Article {
   tags: Tag[];
   apiKeyName: string | null;
   viewCount: number;
+  attachments: ArticleAttachment[];
 }
 
 // ─── Article Versions ────────────────────────────────────────

@@ -294,7 +294,7 @@ export default function ArticleViewPage() {
         )}
       </div>
 
-      <AttachmentList articleId={article.id} canEdit={false} />
+      <AttachmentList articleId={article.id} canEdit={false} initialAttachments={article.attachments} />
 
       {relatedArticles.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">

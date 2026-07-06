@@ -18,6 +18,8 @@ import type { ArticleAttachment, AttachmentListResponse } from "../../types/api"
 interface AttachmentListProps {
   articleId: string;
   canEdit: boolean;
+  /** Pre-loaded attachments from article detail (skips API call if provided) */
+  initialAttachments?: ArticleAttachment[];
   /** When set, delete is deferred — calls this instead of immediate API delete */
   onDeferredDelete?: (attachment: ArticleAttachment) => void;
   /** Callback to undo a deferred delete */
@@ -48,10 +50,10 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function AttachmentList({ articleId, canEdit, onDeferredDelete, onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile }: AttachmentListProps) {
+export default function AttachmentList({ articleId, canEdit, initialAttachments, onDeferredDelete, onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile }: AttachmentListProps) {
   const { fetchWithAuth } = useApi();
-  const [attachments, setAttachments] = useState<ArticleAttachment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [attachments, setAttachments] = useState<ArticleAttachment[]>(initialAttachments ?? []);
+  const [loading, setLoading] = useState(!initialAttachments);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,8 +73,10 @@ export default function AttachmentList({ articleId, canEdit, onDeferredDelete, o
   }, [fetchWithAuth, articleId]);
 
   useEffect(() => {
-    loadAttachments();
-  }, [loadAttachments]);
+    if (!initialAttachments) {
+      loadAttachments();
+    }
+  }, [loadAttachments, initialAttachments]);
 
   const uploadFiles = async (files: File[]) => {
     if (files.length === 0) return;
