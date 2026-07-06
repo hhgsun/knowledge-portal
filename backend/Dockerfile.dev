@@ -1,0 +1,22 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY KnowledgePortal.Api.csproj .
+RUN dotnet restore
+
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+ENV ASPNETCORE_ENVIRONMENT=Dev
+ENV ASPNETCORE_URLS=http://+:5174
+
+RUN mkdir -p /app/data/uploads
+
+COPY --from=build /app/publish .
+
+EXPOSE 5174
+
+ENTRYPOINT ["dotnet", "KnowledgePortal.Api.dll"]
