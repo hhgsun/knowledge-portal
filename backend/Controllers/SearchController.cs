@@ -15,7 +15,7 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/search")]
 [Authorize]
 [EnableRateLimiting("search")]
-public class SearchController(AppDbContext db, IConfiguration config) : ControllerBase
+public class SearchController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -147,15 +147,37 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
             }
         }
 
-        // ═══ HYBRID (fulltext + semantic via RRF) ═══
+        // ═══ HYBRID (FTS5 + semantic via RRF) ═══
         if (type == "hybrid")
         {
-            var escapedHybrid = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
-            var fulltextTask = db.Articles
-                .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedHybrid}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedHybrid}%", "\\"))))
-                .OrderByDescending(a => a.UpdatedAt).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
-                .ToListAsync();
+            // FTS5 fulltext results (ranked by BM25)
+            var ftsHybridResults = await ftsService.SearchAsync(searchQuery, limit);
+            List<(string Id, string Title, string Slug, string? Excerpt, string ContentType, string UpdatedAt)> fulltextResults;
+
+            if (ftsHybridResults.Count > 0)
+            {
+                var ftsIds = ftsHybridResults.Select(r => r.ArticleId).ToList();
+                var ftsArticles = await db.Articles
+                    .Where(a => ftsIds.Contains(a.Id) && a.Status == "published")
+                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                    .ToListAsync();
+                // Maintain FTS rank order
+                fulltextResults = ftsHybridResults
+                    .Select(fr => ftsArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
+                    .Where(a => a != null)
+                    .Select(a => (a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt))
+                    .ToList();
+            }
+            else
+            {
+                var escapedHybrid = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+                var likeResults = await db.Articles
+                    .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedHybrid}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedHybrid}%", "\\"))))
+                    .OrderByDescending(a => a.UpdatedAt).Take(limit)
+                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                    .ToListAsync();
+                fulltextResults = likeResults.Select(a => (a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt)).ToList();
+            }
 
             List<VectorSearchService.VectorSearchResult>? semanticHits = null;
             if (ollamaEnabled && vectorSearch != null)
@@ -163,8 +185,6 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
                 try { semanticHits = await vectorSearch.SearchAsync(searchQuery, limit); }
                 catch { /* semantic unavailable — fulltext only */ }
             }
-
-            var fulltextResults = await fulltextTask;
 
             // RRF merge
             const int k = 60;
@@ -207,19 +227,41 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
             return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, indexingPending, searchQueryId = hybridRecord.Id, warning });
         }
 
-        // ═══ FULLTEXT (default) ═══
-        var escapedSearch = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
-        var ftResults = await db.Articles
-            .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\"))))
-            .OrderByDescending(a => a.UpdatedAt).Take(limit)
-            .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
-            .ToListAsync();
+        // ═══ FULLTEXT (default) — uses FTS5 with BM25 ranking ═══
+        var ftsResults = await ftsService.SearchAsync(searchQuery, limit);
+        List<object> ftFinalResults;
+
+        if (ftsResults.Count > 0)
+        {
+            var ftsArticleIds = ftsResults.Select(r => r.ArticleId).ToList();
+            var ftArticles = await db.Articles
+                .Where(a => ftsArticleIds.Contains(a.Id) && a.Status == "published")
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .ToListAsync();
+
+            // Preserve FTS5 BM25 ranking order
+            ftFinalResults = ftsResults
+                .Select(fr => ftArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
+                .Where(a => a != null)
+                .Cast<object>()
+                .ToList();
+        }
+        else
+        {
+            // Fallback to LIKE if FTS returns nothing (handles special chars better)
+            var escapedSearch = searchQuery.Replace("%", "\\%").Replace("_", "\\_");
+            ftFinalResults = (await db.Articles
+                .Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\"))))
+                .OrderByDescending(a => a.UpdatedAt).Take(limit)
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .ToListAsync()).Cast<object>().ToList();
+        }
 
         sw.Stop();
-        var ftRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = ftResults.Count, SearchType = "fulltext", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
+        var ftRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = ftFinalResults.Count, SearchType = "fulltext", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
         db.SearchQueries.Add(ftRecord);
         await db.SaveChangesAsync();
-        return Ok(new { results = ftResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftResults.Count, indexingPending, searchQueryId = ftRecord.Id });
+        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftFinalResults.Count, indexingPending, searchQueryId = ftRecord.Id });
     }
 
     [HttpPost("click")]
@@ -256,6 +298,9 @@ public class SearchController(AppDbContext db, IConfiguration config) : Controll
 
         var vectorSearch = HttpContext.RequestServices.GetService<VectorSearchService>();
         vectorSearch?.InvalidateCache();
+
+        // Rebuild FTS index
+        await ftsService.RebuildAsync();
 
         return Ok(new { message = "Reindex queued", articlesQueued = count });
     }

@@ -4,6 +4,7 @@ public class ArticleEmbedding
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string ArticleId { get; set; } = null!;
+    public int ChunkIndex { get; set; }
     public byte[] Embedding { get; set; } = null!;
     public double EmbeddingNorm { get; set; }
     public string ModelName { get; set; } = null!;

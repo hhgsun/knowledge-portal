@@ -12,13 +12,13 @@ public sealed class VectorSearchService(
     IConfiguration config,
     ILogger<VectorSearchService> logger)
 {
-    private readonly ConcurrentDictionary<string, CachedEmbedding> _cache = new();
+    private readonly ConcurrentDictionary<string, List<CachedChunk>> _cache = new();
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.3);
     private volatile bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public record VectorSearchResult(string ArticleId, double Score);
-    private record CachedEmbedding(float[] Vector, double Norm);
+    private record CachedChunk(float[] Vector, double Norm);
 
     public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default)
     {
@@ -30,12 +30,18 @@ public sealed class VectorSearchService(
         var queryNorm = ComputeNorm(queryVector);
         if (queryNorm == 0) return [];
 
-        var results = new List<VectorSearchResult>(_cache.Count);
-        foreach (var (articleId, cached) in _cache)
+        var results = new List<VectorSearchResult>();
+        foreach (var (articleId, chunks) in _cache)
         {
-            var score = CosineSimilarity(queryVector, cached.Vector, queryNorm, cached.Norm);
-            if (score >= _minScore)
-                results.Add(new VectorSearchResult(articleId, score));
+            // Best chunk score per article
+            double bestScore = 0;
+            foreach (var chunk in chunks)
+            {
+                var score = CosineSimilarity(queryVector, chunk.Vector, queryNorm, chunk.Norm);
+                if (score > bestScore) bestScore = score;
+            }
+            if (bestScore >= _minScore)
+                results.Add(new VectorSearchResult(articleId, bestScore));
         }
 
         results.Sort((a, b) => b.Score.CompareTo(a.Score));
@@ -49,12 +55,13 @@ public sealed class VectorSearchService(
         logger.LogInformation("Vector search cache invalidated");
     }
 
-    public void UpdateSingle(string articleId, float[] vector, double norm)
+    public void UpdateArticle(string articleId, List<(float[] Vector, double Norm)> chunks)
     {
-        _cache[articleId] = new CachedEmbedding(vector, norm);
+        var cached = chunks.Select(c => new CachedChunk(c.Vector, c.Norm)).ToList();
+        _cache[articleId] = cached;
     }
 
-    public void RemoveSingle(string articleId)
+    public void RemoveArticle(string articleId)
     {
         _cache.TryRemove(articleId, out _);
     }
@@ -71,17 +78,21 @@ public sealed class VectorSearchService(
             using var scope = scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var embeddings = await db.ArticleEmbeddings
-                .Select(e => new { e.ArticleId, e.Embedding, e.EmbeddingNorm })
+                .Select(e => new { e.ArticleId, e.ChunkIndex, e.Embedding, e.EmbeddingNorm })
                 .ToListAsync(ct);
 
             _cache.Clear();
-            foreach (var e in embeddings)
+            foreach (var group in embeddings.GroupBy(e => e.ArticleId))
             {
-                var vector = EmbeddingService.DeserializeEmbedding(e.Embedding);
-                _cache[e.ArticleId] = new CachedEmbedding(vector, e.EmbeddingNorm);
+                var chunks = group
+                    .OrderBy(e => e.ChunkIndex)
+                    .Select(e => new CachedChunk(EmbeddingService.DeserializeEmbedding(e.Embedding), e.EmbeddingNorm))
+                    .ToList();
+                _cache[group.Key] = chunks;
             }
             _initialized = true;
-            logger.LogInformation("Vector search cache initialized with {Count} embeddings", _cache.Count);
+            logger.LogInformation("Vector search cache initialized with {Count} articles ({Total} chunks)",
+                _cache.Count, embeddings.Count);
         }
         finally { _initLock.Release(); }
     }

@@ -188,14 +188,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("article_embeddings");
             e.HasKey(ae => ae.Id);
             e.Property(ae => ae.ArticleId).IsRequired();
+            e.Property(ae => ae.ChunkIndex).IsRequired().HasDefaultValue(0);
             e.Property(ae => ae.Embedding).IsRequired();
             e.Property(ae => ae.EmbeddingNorm).IsRequired();
             e.Property(ae => ae.ModelName).IsRequired();
             e.Property(ae => ae.TextHash).IsRequired();
             e.Property(ae => ae.Dimensions).IsRequired();
             e.Property(ae => ae.CreatedAt).IsRequired();
-            e.HasIndex(ae => ae.ArticleId).IsUnique();
-            e.HasOne(ae => ae.Article).WithOne(a => a.ArticleEmbedding).HasForeignKey<ArticleEmbedding>(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();
+            e.HasOne(ae => ae.Article).WithMany(a => a.ArticleEmbeddings).HasForeignKey(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

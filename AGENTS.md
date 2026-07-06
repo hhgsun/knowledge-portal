@@ -34,7 +34,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
 - **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
-- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. VectorSearchService caches embeddings in-memory for SIMD cosine similarity.
+- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. VectorSearchService caches chunk embeddings in-memory for SIMD cosine similarity. FTS5 virtual table for BM25-ranked fulltext search (rebuilt on startup).
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
@@ -216,9 +216,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 | API Key Auth | ✅ Implemented | kp_ prefix, BCrypt hash, prefix-indexed lookup |
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
-| Search (fulltext) | ✅ Implemented | SQL LIKE on title/excerpt with wildcard escaping |
+| Search (fulltext) | ✅ Implemented | FTS5 with BM25 ranking (fallback to LIKE), content body indexed |
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
-| Search (semantic) | ✅ Implemented | Ollama embedding + SIMD cosine similarity, VectorSearchService cache |
+| Search (semantic) | ✅ Implemented | Ollama embedding + chunking (~500 words/chunk) + SIMD cosine similarity, best-chunk scoring |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60) |
 | Search (RAG) | ✅ Implemented | Ollama llama3.2, top-5 context, source citations |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
@@ -267,7 +267,7 @@ No known gaps at this time.
 - **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
 - **Search RAG**: Top-5 semantic results → article context (max 3000 words) → Ollama llama3.2 → answer with source citations. Response includes `sources: [{articleId, title, slug, score}]`.
-- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings.
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. FTS5 index synced on publish/update/delete/approve.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).

@@ -99,6 +99,9 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 // ─── OpenAPI / Swagger ───────────────────────────────────────
 builder.Services.AddOpenApi();
 
+// ─── Full-Text Search ────────────────────────────────────────
+builder.Services.AddScoped<FullTextSearchService>();
+
 var app = builder.Build();
 
 // ─── Middleware pipeline ─────────────────────────────────────
@@ -159,6 +162,11 @@ using (var scope = app.Services.CreateScope())
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     await db.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
     await DbInitializer.SeedAsync(db);
+
+    // Initialize FTS5 table and rebuild index
+    var ftsService = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
+    await ftsService.InitializeAsync();
+    await ftsService.RebuildAsync();
 }
 
 // ─── Ensure uploads directory ────────────────────────────────

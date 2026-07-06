@@ -21,7 +21,7 @@ erDiagram
     Article ||--o{ ArticleComment : "commented"
     Article ||--o{ ArticleView : "tracked"
     Article ||--o{ ArticleAttachment : "has"
-    Article ||--o| ArticleEmbedding : "embedded"
+    Article ||--o{ ArticleEmbedding : "embedded (chunks)"
     Article o|--o| ApiKey : "created_via"
 
     Tag ||--o{ ArticleTag : "applied"
@@ -275,7 +275,8 @@ erDiagram
 | Column | C# Type | DB Column | Constraints | Default |
 |--------|---------|-----------|-------------|---------|
 | Id | `string` | `id` | PK | Truncated GUID |
-| ArticleId | `string` | `article_id` | FK → articles.id (Cascade), Unique | — |
+| ArticleId | `string` | `article_id` | FK → articles.id (Cascade) | — |
+| ChunkIndex | `int` | `chunk_index` | Required, Unique with ArticleId | 0 |
 | Embedding | `byte[]` | `embedding` | Required | — (serialized float[]) |
 | EmbeddingNorm | `double` | `embedding_norm` | Required | — (precomputed L2 norm) |
 | ModelName | `string` | `model_name` | Required | — |
@@ -303,7 +304,7 @@ erDiagram
 |-------|-----------|------|
 | `users` | `email` | Unique |
 | `articles` | `slug` | Unique |
-| `article_embeddings` | `article_id` | Unique |
+| `article_embeddings` | `article_id`, `chunk_index` | Unique (composite) |
 | `tags` | `slug` | Unique |
 
 ## Cascade Behavior

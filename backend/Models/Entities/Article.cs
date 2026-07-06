@@ -27,5 +27,5 @@ public class Article
     public ICollection<ArticleComment> Comments { get; set; } = [];
     public ICollection<ArticleView> Views { get; set; } = [];
     public ICollection<ArticleAttachment> Attachments { get; set; } = [];
-    public ArticleEmbedding? ArticleEmbedding { get; set; }
+    public ICollection<ArticleEmbedding> ArticleEmbeddings { get; set; } = [];
 }

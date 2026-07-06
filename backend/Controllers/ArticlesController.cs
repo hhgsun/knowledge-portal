@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles")]
 [Authorize]
-public partial class ArticlesController(AppDbContext db, IConfiguration config) : ControllerBase
+public partial class ArticlesController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
 {
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
 
@@ -182,6 +182,10 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             article.IndexedAt = null;
 
         await db.SaveChangesAsync();
+
+        // Sync FTS index
+        await ftsService.SyncArticleAsync(article);
+
         return StatusCode(201, new { article.Id, article.Slug, article.Title });
     }
 
@@ -291,13 +295,13 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             if (req.Status == "published")
                 article.LastReviewedAt = DateTime.UtcNow;
 
-            // Unpublishing: remove embedding
+            // Unpublishing: remove embeddings
             if (req.Status != "published" && article.Status == "published")
             {
                 article.IndexedAt = null;
-                var embedding = await db.ArticleEmbeddings.FirstOrDefaultAsync(e => e.ArticleId == id);
-                if (embedding != null)
-                    db.ArticleEmbeddings.Remove(embedding);
+                var embeddings = await db.ArticleEmbeddings.Where(e => e.ArticleId == id).ToListAsync();
+                if (embeddings.Count > 0)
+                    db.ArticleEmbeddings.RemoveRange(embeddings);
             }
 
             article.Status = req.Status;
@@ -362,6 +366,9 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
             }
         }
 
+        // Sync FTS index (handles published/unpublished state)
+        await ftsService.SyncArticleAsync(article);
+
         return Ok(new { article.Id, article.Slug, article.Title });
     }
 
@@ -386,6 +393,9 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         if (Directory.Exists(articleDir))
             Directory.Delete(articleDir, true);
 
+        // Remove from FTS index
+        await ftsService.RemoveArticleAsync(id);
+
         db.Articles.Remove(article);
         await db.SaveChangesAsync();
 
@@ -408,6 +418,9 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config) 
         article.UpdatedAt = DateTime.UtcNow;
         article.IndexedAt = null; // Dirty flag: approved → queue for embedding
         await db.SaveChangesAsync();
+
+        // Sync FTS index
+        await ftsService.SyncArticleAsync(article);
 
         return Ok(new { message = "Article approved and published", article.Id, article.Slug });
     }

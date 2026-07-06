@@ -25,11 +25,7 @@ public class EmbeddingBackgroundService(
             try
             {
                 var processed = await ProcessBatchAsync(stoppingToken);
-                if (processed > 0)
-                {
-                    vectorSearch.InvalidateCache();
-                    continue;
-                }
+                if (processed > 0) continue;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (HttpRequestException ex)
@@ -73,13 +69,11 @@ public class EmbeddingBackgroundService(
                 var embedded = await embeddingService.EmbedArticleAsync(article, ct);
                 if (embedded)
                 {
-                    var embeddingRecord = await db.ArticleEmbeddings
-                        .FirstOrDefaultAsync(e => e.ArticleId == article.Id, ct);
-                    if (embeddingRecord != null)
-                    {
-                        var vector = EmbeddingService.DeserializeEmbedding(embeddingRecord.Embedding);
-                        vectorSearch.UpdateSingle(article.Id, vector, embeddingRecord.EmbeddingNorm);
-                    }
+                    // Update cache incrementally per article (no full cache invalidation)
+                    var chunks = await embeddingService.GetArticleEmbeddingsAsync(article.Id, ct);
+                    var chunkData = chunks.Select(c =>
+                        (EmbeddingService.DeserializeEmbedding(c.Embedding), c.EmbeddingNorm)).ToList();
+                    vectorSearch.UpdateArticle(article.Id, chunkData);
                 }
                 processed++;
             }
