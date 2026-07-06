@@ -284,6 +284,7 @@ No known gaps at this time.
 - **Wilson Score**: Lower bound of Wilson score confidence interval (95%, z=1.96). Returned in article list and votes endpoint.
 - **Comments independent of votes**: Users can leave comments without voting. Multiple comments per user allowed. Own comments can be deleted; admins can delete any.
 - **View count in responses**: `GET /api/articles` list and `GET /api/articles/{idOrSlug}` detail both include `viewCount` field.
+- **Article detail response**: `GET /api/articles/{idOrSlug}` includes `content` (TipTap JSON for editor), `contentText` (extracted plain text for API consumers), and `attachments` array (id, fileName, contentType, sizeBytes, downloadUrl).
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
 - **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted

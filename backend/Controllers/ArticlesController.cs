@@ -228,10 +228,17 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
 
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == article.Id)
+            .OrderBy(a => a.CreatedAt)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.SizeBytes, DownloadUrl = $"/api/attachments/{a.Id}/download" })
+            .ToListAsync();
+
         return Ok(new
         {
             article.Id, article.Title, article.Slug, article.Excerpt,
             Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
+            ContentText = ExtractPlainText(article.Content),
             article.Status, article.ContentType,
             article.OwnerId, article.ReadTimeMinutes,
             UpdatedAt = article.UpdatedAt.ToString("o"),
@@ -240,7 +247,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             OwnerName = article.Owner.Name,
             ApiKeyName = apiKeyName,
             Tags = article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
-            ViewCount = viewCount
+            ViewCount = viewCount,
+            Attachments = attachments
         });
     }
 
@@ -509,5 +517,16 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex TagSlugRegex();
+
+    private static string? ExtractPlainText(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ContentExtractor.ExtractTextFromJson(System.Text.Json.JsonDocument.Parse(contentJson).RootElement);
+            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+        catch { return null; }
+    }
 }
 
