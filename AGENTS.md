@@ -28,7 +28,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 13 models: User (with AzureObjectId), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
+- **Entities**: `backend/Models/Entities/` — 13 models: User (with AzureObjectId, Slug), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding
 - **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
@@ -169,6 +169,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
 | `/api/search` | GET | ✓ | — | ✗ |
+| `/api/search/authors` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
 | `/api/search/reindex` | POST | ✓ | `users:manage` | ✓ |
 | `/api/search/embedding-status` | GET | ✓ | `users:manage` | ✓ |
@@ -201,6 +202,10 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |
+| `search.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
+| `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
+| `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
+| `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `profile.name` | 1 | — | Required for profile update |
 | `profile.newPassword` | 8 | 128 | Optional, requires currentPassword (not required for Azure users first-time set) |
@@ -263,7 +268,8 @@ No known gaps at this time.
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
-- **Search multi-tag**: Multiple `@tag` prefixes can be used (e.g. `@react @typescript query`). Articles must match ALL specified tags (AND logic). Response returns `tags: string[]` array instead of single `tag` field.
+- **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
+- **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.

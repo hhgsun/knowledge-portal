@@ -445,15 +445,26 @@ Ordered by version number descending.
 
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
-| `q` | string | — | Required. Prefix with `@slug` for tag search |
+| `q` | string | — | Required. Inline syntax: `@user-slug` (author), `#tag-slug` (tag), `##content-type` (type) |
 | `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid`, `rag` |
-| `limit` | int | 20 | Max results |
+| `limit` | int | 20 | Max results (1–50) |
+| `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
+| `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
+| `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |
+| `contentType` | string[] | — | Optional, repeatable. Content type values (merged with ##syntax) |
+
+**Inline query syntax** (parsed in order: `##` → `#` → `@` → text):
+- `@user-slug` — filter by author (OR when multiple)
+- `#tag-slug` — filter by tag (AND when multiple)
+- `##content-type` — filter by content type (OR when multiple)
+- Example: `@ahmet #react #typescript ##guide nasıl yapılır`
 
 **Search modes**:
-- **Tag-based** (`q` starts with `@`): Filters by tag slug, optional text after tag name
-- **Fulltext**: SQL LIKE on `title` and `excerpt`, published articles only
-- **Semantic / Hybrid**: Placeholder (returns empty or stub)
-- **RAG**: Placeholder (returns stub response)
+- **Tag-only** (only `#` tags, no remaining text): Returns tag-browse results
+- **Fulltext**: FTS5 with BM25 ranking (fallback to LIKE), published articles only
+- **Semantic**: Ollama embeddings, cosine similarity
+- **Hybrid**: Reciprocal Rank Fusion (FTS5 + semantic)
+- **RAG**: AI-generated answer with source citations
 
 **Side effects**: Logs a `SearchQuery` record with query text, result count, response time, and search type.
 
@@ -477,6 +488,20 @@ Ordered by version number descending.
   "answer": "...",
   "sources": [{ "articleId": "...", "text": "...", "score": 0.95 }]
 }
+```
+
+---
+
+### `GET /api/search/authors`
+**Auth**: Bearer (JWT or API Key)
+
+Returns list of all users for author autocomplete in search.
+
+**200 Response**:
+```json
+[
+  { "id": "...", "name": "Admin", "slug": "admin" }
+]
 ```
 
 ---

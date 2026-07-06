@@ -39,7 +39,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
             .Take(limit)
             .Select(u => new
             {
-                u.Id, u.Name, u.Email, u.Role,
+                u.Id, u.Name, u.Slug, u.Email, u.Role,
                 IsAzureUser = u.AzureObjectId != null,
                 CreatedAt = u.CreatedAt.ToString("o"),
                 UpdatedAt = u.UpdatedAt.ToString("o")
@@ -69,6 +69,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         var user = new User
         {
             Name = req.Name.Trim(),
+            Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim()),
             Email = req.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
             Role = req.Role ?? "viewer"
@@ -96,7 +97,11 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         if (user.Id == currentUserId && req.Role != null && req.Role != "admin" && user.Role == "admin")
             return BadRequest(new { error = "Cannot demote yourself from admin" });
 
-        if (req.Name != null) user.Name = req.Name.Trim();
+        if (req.Name != null)
+        {
+            user.Name = req.Name.Trim();
+            user.Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim());
+        }
         if (req.Email != null)
         {
             var email = req.Email.Trim().ToLowerInvariant();

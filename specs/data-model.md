@@ -31,6 +31,7 @@ erDiagram
     User {
         string id PK "21-char truncated GUID"
         string name
+        string slug UK "auto-generated from name"
         string email UK
         string password_hash
         string role "default: viewer"

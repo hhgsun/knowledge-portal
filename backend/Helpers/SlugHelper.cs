@@ -1,6 +1,6 @@
 namespace KnowledgePortal.Api.Helpers;
 
-public static class SlugHelper
+public static partial class SlugHelper
 {
     public static string Transliterate(string text)
     {
@@ -20,6 +20,20 @@ public static class SlugHelper
         }
         return new string(result);
     }
+
+    public static string GenerateSlug(string text)
+    {
+        var transliterated = Transliterate(text).ToLowerInvariant();
+        var slug = SlugRegex().Replace(transliterated, "");
+        slug = WhitespaceRegex().Replace(slug, "-").Trim('-');
+        return string.IsNullOrEmpty(slug) ? "user" : slug;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[^a-z0-9\s-]")]
+    private static partial System.Text.RegularExpressions.Regex SlugRegex();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[\s-]+")]
+    private static partial System.Text.RegularExpressions.Regex WhitespaceRegex();
 
     /// <summary>
     /// Escapes LIKE wildcard characters (% and _) for safe use in EF.Functions.Like queries.

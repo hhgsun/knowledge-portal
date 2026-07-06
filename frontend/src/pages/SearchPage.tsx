@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
+import { useLookups } from "../hooks/useLookups";
 import { toast } from "sonner";
-import type { SearchResult, RagResponse, RagSource, TagWithCount } from "../types/api";
+import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue } from "../types/api";
 
 type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
+type SuggestionType = "tag" | "author" | "contentType";
+interface AuthorItem { id: string; name: string; slug: string; }
 
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
+  const { contentTypes } = useLookups();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
   const initialType = (searchParams.get("type") as SearchType) || "hybrid";
@@ -26,9 +30,12 @@ export default function SearchPage() {
   const [warning, setWarning] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  // Autocomplete data
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
-  const [filteredTags, setFilteredTags] = useState<TagWithCount[]>([]);
+  const [authors, setAuthors] = useState<AuthorItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionType, setSuggestionType] = useState<SuggestionType>("tag");
+  const [filteredSuggestions, setFilteredSuggestions] = useState<{ id: string; label: string; value: string; extra?: string }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -40,37 +47,78 @@ export default function SearchPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    // Detect @partial at end of query for tag suggestions
-    const match = query.match(/@(\S*)$/);
-    if (match) {
-      const partial = match[1].toLowerCase();
-      // Exclude already selected tags
-      const existingTags = [...query.matchAll(/@(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
-      const filtered = availableTags.filter(
-        (t) => (t.slug.includes(partial) || t.name.toLowerCase().includes(partial)) && !existingTags.includes(t.slug)
-      );
-      setFilteredTags(filtered);
-      setShowTagSuggestions(filtered.length > 0);
-    } else {
-      setShowTagSuggestions(false);
+    fetchWithAuth("/api/search/authors")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setAuthors(data); })
+      .catch(() => {});
+  }, [fetchWithAuth]);
+
+  // Autocomplete logic for @user, #tag, ##contentType
+  useEffect(() => {
+    // Check for ## first (contentType), then # (tag), then @ (user)
+    const ctMatch = query.match(/##(\S*)$/);
+    if (ctMatch) {
+      const partial = ctMatch[1].toLowerCase();
+      const existing = [...query.matchAll(/##(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
+      const filtered = contentTypes
+        .filter((ct: LookupValue) => (ct.value.includes(partial) || ct.label.toLowerCase().includes(partial)) && !existing.includes(ct.value))
+        .map((ct: LookupValue) => ({ id: ct.id, label: ct.label, value: ct.value }));
+      setFilteredSuggestions(filtered);
+      setSuggestionType("contentType");
+      setShowSuggestions(filtered.length > 0);
+      return;
     }
-  }, [query, availableTags]);
+
+    const tagMatch = query.match(/(?<![#])#(\S*)$/);
+    if (tagMatch) {
+      const partial = tagMatch[1].toLowerCase();
+      const existing = [...query.matchAll(/(?<![#])#(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
+      const filtered = availableTags
+        .filter((t) => (t.slug.includes(partial) || t.name.toLowerCase().includes(partial)) && !existing.includes(t.slug))
+        .map((t) => ({ id: t.id, label: t.name, value: t.slug, extra: `${t.articleCount}` }));
+      setFilteredSuggestions(filtered);
+      setSuggestionType("tag");
+      setShowSuggestions(filtered.length > 0);
+      return;
+    }
+
+    const authorMatch = query.match(/@(\S*)$/);
+    if (authorMatch) {
+      const partial = authorMatch[1].toLowerCase();
+      const existing = [...query.matchAll(/@(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
+      const filtered = authors
+        .filter((a) => (a.slug.includes(partial) || a.name.toLowerCase().includes(partial)) && !existing.includes(a.slug))
+        .map((a) => ({ id: a.id, label: a.name, value: a.slug }));
+      setFilteredSuggestions(filtered);
+      setSuggestionType("author");
+      setShowSuggestions(filtered.length > 0);
+      return;
+    }
+
+    setShowSuggestions(false);
+  }, [query, availableTags, authors, contentTypes]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
-        setShowTagSuggestions(false);
+        setShowSuggestions(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selectTag = (slug: string) => {
-    // Replace the incomplete @partial at end with the selected tag
-    const newQuery = query.replace(/@\S*$/, `@${slug} `);
+  const selectSuggestion = (value: string) => {
+    let newQuery: string;
+    if (suggestionType === "contentType") {
+      newQuery = query.replace(/##\S*$/, `##${value} `);
+    } else if (suggestionType === "tag") {
+      newQuery = query.replace(/(?<![#])#\S*$/, `#${value} `);
+    } else {
+      newQuery = query.replace(/@\S*$/, `@${value} `);
+    }
     setQuery(newQuery);
-    setShowTagSuggestions(false);
+    setShowSuggestions(false);
     inputRef.current?.focus();
   };
 
@@ -143,7 +191,7 @@ export default function SearchPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchType === "rag" ? "Ask a question..." : "Search articles... (use @tag to filter, multiple tags supported)"}
+            placeholder={searchType === "rag" ? "Ask a question..." : "Search... (@user #tag ##type)"}
             className="w-full pl-11 pr-4 py-3 text-base bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoFocus
           />
@@ -151,19 +199,25 @@ export default function SearchPage() {
             {searchType === "rag" ? "Ask" : "Search"}
           </button>
 
-          {showTagSuggestions && (
+          {showSuggestions && (
             <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
-              <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">Select a tag to filter</div>
-              {filteredTags.map((tag) => (
+              <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+                {suggestionType === "tag" && "Etiket seç (#)"}
+                {suggestionType === "author" && "Yazar seç (@)"}
+                {suggestionType === "contentType" && "İçerik tipi seç (##)"}
+              </div>
+              {filteredSuggestions.map((item) => (
                 <button
-                  key={tag.id}
+                  key={item.id}
                   type="button"
-                  onClick={() => selectTag(tag.slug)}
+                  onClick={() => selectSuggestion(item.value)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  <Tag size={14} className="text-blue-500 shrink-0" />
-                  <span className="text-zinc-900 dark:text-zinc-100">{tag.name}</span>
-                  <span className="ml-auto text-xs text-zinc-400">{tag.articleCount} article{tag.articleCount !== 1 ? "s" : ""}</span>
+                  {suggestionType === "tag" && <Hash size={14} className="text-emerald-500 shrink-0" />}
+                  {suggestionType === "author" && <User size={14} className="text-violet-500 shrink-0" />}
+                  {suggestionType === "contentType" && <FileText size={14} className="text-orange-500 shrink-0" />}
+                  <span className="text-zinc-900 dark:text-zinc-100">{item.label}</span>
+                  {item.extra && <span className="ml-auto text-xs text-zinc-400">{item.extra} article{item.extra !== "1" ? "s" : ""}</span>}
                 </button>
               ))}
             </div>

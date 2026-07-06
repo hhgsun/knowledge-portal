@@ -27,12 +27,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("users");
             e.HasKey(u => u.Id);
             e.Property(u => u.Name).IsRequired();
+            e.Property(u => u.Slug).IsRequired();
             e.Property(u => u.Email).IsRequired();
             e.Property(u => u.PasswordHash).IsRequired();
             e.Property(u => u.Role).IsRequired().HasDefaultValue("viewer");
             e.Property(u => u.CreatedAt).IsRequired();
             e.Property(u => u.UpdatedAt).IsRequired();
             e.HasIndex(u => u.Email).IsUnique();
+            e.HasIndex(u => u.Slug).IsUnique();
         });
 
         // ─── ApiKeys ──────────────────────────────────────

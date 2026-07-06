@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Data;
@@ -13,12 +14,21 @@ public static class DbInitializer
             db.Users.Add(new User
             {
                 Name = "Admin",
+                Slug = "admin",
                 Email = "admin@knowledge.local",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123", 12),
                 Role = "admin"
             });
             await db.SaveChangesAsync();
         }
+
+        // Backfill slugs for any users missing them
+        var usersWithoutSlug = await db.Users.Where(u => u.Slug == "" || u.Slug == null!).ToListAsync();
+        foreach (var user in usersWithoutSlug)
+        {
+            user.Slug = await GenerateUniqueUserSlugAsync(db, user.Name);
+        }
+        if (usersWithoutSlug.Count > 0) await db.SaveChangesAsync();
 
         // Default tags
         string[] defaultTags =
@@ -67,5 +77,18 @@ public static class DbInitializer
 
             await db.SaveChangesAsync();
         }
+    }
+
+    public static async Task<string> GenerateUniqueUserSlugAsync(AppDbContext db, string name)
+    {
+        var baseSlug = SlugHelper.GenerateSlug(name);
+        var slug = baseSlug;
+        var counter = 1;
+        while (await db.Users.AnyAsync(u => u.Slug == slug))
+        {
+            slug = $"{baseSlug}-{counter}";
+            counter++;
+        }
+        return slug;
     }
 }

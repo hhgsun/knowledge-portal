@@ -31,6 +31,7 @@ export interface User {
 export interface AdminUser {
   id: string;
   name: string;
+  slug: string;
   email: string;
   role: UserRole;
   isAzureUser: boolean;
