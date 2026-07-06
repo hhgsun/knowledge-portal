@@ -10,10 +10,11 @@ type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
 
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
+  const initialType = (searchParams.get("type") as SearchType) || "hybrid";
   const [query, setQuery] = useState(initialQuery);
-  const [searchType, setSearchType] = useState<SearchType>("hybrid");
+  const [searchType, setSearchType] = useState<SearchType>(initialType);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [ragResponse, setRagResponse] = useState<RagResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -77,6 +78,12 @@ export default function SearchPage() {
     e?.preventDefault();
     if (!query.trim()) return;
 
+    // Sync URL params
+    const params = new URLSearchParams();
+    params.set("q", query.trim());
+    if (searchType !== "hybrid") params.set("type", searchType);
+    setSearchParams(params, { replace: true });
+
     setLoading(true);
     setSearched(true);
     setRagResponse(null);
@@ -104,6 +111,15 @@ export default function SearchPage() {
     setResponseTime(data.responseTimeMs || null);
     setLoading(false);
   };
+
+  // Auto-search on mount if query param exists
+  const hasAutoSearched = useRef(false);
+  useEffect(() => {
+    if (initialQuery && !hasAutoSearched.current) {
+      hasAutoSearched.current = true;
+      handleSearch();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trackClick = useCallback((articleId: string, slug: string) => {
     if (searchQueryId) {

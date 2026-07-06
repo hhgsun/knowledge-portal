@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
@@ -13,17 +13,32 @@ export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
   const { contentTypes } = useLookups();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [contentTypeFilter, setContentTypeFilter] = useState<string>("");
-  const [mineFilter, setMineFilter] = useState(false);
-  const [sortBy, setSortBy] = useState<string>("updatedAt");
+  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams.get("status") || "");
+  const [contentTypeFilter, setContentTypeFilter] = useState<string>(() => searchParams.get("contentType") || "");
+  const [mineFilter, setMineFilter] = useState(() => searchParams.get("mine") === "true");
+  const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sort") || "updatedAt");
+
+  const syncSearchParams = useCallback((p: number, status: string, ct: string, mine: boolean, sort: string) => {
+    const params = new URLSearchParams();
+    if (p > 1) params.set("page", String(p));
+    if (status) params.set("status", status);
+    if (ct) params.set("contentType", ct);
+    if (mine) params.set("mine", "true");
+    if (sort && sort !== "updatedAt") params.set("sort", sort);
+    setSearchParams(params, { replace: true });
+  }, [setSearchParams]);
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const totalPages = Math.ceil(total / LIMIT);
+
+  useEffect(() => {
+    syncSearchParams(page, statusFilter, contentTypeFilter, mineFilter, sortBy);
+  }, [page, statusFilter, contentTypeFilter, mineFilter, sortBy, syncSearchParams]);
 
   useEffect(() => {
     setLoading(true);

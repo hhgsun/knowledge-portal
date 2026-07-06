@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
@@ -11,8 +11,18 @@ import AttachmentList from "../components/attachments/attachment-list";
 
 export default function ArticleViewPage() {
   const params = useParams();
+  const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
+
+  const handleBack = () => {
+    const historyIdx = (window.history.state as { idx?: number } | null)?.idx;
+    if (historyIdx && historyIdx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/articles');
+    }
+  };
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -181,10 +191,10 @@ export default function ArticleViewPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center gap-2 mb-6">
-        <Link to="/articles" className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700">
+        <button onClick={handleBack} className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
           <ArrowLeft size={14} />
-          Articles
-        </Link>
+          Geri
+        </button>
         <span className="text-zinc-300">/</span>
         <span className="text-sm text-zinc-700 dark:text-zinc-300">{article.title}</span>
       </div>
