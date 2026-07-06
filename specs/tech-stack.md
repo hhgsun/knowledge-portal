@@ -54,6 +54,7 @@
 | `@azure/msal-react` | 5.5.0 | React hooks wrapper for MSAL.js v5 |
 | `clsx` | 2.1.1 | Conditional class names |
 | `tailwind-merge` | 3.6.0 | Tailwind class deduplication |
+| `@tailwindcss/typography` | 0.5 | Prose styling for rich text content |
 
 ### Dev Tooling
 
