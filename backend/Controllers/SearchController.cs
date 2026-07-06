@@ -24,6 +24,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
         [FromQuery] string type = "fulltext",
         [FromQuery] int limit = 20,
         [FromQuery] bool onlyOwnContent = false,
+        [FromQuery] bool includeContent = false,
         [FromQuery] List<string>? tag = null,
         [FromQuery] List<string>? author = null,
         [FromQuery] List<string>? contentType = null)
@@ -115,9 +116,12 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             var tagQuery = db.Articles.Where(a => tagFilterArticleIds!.Contains(a.Id) && a.Status == "published");
             tagQuery = ApplyFilters(tagQuery, authorFilterIds, contentTypeFilter, scopedApiKeyId);
 
-            var tagResults = await tagQuery.OrderByDescending(a => a.UpdatedAt).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+            var tagResultsRaw = await tagQuery.OrderByDescending(a => a.UpdatedAt).Take(limit)
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
+            var tagResults = tagResultsRaw.Select(a => includeContent
+                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt }).ToList();
 
             sw.Stop();
             var tagSearchRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = tagResults.Count, SearchType = "tag", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
@@ -178,11 +182,13 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 var articleIds = semanticResults.Select(r => r.ArticleId).ToList();
                 var semQuery = ApplyFilters(db.Articles.Where(a => articleIds.Contains(a.Id) && a.Status == "published"), authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
                 var articles = await semQuery
-                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                     .ToListAsync();
 
                 var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }; })
+                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : includeContent
+                        ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }
+                        : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }; })
                     .Where(r => r != null).ToList();
 
                 sw.Stop();
@@ -262,11 +268,13 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             var allIds = rrfScores.Keys.ToList();
             var hybridMergeQuery = ApplyFilters(db.Articles.Where(a => allIds.Contains(a.Id) && a.Status == "published"), authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
             var allArticles = await hybridMergeQuery
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }; })
+                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : includeContent
+                    ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }
+                    : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }; })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
@@ -287,14 +295,16 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             var ftsArticleIds = ftsResults.Select(r => r.ArticleId).ToList();
             var ftQuery = ApplyFilters(db.Articles.Where(a => ftsArticleIds.Contains(a.Id) && a.Status == "published"), authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
             var ftArticles = await ftQuery
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
             // Preserve FTS5 BM25 ranking order
             ftFinalResults = ftsResults
                 .Select(fr => ftArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
                 .Where(a => a != null)
-                .Cast<object>()
+                .Select(a => includeContent
+                    ? (object)new { a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                    : new { a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt })
                 .ToList();
         }
         else
@@ -302,10 +312,13 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             // Fallback to LIKE if FTS returns nothing (handles special chars better)
             var escapedSearch = SlugHelper.EscapeLikePattern(searchQuery);
             var fallbackQuery = ApplyFilters(db.Articles.Where(a => a.Status == "published" && (EF.Functions.Like(a.Title, $"%{escapedSearch}%", "\\") || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escapedSearch}%", "\\")))), authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
-            ftFinalResults = (await fallbackQuery
+            var fallbackArticles = await fallbackQuery
                 .OrderByDescending(a => a.UpdatedAt).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, UpdatedAt = a.UpdatedAt.ToString("o") })
-                .ToListAsync()).Cast<object>().ToList();
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .ToListAsync();
+            ftFinalResults = fallbackArticles.Select(a => includeContent
+                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt }).ToList();
         }
 
         sw.Stop();
