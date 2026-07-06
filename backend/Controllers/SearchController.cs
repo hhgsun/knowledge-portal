@@ -120,7 +120,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
             var tagResults = tagResultsRaw.Select(a => includeContent
-                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, Content = ExtractPlainText(a.Content), a.UpdatedAt }
                 : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt }).ToList();
 
             sw.Stop();
@@ -187,7 +187,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
 
                 var scoredResults = semanticResults
                     .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : includeContent
-                        ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }
+                        ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, Content = ExtractPlainText(a.Content), a.UpdatedAt, Score = Math.Round(sr.Score, 4) }
                         : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(sr.Score, 4) }; })
                     .Where(r => r != null).ToList();
 
@@ -273,7 +273,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
 
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
                 .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : includeContent
-                    ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }
+                    ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, Content = ExtractPlainText(a.Content), a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }
                     : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt, Score = Math.Round(kv.Value.Score, 4), MatchType = kv.Value.MatchType }; })
                 .Where(r => r != null).ToList();
 
@@ -303,7 +303,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(fr => ftArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
                 .Where(a => a != null)
                 .Select(a => includeContent
-                    ? (object)new { a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                    ? (object)new { a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, Content = ExtractPlainText(a.Content), a.UpdatedAt }
                     : new { a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt })
                 .ToList();
         }
@@ -317,7 +317,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
             ftFinalResults = fallbackArticles.Select(a => includeContent
-                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt }
+                ? (object)new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, Content = ExtractPlainText(a.Content), a.UpdatedAt }
                 : new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt }).ToList();
         }
 
@@ -407,6 +407,17 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
         if (tagArticleIds != null)
             query = query.Where(a => tagArticleIds.Contains(a.Id));
         return query;
+    }
+
+    private static string? ExtractPlainText(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ContentExtractor.ExtractTextFromJson(System.Text.Json.JsonDocument.Parse(contentJson).RootElement);
+            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+        catch { return null; }
     }
 }
 

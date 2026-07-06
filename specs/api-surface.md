@@ -449,7 +449,7 @@ Ordered by version number descending.
 | `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid`, `rag` |
 | `limit` | int | 20 | Max results (1–50) |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
-| `includeContent` | bool | false | Optional. When true → includes article `content` (JSON) in search results |
+| `includeContent` | bool | false | Optional. When true → includes article content as plain text (extracted from TipTap JSON) in search results |
 | `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
 | `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |
 | `contentType` | string[] | — | Optional, repeatable. Content type values (merged with ##syntax) |

@@ -203,7 +203,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |
 | `search.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
-| `search.includeContent` | — | — | Optional, boolean. When true → includes article `content` (JSON) in search results |
+| `search.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text (extracted from TipTap JSON) in search results |
 | `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
@@ -270,7 +270,7 @@ No known gaps at this time.
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
-- **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes full article content JSON in results), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
+- **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes article content as extracted plain text in results), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
