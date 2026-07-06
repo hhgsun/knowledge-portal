@@ -121,7 +121,8 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
             var tagAttachmentMap = includeAttachments ? await GetAttachmentMap(tagResultsRaw.Select(a => a.Id).ToList()) : null;
-            var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, tagAttachmentMap)).ToList();
+            var tagEnrichment = await GetEnrichmentAsync(tagResultsRaw.Select(a => a.Id));
+            var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, tagAttachmentMap, tagEnrichment.GetValueOrDefault(a.Id))).ToList();
 
             sw.Stop();
             var tagSearchRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = tagResults.Count, SearchType = "tag", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
@@ -186,8 +187,9 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                     .ToListAsync();
 
                 var semAttachmentMap = includeAttachments ? await GetAttachmentMap(articles.Select(a => a.Id).ToList()) : null;
+                var semEnrichment = await GetEnrichmentAsync(articles.Select(a => a.Id));
                 var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(sr.Score, 4), null, includeContent, semAttachmentMap); })
+                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(sr.Score, 4), null, includeContent, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id)); })
                     .Where(r => r != null).ToList();
 
                 sw.Stop();
@@ -271,8 +273,9 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .ToListAsync();
 
             var hybridAttachmentMap = includeAttachments ? await GetAttachmentMap(allArticles.Select(a => a.Id).ToList()) : null;
+            var hybridEnrichment = await GetEnrichmentAsync(allArticles.Select(a => a.Id));
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(kv.Value.Score, 4), kv.Value.MatchType, includeContent, hybridAttachmentMap); })
+                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(kv.Value.Score, 4), kv.Value.MatchType, includeContent, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id)); })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
@@ -297,11 +300,12 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .ToListAsync();
 
             var ftAttachmentMap = includeAttachments ? await GetAttachmentMap(ftArticles.Select(a => a.Id).ToList()) : null;
+            var ftEnrichment = await GetEnrichmentAsync(ftArticles.Select(a => a.Id));
             // Preserve FTS5 BM25 ranking order
             ftFinalResults = ftsResults
                 .Select(fr => ftArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
                 .Where(a => a != null)
-                .Select(a => BuildResult(a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, ftAttachmentMap))
+                .Select(a => BuildResult(a!.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, ftAttachmentMap, ftEnrichment.GetValueOrDefault(a.Id)))
                 .ToList();
         }
         else
@@ -314,7 +318,8 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
             var fallbackAttachmentMap = includeAttachments ? await GetAttachmentMap(fallbackArticles.Select(a => a.Id).ToList()) : null;
-            ftFinalResults = fallbackArticles.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, fallbackAttachmentMap)).ToList();
+            var fallbackEnrichment = await GetEnrichmentAsync(fallbackArticles.Select(a => a.Id));
+            ftFinalResults = fallbackArticles.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, fallbackAttachmentMap, fallbackEnrichment.GetValueOrDefault(a.Id))).ToList();
         }
 
         sw.Stop();
@@ -428,41 +433,77 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             g => g.Select(a => (object)new { a.Id, a.FileName, a.ContentType, a.SizeBytes, DownloadUrl = $"/api/attachments/{a.Id}/download" }).ToList());
     }
 
-    private static object BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap)
+    private record SearchEnrichment(string Status, string OwnerName, string? ApiKeyName, List<object> Tags, int ViewCount, double WilsonScore);
+
+    private async Task<Dictionary<string, SearchEnrichment>> GetEnrichmentAsync(IEnumerable<string> articleIds)
     {
-        var attachments = attachmentMap?.GetValueOrDefault(id);
-        if (includeContent && attachments != null)
-            return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Attachments = attachments };
-        if (includeContent)
-            return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Attachments = (List<object>?)null };
-        if (attachments != null)
-            return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt, Attachments = attachments };
-        return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt };
+        var ids = articleIds.ToList();
+        if (ids.Count == 0) return new();
+
+        var data = await db.Articles
+            .Where(a => ids.Contains(a.Id))
+            .Select(a => new
+            {
+                a.Id,
+                a.Status,
+                OwnerName = a.Owner.Name,
+                ApiKeyName = a.CreatedViaApiKeyId != null
+                    ? db.ApiKeys.Where(k => k.Id == a.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefault()
+                    : null,
+                Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
+                ViewCount = db.ArticleViews.Count(v => v.ArticleId == a.Id),
+                HelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && v.IsHelpful),
+                NotHelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && !v.IsHelpful)
+            })
+            .ToListAsync();
+
+        return data.ToDictionary(
+            a => a.Id,
+            a => new SearchEnrichment(
+                a.Status,
+                a.OwnerName,
+                a.ApiKeyName,
+                a.Tags.Select(t => (object)new { t.Id, t.Name, t.Slug }).ToList(),
+                a.ViewCount,
+                SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount)
+            )
+        );
     }
 
-    private static object? BuildScoredResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, double score, string? matchType, bool includeContent, Dictionary<string, List<object>>? attachmentMap)
+    private static object BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, SearchEnrichment? enrichment)
     {
         var attachments = attachmentMap?.GetValueOrDefault(id);
-        if (matchType != null)
+        return new
         {
-            if (includeContent && attachments != null)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Score = score, MatchType = matchType, Attachments = attachments };
-            if (includeContent)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Score = score, MatchType = matchType, Attachments = (List<object>?)null };
-            if (attachments != null)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt, Score = score, MatchType = matchType, Attachments = attachments };
-            return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt, Score = score, MatchType = matchType };
-        }
-        else
+            Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt,
+            Status = enrichment?.Status,
+            OwnerName = enrichment?.OwnerName,
+            ApiKeyName = enrichment?.ApiKeyName,
+            Tags = enrichment?.Tags,
+            ViewCount = enrichment?.ViewCount ?? 0,
+            WilsonScore = enrichment?.WilsonScore ?? 0.0,
+            Content = includeContent ? ExtractPlainText(content) : null,
+            Attachments = attachments
+        };
+    }
+
+    private static object? BuildScoredResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, double score, string? matchType, bool includeContent, Dictionary<string, List<object>>? attachmentMap, SearchEnrichment? enrichment)
+    {
+        var attachments = attachmentMap?.GetValueOrDefault(id);
+        return new
         {
-            if (includeContent && attachments != null)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Score = score, Attachments = attachments };
-            if (includeContent)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, Content = ExtractPlainText(content), UpdatedAt = updatedAt, Score = score, Attachments = (List<object>?)null };
-            if (attachments != null)
-                return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt, Score = score, Attachments = attachments };
-            return new { Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt, Score = score };
-        }
+            Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt,
+            Status = enrichment?.Status,
+            OwnerName = enrichment?.OwnerName,
+            ApiKeyName = enrichment?.ApiKeyName,
+            Tags = enrichment?.Tags,
+            ViewCount = enrichment?.ViewCount ?? 0,
+            WilsonScore = enrichment?.WilsonScore ?? 0.0,
+            Score = score,
+            MatchType = matchType,
+            Content = includeContent ? ExtractPlainText(content) : null,
+            Attachments = attachments
+        };
     }
 }
 

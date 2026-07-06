@@ -34,7 +34,7 @@ public static class DbInitializer
         // Default tags
         string[] defaultTags =
         [
-            "getting-started", "tutorial", "troubleshooting", "best-practices",
+            "project-knowledge-portal", "getting-started", "tutorial", "troubleshooting", "best-practices",
             "api", "deployment", "security", "performance", "testing", "monitoring"
         ];
 
@@ -54,25 +54,27 @@ public static class DbInitializer
         // Default lookup values
         if (!await db.LookupValues.AnyAsync())
         {
-            var contentTypes = new (string value, string label, int order)[]
+            var contentTypes = new (string value, string label, int order, string color, string icon)[]
             {
-                ("reference", "Reference", 1),
-                ("how-to", "How-To Guide", 2),
-                ("adr", "ADR", 3),
-                ("runbook", "Runbook", 4),
-                ("faq", "FAQ", 5),
-                ("policy", "Policy", 6),
-                ("onboarding", "Onboarding", 7),
+                ("reference", "Reference", 1, "blue", "book-open"),
+                ("how-to", "How-To Guide", 2, "green", "list-checks"),
+                ("adr", "ADR", 3, "purple", "scale"),
+                ("runbook", "Runbook", 4, "orange", "terminal"),
+                ("faq", "FAQ", 5, "amber", "circle-help"),
+                ("policy", "Policy", 6, "red", "shield"),
+                ("onboarding", "Onboarding", 7, "teal", "rocket"),
             };
 
-            foreach (var (value, label, order) in contentTypes)
+            foreach (var (value, label, order, color, icon) in contentTypes)
             {
                 db.LookupValues.Add(new LookupValue
                 {
                     Category = "content_type",
                     Value = value,
                     Label = label,
-                    SortOrder = order
+                    SortOrder = order,
+                    Color = color,
+                    Icon = icon
                 });
             }
 

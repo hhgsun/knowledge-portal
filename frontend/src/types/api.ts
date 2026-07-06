@@ -163,6 +163,12 @@ export interface SearchResult {
   excerpt: string | null;
   contentType: ContentType;
   updatedAt: string;
+  status: ArticleStatus | null;
+  ownerName: string | null;
+  apiKeyName: string | null;
+  tags: Tag[] | null;
+  viewCount: number;
+  wilsonScore: number;
   score?: number;
   matchType?: "fulltext" | "semantic" | "both";
 }

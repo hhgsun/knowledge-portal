@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
+import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
 import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue } from "../types/api";
 
@@ -308,26 +309,70 @@ export default function SearchPage() {
                       onClick={() => trackClick(result.id, result.slug)}
                       className="block w-full text-left p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {result.score != null && (
-                            <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded font-medium">
-                              {(result.score * 100).toFixed(0)}%
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
+                          {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
+                          <div className="flex items-center gap-2 mt-2">
+                            <ContentTypeBadge contentType={result.contentType} />
+                            {result.status && result.status !== "published" && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                result.status === "draft" ? "bg-zinc-100 text-zinc-600" :
+                                result.status === "pending" ? "bg-amber-100 text-amber-700" :
+                                result.status === "archived" ? "bg-red-100 text-red-700" : ""
+                              }`}>
+                                {result.status}
+                              </span>
+                            )}
+                            {result.score != null && (
+                              <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded font-medium">
+                                {(result.score * 100).toFixed(0)}%
+                              </span>
+                            )}
+                            {result.matchType && result.matchType !== "fulltext" && (
+                              <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", result.matchType === "both" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" : "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300")}>
+                                {result.matchType === "both" ? "hybrid" : "semantic"}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-0.5 text-xs text-zinc-400">
+                              <Eye size={12} />
+                              {result.viewCount}
                             </span>
-                          )}
-                          {result.matchType && result.matchType !== "fulltext" && (
-                            <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", result.matchType === "both" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" : "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300")}>
-                              {result.matchType === "both" ? "hybrid" : "semantic"}
-                            </span>
-                          )}
+                            {result.wilsonScore > 0 && (
+                              <span className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400">
+                                <ThumbsUp size={12} />
+                                {(result.wilsonScore * 100).toFixed(0)}%
+                              </span>
+                            )}
+                            {result.tags && result.tags.length > 0 && (
+                              <span className="flex items-center gap-1 flex-wrap">
+                                <Tag size={12} className="text-zinc-400" />
+                                {result.tags.map((tag) => (
+                                  <span
+                                    key={tag.id}
+                                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                                  >
+                                    {tag.name}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                            {result.apiKeyName ? (
+                              <span className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400">
+                                <Key size={12} />
+                                {result.apiKeyName}
+                              </span>
+                            ) : result.ownerName ? (
+                              <span className="flex items-center gap-1 text-xs text-zinc-500">
+                                <User size={12} />
+                                {result.ownerName}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                      {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
-                      <div className="flex items-center gap-2 mt-2 text-xs text-zinc-400">
-                        <span>{result.contentType}</span>
-                        <span>·</span>
-                        <span>{new Date(result.updatedAt).toLocaleDateString()}</span>
+                        <span className="text-xs text-zinc-400 ml-4 whitespace-nowrap">
+                          {new Date(result.updatedAt).toLocaleDateString()}
+                        </span>
                       </div>
                     </button>
                   ))}

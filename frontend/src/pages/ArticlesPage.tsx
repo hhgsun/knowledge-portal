@@ -169,10 +169,12 @@ export default function ArticlesPage() {
                     <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{article.excerpt}</p>
                   )}
                   <div className="flex items-center gap-2 mt-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
-                      {article.status}
-                    </span>
                     <ContentTypeBadge contentType={article.contentType} />
+                    {article.status !== "published" && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
+                        {article.status}
+                      </span>
+                    )}
                     <span className="flex items-center gap-0.5 text-xs text-zinc-400">
                       <Eye size={12} />
                       {article.viewCount}

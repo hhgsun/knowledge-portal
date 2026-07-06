@@ -254,11 +254,20 @@ export default function ArticleViewPage() {
         </div>
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
         <div className="flex items-center gap-4 mt-4 text-sm text-zinc-500">
+          <ContentTypeBadge contentType={article.contentType} size="md" />
+          {article.status !== "published" && (
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              article.status === "draft" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" :
+              article.status === "pending" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" :
+              article.status === "archived" ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : ""
+            }`}>
+              {article.status}
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Clock size={14} />
             {new Date(article.updatedAt).toLocaleDateString()}
           </span>
-          <ContentTypeBadge contentType={article.contentType} size="md" />
           {article.apiKeyName ? (
             <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
               <Key size={14} />
