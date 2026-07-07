@@ -66,11 +66,13 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
   const [expanded, setExpanded] = useState(isActive);
 
   return (
-    <div>
+    <div role="none">
       <div className="flex items-center">
         <Link
           to={item.href}
           title={collapsed ? item.label : undefined}
+          aria-label={item.label}
+          aria-current={isActive ? "page" : undefined}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors flex-1",
             isActive
@@ -80,24 +82,26 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
             collapsed && "justify-center px-2"
           )}
         >
-          {item.icon}
+          <span aria-hidden="true">{item.icon}</span>
           {!collapsed && item.label}
         </Link>
         {item.children && !collapsed && (
           <button
             onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${item.label} submenu`}
             className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
             {expanded ? (
-              <ChevronDown size={14} />
+              <ChevronDown size={14} aria-hidden="true" />
             ) : (
-              <ChevronRight size={14} />
+              <ChevronRight size={14} aria-hidden="true" />
             )}
           </button>
         )}
       </div>
       {item.children && expanded && !collapsed && (
-        <div className="mt-1">
+        <div className="mt-1" role="group" aria-label={`${item.label} submenu`}>
           {item.children.map((child) => (
             <NavLink key={child.href} item={child} depth={depth + 1} collapsed={collapsed} />
           ))}
@@ -166,7 +170,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <div className="space-y-1">
           {navigation.map((item) => (
             <NavLink key={item.href} item={item} collapsed={collapsed} />
@@ -259,10 +263,12 @@ export function Sidebar() {
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation menu"
+          aria-expanded={mobileOpen}
           className="fixed top-3 left-3 z-40 p-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors lg:hidden"
           title="Open menu"
         >
-          <PanelLeftOpen size={18} />
+          <PanelLeftOpen size={18} aria-hidden="true" />
         </button>
       )}
 
@@ -271,11 +277,14 @@ export function Sidebar() {
         <div
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
           onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
         />
       )}
 
       {/* Mobile: sidebar overlay */}
       <aside
+        aria-label="Mobile navigation"
+        aria-hidden={!mobileOpen}
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 transition-transform duration-300 lg:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
@@ -286,6 +295,7 @@ export function Sidebar() {
 
       {/* Desktop: static sidebar */}
       <aside
+        aria-label="Main navigation"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(

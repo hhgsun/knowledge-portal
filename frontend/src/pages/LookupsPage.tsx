@@ -5,6 +5,7 @@ import { useLookups } from "../hooks/useLookups";
 import { toast } from "sonner";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import { ColorPicker, IconPicker } from "../components/lookup-pickers";
+import { LookupsListSkeleton } from "../components/ui/skeleton";
 import type { LookupValue } from "../types/api";
 
 export default function LookupsPage() {
@@ -83,7 +84,7 @@ export default function LookupsPage() {
 
   const contentTypes = lookups.filter((l) => l.category === "content_type");
 
-  if (loading) return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+  if (loading) return <LookupsListSkeleton />;
 
   return (
     <div className="max-w-3xl mx-auto">

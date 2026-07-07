@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
+import { HomeSkeleton } from "../components/ui/skeleton";
 import type { DashboardResponse } from "../types/api";
 
 export default function HomePage() {
@@ -35,7 +36,7 @@ export default function HomePage() {
   };
 
   if (loading) {
-    return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+    return <HomeSkeleton />;
   }
 
   return (

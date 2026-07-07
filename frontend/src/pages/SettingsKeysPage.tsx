@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle, RotateCw } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
+import { KeysListSkeleton } from "../components/ui/skeleton";
 import type { ApiKey } from "../types/api";
 
 export default function SettingsKeysPage() {
@@ -77,7 +78,7 @@ export default function SettingsKeysPage() {
     }
   };
 
-  if (loading) return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+  if (loading) return <KeysListSkeleton />;
 
   return (
     <div className="max-w-3xl mx-auto">

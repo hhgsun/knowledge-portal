@@ -4,6 +4,7 @@ import { ArrowLeft, Clock, User, GitCompare, Eye, RotateCcw, X } from "lucide-re
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
+import { VersionsListSkeleton } from "../components/ui/skeleton";
 import type { ArticleVersionListItem } from "../types/api";
 
 interface ArticleInfo {
@@ -107,7 +108,7 @@ export default function VersionsPage() {
   };
 
   if (loading) {
-    return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+    return <VersionsListSkeleton />;
   }
 
   if (!article) {

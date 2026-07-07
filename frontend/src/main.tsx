@@ -6,6 +6,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ErrorBoundary } from "./components/error-boundary";
 import { ToastProvider } from "./components/toast-provider";
+import { OfflineBanner } from "./components/layout/offline-banner";
 import App from "./App";
 import "./index.css";
 
@@ -20,6 +21,7 @@ msalInstance.initialize().then(() => {
       <MsalProvider instance={msalInstance}>
         <ThemeProvider>
           <AuthProvider>
+            <OfflineBanner />
             <App />
             <ToastProvider />
           </AuthProvider>

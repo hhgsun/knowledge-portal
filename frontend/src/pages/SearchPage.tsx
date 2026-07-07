@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
+import { useDebounce, useSearchHistory } from "../hooks/useNetworkStatus";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
 import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue } from "../types/api";
@@ -15,6 +16,7 @@ interface AuthorItem { id: string; name: string; slug: string; }
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
   const { contentTypes } = useLookups();
+  const { history, addToHistory, removeFromHistory, clearHistory } = useSearchHistory();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
   const initialType = (searchParams.get("type") as SearchType) || "hybrid";
@@ -29,6 +31,8 @@ export default function SearchPage() {
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexingPending, setIndexingPending] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(-1);
   const navigate = useNavigate();
 
   // Autocomplete data
@@ -104,6 +108,11 @@ export default function SearchPage() {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
         setShowSuggestions(false);
       }
+      // Also close history if clicking outside
+      if (inputRef.current && !inputRef.current.contains(e.target as Node) &&
+          suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowHistory(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -126,6 +135,9 @@ export default function SearchPage() {
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
+
+    addToHistory(query.trim());
+    setShowHistory(false);
 
     // Sync URL params
     const params = new URLSearchParams();
@@ -185,23 +197,95 @@ export default function SearchPage() {
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-4">Search Knowledge Base</h1>
-        <form onSubmit={handleSearch} className="relative">
-          <SearchIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+        <form onSubmit={handleSearch} className="relative" role="search" aria-label="Search knowledge base">
+          <SearchIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
           <input
             ref={inputRef}
-            type="text"
+            type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => { if (!query && history.length > 0 && !showSuggestions) setShowHistory(true); }}
+            onKeyDown={(e) => {
+              if (showHistory && history.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSelectedHistoryIdx((prev) => Math.min(prev + 1, history.length - 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSelectedHistoryIdx((prev) => Math.max(prev - 1, -1));
+                } else if (e.key === "Enter" && selectedHistoryIdx >= 0) {
+                  e.preventDefault();
+                  setQuery(history[selectedHistoryIdx]);
+                  setShowHistory(false);
+                  setSelectedHistoryIdx(-1);
+                } else if (e.key === "Escape") {
+                  setShowHistory(false);
+                  setSelectedHistoryIdx(-1);
+                }
+              }
+            }}
             placeholder={searchType === "rag" ? "Ask a question..." : "Search... (@user #tag ##type)"}
+            aria-label={searchType === "rag" ? "Ask a question" : "Search articles"}
+            aria-describedby="search-help"
+            aria-autocomplete="list"
+            aria-expanded={showSuggestions || showHistory}
             className="w-full pl-11 pr-4 py-3 text-base bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoFocus
           />
-          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
+          <button
+            type="submit"
+            aria-label={searchType === "rag" ? "Ask AI" : "Search"}
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
             {searchType === "rag" ? "Ask" : "Search"}
           </button>
 
+          {/* Search history dropdown */}
+          {showHistory && !showSuggestions && history.length > 0 && (
+            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Search history">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="text-xs text-zinc-400 flex items-center gap-1">
+                  <Clock size={12} aria-hidden="true" />
+                  Recent searches
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); clearHistory(); setShowHistory(false); }}
+                  className="text-xs text-zinc-400 hover:text-red-500 flex items-center gap-1"
+                  aria-label="Clear all search history"
+                >
+                  <Trash2 size={12} aria-hidden="true" />
+                  Clear
+                </button>
+              </div>
+              {history.map((item, idx) => (
+                <div
+                  key={item}
+                  role="option"
+                  aria-selected={selectedHistoryIdx === idx}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors group",
+                    selectedHistoryIdx === idx ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                  )}
+                  onClick={() => { setQuery(item); setShowHistory(false); }}
+                >
+                  <Clock size={14} className="text-zinc-400 shrink-0" aria-hidden="true" />
+                  <span className="text-zinc-700 dark:text-zinc-300 flex-1 truncate">{item}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removeFromHistory(item); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-red-500 transition-opacity"
+                    aria-label={`Remove "${item}" from history`}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {showSuggestions && (
-            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Autocomplete suggestions">
               <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
                 {suggestionType === "tag" && "Etiket seç (#)"}
                 {suggestionType === "author" && "Yazar seç (@)"}
@@ -211,12 +295,13 @@ export default function SearchPage() {
                 <button
                   key={item.id}
                   type="button"
+                  role="option"
                   onClick={() => selectSuggestion(item.value)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  {suggestionType === "tag" && <Hash size={14} className="text-emerald-500 shrink-0" />}
-                  {suggestionType === "author" && <User size={14} className="text-violet-500 shrink-0" />}
-                  {suggestionType === "contentType" && <FileText size={14} className="text-orange-500 shrink-0" />}
+                  {suggestionType === "tag" && <Hash size={14} className="text-emerald-500 shrink-0" aria-hidden="true" />}
+                  {suggestionType === "author" && <User size={14} className="text-violet-500 shrink-0" aria-hidden="true" />}
+                  {suggestionType === "contentType" && <FileText size={14} className="text-orange-500 shrink-0" aria-hidden="true" />}
                   <span className="text-zinc-900 dark:text-zinc-100">{item.label}</span>
                   {item.extra && <span className="ml-auto text-xs text-zinc-400">{item.extra} article{item.extra !== "1" ? "s" : ""}</span>}
                 </button>
@@ -225,18 +310,46 @@ export default function SearchPage() {
           )}
         </form>
 
-        <div className="flex gap-1 mt-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit">
+        <div className="flex gap-1 mt-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit" role="tablist" aria-label="Search type">
           <SearchTypeTab active={searchType === "hybrid"} onClick={() => setSearchType("hybrid")} icon={<Zap size={14} />} label="Hybrid" />
           <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
           <SearchTypeTab active={searchType === "semantic"} onClick={() => setSearchType("semantic")} icon={<Sparkles size={14} />} label="Semantic" />
           <SearchTypeTab active={searchType === "rag"} onClick={() => setSearchType("rag")} icon={<Bot size={14} />} label="Ask AI" />
         </div>
+        <p id="search-help" className="sr-only">Use @ for author filter, # for tag filter, ## for content type filter. Press Enter to search.</p>
       </div>
 
       {loading ? (
-        <div className="text-center py-8 text-zinc-500">{searchType === "rag" ? "AI düşünüyor..." : "Searching..."}</div>
+        <div aria-live="polite" aria-busy="true" className="space-y-3">
+          {searchType === "rag" ? (
+            <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl animate-pulse">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-4 h-4 rounded bg-blue-200 dark:bg-blue-700" />
+                <div className="w-20 h-4 rounded bg-blue-200 dark:bg-blue-700" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-full rounded bg-blue-100 dark:bg-blue-900" />
+                <div className="h-4 w-5/6 rounded bg-blue-100 dark:bg-blue-900" />
+                <div className="h-4 w-4/6 rounded bg-blue-100 dark:bg-blue-900" />
+              </div>
+            </div>
+          ) : (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl animate-pulse">
+                <div className="h-5 w-2/3 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2" />
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-16 bg-zinc-100 dark:bg-zinc-800 rounded" />
+                  <div className="h-4 w-10 bg-zinc-100 dark:bg-zinc-800 rounded" />
+                  <div className="h-4 w-12 bg-zinc-100 dark:bg-zinc-800 rounded" />
+                </div>
+              </div>
+            ))
+          )}
+          <p className="sr-only">{searchType === "rag" ? "AI is thinking..." : "Searching..."}</p>
+        </div>
       ) : searched ? (
-        <div>
+        <div aria-live="polite" aria-atomic="true">
           {indexingPending && (
             <div className="flex items-center gap-2 mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
               <AlertTriangle size={16} />
@@ -398,15 +511,18 @@ function SearchTypeTab({ active, onClick, icon, label }: {
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
+      aria-label={`${label} search`}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500",
         active
           ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
           : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
       )}
     >
-      {icon}
+      <span aria-hidden="true">{icon}</span>
       {label}
     </button>
   );

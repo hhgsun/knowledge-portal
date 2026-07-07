@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Tag, Pencil, Trash2, Plus, X, Check } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
+import { TagsListSkeleton } from "../components/ui/skeleton";
 import type { TagWithCount } from "../types/api";
 
 export default function TagsPage() {
@@ -82,11 +83,7 @@ export default function TagsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-zinc-500">
-        Loading...
-      </div>
-    );
+    return <TagsListSkeleton />;
   }
 
   return (

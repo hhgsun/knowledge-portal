@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import { AppShell } from "./components/layout/app-shell";
+import { AppLoadingSkeleton } from "./components/ui/skeleton";
 
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -23,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen min-w-screen text-zinc-500">Loading...</div>;
+    return <AppLoadingSkeleton />;
   }
 
   if (!user) {

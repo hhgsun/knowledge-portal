@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X, Cloud } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
+import { UsersListSkeleton } from "../components/ui/skeleton";
 import type { AdminUser } from "../types/api";
 
 interface Pagination {
@@ -140,7 +141,7 @@ export default function AdminUsersPage() {
   };
 
   if (loading && users.length === 0) {
-    return <div className="text-center py-12 text-zinc-500">Loading users...</div>;
+    return <UsersListSkeleton />;
   }
 
   return (

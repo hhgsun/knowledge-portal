@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import { EditArticleSkeleton } from "../components/ui/skeleton";
 import type { Article } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
 import { ArticleForm } from "../components/editor/article-form";
@@ -136,11 +136,7 @@ export default function EditArticlePage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-zinc-400" />
-      </div>
-    );
+    return <EditArticleSkeleton />;
   }
 
   if (!article) {

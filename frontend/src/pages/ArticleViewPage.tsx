@@ -6,6 +6,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
+import { ArticleViewSkeleton } from "../components/ui/skeleton";
 import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
 
@@ -174,7 +175,7 @@ export default function ArticleViewPage() {
   };
 
   if (loading) {
-    return <div className="text-center py-12 text-zinc-500">Loading...</div>;
+    return <ArticleViewSkeleton />;
   }
 
   if (!article) {

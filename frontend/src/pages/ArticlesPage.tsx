@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
+import { ArticleListSkeleton } from "../components/ui/skeleton";
 import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
@@ -299,7 +300,7 @@ export default function ArticlesPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-zinc-500">Loading...</div>
+        <ArticleListSkeleton />
       ) : articles.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
           <BookOpen size={40} className="mx-auto text-zinc-300 mb-3" />

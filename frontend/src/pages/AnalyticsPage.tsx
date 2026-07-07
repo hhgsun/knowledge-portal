@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BarChart3, Search, Eye, AlertTriangle, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
+import { AnalyticsSkeleton } from "../components/ui/skeleton";
 import type { AnalyticsResponse } from "../types/api";
 
 export default function AnalyticsPage() {
@@ -19,7 +20,7 @@ export default function AnalyticsPage() {
       .catch(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  if (loading) return <div className="text-center py-12 text-zinc-500">Loading analytics...</div>;
+  if (loading) return <AnalyticsSkeleton />;
   if (!data) return <div className="text-center py-12 text-zinc-500">Failed to load analytics</div>;
 
   return (
