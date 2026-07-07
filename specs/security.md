@@ -164,7 +164,7 @@ All critical issues have been resolved:
 | # | Issue | Impact | Location |
 |---|-------|--------|----------|
 | 10 | **Generic catch blocks** — some controllers swallow exceptions silently | Error masking, difficult debugging | Various controllers |
-| 11 | **Default admin credentials** — `admin@knowledge.local` / `admin123` seeded automatically | Insecure if deployed without changing credentials | `DbInitializer.cs` |
+| 11 | **Default admin credentials** — `admin@finagotech.com.tr` / `1q2w3E*/` seeded automatically | Insecure if deployed without changing credentials | `DbInitializer.cs` |
 
 ## Security Controls Present
 

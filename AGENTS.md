@@ -101,8 +101,8 @@ specs/                    # Detailed specifications (subordinate to this file)
 
 ## Default Credentials
 
-- **Email**: `admin@knowledge.local`
-- **Password**: `admin123`
+- **Email**: `admin@finagotech.com.tr`
+- **Password**: `1q2w3e*/`
 
 ## Commands
 

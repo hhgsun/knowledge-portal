@@ -19,8 +19,8 @@ public class AuthTests : IClassFixture<TestWebApplicationFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "admin@knowledge.local",
-            password = "admin123"
+            email = "admin@finagotech.com.tr",
+            password = "1q2w3E*/"
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -35,7 +35,7 @@ public class AuthTests : IClassFixture<TestWebApplicationFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "admin@knowledge.local",
+            email = "admin@finagotech.com.tr",
             password = "wrongpassword"
         });
 
@@ -88,7 +88,7 @@ public class AuthTests : IClassFixture<TestWebApplicationFactory>
         var response = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             name = "Duplicate",
-            email = "admin@knowledge.local",
+            email = "admin@finagotech.com.tr",
             password = "password123"
         });
 
@@ -105,7 +105,7 @@ public class AuthTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("admin@knowledge.local", body.GetProperty("email").GetString());
+        Assert.Equal("admin@finagotech.com.tr", body.GetProperty("email").GetString());
     }
 
     [Fact]
@@ -120,8 +120,8 @@ public class AuthTests : IClassFixture<TestWebApplicationFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "admin@knowledge.local",
-            password = "admin123"
+            email = "admin@finagotech.com.tr",
+            password = "1q2w3E*/"
         });
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("token").GetString()!;

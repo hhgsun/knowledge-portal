@@ -26,8 +26,8 @@
       ]},
       { "type": "paragraph", "content": [{ "type": "text", "text": "İlk kurulumda varsayılan admin hesabı kullanılabilir:" }] },
       { "type": "bulletList", "content": [
-        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta:" }, { "type": "text", "text": " admin@knowledge.local" }] }] },
-        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Şifre:" }, { "type": "text", "text": " admin123" }] }] }
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta:" }, { "type": "text", "text": " admin@finagotech.com.tr" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Şifre:" }, { "type": "text", "text": " 1q2w3E*/" }] }] }
       ]},
       { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "İlk Makalenizi Oluşturun" }] },
       { "type": "orderedList", "content": [

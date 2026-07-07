@@ -10,13 +10,13 @@ public static class DbInitializer
     public static async Task SeedAsync(AppDbContext db)
     {
         // Admin user
-        if (!await db.Users.AnyAsync(u => u.Email == "admin@knowledge.local"))
+        if (!await db.Users.AnyAsync(u => u.Email == "admin@finagotech.com.tr"))
         {
             db.Users.Add(new User
             {
                 Name = "Admin",
                 Slug = "admin",
-                Email = "admin@knowledge.local",
+                Email = "admin@finagotech.com.tr",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123", 12),
                 Role = "admin"
             });
@@ -93,7 +93,7 @@ public static class DbInitializer
         var seedPath = Path.Combine(AppContext.BaseDirectory, "SeedData", "articles");
         if (!Directory.Exists(seedPath)) return;
 
-        var admin = await db.Users.FirstAsync(u => u.Email == "admin@knowledge.local");
+        var admin = await db.Users.FirstAsync(u => u.Email == "admin@finagotech.com.tr");
         var allTags = await db.Tags.ToListAsync();
 
         var files = Directory.GetFiles(seedPath, "*.json").OrderBy(f => f);

@@ -38,8 +38,8 @@ Frontend starts at `http://localhost:5173`
 
 ### Default Login
 
-- **Email**: `admin@knowledge.local`
-- **Password**: `admin123`
+- **Email**: `admin@finagotech.com.tr`
+- **Password**: `1q2w3E*/`
 
 ## Commands
 

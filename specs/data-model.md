@@ -328,10 +328,10 @@ erDiagram
 On application startup, `DbInitializer.SeedAsync()`:
 
 1. Applies pending EF Core migrations (`MigrateAsync`)
-2. Creates admin user if `admin@knowledge.local` does not exist:
+2. Creates admin user if `admin@finagotech.com.tr` does not exist:
    - Name: `Admin`
-   - Email: `admin@knowledge.local`
-   - Password: `admin123` (BCrypt, cost 12)
+   - Email: `admin@finagotech.com.tr`
+   - Password: `1q2w3E*/` (BCrypt, cost 12)
    - Role: `admin`
 3. Creates 10 default tags if they do not exist:
    - `getting-started`, `tutorial`, `troubleshooting`, `best-practices`, `api`, `deployment`, `security`, `performance`, `testing`, `monitoring`

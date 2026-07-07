@@ -27,8 +27,8 @@ Server starts on **http://localhost:5174**. On first run the database is created
 
 | Item | Value |
 |------|-------|
-| Admin email | `admin@knowledge.local` |
-| Admin password | `admin123` |
+| Admin email | `admin@finagotech.com.tr` |
+| Admin password | `1q2w3E*/` |
 | Default tags | 10 tags (getting-started, api, deployment, etc.) |
 
 ## Project Structure

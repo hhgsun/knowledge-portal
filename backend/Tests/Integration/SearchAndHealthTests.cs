@@ -84,8 +84,8 @@ public class SearchTests : IClassFixture<TestWebApplicationFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "admin@knowledge.local",
-            password = "admin123"
+            email = "admin@finagotech.com.tr",
+            password = "1q2w3E*/"
         });
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = body.GetProperty("token").GetString();
