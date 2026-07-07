@@ -124,6 +124,12 @@ Behavior:
 | `contentType` | string | — | Filter by content type (reference, how-to, adr, runbook, faq, policy, onboarding) |
 | `mine` | bool | false | If true, return only articles owned by the current user |
 | `q` | string | — | Search title (LIKE, wildcards `%`/`_` escaped) |
+| `tag` | string[] | — | Filter by tag slugs (AND logic) |
+| `dateFrom` | string | — | Filter articles updated on or after this date |
+| `dateTo` | string | — | Filter articles updated before this date (+1 day) |
+| `onlyOwnContent` | bool | false | When true + API key auth → filters to articles created by that API key |
+| `includeContent` | bool | false | When true → includes article content as plain text in results |
+| `includeAttachments` | bool | false | When true → includes attachment metadata per article in results |
 
 **Visibility rules**:
 - Viewers see only `published` articles + their own (any status)
@@ -137,7 +143,10 @@ Behavior:
       "id": "...", "title": "...", "slug": "...", "excerpt": "...",
       "status": "published", "contentType": "reference",
       "updatedAt": "...", "ownerName": "...", "apiKeyName": null,
-      "tags": [{ "id": "...", "name": "...", "slug": "..." }]
+      "tags": [{ "id": "...", "name": "...", "slug": "..." }],
+      "viewCount": 5, "wilsonScore": 0.72,
+      "content": "plain text (only if includeContent=true)",
+      "attachments": [{ "id": "...", "fileName": "...", "contentType": "...", "sizeBytes": 1024, "downloadUrl": "/api/attachments/.../download" }]
     }
   ],
   "total": 42

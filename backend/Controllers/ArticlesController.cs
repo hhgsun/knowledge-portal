@@ -32,7 +32,10 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         [FromQuery] string? q = null,
         [FromQuery] string[]? tag = null,
         [FromQuery] string? dateFrom = null,
-        [FromQuery] string? dateTo = null)
+        [FromQuery] string? dateTo = null,
+        [FromQuery] bool onlyOwnContent = false,
+        [FromQuery] bool includeContent = false,
+        [FromQuery] bool includeAttachments = false)
     {
         page = Math.Max(1, page);
         limit = Math.Clamp(limit, 1, 100);
@@ -47,6 +50,11 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         if (mine)
             query = query.Where(a => a.OwnerId == userId);
+
+        // API key scoping: when onlyOwnContent=true and request via API key, filter to that key's articles
+        var callerApiKeyId = User.FindFirst("apiKeyId")?.Value;
+        if (onlyOwnContent && callerApiKeyId != null)
+            query = query.Where(a => a.CreatedViaApiKeyId == callerApiKeyId);
 
         if (!string.IsNullOrWhiteSpace(status))
         {
@@ -110,12 +118,40 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             })
             .ToListAsync();
 
+        // Attachment map if requested
+        Dictionary<string, List<object>>? attachmentMap = null;
+        if (includeAttachments)
+        {
+            var articleIds = articles.Select(a => a.Id).ToList();
+            var attachments = await db.ArticleAttachments
+                .Where(att => articleIds.Contains(att.ArticleId))
+                .Select(att => new { att.Id, att.ArticleId, att.FileName, att.ContentType, att.SizeBytes })
+                .ToListAsync();
+            attachmentMap = attachments.GroupBy(att => att.ArticleId).ToDictionary(
+                g => g.Key,
+                g => g.Select(att => (object)new { att.Id, att.FileName, att.ContentType, att.SizeBytes, DownloadUrl = $"/api/attachments/{att.Id}/download" }).ToList());
+        }
+
+        // Content map if requested
+        Dictionary<string, string?>? contentMap = null;
+        if (includeContent)
+        {
+            var articleIds = articles.Select(a => a.Id).ToList();
+            var contents = await db.Articles
+                .Where(a => articleIds.Contains(a.Id))
+                .Select(a => new { a.Id, a.Content })
+                .ToListAsync();
+            contentMap = contents.ToDictionary(c => c.Id, c => ExtractPlainText(c.Content));
+        }
+
         var articlesWithScore = articles.Select(a => new
         {
             a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
             a.ContentType, a.UpdatedAt,
             a.OwnerName, a.ApiKeyName, a.Tags, a.ViewCount,
-            WilsonScore = SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount)
+            WilsonScore = SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount),
+            Content = includeContent ? contentMap?.GetValueOrDefault(a.Id) : null,
+            Attachments = includeAttachments ? attachmentMap?.GetValueOrDefault(a.Id) : null
         });
 
         return Ok(new

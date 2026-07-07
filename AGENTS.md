@@ -209,6 +209,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
 | `articles.limit` | 1 | 100 | Default 20 |
+| `articles.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
+| `articles.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text in list results |
+| `articles.includeAttachments` | — | — | Optional, boolean. When true → includes attachment metadata per article in list results |
 | `profile.name` | 1 | — | Required for profile update |
 | `profile.newPassword` | 8 | 128 | Optional, requires currentPassword (not required for Azure users first-time set) |
 | `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
