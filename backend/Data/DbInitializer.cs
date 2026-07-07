@@ -17,7 +17,7 @@ public static class DbInitializer
                 Name = "Admin",
                 Slug = "admin",
                 Email = "admin@finagotech.com.tr",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123", 12),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("1q2w3E*/", 12),
                 Role = "admin"
             });
             await db.SaveChangesAsync();
