@@ -1,13 +1,75 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
-import type { ArticleListItem } from "../types/api";
+import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
+
+function MultiSelectDropdown({ label, options, selected, onChange, renderOption }: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  renderOption?: (opt: { value: string; label: string }) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const toggle = (value: string) => {
+    onChange(selected.includes(value) ? selected.filter(v => v !== value) : [...selected, value]);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors border ${selected.length > 0
+          ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
+          : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+          }`}
+      >
+        {label}
+        {selected.length > 0 && (
+          <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-200 dark:bg-blue-800 rounded-full">{selected.length}</span>
+        )}
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-56 max-h-60 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg">
+          {options.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(opt.value)}
+                onChange={() => toggle(opt.value)}
+                className="rounded border-zinc-300 dark:border-zinc-600"
+              />
+              {renderOption ? renderOption(opt) : <span className="text-zinc-700 dark:text-zinc-300">{opt.label}</span>}
+            </label>
+          ))}
+          {options.length === 0 && (
+            <div className="px-3 py-2 text-sm text-zinc-400">No options</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
@@ -18,18 +80,33 @@ export default function ArticlesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams.get("status") || "");
-  const [contentTypeFilter, setContentTypeFilter] = useState<string>(() => searchParams.get("contentType") || "");
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => searchParams.get("status")?.split(",").filter(Boolean) || []);
+  const [contentTypeFilter, setContentTypeFilter] = useState<string[]>(() => searchParams.get("contentType")?.split(",").filter(Boolean) || []);
+  const [tagFilter, setTagFilter] = useState<string[]>(() => searchParams.get("tag")?.split(",").filter(Boolean) || []);
   const [mineFilter, setMineFilter] = useState(() => searchParams.get("mine") === "true");
   const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sort") || "updatedAt");
+  const [dateFrom, setDateFrom] = useState<string>(() => searchParams.get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState<string>(() => searchParams.get("dateTo") || "");
+  const [allTags, setAllTags] = useState<Tag[]>([]);
 
-  const syncSearchParams = useCallback((p: number, status: string, ct: string, mine: boolean, sort: string) => {
+  // Load tags
+  useEffect(() => {
+    fetchWithAuth("/api/tags")
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data)) setAllTags(data); })
+      .catch(() => {});
+  }, [fetchWithAuth]);
+
+  const syncSearchParams = useCallback((p: number, status: string[], ct: string[], tags: string[], mine: boolean, sort: string, df: string, dt: string) => {
     const params = new URLSearchParams();
     if (p > 1) params.set("page", String(p));
-    if (status) params.set("status", status);
-    if (ct) params.set("contentType", ct);
+    if (status.length) params.set("status", status.join(","));
+    if (ct.length) params.set("contentType", ct.join(","));
+    if (tags.length) params.set("tag", tags.join(","));
     if (mine) params.set("mine", "true");
     if (sort && sort !== "updatedAt") params.set("sort", sort);
+    if (df) params.set("dateFrom", df);
+    if (dt) params.set("dateTo", dt);
     setSearchParams(params, { replace: true });
   }, [setSearchParams]);
 
@@ -37,17 +114,20 @@ export default function ArticlesPage() {
   const totalPages = Math.ceil(total / LIMIT);
 
   useEffect(() => {
-    syncSearchParams(page, statusFilter, contentTypeFilter, mineFilter, sortBy);
-  }, [page, statusFilter, contentTypeFilter, mineFilter, sortBy, syncSearchParams]);
+    syncSearchParams(page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo);
+  }, [page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo, syncSearchParams]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("limit", String(LIMIT));
-    if (statusFilter) params.set("status", statusFilter);
-    if (contentTypeFilter) params.set("contentType", contentTypeFilter);
+    if (statusFilter.length) params.set("status", statusFilter.join(","));
+    if (contentTypeFilter.length) params.set("contentType", contentTypeFilter.join(","));
+    tagFilter.forEach(t => params.append("tag", t));
     if (mineFilter) params.set("mine", "true");
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
 
     fetchWithAuth(`/api/articles?${params}`)
       .then((res) => res.json())
@@ -63,13 +143,25 @@ export default function ArticlesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, contentTypeFilter, mineFilter, page, sortBy]);
+  }, [fetchWithAuth, statusFilter, contentTypeFilter, tagFilter, mineFilter, page, sortBy, dateFrom, dateTo]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
     pending: "bg-amber-100 text-amber-700",
     published: "bg-green-100 text-green-700",
     archived: "bg-red-100 text-red-700",
+  };
+
+  const hasActiveFilters = statusFilter.length > 0 || contentTypeFilter.length > 0 || tagFilter.length > 0 || dateFrom || dateTo || mineFilter;
+
+  const clearAllFilters = () => {
+    setPage(1);
+    setStatusFilter([]);
+    setContentTypeFilter([]);
+    setTagFilter([]);
+    setMineFilter(false);
+    setDateFrom("");
+    setDateTo("");
   };
 
   return (
@@ -88,61 +180,123 @@ export default function ArticlesPage() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <Filter size={16} className="text-zinc-400" />
+
         {isApprover && (
-          <div className="flex gap-2">
-            {[
-              { label: "All", value: "" },
-              { label: "Pending Approval", value: "pending" },
-              { label: "Draft", value: "draft" },
-              { label: "Published", value: "published" },
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => { setPage(1); setStatusFilter(tab.value); }}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${statusFilter === tab.value
-                  ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
-                  : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <MultiSelectDropdown
+            label="Status"
+            options={[
+              { value: "draft", label: "Draft" },
+              { value: "pending", label: "Pending" },
+              { value: "published", label: "Published" },
+              { value: "archived", label: "Archived" },
+            ]}
+            selected={statusFilter}
+            onChange={(v) => { setPage(1); setStatusFilter(v); }}
+          />
         )}
 
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${mineFilter
-              ? "bg-blue-100 text-blue-700 font-medium dark:bg-blue-950 dark:text-blue-300"
-              : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-700"
-              }`}
-          >
-            <UserLockIcon size={14} className="inline-block mr-1" />
-            My Articles
-          </button>
-          <select
-            value={contentTypeFilter}
-            onChange={(e) => { setPage(1); setContentTypeFilter(e.target.value); }}
-            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
-          >
-            <option value="">All Types</option>
-            {contentTypes.map((ct) => (
-              <option key={ct.value} value={ct.value}>{ct.label}</option>
-            ))}
-          </select>
-          <select
-            value={sortBy}
-            onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
-            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
-          >
-            <option value="updatedAt">Son Güncellenen</option>
-            <option value="wilsonScore">En Faydalı</option>
-            <option value="viewCount">En Çok Görüntülenen</option>
-          </select>
+        <MultiSelectDropdown
+          label="Content Type"
+          options={contentTypes.map(ct => ({ value: ct.value, label: ct.label }))}
+          selected={contentTypeFilter}
+          onChange={(v) => { setPage(1); setContentTypeFilter(v); }}
+        />
+
+        <MultiSelectDropdown
+          label="Tags"
+          options={allTags.map(t => ({ value: t.slug, label: t.name }))}
+          selected={tagFilter}
+          onChange={(v) => { setPage(1); setTagFilter(v); }}
+        />
+
+        <div className="flex items-center gap-1">
+          <Calendar size={14} className="text-zinc-400" />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setPage(1); setDateFrom(e.target.value); }}
+            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 w-[130px]"
+            placeholder="From"
+          />
+          <span className="text-zinc-400 text-xs">–</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setPage(1); setDateTo(e.target.value); }}
+            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 w-[130px]"
+            placeholder="To"
+          />
         </div>
+
+        <button
+          onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
+          className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors border ${mineFilter
+            ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
+            : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            }`}
+        >
+          <UserLockIcon size={14} />
+          My Articles
+        </button>
+
+        <select
+          value={sortBy}
+          onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
+          className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
+        >
+          <option value="updatedAt">Son Güncellenen</option>
+          <option value="wilsonScore">En Faydalı</option>
+          <option value="viewCount">En Çok Görüntülenen</option>
+        </select>
+
+        {hasActiveFilters && (
+          <button
+            onClick={clearAllFilters}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors"
+          >
+            <X size={12} />
+            Clear All
+          </button>
+        )}
       </div>
+
+      {/* Active filter badges */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {statusFilter.map(s => (
+            <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              {s}
+              <button onClick={() => { setPage(1); setStatusFilter(statusFilter.filter(v => v !== s)); }}><X size={10} /></button>
+            </span>
+          ))}
+          {contentTypeFilter.map(ct => (
+            <span key={ct} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+              {contentTypes.find(c => c.value === ct)?.label || ct}
+              <button onClick={() => { setPage(1); setContentTypeFilter(contentTypeFilter.filter(v => v !== ct)); }}><X size={10} /></button>
+            </span>
+          ))}
+          {tagFilter.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+              {allTags.find(tag => tag.slug === t)?.name || t}
+              <button onClick={() => { setPage(1); setTagFilter(tagFilter.filter(v => v !== t)); }}><X size={10} /></button>
+            </span>
+          ))}
+          {dateFrom && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+              From: {dateFrom}
+              <button onClick={() => { setPage(1); setDateFrom(""); }}><X size={10} /></button>
+            </span>
+          )}
+          {dateTo && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+              To: {dateTo}
+              <button onClick={() => { setPage(1); setDateTo(""); }}><X size={10} /></button>
+            </span>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-zinc-500">Loading...</div>
@@ -187,7 +341,7 @@ export default function ArticlesPage() {
                     )}
                     {article.tags?.length > 0 && (
                       <span className="flex items-center gap-1 flex-wrap">
-                        <Tag size={12} className="text-zinc-400" />
+                        <TagIcon size={12} className="text-zinc-400" />
                         {article.tags.map((tag) => (
                           <span
                             key={tag.id}

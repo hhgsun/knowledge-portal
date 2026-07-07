@@ -29,7 +29,10 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         [FromQuery] string? status = null,
         [FromQuery] string? contentType = null,
         [FromQuery] bool mine = false,
-        [FromQuery] string? q = null)
+        [FromQuery] string? q = null,
+        [FromQuery] string[]? tag = null,
+        [FromQuery] string? dateFrom = null,
+        [FromQuery] string? dateTo = null)
     {
         page = Math.Max(1, page);
         limit = Math.Clamp(limit, 1, 100);
@@ -46,14 +49,39 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             query = query.Where(a => a.OwnerId == userId);
 
         if (!string.IsNullOrWhiteSpace(status))
-            query = query.Where(a => a.Status == status);
+        {
+            var statuses = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (statuses.Length > 0)
+                query = query.Where(a => statuses.Contains(a.Status));
+        }
 
         if (!string.IsNullOrWhiteSpace(contentType))
         {
             var validContentTypes = await GetValidContentTypesAsync();
-            if (validContentTypes.Contains(contentType))
-                query = query.Where(a => a.ContentType == contentType);
+            var ctValues = contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(ct => validContentTypes.Contains(ct)).ToList();
+            if (ctValues.Count > 0)
+                query = query.Where(a => ctValues.Contains(a.ContentType));
         }
+
+        if (tag is { Length: > 0 })
+        {
+            var tagSlugs = tag.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+            if (tagSlugs.Count > 0)
+            {
+                // AND logic: article must have ALL specified tags
+                foreach (var tagSlug in tagSlugs)
+                {
+                    query = query.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tagSlug));
+                }
+            }
+        }
+
+        if (DateTime.TryParse(dateFrom, out var from))
+            query = query.Where(a => a.UpdatedAt >= from.ToUniversalTime());
+
+        if (DateTime.TryParse(dateTo, out var to))
+            query = query.Where(a => a.UpdatedAt < to.ToUniversalTime().AddDays(1));
 
         if (!string.IsNullOrWhiteSpace(q))
         {
