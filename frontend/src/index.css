@@ -24,3 +24,53 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Reduce excessive prose spacing for article content */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  margin-top: 1.25em;
+  margin-bottom: 0.4em;
+}
+
+.prose p {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+.prose li {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+.prose blockquote {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.prose pre {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.prose hr {
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+}
+
+.prose :first-child {
+  margin-top: 0;
+}
+
+.prose :last-child {
+  margin-bottom: 0;
+}
