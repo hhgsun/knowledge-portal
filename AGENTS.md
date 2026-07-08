@@ -12,7 +12,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 | Layer | Stack |
 |-------|-------|
-| Backend | ASP.NET Core (.NET 10), EF Core, SQLite |
+| Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
 | Auth | JWT Bearer + API Key (kp_ prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
@@ -23,7 +23,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 ### Backend (`backend/`)
 
 - **Language**: C# 13, .NET 10, nullable enabled
-- **Pattern**: Controllers → EF Core DbContext → SQLite (service layer for AI/embedding only)
+- **Pattern**: Controllers → EF Core DbContext → PostgreSQL (service layer for AI/embedding only)
 - **Naming**: PascalCase for C# code, snake_case for DB columns (configured in `AppDbContext.OnModelCreating`)
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
@@ -34,7 +34,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
 - **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
-- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. VectorSearchService caches chunk embeddings in-memory for SIMD cosine similarity. FTS5 virtual table for BM25-ranked fulltext search (rebuilt on startup).
+- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. VectorSearchService caches chunk embeddings in-memory for SIMD cosine similarity. PostgreSQL tsvector/tsquery for full-text search with GIN index and weighted ranking (rebuilt on startup).
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
@@ -231,7 +231,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | API Key Auth | ✅ Implemented | kp_ prefix, BCrypt hash, prefix-indexed lookup |
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
-| Search (fulltext) | ✅ Implemented | FTS5 with BM25 ranking (fallback to LIKE), content body indexed |
+| Search (fulltext) | ✅ Implemented | PostgreSQL tsvector/tsquery with GIN index and weighted ranking (fallback to ILIKE), content body indexed |
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ✅ Implemented | Ollama embedding + chunking (~500 words/chunk) + SIMD cosine similarity, best-chunk scoring |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60) |
@@ -284,7 +284,7 @@ No known gaps at this time.
 - **Search semantic**: Ollama nomic-embed-text embeddings → SIMD cosine similarity via VectorSearchService. Returns score per result. MinSimilarityScore=0.3 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
 - **Search RAG**: Top-5 semantic results → article context (max 3000 words) → Ollama llama3.2 → answer with source citations. Response includes `sources: [{articleId, title, slug, score}]`.
-- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. FTS5 index synced on publish/update/delete/approve/attachment-change.
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. Full-text search vector synced on publish/update/delete/approve/attachment-change.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).

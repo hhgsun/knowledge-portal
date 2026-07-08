@@ -15,15 +15,15 @@ namespace KnowledgePortal.Api.Migrations
                 name: "lookup_values",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Category = table.Column<string>(type: "TEXT", nullable: false),
-                    Value = table.Column<string>(type: "TEXT", nullable: false),
-                    Label = table.Column<string>(type: "TEXT", nullable: false),
-                    Color = table.Column<string>(type: "TEXT", nullable: true),
-                    Icon = table.Column<string>(type: "TEXT", nullable: true),
-                    SortOrder = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 0),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false, defaultValue: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Category = table.Column<string>(type: "text", nullable: false),
+                    Value = table.Column<string>(type: "text", nullable: false),
+                    Label = table.Column<string>(type: "text", nullable: false),
+                    Color = table.Column<string>(type: "text", nullable: true),
+                    Icon = table.Column<string>(type: "text", nullable: true),
+                    SortOrder = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -34,9 +34,9 @@ namespace KnowledgePortal.Api.Migrations
                 name: "tags",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Slug = table.Column<string>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Slug = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -47,15 +47,15 @@ namespace KnowledgePortal.Api.Migrations
                 name: "users",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Slug = table.Column<string>(type: "TEXT", nullable: false),
-                    Email = table.Column<string>(type: "TEXT", nullable: false),
-                    PasswordHash = table.Column<string>(type: "TEXT", nullable: false),
-                    Role = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "viewer"),
-                    AzureObjectId = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Slug = table.Column<string>(type: "text", nullable: false),
+                    Email = table.Column<string>(type: "text", nullable: false),
+                    PasswordHash = table.Column<string>(type: "text", nullable: false),
+                    Role = table.Column<string>(type: "text", nullable: false, defaultValue: "viewer"),
+                    AzureObjectId = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -66,14 +66,14 @@ namespace KnowledgePortal.Api.Migrations
                 name: "api_keys",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
-                    KeyHash = table.Column<string>(type: "TEXT", nullable: false),
-                    KeyPrefix = table.Column<string>(type: "TEXT", maxLength: 8, nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    LastUsedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    ExpiresAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    UserId = table.Column<string>(type: "text", nullable: false),
+                    KeyHash = table.Column<string>(type: "text", nullable: false),
+                    KeyPrefix = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    LastUsedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -90,22 +90,22 @@ namespace KnowledgePortal.Api.Migrations
                 name: "articles",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Title = table.Column<string>(type: "TEXT", nullable: false),
-                    Slug = table.Column<string>(type: "TEXT", nullable: false),
-                    Content = table.Column<string>(type: "TEXT", nullable: true),
-                    Excerpt = table.Column<string>(type: "TEXT", nullable: true),
-                    Status = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "draft"),
-                    OwnerId = table.Column<string>(type: "TEXT", nullable: false),
-                    ContentType = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "reference"),
-                    CreatedViaApiKeyId = table.Column<string>(type: "TEXT", nullable: true),
-                    ReadTimeMinutes = table.Column<int>(type: "INTEGER", nullable: true),
-                    PublishedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    LastReviewedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    ReviewIntervalDays = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 90),
-                    IndexedAt = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Title = table.Column<string>(type: "text", nullable: false),
+                    Slug = table.Column<string>(type: "text", nullable: false),
+                    Content = table.Column<string>(type: "text", nullable: true),
+                    Excerpt = table.Column<string>(type: "text", nullable: true),
+                    Status = table.Column<string>(type: "text", nullable: false, defaultValue: "draft"),
+                    OwnerId = table.Column<string>(type: "text", nullable: false),
+                    ContentType = table.Column<string>(type: "text", nullable: false, defaultValue: "reference"),
+                    CreatedViaApiKeyId = table.Column<string>(type: "text", nullable: true),
+                    ReadTimeMinutes = table.Column<int>(type: "integer", nullable: true),
+                    PublishedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    LastReviewedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    ReviewIntervalDays = table.Column<int>(type: "integer", nullable: false, defaultValue: 90),
+                    IndexedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -128,14 +128,14 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_attachments",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    FileName = table.Column<string>(type: "TEXT", nullable: false),
-                    StoredFileName = table.Column<string>(type: "TEXT", nullable: false),
-                    ContentType = table.Column<string>(type: "TEXT", nullable: false),
-                    SizeBytes = table.Column<long>(type: "INTEGER", nullable: false),
-                    UploadedById = table.Column<string>(type: "TEXT", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    FileName = table.Column<string>(type: "text", nullable: false),
+                    StoredFileName = table.Column<string>(type: "text", nullable: false),
+                    ContentType = table.Column<string>(type: "text", nullable: false),
+                    SizeBytes = table.Column<long>(type: "bigint", nullable: false),
+                    UploadedById = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -158,11 +158,11 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_comments",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
-                    Comment = table.Column<string>(type: "TEXT", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    UserId = table.Column<string>(type: "text", nullable: false),
+                    Comment = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -185,15 +185,15 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_embeddings",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    ChunkIndex = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 0),
-                    Embedding = table.Column<byte[]>(type: "BLOB", nullable: false),
-                    EmbeddingNorm = table.Column<double>(type: "REAL", nullable: false),
-                    ModelName = table.Column<string>(type: "TEXT", nullable: false),
-                    TextHash = table.Column<string>(type: "TEXT", nullable: false),
-                    Dimensions = table.Column<int>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    ChunkIndex = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
+                    Embedding = table.Column<byte[]>(type: "bytea", nullable: false),
+                    EmbeddingNorm = table.Column<double>(type: "double precision", nullable: false),
+                    ModelName = table.Column<string>(type: "text", nullable: false),
+                    TextHash = table.Column<string>(type: "text", nullable: false),
+                    Dimensions = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -210,8 +210,8 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_tags",
                 columns: table => new
                 {
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    TagId = table.Column<string>(type: "TEXT", nullable: false)
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    TagId = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -234,14 +234,14 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_versions",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    Title = table.Column<string>(type: "TEXT", nullable: false),
-                    Content = table.Column<string>(type: "TEXT", nullable: true),
-                    ChangedBy = table.Column<string>(type: "TEXT", nullable: false),
-                    ChangeSummary = table.Column<string>(type: "TEXT", nullable: true),
-                    Version = table.Column<int>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    Title = table.Column<string>(type: "text", nullable: false),
+                    Content = table.Column<string>(type: "text", nullable: true),
+                    ChangedBy = table.Column<string>(type: "text", nullable: false),
+                    ChangeSummary = table.Column<string>(type: "text", nullable: true),
+                    Version = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -264,10 +264,10 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_views",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    UserId = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -289,13 +289,13 @@ namespace KnowledgePortal.Api.Migrations
                 name: "article_votes",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ArticleId = table.Column<string>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
-                    IsHelpful = table.Column<bool>(type: "INTEGER", nullable: false),
-                    Reason = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ArticleId = table.Column<string>(type: "text", nullable: false),
+                    UserId = table.Column<string>(type: "text", nullable: false),
+                    IsHelpful = table.Column<bool>(type: "boolean", nullable: false),
+                    Reason = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -318,14 +318,14 @@ namespace KnowledgePortal.Api.Migrations
                 name: "search_queries",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    Query = table.Column<string>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: true),
-                    ResultsCount = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 0),
-                    ClickedArticleId = table.Column<string>(type: "TEXT", nullable: true),
-                    SearchType = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "fulltext"),
-                    ResponseTimeMs = table.Column<int>(type: "INTEGER", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Query = table.Column<string>(type: "text", nullable: false),
+                    UserId = table.Column<string>(type: "text", nullable: true),
+                    ResultsCount = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
+                    ClickedArticleId = table.Column<string>(type: "text", nullable: true),
+                    SearchType = table.Column<string>(type: "text", nullable: false, defaultValue: "fulltext"),
+                    ResponseTimeMs = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {

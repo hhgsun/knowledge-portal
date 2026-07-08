@@ -23,7 +23,9 @@ builder.Logging.AddProvider(new FileLoggerProvider(logFile));
 
 // ─── Database ────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // ─── Authentication ──────────────────────────────────────────
 builder.Services.AddSingleton<JwtService>();
@@ -165,13 +167,30 @@ app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    // Ensure the PostgreSQL database exists before applying migrations
+    {
+        var connStr = db.Database.GetConnectionString()!;
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr);
+        var dbName = csb.Database;
+        csb.Database = "postgres";
+        using var conn = new Npgsql.NpgsqlConnection(csb.ConnectionString);
+        await conn.OpenAsync();
+        using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = '{dbName}'";
+        var exists = await checkCmd.ExecuteScalarAsync();
+        if (exists == null)
+        {
+            using var createCmd = conn.CreateCommand();
+            createCmd.CommandText = $"CREATE DATABASE \"{dbName}\"";
+            await createCmd.ExecuteNonQueryAsync();
+        }
+    }
+
     await db.Database.MigrateAsync();
-    // Enable WAL mode and busy timeout for concurrent access
-    await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
-    await db.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
     await DbInitializer.SeedAsync(db);
 
-    // Initialize FTS5 table and rebuild index
+    // Initialize full-text search infrastructure and rebuild index
     var ftsService = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
     await ftsService.InitializeAsync();
     await ftsService.RebuildAsync();

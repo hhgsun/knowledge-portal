@@ -10,21 +10,28 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     public record FtsResult(string ArticleId, double Rank);
 
     /// <summary>
-    /// Initialize the FTS5 table and populate with all published articles.
+    /// Initialize the full-text search infrastructure (search_vector column + GIN index).
     /// Called once at startup.
     /// </summary>
     public async Task InitializeAsync()
     {
         await db.Database.ExecuteSqlRawAsync("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
-                article_id UNINDEXED,
-                title,
-                excerpt,
-                content_text,
-                tokenize='unicode61 remove_diacritics 2'
-            )
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'articles' AND column_name = 'search_vector'
+                ) THEN
+                    ALTER TABLE articles ADD COLUMN search_vector tsvector;
+                END IF;
+            END $$;
             """);
-        logger.LogInformation("FTS5 table ensured");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS idx_articles_search_vector ON articles USING gin(search_vector);
+            """);
+
+        logger.LogInformation("PostgreSQL full-text search infrastructure ensured");
     }
 
     /// <summary>
@@ -32,7 +39,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task RebuildAsync(CancellationToken ct = default)
     {
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM articles_fts", ct);
+        await db.Database.ExecuteSqlRawAsync("UPDATE articles SET search_vector = NULL", ct);
 
         var articles = await db.Articles
             .Where(a => a.Status == "published")
@@ -47,11 +54,17 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
             var attachmentText = await GetAttachmentTextAsync(article.Id, baseDir, ct);
             var contentText = ContentExtractor.ExtractSearchableText(article.Title ?? "", article.Excerpt, article.Content, attachmentText);
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO articles_fts(article_id, title, excerpt, content_text) VALUES ({0}, {1}, {2}, {3})",
-                article.Id, article.Title ?? "", article.Excerpt ?? "", contentText);
+                """
+                UPDATE articles SET search_vector =
+                    setweight(to_tsvector('simple', COALESCE({0}, '')), 'A') ||
+                    setweight(to_tsvector('simple', COALESCE({1}, '')), 'B') ||
+                    setweight(to_tsvector('simple', COALESCE({2}, '')), 'C')
+                WHERE "Id" = {3}
+                """,
+                article.Title ?? "", article.Excerpt ?? "", contentText, article.Id);
         }
 
-        logger.LogInformation("FTS5 index rebuilt with {Count} articles", articles.Count);
+        logger.LogInformation("Full-text search index rebuilt with {Count} articles", articles.Count);
     }
 
     /// <summary>
@@ -60,20 +73,27 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task SyncArticleAsync(Article article)
     {
-        await db.Database.ExecuteSqlRawAsync(
-            "DELETE FROM articles_fts WHERE article_id = {0}", article.Id);
-
-        if (article.Status == "published")
+        if (article.Status != "published")
         {
-            var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-            var baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
-            var attachmentText = await GetAttachmentTextAsync(article.Id, baseDir);
-
-            var contentText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO articles_fts(article_id, title, excerpt, content_text) VALUES ({0}, {1}, {2}, {3})",
-                article.Id, article.Title ?? "", article.Excerpt ?? "", contentText);
+                "UPDATE articles SET search_vector = NULL WHERE \"Id\" = {0}", article.Id);
+            return;
         }
+
+        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
+        var baseDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
+        var attachmentText = await GetAttachmentTextAsync(article.Id, baseDir);
+
+        var contentText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE articles SET search_vector =
+                setweight(to_tsvector('simple', COALESCE({0}, '')), 'A') ||
+                setweight(to_tsvector('simple', COALESCE({1}, '')), 'B') ||
+                setweight(to_tsvector('simple', COALESCE({2}, '')), 'C')
+            WHERE "Id" = {3}
+            """,
+            article.Title ?? "", article.Excerpt ?? "", contentText, article.Id);
     }
 
     /// <summary>
@@ -82,28 +102,50 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     public async Task RemoveArticleAsync(string articleId)
     {
         await db.Database.ExecuteSqlRawAsync(
-            "DELETE FROM articles_fts WHERE article_id = {0}", articleId);
+            "UPDATE articles SET search_vector = NULL WHERE \"Id\" = {0}", articleId);
     }
 
     /// <summary>
-    /// Search the FTS5 index. Returns article IDs ranked by BM25 relevance.
+    /// Search using PostgreSQL full-text search. Returns article IDs ranked by relevance.
     /// </summary>
     public async Task<List<FtsResult>> SearchAsync(string query, int limit)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
 
-        // Escape FTS5 special characters and build query
-        var ftsQuery = BuildFtsQuery(query);
-        if (string.IsNullOrWhiteSpace(ftsQuery)) return [];
+        var tsQuery = BuildTsQuery(query);
+        if (string.IsNullOrWhiteSpace(tsQuery)) return [];
 
         var results = await db.Database
             .SqlQueryRaw<FtsRawResult>(
-                "SELECT article_id AS ArticleId, rank AS Rank FROM articles_fts WHERE articles_fts MATCH {0} ORDER BY rank LIMIT {1}",
-                ftsQuery, limit)
+                """
+                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('simple', {0})) AS "Rank"
+                FROM articles
+                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('simple', {0})
+                ORDER BY "Rank" DESC
+                LIMIT {1}
+                """,
+                tsQuery, limit)
             .ToListAsync();
 
-        // FTS5 rank is negative (more negative = more relevant), convert to positive score
-        return results.Select(r => new FtsResult(r.ArticleId, -r.Rank)).ToList();
+        // Fallback to ILIKE if tsquery yields no results
+        if (results.Count == 0)
+        {
+            var likePattern = $"%{query.Replace("%", "\\%").Replace("_", "\\_")}%";
+            results = await db.Database
+                .SqlQueryRaw<FtsRawResult>(
+                    """
+                    SELECT "Id" AS "ArticleId", 0.1 AS "Rank"
+                    FROM articles
+                    WHERE "Status" = 'published' AND (
+                        "Title" ILIKE {0} OR "Excerpt" ILIKE {0}
+                    )
+                    LIMIT {1}
+                    """,
+                    likePattern, limit)
+                .ToListAsync();
+        }
+
+        return results.Select(r => new FtsResult(r.ArticleId, r.Rank)).ToList();
     }
 
     private async Task<string> GetAttachmentTextAsync(string articleId, string baseDir, CancellationToken ct = default)
@@ -133,15 +175,19 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         return sb.ToString();
     }
 
-    private static string BuildFtsQuery(string input)
+    /// <summary>
+    /// Build a PostgreSQL tsquery string from user input.
+    /// Tokens are joined with OR operator for broader matching.
+    /// </summary>
+    private static string BuildTsQuery(string input)
     {
-        // Split into tokens and wrap each in quotes to handle special chars
         var tokens = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (tokens.Length == 0) return "";
 
-        // Use OR between tokens for broader matching, with column weighting
-        var escaped = tokens.Select(t => $"\"{t.Replace("\"", "\"\"")}\"");
-        return string.Join(" OR ", escaped);
+        // Escape special characters and join with | (OR) operator
+        var escaped = tokens.Select(t => t.Replace("'", "").Replace("\\", "").Replace("&", "").Replace("|", "").Replace("!", "").Replace("(", "").Replace(")", "").Replace(":", "").Trim())
+            .Where(t => t.Length > 0);
+        return string.Join(" | ", escaped);
     }
 
     private class FtsRawResult
