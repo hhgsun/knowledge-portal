@@ -171,8 +171,10 @@ using (var scope = app.Services.CreateScope())
 
     // Ensure the PostgreSQL database exists before applying migrations
     {
-        var connStr = db.Database.GetConnectionString()!;
-        var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr);
+        var connStr = builder.Configuration.GetConnectionString("DefaultConnection")!;
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder();
+        csb.PersistSecurityInfo = true;
+        csb.ConnectionString = connStr;
         var dbName = csb.Database;
         csb.Database = "postgres";
         using var conn = new Npgsql.NpgsqlConnection(csb.ConnectionString);
