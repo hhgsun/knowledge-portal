@@ -21,6 +21,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // ─── pgvector extension ─────────────────────────────
+        modelBuilder.HasPostgresExtension("vector");
+
         // ─── Users ─────────────────────────────────────────
         modelBuilder.Entity<User>(e =>
         {
@@ -191,8 +194,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(ae => ae.Id);
             e.Property(ae => ae.ArticleId).IsRequired();
             e.Property(ae => ae.ChunkIndex).IsRequired().HasDefaultValue(0);
-            e.Property(ae => ae.Embedding).IsRequired();
-            e.Property(ae => ae.EmbeddingNorm).IsRequired();
+            e.Property(ae => ae.Embedding).IsRequired().HasColumnType("vector(768)");
             e.Property(ae => ae.ModelName).IsRequired();
             e.Property(ae => ae.TextHash).IsRequired();
             e.Property(ae => ae.Dimensions).IsRequired();

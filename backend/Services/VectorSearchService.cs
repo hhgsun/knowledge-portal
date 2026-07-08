@@ -1,9 +1,7 @@
-using System.Collections.Concurrent;
-using System.Numerics.Tensors;
 using KnowledgePortal.Api.Data;
-using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Pgvector;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -13,95 +11,40 @@ public sealed class VectorSearchService(
     IConfiguration config,
     ILogger<VectorSearchService> logger)
 {
-    private readonly ConcurrentDictionary<string, List<CachedChunk>> _cache = new();
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.3);
-    private volatile bool _initialized;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public record VectorSearchResult(string ArticleId, double Score);
-    private record CachedChunk(float[] Vector, double Norm);
 
     public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default)
     {
-        await EnsureInitializedAsync(ct);
-        if (_cache.IsEmpty) return [];
-
         var queryResults = await embeddingGenerator.GenerateAsync([queryText], cancellationToken: ct);
-        var queryVector = queryResults[0].Vector.ToArray();
-        var queryNorm = VectorMath.ComputeNorm(queryVector);
-        if (queryNorm == 0) return [];
+        var queryVector = new Vector(queryResults[0].Vector.ToArray());
 
-        var results = new List<VectorSearchResult>();
-        foreach (var (articleId, chunks) in _cache)
-        {
-            // Best chunk score per article
-            double bestScore = 0;
-            foreach (var chunk in chunks)
-            {
-                var score = CosineSimilarity(queryVector, chunk.Vector, queryNorm, chunk.Norm);
-                if (score > bestScore) bestScore = score;
-            }
-            if (bestScore >= _minScore)
-                results.Add(new VectorSearchResult(articleId, bestScore));
-        }
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        results.Sort((a, b) => b.Score.CompareTo(a.Score));
-        return results.Count > limit ? results[..limit] : results;
+        // pgvector cosine distance: 1 - cosine_similarity, so score = 1 - distance
+        var results = await db.Database
+            .SqlQueryRaw<PgvectorResult>(
+                """
+                SELECT "ArticleId", MIN("Embedding" <=> {0}::vector) AS "Distance"
+                FROM article_embeddings
+                GROUP BY "ArticleId"
+                HAVING MIN("Embedding" <=> {0}::vector) <= {1}
+                ORDER BY "Distance" ASC
+                LIMIT {2}
+                """,
+                queryVector.ToString(), 1.0 - _minScore, limit)
+            .ToListAsync(ct);
+
+        return results
+            .Select(r => new VectorSearchResult(r.ArticleId, 1.0 - r.Distance))
+            .ToList();
     }
 
-    public void InvalidateCache()
+    private class PgvectorResult
     {
-        _initialized = false;
-        _cache.Clear();
-        logger.LogInformation("Vector search cache invalidated");
-    }
-
-    public void UpdateArticle(string articleId, List<(float[] Vector, double Norm)> chunks)
-    {
-        var cached = chunks.Select(c => new CachedChunk(c.Vector, c.Norm)).ToList();
-        _cache[articleId] = cached;
-    }
-
-    public void RemoveArticle(string articleId)
-    {
-        _cache.TryRemove(articleId, out _);
-    }
-
-    public int CacheSize => _cache.Count;
-
-    private async Task EnsureInitializedAsync(CancellationToken ct)
-    {
-        if (_initialized) return;
-        await _initLock.WaitAsync(ct);
-        try
-        {
-            if (_initialized) return;
-            using var scope = scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var embeddings = await db.ArticleEmbeddings
-                .Select(e => new { e.ArticleId, e.ChunkIndex, e.Embedding, e.EmbeddingNorm })
-                .ToListAsync(ct);
-
-            _cache.Clear();
-            foreach (var group in embeddings.GroupBy(e => e.ArticleId))
-            {
-                var chunks = group
-                    .OrderBy(e => e.ChunkIndex)
-                    .Select(e => new CachedChunk(EmbeddingService.DeserializeEmbedding(e.Embedding), e.EmbeddingNorm))
-                    .ToList();
-                _cache[group.Key] = chunks;
-            }
-            _initialized = true;
-            logger.LogInformation("Vector search cache initialized with {Count} articles ({Total} chunks)",
-                _cache.Count, embeddings.Count);
-        }
-        finally { _initLock.Release(); }
-    }
-
-    private static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b, double normA, double normB)
-    {
-        if (normA == 0 || normB == 0) return 0;
-        var dot = TensorPrimitives.Dot(a, b);
-        return dot / (normA * normB);
+        public string ArticleId { get; set; } = null!;
+        public double Distance { get; set; }
     }
 }

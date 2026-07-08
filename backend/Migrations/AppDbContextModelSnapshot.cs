@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Pgvector;
 
 #nullable disable
 
@@ -20,6 +21,7 @@ namespace KnowledgePortal.Api.Migrations
                 .HasAnnotation("ProductVersion", "10.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.ApiKey", b =>
@@ -224,12 +226,9 @@ namespace KnowledgePortal.Api.Migrations
                     b.Property<int>("Dimensions")
                         .HasColumnType("integer");
 
-                    b.Property<byte[]>("Embedding")
+                    b.Property<Vector>("Embedding")
                         .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<double>("EmbeddingNorm")
-                        .HasColumnType("double precision");
+                        .HasColumnType("vector(768)");
 
                     b.Property<string>("ModelName")
                         .IsRequired()

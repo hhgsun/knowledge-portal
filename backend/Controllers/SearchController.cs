@@ -360,9 +360,6 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null));
         await db.ArticleEmbeddings.ExecuteDeleteAsync();
 
-        var vectorSearch = HttpContext.RequestServices.GetService<VectorSearchService>();
-        vectorSearch?.InvalidateCache();
-
         // Rebuild FTS index
         await ftsService.RebuildAsync();
 

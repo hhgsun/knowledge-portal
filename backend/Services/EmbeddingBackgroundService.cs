@@ -5,7 +5,6 @@ namespace KnowledgePortal.Api.Services;
 
 public class EmbeddingBackgroundService(
     IServiceScopeFactory scopeFactory,
-    VectorSearchService vectorSearch,
     IConfiguration config,
     ILogger<EmbeddingBackgroundService> logger) : BackgroundService
 {
@@ -67,14 +66,6 @@ public class EmbeddingBackgroundService(
             try
             {
                 var embedded = await embeddingService.EmbedArticleAsync(article, ct);
-                if (embedded)
-                {
-                    // Update cache incrementally per article (no full cache invalidation)
-                    var chunks = await embeddingService.GetArticleEmbeddingsAsync(article.Id, ct);
-                    var chunkData = chunks.Select(c =>
-                        (EmbeddingService.DeserializeEmbedding(c.Embedding), c.EmbeddingNorm)).ToList();
-                    vectorSearch.UpdateArticle(article.Id, chunkData);
-                }
                 processed++;
             }
             catch (HttpRequestException) { throw; }
@@ -94,8 +85,7 @@ public class EmbeddingBackgroundService(
         {
             using var scope = scopeFactory.CreateScope();
             var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
-            var invalidated = await embeddingService.InvalidateStaleModelAsync(ct);
-            if (invalidated > 0) vectorSearch.InvalidateCache();
+            await embeddingService.InvalidateStaleModelAsync(ct);
         }
         catch (Exception ex)
         {

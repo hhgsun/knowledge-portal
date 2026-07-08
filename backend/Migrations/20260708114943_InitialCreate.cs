@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Pgvector;
 
 #nullable disable
 
@@ -11,6 +12,9 @@ namespace KnowledgePortal.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AlterDatabase()
+                .Annotation("Npgsql:PostgresExtension:vector", ",,");
+
             migrationBuilder.CreateTable(
                 name: "lookup_values",
                 columns: table => new
@@ -188,8 +192,7 @@ namespace KnowledgePortal.Api.Migrations
                     Id = table.Column<string>(type: "text", nullable: false),
                     ArticleId = table.Column<string>(type: "text", nullable: false),
                     ChunkIndex = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
-                    Embedding = table.Column<byte[]>(type: "bytea", nullable: false),
-                    EmbeddingNorm = table.Column<double>(type: "double precision", nullable: false),
+                    Embedding = table.Column<Vector>(type: "vector(768)", nullable: false),
                     ModelName = table.Column<string>(type: "text", nullable: false),
                     TextHash = table.Column<string>(type: "text", nullable: false),
                     Dimensions = table.Column<int>(type: "integer", nullable: false),

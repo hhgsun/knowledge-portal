@@ -3,6 +3,7 @@ using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Pgvector;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -58,13 +59,11 @@ public class EmbeddingService(
         for (int i = 0; i < chunks.Count; i++)
         {
             var vector = embedResults[i].Vector.ToArray();
-            var norm = VectorMath.ComputeNorm(vector);
             db.ArticleEmbeddings.Add(new ArticleEmbedding
             {
                 ArticleId = article.Id,
                 ChunkIndex = i,
-                Embedding = SerializeEmbedding(vector),
-                EmbeddingNorm = norm,
+                Embedding = new Vector(vector),
                 ModelName = _modelName,
                 TextHash = i == 0 ? textHash : ContentExtractor.ComputeHash(chunks[i]),
                 Dimensions = vector.Length,
@@ -107,17 +106,6 @@ public class EmbeddingService(
         }
 
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// Returns all chunk embeddings for an article (for cache update).
-    /// </summary>
-    public async Task<List<ArticleEmbedding>> GetArticleEmbeddingsAsync(string articleId, CancellationToken ct = default)
-    {
-        return await db.ArticleEmbeddings
-            .Where(e => e.ArticleId == articleId)
-            .OrderBy(e => e.ChunkIndex)
-            .ToListAsync(ct);
     }
 
     public async Task RemoveEmbeddingAsync(string articleId, CancellationToken ct = default)
@@ -188,19 +176,5 @@ public class EmbeddingService(
         }
 
         return chunks;
-    }
-
-    public static byte[] SerializeEmbedding(float[] vector)
-    {
-        var bytes = new byte[vector.Length * sizeof(float)];
-        Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
-        return bytes;
-    }
-
-    public static float[] DeserializeEmbedding(byte[] bytes)
-    {
-        var vector = new float[bytes.Length / sizeof(float)];
-        Buffer.BlockCopy(bytes, 0, vector, 0, bytes.Length);
-        return vector;
     }
 }

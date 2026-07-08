@@ -32,11 +32,12 @@
 |---------|---------|---------|
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | 10.0.8 | JWT token validation |
 | `Microsoft.Identity.Web` | 3.8.3 | Azure AD token validation helper |
-| `Microsoft.EntityFrameworkCore.Sqlite` | 10.0.8 | SQLite database provider |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | 10.0.2 | PostgreSQL database provider |
+| `Pgvector` | 0.3.2 | pgvector type support for .NET |
+| `Pgvector.EntityFrameworkCore` | 0.3.0 | pgvector EF Core integration |
 | `Microsoft.EntityFrameworkCore.Design` | 10.0.8 | Migration CLI tooling |
 | `BCrypt.Net-Next` | 4.2.0 | Password hashing (cost 12) and API key verification |
 | `OllamaSharp` | 5.4.25 | Ollama client (implements IChatClient + IEmbeddingGenerator from Microsoft.Extensions.AI) |
-| `System.Numerics.Tensors` | 10.0.9 | SIMD-accelerated TensorPrimitives for cosine similarity |
 | `UglyToad.PdfPig` | 1.7.0-custom-5 | PDF text extraction for attachment indexing |
 | `DocumentFormat.OpenXml` | 3.3.0 | DOCX text extraction for attachment indexing |
 
@@ -71,8 +72,8 @@
 
 | Property | Value |
 |----------|-------|
-| Engine | SQLite |
-| File location | `../data/knowledge.db` (relative to backend project root) |
+| Engine | PostgreSQL (remote, 192.168.84.21) |
+| Extensions | pgvector (vector similarity search) |
 | ORM strategy | Code-first with EF Core migrations |
 | Column naming | `snake_case` (configured in `OnModelCreating`) |
 | ID generation | 21-character truncated GUID (hex, lowercase) |
@@ -87,7 +88,7 @@ None. The application is fully self-contained with no external service dependenc
 |-----------|-----------|---------|
 | Test runner | xUnit | Unit + integration tests |
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
-| Database (tests) | SQLite temp file | Isolated per test class, auto-migrated |
+| Database (tests) | PostgreSQL (remote) | Isolated per test class, auto-migrated |
 | Test project | `backend.Tests/` | 46 tests (unit + integration) |
 
 Run tests: `cd backend.Tests && dotnet test`
@@ -97,4 +98,4 @@ Run tests: `cd backend.Tests && dotnet test`
 Not formally defined. Current setup is local development only:
 - Backend: `dotnet run` on port 5174
 - Frontend: `vite dev` on port 5173 with API proxy
-- Database: File-based SQLite at `../data/knowledge.db`
+- Database: PostgreSQL at 192.168.84.21
