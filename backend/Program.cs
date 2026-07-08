@@ -4,6 +4,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Middleware;
 using KnowledgePortal.Api.Services;
+using KnowledgePortal.Api.Logging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,13 @@ using Microsoft.IdentityModel.Tokens;
 using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── File Logging ────────────────────────────────────────────
+var logsPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(),
+    builder.Configuration["Logging:FilePath"] ?? "../data/logs"));
+Directory.CreateDirectory(logsPath);
+var logFile = Path.Combine(logsPath, $"log_{DateTime.UtcNow:yyyyMMdd}.log");
+builder.Logging.AddProvider(new FileLoggerProvider(logFile));
 
 // ─── Database ────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>

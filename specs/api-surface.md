@@ -706,6 +706,50 @@ Generates a new key value for an existing API key. The old key is immediately in
 
 ---
 
+## System Logs
+
+### `GET /api/logs`
+**Auth**: Bearer (session only)
+**Permission**: `users:manage`
+
+**200 Response**:
+```json
+{
+  "files": [
+    { "fileName": "log_20260708.log", "sizeBytes": 12345, "createdAt": "...", "lastModifiedAt": "...", "isToday": true, "canDelete": false }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### `GET /api/logs/{fileName}`
+**Auth**: Bearer (session only)
+**Permission**: `users:manage`
+
+| Query Param | Type | Default | Notes |
+|-------------|------|---------|-------|
+| `tail` | int? | — | Return only last N lines |
+
+**200 Response**:
+```json
+{ "fileName": "log_20260708.log", "totalLines": 500, "returnedLines": 200, "content": "..." }
+```
+
+---
+
+### `DELETE /api/logs/{fileName}`
+**Auth**: Bearer (session only)
+**Permission**: `users:manage`
+
+> Cannot delete today's log file.
+
+**200 Response**: `{ "message": "Log file 'log_20260707.log' deleted successfully" }`
+**400 Response**: `{ "error": "Cannot delete today's log file" }`
+
+---
+
 ## Error Response Format
 
 All error responses follow the pattern:

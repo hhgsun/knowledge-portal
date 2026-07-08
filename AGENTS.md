@@ -57,11 +57,12 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 ```
 backend/
-├── Controllers/          # API endpoints (12 controllers)
+├── Controllers/          # API endpoints (13 controllers)
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
+├── Logging/              # FileLoggerProvider (date-based file logging)
 ├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
@@ -79,7 +80,7 @@ frontend/
 ├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types & difficulties)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
-├── src/pages/            # 16 page components
+├── src/pages/            # 17 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 ├── auth-popup-callback.html  # Vite multi-page entry: Azure AD popup redirect target
@@ -187,6 +188,9 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/lookups` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/lookups?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
+| `/api/logs` | GET | ✓ | `users:manage` | ✓ |
+| `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
+| `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
 
 ## Validation Rules
 
@@ -251,6 +255,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
+| System Logs | ✅ Implemented | Date-based file logging (log_YYYYMMDD.log), view/delete via admin UI, today's log protected |
 
 ## Known Frontend Gaps
 

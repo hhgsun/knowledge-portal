@@ -56,6 +56,8 @@ frontend/
     ├── SettingsKeysPage.tsx   # API key management: create, copy, delete
     ├── TagsPage.tsx           # Tag management: list, edit, delete (admin/editor only)
     ├── ProfilePage.tsx        # Profile settings: name/email update + password change
+    ├── LookupsPage.tsx        # Lookup value management (content types, difficulties)
+    ├── LogsPage.tsx           # System log viewer: date-based log files, view/delete (admin only)
     └── NotFoundPage.tsx       # 404 page for unmatched routes
 ```
 

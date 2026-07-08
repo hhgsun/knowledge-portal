@@ -20,6 +20,7 @@ import {
   Moon,
   Monitor,
   Settings2,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState, useEffect } from "react";
@@ -56,6 +57,7 @@ const adminNavigation: NavItem[] = [
   { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
+  { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
 ];
 
 function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?: number; collapsed?: boolean }) {
@@ -190,6 +192,7 @@ export function Sidebar() {
                 .filter((item) => {
                   if (item.href === "/admin/users") return isAdmin;
                   if (item.href === "/settings/keys") return isAdmin;
+                  if (item.href === "/settings/logs") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
                   if (item.href === "/settings/lookups") return isEditorOrAdmin;
                   return true;
