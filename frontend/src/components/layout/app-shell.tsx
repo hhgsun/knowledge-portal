@@ -9,7 +9,7 @@ export function AppShell() {
 
   if (isAuthPage) {
     return (
-      <main id="main-content" role="main" aria-label="Authentication">
+      <main id="main-content" role="main" aria-label="Authentication" className="w-full">
         <Outlet />
       </main>
     );
