@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KnowledgePortal.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260706080330_RemoveAvatarColumn")]
-    partial class RemoveAvatarColumn
+    [Migration("20260708060114_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -63,9 +63,6 @@ namespace KnowledgePortal.Api.Migrations
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.Article", b =>
                 {
                     b.Property<string>("Id")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Audience")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Content")
@@ -214,6 +211,11 @@ namespace KnowledgePortal.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ChunkIndex")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -237,7 +239,7 @@ namespace KnowledgePortal.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ArticleId")
+                    b.HasIndex("ArticleId", "ChunkIndex")
                         .IsUnique();
 
                     b.ToTable("article_embeddings", (string)null);
@@ -490,12 +492,19 @@ namespace KnowledgePortal.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasDefaultValue("viewer");
 
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("Slug")
                         .IsUnique();
 
                     b.ToTable("users", (string)null);
@@ -571,8 +580,8 @@ namespace KnowledgePortal.Api.Migrations
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.ArticleEmbedding", b =>
                 {
                     b.HasOne("KnowledgePortal.Api.Models.Entities.Article", "Article")
-                        .WithOne("ArticleEmbedding")
-                        .HasForeignKey("KnowledgePortal.Api.Models.Entities.ArticleEmbedding", "ArticleId")
+                        .WithMany("ArticleEmbeddings")
+                        .HasForeignKey("ArticleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -670,7 +679,7 @@ namespace KnowledgePortal.Api.Migrations
 
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.Article", b =>
                 {
-                    b.Navigation("ArticleEmbedding");
+                    b.Navigation("ArticleEmbeddings");
 
                     b.Navigation("ArticleTags");
 
