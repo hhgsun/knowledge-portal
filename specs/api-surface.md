@@ -6,6 +6,15 @@
 Base URL: `http://localhost:5174/api`
 All endpoints return JSON. All timestamps are ISO 8601 UTC.
 
+## Authentication Headers
+
+| Method | Header | Format |
+|--------|--------|--------|
+| JWT | `Authorization` | `Bearer <token>` |
+| API Key | `X-API-Key` | `kp_<key>` |
+
+In endpoint descriptions below, **"JWT or API Key"** means the endpoint accepts either header.
+
 ## Rate Limiting
 
 | Policy | Limit | Window | Endpoints |

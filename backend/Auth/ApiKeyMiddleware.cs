@@ -8,10 +8,10 @@ public class ApiKeyMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, AppDbContext db)
     {
-        var authHeader = context.Request.Headers.Authorization.ToString();
-        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer kp_"))
+        var apiKeyHeader = context.Request.Headers["X-API-Key"].ToString();
+        if (!string.IsNullOrEmpty(apiKeyHeader) && apiKeyHeader.StartsWith("kp_"))
         {
-            var rawKey = authHeader["Bearer ".Length..];
+            var rawKey = apiKeyHeader;
             var prefix = rawKey.Length >= 11 ? rawKey[3..11] : rawKey[3..]; // 8 chars after "kp_"
 
             // Prefix-indexed lookup: only load keys matching this prefix

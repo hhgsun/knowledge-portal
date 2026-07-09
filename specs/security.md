@@ -37,7 +37,7 @@
 | Last-used tracking | `last_used_at` updated on each successful verification |
 
 **Verification flow** (ApiKeyMiddleware):
-1. Check `Authorization: Bearer kp_*` pattern
+1. Check `X-API-Key` header with `kp_*` prefix
 2. Extract 8-char prefix after `kp_`
 3. Query database by indexed `key_prefix` column (O(1) lookup)
 4. Skip expired keys

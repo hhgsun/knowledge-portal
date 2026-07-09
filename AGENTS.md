@@ -13,7 +13,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Layer | Stack |
 |-------|-------|
 | Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
-| Auth | JWT Bearer + API Key (kp_ prefix) + Azure AD (MSAL v5 redirect-bridge) |
+| Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |

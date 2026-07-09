@@ -187,4 +187,4 @@ Key settings in `appsettings.json`:
 Request → CORS → ApiKeyMiddleware → Authentication → Authorization → Controllers
 ```
 
-`ApiKeyMiddleware` intercepts `Bearer kp_*` tokens before standard JWT auth, sets `ClaimsPrincipal` with an `api-key` source discriminator. Session-only endpoints reject API key auth via `User.GetSource() == "api-key"` checks.
+`ApiKeyMiddleware` intercepts `X-API-Key: kp_*` header before standard JWT auth, sets `ClaimsPrincipal` with an `api-key` source discriminator. Session-only endpoints reject API key auth via `User.GetSource() == "api-key"` checks.
