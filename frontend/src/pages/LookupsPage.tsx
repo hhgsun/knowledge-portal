@@ -198,7 +198,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
   return (
     <div>
       <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">{title}</h2>
-      <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+      <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl">
         {items.length === 0 ? (
           <p className="p-4 text-sm text-zinc-500">No values defined</p>
         ) : (
