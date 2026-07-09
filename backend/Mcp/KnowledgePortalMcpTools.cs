@@ -4,12 +4,10 @@ using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Services;
 using Microsoft.EntityFrameworkCore;
-using ModelContextProtocol.Server;
 
 namespace KnowledgePortal.Api.Mcp;
 
-[McpServerToolType]
-public class KnowledgePortalMcpTools
+public static class KnowledgePortalMcpTools
 {
     private static string? ExtractPlainText(string? contentJson)
     {
@@ -22,19 +20,18 @@ public class KnowledgePortalMcpTools
         catch { return null; }
     }
 
-    [McpServerTool, Description("Search articles in the Knowledge Portal. Supports fulltext search. Returns matching articles with title, excerpt, author, tags, and relevance score.")]
     public static async Task<string> SearchArticles(
-        [Description("Search query text")] string query,
-        [Description("Maximum number of results (1-50, default 20)")] int limit = 20,
-        [Description("Tag slugs to filter by (comma-separated)")] string? tags = null,
-        [Description("Author slugs to filter by (comma-separated)")] string? authors = null,
-        [Description("Content type filter (comma-separated)")] string? contentType = null,
-        [Description("Whether to include article content in results")] bool includeContent = false,
+        string query,
+        int limit = 20,
+        string? tags = null,
+        string? authors = null,
+        string? contentType = null,
+        bool includeContent = false,
         AppDbContext? db = null,
         FullTextSearchService? ftsService = null)
     {
         if (db == null || ftsService == null)
-            return "Service unavailable";
+            return "{\"error\": \"Services unavailable\"}";
 
         limit = Math.Clamp(limit, 1, 50);
 
@@ -112,13 +109,12 @@ public class KnowledgePortalMcpTools
         return System.Text.Json.JsonSerializer.Serialize(new { articles = results, total = results.Count() });
     }
 
-    [McpServerTool, Description("Get a specific article by its ID or slug. Returns full article details including content as plain text.")]
     public static async Task<string> GetArticle(
-        [Description("Article ID or slug")] string idOrSlug,
+        string idOrSlug,
         AppDbContext? db = null)
     {
         if (db == null)
-            return "Service unavailable";
+            return "{\"error\": \"Service unavailable\"}";
 
         var article = await db.Articles
             .Include(a => a.Owner)
@@ -156,16 +152,15 @@ public class KnowledgePortalMcpTools
         return System.Text.Json.JsonSerializer.Serialize(result);
     }
 
-    [McpServerTool, Description("List articles from the Knowledge Portal. Returns published articles with pagination.")]
     public static async Task<string> ListArticles(
-        [Description("Page number (default 1)")] int page = 1,
-        [Description("Items per page (1-50, default 20)")] int limit = 20,
-        [Description("Filter by content type")] string? contentType = null,
-        [Description("Filter by tag slug (comma-separated)")] string? tags = null,
+        int page = 1,
+        int limit = 20,
+        string? contentType = null,
+        string? tags = null,
         AppDbContext? db = null)
     {
         if (db == null)
-            return "Service unavailable";
+            return "{\"error\": \"Service unavailable\"}";
 
         page = Math.Max(1, page);
         limit = Math.Clamp(limit, 1, 50);
@@ -211,11 +206,10 @@ public class KnowledgePortalMcpTools
         return System.Text.Json.JsonSerializer.Serialize(new { articles = results, total, page, limit });
     }
 
-    [McpServerTool, Description("List all available tags in the Knowledge Portal.")]
     public static async Task<string> ListTags(AppDbContext? db = null)
     {
         if (db == null)
-            return "Service unavailable";
+            return "{\"error\": \"Service unavailable\"}";
 
         var tags = await db.Tags
             .Select(t => new { id = t.Id, name = t.Name, slug = t.Slug })
@@ -225,11 +219,10 @@ public class KnowledgePortalMcpTools
         return System.Text.Json.JsonSerializer.Serialize(new { tags, total = tags.Count });
     }
 
-    [McpServerTool, Description("Get Knowledge Portal statistics: total articles, authors, tags, and recent activity.")]
     public static async Task<string> GetPortalStats(AppDbContext? db = null)
     {
         if (db == null)
-            return "Service unavailable";
+            return "{\"error\": \"Service unavailable\"}";
 
         var totalArticles = await db.Articles.CountAsync(a => a.Status == "published");
         var totalAuthors = await db.Users.CountAsync();

@@ -17,7 +17,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
-| MCP | Model Context Protocol server at `/mcp` (Streamable HTTP, stateless) |
+| MCP | REST API at `/mcp` (JSON-RPC 2.0, stateless, API Key or JWT auth) |
 
 ## Conventions
 
@@ -58,13 +58,13 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 ```
 backend/
-├── Controllers/          # API endpoints (13 controllers)
+├── Controllers/          # API endpoints (14 controllers)
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
 ├── Data/                 # AppDbContext, DbInitializer
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
 ├── Logging/              # FileLoggerProvider (date-based file logging)
-├── Mcp/                  # MCP server tools (KnowledgePortalMcpTools)
+├── Mcp/                  # MCP tools (KnowledgePortalMcpTools) & REST API wrapper (McpController)
 ├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
@@ -106,6 +106,21 @@ specs/                    # Detailed specifications (subordinate to this file)
 
 - **Email**: `admin@finagotech.com.tr`
 - **Password**: `1q2w3e*/`
+
+## Seed Data
+
+When the backend starts (`dotnet run`), it automatically seeds the database:
+1. **Admin user** created if missing (email: `admin@finagotech.com.tr`, password: `1q2w3e*/`, role: admin)
+2. **Default tags** added (project-knowledge-portal, getting-started, tutorial, etc.)
+3. **Content types** added (reference, how-to, adr, runbook, faq, policy, onboarding)
+4. **Articles** loaded from `backend/SeedData/articles/*.json` if Articles table is empty
+   - Files are processed in order by filename
+   - Each article's tags are assigned automatically
+   - Content is stored as JSON (ProseMirror doc format)
+   - Slug is auto-generated from title (with collision detection)
+   - Articles marked as "published" get `PublishedAt` and `LastReviewedAt` timestamps
+
+**To reset seed data**: Delete `data/knowledge-portal.db` (SQLite) or drop the database (PostgreSQL), then restart backend.
 
 ## Commands
 

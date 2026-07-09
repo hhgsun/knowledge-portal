@@ -49,7 +49,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // MCP tools can be called with JWT or API Key
+    options.AddPolicy("McpAuthorization", policy =>
+        policy.RequireAssertion(context =>
+            context.User.Identity?.IsAuthenticated ?? false));
+});
 
 // ─── Rate Limiting ───────────────────────────────────────────
 builder.Services.AddRateLimiter(options =>
@@ -113,12 +119,8 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 builder.Services.AddOpenApi();
 
 // ─── MCP Server ──────────────────────────────────────────────
-builder.Services.AddMcpServer()
-    .WithHttpTransport(options =>
-    {
-        options.Stateless = true;
-    })
-    .WithToolsFromAssembly();
+// MCP tools are exposed via REST API at /api/mcp/tools/call
+// See McpController for implementation
 
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
@@ -144,9 +146,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-// ─── MCP Endpoint ────────────────────────────────────────────
-app.MapMcp("/mcp").RequireAuthorization();
 
 // ─── Health Check ────────────────────────────────────────────
 app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
