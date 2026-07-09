@@ -17,7 +17,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
-| MCP | REST API at `/mcp` (JSON-RPC 2.0, stateless, API Key or JWT auth) |
+| MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, stateless, API Key or JWT auth, tool discovery via `initialize` + `tools/list`) |
 
 ## Conventions
 
@@ -325,6 +325,17 @@ No known gaps at this time.
 - **Attachment indexing**: Text content of attachments (.pdf, .docx, .txt, .md, .csv, .json, .yaml) is extracted and included in both FTS5 and embedding indexes. Max 50K chars per attachment. Unsupported/corrupted files are silently skipped. Adding/removing attachments on published articles triggers re-indexing.
 - **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.
 - **Lookup color/icon**: LookupValue entity has optional `Color` (Tailwind color key) and `Icon` (Lucide icon name) fields. Frontend renders content type badges with colored backgrounds and icons via `ContentTypeBadge` component. Color picker supports all 20 Tailwind color keys dynamically. Icon picker dynamically loads all lucide-react icons with search/filter. Utilities in `src/lib/lookup-utils.ts`, picker components in `src/components/lookup-pickers.tsx`.
+
+## MCP Server Behaviors
+
+- **MCP protocol version**: 2024-11-05 (JSON-RPC 2.0 spec-compliant)
+- **Server discovery**: POST `/mcp` with `method: "initialize"` returns server capabilities, protocol version, and implementation info
+- **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
+- **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns result as JSON string
+- **Error handling**: All methods return JSON-RPC 2.0 error format on failure: `{error: {code, message}, jsonrpc: "2.0"}`
+- **Authentication**: All `/mcp` requests require API Key (`X-API-Key` header) or JWT Bearer token
+- **Stateless execution**: Each request is independent; no session state is maintained between requests
+- **Tool access control**: Tools do not enforce RBAC beyond authentication. All authenticated users can access all tools. Tools only return published articles.
 
 ## Placeholder Fields (Not Yet Active)
 

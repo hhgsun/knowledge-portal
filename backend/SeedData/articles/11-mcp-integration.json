@@ -65,13 +65,13 @@
       { "type": "paragraph", "content": [{ "type": "text", "text": "Dönen key değerini (kp_ ile başlayan) MCP yapılandırmanızda X-API-Key header'ı olarak kullanın. Bu değer yalnızca oluşturulduğunda bir kez görüntülenir." }] },
       { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Notlar" }] },
       { "type": "bulletList", "content": [
-        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "MCP araçları yalnızca yayınlanmış (published) makaleleri döndürür." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "MCP araçları yalnızca yayınlanmış (published) makaleleri döndürür." }] }
+      ]},
       { "type": "paragraph", "content": [{ "type": "text", "text": "REST API endpoint " }, { "type": "text", "marks": [{ "type": "code" }], "text": "POST /mcp" }, { "type": "text", "text": " JSON-RPC 2.0 formatını kullanır. İstek ve yanıt formatında " }, { "type": "text", "marks": [{ "type": "code" }], "text": "jsonrpc: '2.0'" }, { "type": "text", "text": ", " }, { "type": "text", "marks": [{ "type": "code" }], "text": "id" }, { "type": "text", "text": ", " }, { "type": "text", "marks": [{ "type": "code" }], "text": "method" }, { "type": "text", "text": " ve " }, { "type": "text", "marks": [{ "type": "code" }], "text": "params" }, { "type": "text", "text": " alanları zorunludur." }] }] },
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Kimlik doğrulama: " }, { "type": "text", "marks": [{ "type": "code" }], "text": "X-API-Key" }, { "type": "text", "text": " header'ı (önerilen) veya " }, { "type": "text", "marks": [{ "type": "code" }], "text": "Authorization: Bearer" }, { "type": "text", "text": " header'ı kullanılmalıdır." }] }] },
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Semantic arama ve RAG özellikleri REST API üzerinden desteklenmez; bunlar için REST API'nin ilgili endpoint'lerini kullanın." }] }] },
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Her istek bağımsızdır ve stateless modda işlenir — session tutulmaz." }] }] },
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Session-only endpoint'ler (admin, analytics) REST API tools üzerinden erişilemez." }] }] }
-      ]}
     ]
   }
 }
