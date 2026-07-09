@@ -188,3 +188,92 @@ Request → CORS → ApiKeyMiddleware → Authentication → Authorization → C
 ```
 
 `ApiKeyMiddleware` intercepts `X-API-Key: kp_*` header before standard JWT auth, sets `ClaimsPrincipal` with an `api-key` source discriminator. Session-only endpoints reject API key auth via `User.GetSource() == "api-key"` checks.
+
+## MCP Server (Model Context Protocol)
+
+The Knowledge Portal includes a **JSON-RPC 2.0 compliant MCP server** at `POST /mcp` for programmatic access to knowledge base tools.
+
+### Authentication
+
+**No OAuth.** MCP uses only simple authentication:
+
+| Method | Header | Example |
+|--------|--------|---------|
+| API Key | `X-API-Key: kp_*` | `X-API-Key: kp_7944228bfb1ff77f7dfa40edd4025074` |
+| JWT Bearer | `Authorization: Bearer <token>` | `Authorization: Bearer eyJhbGc...` |
+
+Both authentication methods are **required** for all MCP requests (no anonymous access).
+
+### Protocol & Methods
+
+```
+POST http://localhost:5174/mcp
+Content-Type: application/json
+X-API-Key: kp_<your-api-key>
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "<method>",
+  "params": { ... }
+}
+```
+
+**Standard Methods** (JSON-RPC 2.0 spec):
+
+| Method | Purpose | Response |
+|--------|---------|----------|
+| `initialize` | Get server capabilities and protocol version | `{ protocolVersion, capabilities, serverInfo }` |
+| `tools/list` | Discover available tools with JSON schemas | `{ tools: [...] }` |
+| `tools/call` | Execute a tool with parameters | `{ result: "..." }` or `{ error: {...} }` |
+
+### Available Tools
+
+1. **searchArticles** — Full-text search articles  
+   - Params: `query` (required), `limit` (1-50), `tags`, `authors`, `contentType`, `includeContent`
+   - Returns: JSON array of matching articles
+
+2. **listArticles** — List published articles with pagination  
+   - Params: `page`, `limit`, `contentType`, `tags`
+   - Returns: JSON object `{ articles: [...], total: number }`
+
+3. **getArticle** — Get article details by ID or slug  
+   - Params: `idOrSlug` (required)
+   - Returns: Article JSON with full content (TipTap format) + metadata
+
+4. **listTags** — List all tags in the portal  
+   - No params required
+   - Returns: JSON array of tags
+
+5. **getPortalStats** — Get portal statistics  
+   - No params required
+   - Returns: `{ totalArticles, totalAuthors, totalTags, recentActivity }`
+
+### Example: VSCode MCP Integration
+
+To use this MCP server in VSCode (e.g., with Claude extension):
+
+```json
+{
+  "mcpServers": {
+    "knowledge-portal": {
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "http://localhost:5174/mcp",
+        "-H", "X-API-Key: kp_<your-api-key>"
+      ]
+    }
+  }
+}
+```
+
+**Note**: Replace `kp_<your-api-key>` with an actual API key from `/api/keys`. Create one via the admin panel or API.
+
+### Stateless & Secure
+
+- **No OAuth**: API Key (BCrypt hashed) or JWT Bearer auth only
+- **Stateless**: Each request is independent; no session state maintained
+- **Published articles only**: All tools filter to `status: "published"`
+- **RBAC-free**: Tools don't enforce permission checks beyond authentication
+- **Rate limiting**: None applied (unlike `/api/search` which has rate limits)

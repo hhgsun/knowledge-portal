@@ -17,7 +17,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
-| MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, stateless, API Key or JWT auth, tool discovery via `initialize` + `tools/list`) |
+| MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
 
 ## Conventions
 
@@ -333,9 +333,19 @@ No known gaps at this time.
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
 - **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns result as JSON string
 - **Error handling**: All methods return JSON-RPC 2.0 error format on failure: `{error: {code, message}, jsonrpc: "2.0"}`
-- **Authentication**: All `/mcp` requests require API Key (`X-API-Key` header) or JWT Bearer token
+- **Authentication**: **NO OAUTH.** All `/mcp` requests require ONE of:
+  - **API Key**: `X-API-Key: kp_*` header (BCrypt hashed, prefix-indexed lookup)
+  - **JWT Bearer**: `Authorization: Bearer <token>` header (HMAC-SHA256, 24h expiry)
+  - Both methods are equivalent; choose based on use case (API keys for long-lived integrations, JWT for user sessions)
 - **Stateless execution**: Each request is independent; no session state is maintained between requests
 - **Tool access control**: Tools do not enforce RBAC beyond authentication. All authenticated users can access all tools. Tools only return published articles.
+
+## Placeholder Fields (Not Yet Active)
+
+These entity fields exist in the database but are not yet used in business logic:
+
+| Field | Entity | Purpose | Status |
+|-------|--------|---------|--------|
 
 ## Placeholder Fields (Not Yet Active)
 
@@ -417,6 +427,7 @@ These entity fields exist in the database but are not yet used in business logic
 - Do NOT add component libraries (MUI, Chakra, etc.) — use Tailwind CSS + lucide-react + sonner
 - Do NOT use magic permission strings — use `Permissions` class constants
 - Do NOT store JWT in httpOnly cookies — current design uses localStorage (accepted trade-off for SPA)
+- Do NOT add OAuth to MCP — MCP uses only API Key or JWT Bearer token authentication (stateless, no session required)
 
 ### CONVENTIONS
 - DB column names are snake_case; C# properties are PascalCase
