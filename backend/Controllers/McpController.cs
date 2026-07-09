@@ -8,217 +8,166 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KnowledgePortal.Api.Controllers;
 
+/// <summary>
+/// MCP (Model Context Protocol) server endpoint.
+/// Implements JSON-RPC 2.0 over HTTP (Streamable HTTP transport).
+/// Protocol version: 2024-11-05
+/// 
+/// Authentication: X-API-Key header or Bearer token (no OAuth).
+/// 
+/// Usage with Claude Desktop / Cursor / other MCP clients:
+///   POST /mcp with JSON-RPC 2.0 body
+///   Headers: X-API-Key: kp_xxx OR Authorization: Bearer xxx
+/// </summary>
 [ApiController]
 [Route("mcp")]
 [Authorize]
 public class McpController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    private readonly FullTextSearchService _ftsService;
+    private readonly McpToolExecutor _toolExecutor;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public McpController(AppDbContext db, FullTextSearchService ftsService)
     {
-        _db = db;
-        _ftsService = ftsService;
+        _toolExecutor = new McpToolExecutor(db, ftsService);
     }
-    
+
     [HttpPost]
-    public async Task<IActionResult> HandleMcpRequest()
+    public async Task<IActionResult> HandleRequest()
     {
+        JsonRpcRequest? request;
         try
         {
-            using var reader = new StreamReader(Request.Body);
-            var jsonBody = await reader.ReadToEndAsync();
-            
-            using var doc = JsonDocument.Parse(jsonBody);
-            var root = doc.RootElement;
-            
-            var method = root.TryGetProperty("method", out var methodEl) ? methodEl.GetString() : null;
-            var id = root.TryGetProperty("id", out var idEl) ? idEl.GetRawText() : "null";
-            
-            if (string.IsNullOrEmpty(method))
-                return BadRequest(new { error = "Missing method" });
-
-            object resultData = method switch
-            {
-                "initialize" => GetInitializeResponse(),
-                "tools/list" => GetToolsListResponse(),
-                "tools/call" => await HandleToolCall(root),
-                _ => throw new ArgumentException($"Unknown method: {method}")
-            };
-
-            return Ok(new { result = resultData, id = id, jsonrpc = "2.0" });
+            request = await JsonSerializer.DeserializeAsync<JsonRpcRequest>(
+                Request.Body, _jsonOptions);
         }
-        catch (Exception ex)
+        catch (JsonException)
         {
-            return Ok(new
-            {
-                error = new { code = -32603, message = ex.Message },
-                jsonrpc = "2.0"
-            });
+            return JsonRpcErrorResponse(null, JsonRpcErrorCodes.ParseError, "Invalid JSON");
         }
+
+        if (request == null || string.IsNullOrEmpty(request.Method))
+            return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid request: missing method");
+
+        // Route to handler based on method
+        var result = request.Method switch
+        {
+            "initialize" => HandleInitialize(request),
+            "notifications/initialized" => HandleNotification(request),
+            "tools/list" => HandleToolsList(request),
+            "tools/call" => await HandleToolCall(request),
+            "ping" => HandlePing(request),
+            _ => JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.MethodNotFound, $"Method not found: {request.Method}")
+        };
+
+        return result;
     }
 
-    private object GetInitializeResponse()
+    /// <summary>
+    /// SSE endpoint for MCP clients that prefer Server-Sent Events transport.
+    /// Returns the POST endpoint URL for tool calls.
+    /// </summary>
+    [HttpGet]
+    public IActionResult GetSseEndpoint()
     {
-        return new
+        // For clients that probe GET /mcp to discover transport
+        // Return endpoint info as JSON (not SSE stream, since we're stateless)
+        return Ok(new
         {
-            protocolVersion = "2024-11-05",
-            capabilities = new
+            message = "Knowledge Portal MCP Server",
+            transport = "http",
+            endpoint = "/mcp",
+            method = "POST",
+            authentication = new[] { "X-API-Key: kp_xxx", "Authorization: Bearer <token>" },
+            protocolVersion = "2024-11-05"
+        });
+    }
+
+    // ─── Method Handlers ───────────────────────────────────────────────
+
+    private IActionResult HandleInitialize(JsonRpcRequest request)
+    {
+        var result = new McpInitializeResult
+        {
+            ProtocolVersion = "2024-11-05",
+            Capabilities = new McpCapabilities
             {
-                tools = new { }
+                Tools = new McpToolsCapability { ListChanged = false }
             },
-            serverInfo = new
+            ServerInfo = new McpServerInfo
             {
-                name = "Knowledge Portal MCP Server",
-                version = "1.0.0"
+                Name = "knowledge-portal",
+                Version = "2.0.0"
             }
         };
+
+        return JsonRpcSuccessResponse(request.Id, result);
     }
 
-    private object GetToolsListResponse()
+    private IActionResult HandleNotification(JsonRpcRequest request)
     {
-        return new
-        {
-            tools = new object[]
-            {
-                new
-                {
-                    name = "searchArticles",
-                    description = "Full-text search articles in Knowledge Portal",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new { type = "string", description = "Search query (required)" },
-                            limit = new { type = "integer", description = "Max results (1-50, default 20)" },
-                            tags = new { type = "string", description = "Tag slugs comma-separated" },
-                            authors = new { type = "string", description = "Author slugs comma-separated" },
-                            contentType = new { type = "string", description = "Content type comma-separated" },
-                            includeContent = new { type = "boolean", description = "Include article content (default false)" }
-                        },
-                        required = new[] { "query" }
-                    }
-                },
-                new
-                {
-                    name = "getArticle",
-                    description = "Get article details by ID or slug",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            idOrSlug = new { type = "string", description = "Article ID or slug (required)" }
-                        },
-                        required = new[] { "idOrSlug" }
-                    }
-                },
-                new
-                {
-                    name = "listArticles",
-                    description = "List published articles with pagination",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            page = new { type = "integer", description = "Page number (default 1)" },
-                            limit = new { type = "integer", description = "Items per page (1-50, default 20)" },
-                            contentType = new { type = "string", description = "Content type filter" },
-                            tags = new { type = "string", description = "Tag slugs comma-separated" }
-                        },
-                        required = new string[] { }
-                    }
-                },
-                new
-                {
-                    name = "listTags",
-                    description = "List all tags in Knowledge Portal",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        properties = new { },
-                        required = new string[] { }
-                    }
-                },
-                new
-                {
-                    name = "getPortalStats",
-                    description = "Get portal statistics",
-                    inputSchema = new
-                    {
-                        type = "object",
-                        properties = new { },
-                        required = new string[] { }
-                    }
-                }
-            }
-        };
+        // Notifications don't require a response per JSON-RPC spec,
+        // but since this is HTTP we return empty success
+        return Ok();
     }
 
-    private async Task<object> HandleToolCall(JsonElement root)
+    private IActionResult HandleToolsList(JsonRpcRequest request)
     {
-        var parameters = root.GetProperty("params");
-        var toolName = parameters.GetProperty("name").GetString();
-        var arguments = parameters.GetProperty("arguments");
-
-        if (string.IsNullOrEmpty(toolName))
-            throw new ArgumentException("Missing tool name");
-
-        return toolName switch
-        {
-            "searchArticles" => await KnowledgePortalMcpTools.SearchArticles(
-                arguments.TryGetProperty("query", out var q) ? q.GetString() ?? "*" : "*",
-                arguments.TryGetProperty("limit", out var l) && l.TryGetInt32(out var limit) ? limit : 20,
-                arguments.TryGetProperty("tags", out var t) ? t.GetString() : null,
-                arguments.TryGetProperty("authors", out var a) ? a.GetString() : null,
-                arguments.TryGetProperty("contentType", out var ct) ? ct.GetString() : null,
-                arguments.TryGetProperty("includeContent", out var ic) && ic.GetBoolean(),
-                _db,
-                _ftsService),
-
-            "getArticle" => await KnowledgePortalMcpTools.GetArticle(
-                arguments.TryGetProperty("idOrSlug", out var ios) ? ios.GetString() ?? "" : "",
-                _db),
-
-            "listArticles" => await KnowledgePortalMcpTools.ListArticles(
-                arguments.TryGetProperty("page", out var p) && p.TryGetInt32(out var page) ? page : 1,
-                arguments.TryGetProperty("limit", out var l2) && l2.TryGetInt32(out var limit2) ? limit2 : 20,
-                arguments.TryGetProperty("contentType", out var ct2) ? ct2.GetString() : null,
-                arguments.TryGetProperty("tags", out var t2) ? t2.GetString() : null,
-                _db),
-
-            "listTags" => await KnowledgePortalMcpTools.ListTags(_db),
-
-            "getPortalStats" => await KnowledgePortalMcpTools.GetPortalStats(_db),
-
-            _ => throw new ArgumentException($"Unknown tool: {toolName}")
-        };
+        var tools = McpToolExecutor.GetToolDefinitions();
+        return JsonRpcSuccessResponse(request.Id, tools);
     }
-}
 
-public class McpRequest
-{
-    [JsonPropertyName("jsonrpc")]
-    public string? JsonRpc { get; set; }
+    private async Task<IActionResult> HandleToolCall(JsonRpcRequest request)
+    {
+        if (request.Params == null)
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, "Missing params");
 
-    [JsonPropertyName("id")]
-    public int? Id { get; set; }
+        var paramsEl = request.Params.Value;
 
-    [JsonPropertyName("method")]
-    public string? Method { get; set; }
+        // Extract tool name
+        if (!paramsEl.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String)
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, "Missing or invalid 'name' in params");
 
-    [JsonPropertyName("params")]
-    public McpParams? Params { get; set; }
-}
+        var toolName = nameEl.GetString()!;
 
-public class McpParams
-{
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
+        // Extract arguments (optional)
+        JsonElement? arguments = paramsEl.TryGetProperty("arguments", out var argsEl)
+            ? argsEl
+            : null;
 
-    [JsonPropertyName("arguments")]
-    public Dictionary<string, object>? Arguments { get; set; }
+        var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments);
+        return JsonRpcSuccessResponse(request.Id, result);
+    }
+
+    private IActionResult HandlePing(JsonRpcRequest request)
+    {
+        return JsonRpcSuccessResponse(request.Id, new { });
+    }
+
+    // ─── Response Builders ─────────────────────────────────────────────
+
+    private IActionResult JsonRpcSuccessResponse(JsonElement? id, object result)
+    {
+        var response = new JsonRpcResponse
+        {
+            Id = id,
+            Result = result
+        };
+        return new JsonResult(response, _jsonOptions);
+    }
+
+    private IActionResult JsonRpcErrorResponse(JsonElement? id, int code, string message)
+    {
+        var response = new JsonRpcResponse
+        {
+            Id = id,
+            Error = new JsonRpcError { Code = code, Message = message }
+        };
+        return new JsonResult(response, _jsonOptions) { StatusCode = 200 }; // JSON-RPC errors are still HTTP 200
+    }
 }

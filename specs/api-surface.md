@@ -41,25 +41,39 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 ## MCP (Model Context Protocol)
 
 ### `POST /mcp`
-**Auth**: None  
-**Transport**: Streamable HTTP (stateless)
+**Auth**: X-API-Key or Bearer token (required)  
+**Transport**: Streamable HTTP (stateless, JSON-RPC 2.0)  
+**Protocol Version**: 2024-11-05
 
-Exposes Knowledge Portal tools via the Model Context Protocol. AI tools can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
+Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude Desktop, Cursor, VS Code Copilot) can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
+
+**Supported Methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `SearchArticles` — Full-text search across published articles
-- `GetArticle` — Get article details by ID or slug
-- `ListArticles` — List published articles with pagination
-- `ListTags` — List all available tags
-- `GetPortalStats` — Portal statistics (counts, recent articles)
+- `search_articles` — Full-text search across published articles (params: query*, limit, tags, authors, content_type, include_content)
+- `get_article` — Get article details by ID or slug (params: id_or_slug*)
+- `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort)
+- `list_tags` — List all available tags with article counts
+- `get_portal_info` — Portal statistics (counts, content type distribution, recent articles)
 
-**Client configuration example**:
+**Tool result format**: `{ "content": [{ "type": "text", "text": "..." }] }` (with optional `isError: true`)
+
+**Client configuration example (Claude Desktop)**:
 ```json
 {
-  "endpoint": "http://localhost:5174/mcp",
-  "transportMode": "StreamableHttp"
+  "mcpServers": {
+    "knowledge-portal": {
+      "url": "http://localhost:5174/mcp",
+      "headers": { "X-API-Key": "kp_your_api_key_here" }
+    }
+  }
 }
 ```
+
+### `GET /mcp`
+**Auth**: X-API-Key or Bearer token (required)
+
+Returns server transport info for MCP client discovery.
 
 ---
 

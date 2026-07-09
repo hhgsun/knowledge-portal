@@ -224,45 +224,60 @@ X-API-Key: kp_<your-api-key>
 | Method | Purpose | Response |
 |--------|---------|----------|
 | `initialize` | Get server capabilities and protocol version | `{ protocolVersion, capabilities, serverInfo }` |
+| `notifications/initialized` | Client signals ready (no response body) | — |
 | `tools/list` | Discover available tools with JSON schemas | `{ tools: [...] }` |
-| `tools/call` | Execute a tool with parameters | `{ result: "..." }` or `{ error: {...} }` |
+| `tools/call` | Execute a tool with parameters | `{ content: [{type, text}], isError? }` |
+| `ping` | Health check | `{}` |
 
 ### Available Tools
 
-1. **searchArticles** — Full-text search articles  
-   - Params: `query` (required), `limit` (1-50), `tags`, `authors`, `contentType`, `includeContent`
-   - Returns: JSON array of matching articles
+1. **search_articles** — Full-text search published articles  
+   - Params: `query` (required), `limit` (1-50), `tags`, `authors`, `content_type`, `include_content`
+   - Returns: `{ articles: [...], total, query }`
 
-2. **listArticles** — List published articles with pagination  
-   - Params: `page`, `limit`, `contentType`, `tags`
-   - Returns: JSON object `{ articles: [...], total: number }`
+2. **get_article** — Get article details by ID or slug  
+   - Params: `id_or_slug` (required)
+   - Returns: Full article with content (plain text), tags, attachments
 
-3. **getArticle** — Get article details by ID or slug  
-   - Params: `idOrSlug` (required)
-   - Returns: Article JSON with full content (TipTap format) + metadata
+3. **list_articles** — List published articles with pagination  
+   - Params: `page`, `limit`, `content_type`, `tags`, `sort` (newest/oldest/most_viewed)
+   - Returns: `{ articles: [...], total, page, limit, totalPages }`
 
-4. **listTags** — List all tags in the portal  
+4. **list_tags** — List all tags with article counts  
    - No params required
-   - Returns: JSON array of tags
+   - Returns: `{ tags: [{id, name, slug, articleCount}], total }`
 
-5. **getPortalStats** — Get portal statistics  
+5. **get_portal_info** — Get portal statistics  
    - No params required
-   - Returns: `{ totalArticles, totalAuthors, totalTags, recentActivity }`
+   - Returns: `{ totalArticles, totalAuthors, totalTags, contentTypes, recentArticles }`
 
-### Example: VSCode MCP Integration
-
-To use this MCP server in VSCode (e.g., with Claude extension):
+### Example: Claude Desktop Configuration
 
 ```json
 {
   "mcpServers": {
     "knowledge-portal": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "http://localhost:5174/mcp",
-        "-H", "X-API-Key: kp_<your-api-key>"
-      ]
+      "url": "http://localhost:5174/mcp",
+      "headers": {
+        "X-API-Key": "kp_<your-api-key>"
+      }
+    }
+  }
+}
+```
+
+### Example: VS Code / Cursor MCP Configuration
+
+Create `.vscode/mcp.json` in your workspace:
+
+```json
+{
+  "servers": {
+    "knowledge-portal": {
+      "url": "http://localhost:5174/mcp",
+      "headers": {
+        "X-API-Key": "kp_<your-api-key>"
+      }
     }
   }
 }
@@ -277,3 +292,4 @@ To use this MCP server in VSCode (e.g., with Claude extension):
 - **Published articles only**: All tools filter to `status: "published"`
 - **RBAC-free**: Tools don't enforce permission checks beyond authentication
 - **Rate limiting**: None applied (unlike `/api/search` which has rate limits)
+- **Protocol version**: 2024-11-05

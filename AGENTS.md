@@ -64,7 +64,7 @@ backend/
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
 ├── Logging/              # FileLoggerProvider (date-based file logging)
-├── Mcp/                  # MCP tools (KnowledgePortalMcpTools) & REST API wrapper (McpController)
+├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
 ├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
@@ -208,6 +208,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/logs` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
+| `/mcp` | GET | ✓ | — | ✗ |
 | `/mcp` | POST | ✓ | — | ✗ |
 
 ## Validation Rules
@@ -329,10 +330,15 @@ No known gaps at this time.
 ## MCP Server Behaviors
 
 - **MCP protocol version**: 2024-11-05 (JSON-RPC 2.0 spec-compliant)
+- **Server info**: name=`knowledge-portal`, version=`2.0.0`
+- **Supported methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
 - **Server discovery**: POST `/mcp` with `method: "initialize"` returns server capabilities, protocol version, and implementation info
+- **Transport discovery**: GET `/mcp` returns transport info (endpoint URL, auth methods, protocol version)
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
-- **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns result as JSON string
-- **Error handling**: All methods return JSON-RPC 2.0 error format on failure: `{error: {code, message}, jsonrpc: "2.0"}`
+- **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns MCP content array
+- **Tool result format**: `{ "content": [{"type": "text", "text": "..."}], "isError": false }` — results are JSON-serialized strings inside `text` field
+- **Available tools**: `search_articles`, `get_article`, `list_articles`, `list_tags`, `get_portal_info` (all snake_case)
+- **Error handling**: JSON-RPC 2.0 error format on protocol errors: `{error: {code, message}, jsonrpc: "2.0"}`. Tool errors use `isError: true` in content result.
 - **Authentication**: **NO OAUTH.** All `/mcp` requests require ONE of:
   - **API Key**: `X-API-Key: kp_*` header (BCrypt hashed, prefix-indexed lookup)
   - **JWT Bearer**: `Authorization: Bearer <token>` header (HMAC-SHA256, 24h expiry)
