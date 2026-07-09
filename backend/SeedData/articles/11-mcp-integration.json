@@ -1,0 +1,74 @@
+{
+  "title": "MCP (Model Context Protocol) Entegrasyonu",
+  "contentType": "reference",
+  "tags": ["project-knowledge-portal", "api", "tutorial"],
+  "excerpt": "Knowledge Portal'ın MCP sunucusuna bağlanma, araçların kullanımı ve AI asistanlarla entegrasyon rehberi.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Genel Bakış" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal, Model Context Protocol (MCP) desteği sunar. Bu sayede Claude Desktop, Cursor, VS Code Copilot ve diğer MCP uyumlu AI araçları, Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir." }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "MCP sunucusu Streamable HTTP (stateless) transport kullanır ve /mcp endpoint'i üzerinden erişilebilir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Kimlik Doğrulama" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "MCP endpoint'i, REST API ile aynı kimlik doğrulama mekanizmalarını kullanır. Her istekte kimlik bilgisi gönderilmesi zorunludur." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "JWT Token ile" }] },
+      { "type": "codeBlock", "attrs": { "language": "json" }, "content": [{ "type": "text", "text": "{\n  \"endpoint\": \"http://localhost:5174/mcp\",\n  \"transportMode\": \"StreamableHttp\",\n  \"additionalHeaders\": {\n    \"Authorization\": \"Bearer eyJ...\"\n  }\n}" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "API Key ile (Önerilen)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Otomasyon ve AI entegrasyonları için API key kullanımı önerilir. API key oluşturmak için Admin paneli > API Keys bölümünü kullanın." }] },
+      { "type": "codeBlock", "attrs": { "language": "json" }, "content": [{ "type": "text", "text": "{\n  \"endpoint\": \"http://localhost:5174/mcp\",\n  \"transportMode\": \"StreamableHttp\",\n  \"additionalHeaders\": {\n    \"X-API-Key\": \"kp_your_api_key_here\"\n  }\n}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Kullanılabilir Araçlar (Tools)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "MCP sunucusu 5 araç sunar:" }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "SearchArticles" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal'da full-text arama yapar. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve ilgililik skoru döner." }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Parametreler:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "query" }, { "type": "text", "text": " — Arama metni (zorunlu)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "limit" }, { "type": "text", "text": " — Maksimum sonuç sayısı (1-50, varsayılan 20)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "tags" }, { "type": "text", "text": " — Etiket slug'larına göre filtrele (virgülle ayrılmış)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "authors" }, { "type": "text", "text": " — Yazar slug'larına göre filtrele (virgülle ayrılmış)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "contentType" }, { "type": "text", "text": " — İçerik türüne göre filtrele (virgülle ayrılmış)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "includeContent" }, { "type": "text", "text": " — Makale içeriğini sonuçlara dahil et (varsayılan false)" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "GetArticle" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "ID veya slug ile belirli bir makalenin tüm detaylarını getirir. İçerik düz metin olarak, ekler metadata olarak döner." }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Parametreler:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "idOrSlug" }, { "type": "text", "text": " — Makale ID'si veya slug'ı (zorunlu)" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "ListArticles" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Yayınlanmış makaleleri sayfalayarak listeler." }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Parametreler:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "page" }, { "type": "text", "text": " — Sayfa numarası (varsayılan 1)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "limit" }, { "type": "text", "text": " — Sayfa başına öğe sayısı (1-50, varsayılan 20)" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "contentType" }, { "type": "text", "text": " — İçerik türüne göre filtrele" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "code" }], "text": "tags" }, { "type": "text", "text": " — Etiket slug'larına göre filtrele (virgülle ayrılmış)" }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "ListTags" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Knowledge Portal'daki tüm etiketleri (id, name, slug) listeler. Parametre gerektirmez." }] },
+      { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "GetPortalStats" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Portal istatistiklerini döner: toplam makale sayısı, yazar sayısı, etiket sayısı ve en son eklenen 5 makale. Parametre gerektirmez." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Claude Desktop Yapılandırması" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Claude Desktop'a Knowledge Portal MCP sunucusunu eklemek için claude_desktop_config.json dosyasını düzenleyin:" }] },
+      { "type": "codeBlock", "attrs": { "language": "json" }, "content": [{ "type": "text", "text": "{\n  \"mcpServers\": {\n    \"knowledge-portal\": {\n      \"type\": \"http\",\n      \"url\": \"http://localhost:5174/mcp\",\n      \"headers\": {\n        \"X-API-Key\": \"kp_your_api_key_here\"\n      }\n    }\n  }\n}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "VS Code Copilot Yapılandırması" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "VS Code settings.json'a ekleyin:" }] },
+      { "type": "codeBlock", "attrs": { "language": "json" }, "content": [{ "type": "text", "text": "{\n  \"mcp\": {\n    \"servers\": {\n      \"knowledge-portal\": {\n        \"type\": \"http\",\n        \"url\": \"http://localhost:5174/mcp\",\n        \"headers\": {\n          \"X-API-Key\": \"kp_your_api_key_here\"\n        }\n      }\n    }\n  }\n}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Cursor Yapılandırması" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Cursor .cursor/mcp.json dosyasına ekleyin:" }] },
+      { "type": "codeBlock", "attrs": { "language": "json" }, "content": [{ "type": "text", "text": "{\n  \"mcpServers\": {\n    \"knowledge-portal\": {\n      \"type\": \"http\",\n      \"url\": \"http://localhost:5174/mcp\",\n      \"headers\": {\n        \"X-API-Key\": \"kp_your_api_key_here\"\n      }\n    }\n  }\n}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "API Key Oluşturma" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "MCP için API key oluşturmak üzere REST API kullanın (admin veya api_keys:manage iznine sahip kullanıcı gerektirir):" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Önce JWT token al\ncurl -X POST http://localhost:5174/api/auth/login \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"email\": \"admin@finagotech.com.tr\", \"password\": \"1q2w3E*/\"}'\n\n# API key oluştur\ncurl -X POST http://localhost:5174/api/keys \\\n  -H \"Authorization: Bearer eyJ...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\": \"MCP Integration\", \"expiresInDays\": 365}'\n\n# Yanıt: {\"id\": \"...\", \"key\": \"kp_...\", \"name\": \"MCP Integration\", ...}" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Dönen key değerini (kp_ ile başlayan) MCP yapılandırmanızda X-API-Key header'ı olarak kullanın. Bu değer yalnızca oluşturulduğunda bir kez görüntülenir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Notlar" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "MCP araçları yalnızca yayınlanmış (published) makaleleri döndürür." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Semantic arama ve RAG özellikleri MCP üzerinden desteklenmez; bunlar için REST API kullanın." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "MCP sunucusu stateless modda çalışır — her istek bağımsızdır, session tutulmaz." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Session-only endpoint'ler (admin, analytics) MCP araçları aracılığıyla erişilemez." }] }] }
+      ]}
+    ]
+  }
+}
