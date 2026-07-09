@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Mcp;
 using KnowledgePortal.Api.Middleware;
 using KnowledgePortal.Api.Services;
 using KnowledgePortal.Api.Logging;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.IdentityModel.Tokens;
+using ModelContextProtocol.Server;
 using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -110,6 +112,14 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 // ─── OpenAPI / Swagger ───────────────────────────────────────
 builder.Services.AddOpenApi();
 
+// ─── MCP Server ──────────────────────────────────────────────
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
+    .WithToolsFromAssembly();
+
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
 
@@ -134,6 +144,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// ─── MCP Endpoint ────────────────────────────────────────────
+app.MapMcp("/mcp").RequireAuthorization();
 
 // ─── Health Check ────────────────────────────────────────────
 app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>

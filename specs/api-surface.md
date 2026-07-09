@@ -29,6 +29,31 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 
 ---
 
+## MCP (Model Context Protocol)
+
+### `POST /mcp`
+**Auth**: None  
+**Transport**: Streamable HTTP (stateless)
+
+Exposes Knowledge Portal tools via the Model Context Protocol. AI tools can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
+
+**Available Tools**:
+- `SearchArticles` — Full-text search across published articles
+- `GetArticle` — Get article details by ID or slug
+- `ListArticles` — List published articles with pagination
+- `ListTags` — List all available tags
+- `GetPortalStats` — Portal statistics (counts, recent articles)
+
+**Client configuration example**:
+```json
+{
+  "endpoint": "http://localhost:5174/mcp",
+  "transportMode": "StreamableHttp"
+}
+```
+
+---
+
 ## Authentication
 
 ### `POST /api/auth/login`

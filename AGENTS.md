@@ -17,6 +17,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
 | Tests | xUnit + WebApplicationFactory (backend only) |
+| MCP | Model Context Protocol server at `/mcp` (Streamable HTTP, stateless) |
 
 ## Conventions
 
@@ -63,6 +64,7 @@ backend/
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
 ├── Logging/              # FileLoggerProvider (date-based file logging)
+├── Mcp/                  # MCP server tools (KnowledgePortalMcpTools)
 ├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
@@ -191,6 +193,7 @@ specs/                    # Detailed specifications (subordinate to this file)
 | `/api/logs` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
+| `/mcp` | POST | ✓ | — | ✗ |
 
 ## Validation Rules
 

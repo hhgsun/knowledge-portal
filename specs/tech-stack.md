@@ -38,6 +38,7 @@
 | `Microsoft.EntityFrameworkCore.Design` | 10.0.8 | Migration CLI tooling |
 | `BCrypt.Net-Next` | 4.2.0 | Password hashing (cost 12) and API key verification |
 | `OllamaSharp` | 5.4.25 | Ollama client (implements IChatClient + IEmbeddingGenerator from Microsoft.Extensions.AI) |
+| `ModelContextProtocol.AspNetCore` | 2.0.0-preview.1 | MCP server over Streamable HTTP transport |
 | `UglyToad.PdfPig` | 1.7.0-custom-5 | PDF text extraction for attachment indexing |
 | `DocumentFormat.OpenXml` | 3.3.0 | DOCX text extraction for attachment indexing |
 
