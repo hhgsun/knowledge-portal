@@ -21,11 +21,13 @@ import {
   Monitor,
   Settings2,
   ScrollText,
+  Cpu,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { McpModal } from "./mcp-modal";
 
 interface NavItem {
   label: string;
@@ -57,6 +59,7 @@ const adminNavigation: NavItem[] = [
   { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
+  { label: "MCP", href: "/settings/mcp", icon: <Cpu size={18} /> },
   { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
 ];
 
@@ -124,6 +127,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mcpModalOpen, setMcpModalOpen] = useState(false);
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -192,6 +196,7 @@ export function Sidebar() {
                 .filter((item) => {
                   if (item.href === "/admin/users") return isAdmin;
                   if (item.href === "/settings/keys") return isAdmin;
+                  if (item.href === "/settings/mcp") return isAdmin;
                   if (item.href === "/settings/logs") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
                   if (item.href === "/settings/lookups") return isEditorOrAdmin;
@@ -219,8 +224,18 @@ export function Sidebar() {
             <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-[10px] font-semibold text-blue-700 dark:text-blue-300 shrink-0">
               {user?.name ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'}
             </div>
-            {!collapsed && <span className="truncate max-w-[140px]">{user?.name ?? "Profile"}</span>}
+            {!collapsed && <span className="truncate max-w-[100px]">{user?.name ?? "Profile"}</span>}
           </Link>
+          <button
+            onClick={() => setMcpModalOpen(true)}
+            title="MCP Bağlantı Bilgileri"
+            className={cn(
+              "p-2 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors shrink-0",
+              collapsed && "hidden"
+            )}
+          >
+            <Cpu size={16} />
+          </button>
           <button
             onClick={() => setTheme(theme === "light" ? "dark" : theme === "dark" ? "system" : "light")}
             title={`Theme: ${theme}`}
@@ -308,6 +323,8 @@ export function Sidebar() {
       >
         {sidebarContent}
       </aside>
+
+      <McpModal open={mcpModalOpen} onClose={() => setMcpModalOpen(false)} />
     </>
   );
 }

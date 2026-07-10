@@ -82,7 +82,7 @@ frontend/
 ├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types & difficulties)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
-├── src/pages/            # 17 page components
+├── src/pages/            # 18 page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 ├── auth-popup-callback.html  # Vite multi-page entry: Azure AD popup redirect target

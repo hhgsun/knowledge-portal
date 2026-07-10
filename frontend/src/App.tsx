@@ -20,6 +20,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
 import LookupsPage from "./pages/LookupsPage";
 import LogsPage from "./pages/LogsPage";
+import McpPage from "./pages/McpPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
           <Route path="/settings/keys" element={<RoleRoute roles={["admin"]}><SettingsKeysPage /></RoleRoute>} />
           <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
+          <Route path="/settings/mcp" element={<RoleRoute roles={["admin"]}><McpPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

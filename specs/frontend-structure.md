@@ -32,6 +32,7 @@ frontend/
 │   ├── layout/
 │   │   ├── app-shell.tsx      # Sidebar + Header + Outlet wrapper (skipped on auth pages)
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section
+│   │   ├── mcp-modal.tsx      # MCP connection info modal (endpoint, token/key copy, config snippets)
 │   │   └── header.tsx         # Top bar: search, notifications, profile, logout
 │   └── editor/
 │       ├── article-form.tsx   # Shared article form (title, metadata, editor, attachments slot)
@@ -58,6 +59,7 @@ frontend/
     ├── ProfilePage.tsx        # Profile settings: name/email update + password change
     ├── LookupsPage.tsx        # Lookup value management (content types, difficulties)
     ├── LogsPage.tsx           # System log viewer: date-based log files, view/delete (admin only)
+    ├── McpPage.tsx            # MCP integration guide: endpoint info, config snippets, API key shortcuts (admin only)
     └── NotFoundPage.tsx       # 404 page for unmatched routes
 ```
 
