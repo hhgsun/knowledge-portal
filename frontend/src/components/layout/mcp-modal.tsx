@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Copy, Check, Cpu, Key, Shield, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useApi } from "../../hooks/useApi";
 import { toast } from "sonner";
+import type { ApiKey } from "../../types/api";
 
 interface McpModalProps {
   open: boolean;
@@ -27,10 +29,23 @@ const TOOLS = [
 
 export function McpModal({ open, onClose }: McpModalProps) {
   const { token } = useAuth();
+  const { fetchWithAuth } = useApi();
   const [copied, setCopied] = useState<string | null>(null);
   const [authTab, setAuthTab] = useState<AuthTab>("bearer");
   const [clientTab, setClientTab] = useState<ClientTab>("claude");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoadingKeys(true);
+    fetchWithAuth("/api/keys")
+      .then(async (res) => {
+        if (res.ok) setKeys(await res.json());
+      })
+      .finally(() => setLoadingKeys(false));
+  }, [open]);
 
   if (!open) return null;
 
@@ -209,6 +224,36 @@ tags    = call_tool("list_tags")`;
             {authTab === "bearer" && (
               <p className="mt-1 text-xs text-zinc-400">Token 24 saat geçerlidir. Uzun süreli otomasyon için API Key kullanın.</p>
             )}
+            {authTab === "apikey" && (
+              <div className="mt-2">
+                {loadingKeys ? (
+                  <p className="text-xs text-zinc-400">API key'ler yükleniyor...</p>
+                ) : keys.length > 0 ? (
+                  <div className="space-y-1">
+                    {keys.slice(0, 3).map((k) => (
+                      <div key={k.id} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 text-xs">
+                        <span className="font-medium text-zinc-700 dark:text-zinc-300">{k.name}</span>
+                        <span className="text-zinc-400">
+                          {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString("tr-TR") : "Süresiz"}
+                        </span>
+                      </div>
+                    ))}
+                    {keys.length > 3 && (
+                      <p className="text-[11px] text-zinc-400 text-center">+{keys.length - 3} daha</p>
+                    )}
+                    <a
+                      href="/settings/keys"
+                      onClick={onClose}
+                      className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Yönet <ExternalLink size={11} />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400">Henüz API key oluşturmadınız.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Client Tabs + Config */}
@@ -291,9 +336,20 @@ tags    = call_tool("list_tags")`;
             )}
           </div>
 
+          {/* Notes */}
+          <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
+            <h3 className="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1.5">Önemli Notlar</h3>
+            <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-disc pl-4">
+              <li>Tüm araçlar yalnızca <strong>published</strong> makaleleri döndürür.</li>
+              <li>OAuth kullanılmaz — sadece API Key veya Bearer Token.</li>
+              <li>Her istek stateless'tır, session tutulmaz.</li>
+              <li>Bearer token 24 saat geçerlidir. Otomasyon için API Key tercih edin.</li>
+            </ul>
+          </div>
+
           {/* Footer */}
           <p className="text-xs text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-            JSON-RPC 2.0 • Claude Desktop, VS Code Copilot, Cursor uyumlu • OAuth yok • Stateless
+            JSON-RPC 2.0 • Claude Desktop, VS Code Copilot, Cursor uyumlu
           </p>
         </div>
       </div>
