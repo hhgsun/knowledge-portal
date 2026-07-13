@@ -47,6 +47,12 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
             return BadRequest(new { error = "Name is required (1-100 chars)" });
 
+        var userId = User.GetUserId();
+        var name = req.Name.Trim();
+        var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == userId && k.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { error = "An API key with this name already exists" });
+
         var expiresInDays = Math.Clamp(req.ExpiresInDays ?? 90, 1, 365);
 
         // Generate raw key: kp_ + 32 random chars
@@ -54,10 +60,10 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
 
         var key = new ApiKey
         {
-            UserId = User.GetUserId(),
+            UserId = userId,
             KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
             KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
-            Name = req.Name.Trim(),
+            Name = name,
             ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
         };
 
@@ -70,6 +76,48 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
             Key = rawKey, // Only returned once
             key.Name,
             ExpiresAt = key.ExpiresAt?.ToString("o")
+        });
+    }
+
+    [HttpPut]
+    [RequirePermission(Permissions.ApiKeysManage)]
+    public async Task<IActionResult> Update([FromBody] UpdateKeyRequest req)
+    {
+        if (User.GetSource() == "api-key")
+            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
+
+        if (string.IsNullOrWhiteSpace(req.Id))
+            return BadRequest(new { error = "Key id is required" });
+
+        var userId = User.GetUserId();
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == req.Id && k.UserId == userId);
+        if (key == null) return NotFound(new { error = "Key not found" });
+
+        if (req.Name != null)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
+                return BadRequest(new { error = "Name must be 1-100 chars" });
+
+            var name = req.Name.Trim();
+            var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == userId && k.Id != key.Id && k.Name.ToLower() == name.ToLower());
+            if (nameTaken)
+                return Conflict(new { error = "An API key with this name already exists" });
+
+            key.Name = name;
+        }
+
+        if (req.ExpiresInDays.HasValue)
+            key.ExpiresAt = DateTime.UtcNow.AddDays(Math.Clamp(req.ExpiresInDays.Value, 1, 365));
+
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            key.Id,
+            key.Name,
+            LastUsedAt = key.LastUsedAt?.ToString("o"),
+            ExpiresAt = key.ExpiresAt?.ToString("o"),
+            CreatedAt = key.CreatedAt.ToString("o")
         });
     }
 
@@ -86,6 +134,10 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
         var userId = User.GetUserId();
         var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
         if (key == null) return NotFound(new { error = "Key not found" });
+
+        var articleCount = await db.Articles.CountAsync(a => a.CreatedViaApiKeyId == key.Id);
+        if (articleCount > 0)
+            return Conflict(new { error = $"This API key cannot be deleted because {articleCount} article(s) were created with it" });
 
         db.ApiKeys.Remove(key);
         await db.SaveChangesAsync();

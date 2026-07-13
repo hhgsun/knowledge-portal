@@ -71,6 +71,11 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         var user = await db.Users.FindAsync(req.UserId);
         if (user == null) return NotFound(new { error = "User not found" });
 
+        var name = req.Name.Trim();
+        var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == user.Id && k.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { error = "This user already has an API key with this name" });
+
         var expiresInDays = Math.Clamp(req.ExpiresInDays ?? 90, 1, 365);
 
         // Generate raw key: kp_ + 32 random chars
@@ -81,7 +86,7 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
             UserId = user.Id,
             KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
             KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
-            Name = req.Name.Trim(),
+            Name = name,
             ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
         };
 
@@ -115,7 +120,13 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
                 return BadRequest(new { error = "Name must be 1-100 chars" });
-            key.Name = req.Name.Trim();
+
+            var name = req.Name.Trim();
+            var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == key.UserId && k.Id != key.Id && k.Name.ToLower() == name.ToLower());
+            if (nameTaken)
+                return Conflict(new { error = "This user already has an API key with this name" });
+
+            key.Name = name;
         }
 
         if (req.ExpiresInDays.HasValue)
@@ -143,6 +154,10 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
 
         var key = await db.ApiKeys.FindAsync(id);
         if (key == null) return NotFound(new { error = "Key not found" });
+
+        var articleCount = await db.Articles.CountAsync(a => a.CreatedViaApiKeyId == key.Id);
+        if (articleCount > 0)
+            return Conflict(new { error = $"This API key cannot be deleted because {articleCount} article(s) were created with it" });
 
         db.ApiKeys.Remove(key);
         await db.SaveChangesAsync();
