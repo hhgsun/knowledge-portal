@@ -36,6 +36,7 @@ export default function ArticleViewPage() {
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const canEdit = user?.role === "admin" || (article && article.ownerId === user?.id);
+  const canDelete = user?.role === "admin";// || (article && article.ownerId === user?.id);
 
   useEffect(() => {
     if (params.slug) {
@@ -174,6 +175,21 @@ export default function ArticleViewPage() {
     setActionLoading(false);
   };
 
+  const handleDelete = async () => {
+    if (!article) return;
+    if (!confirm(`"${article.title}" makalesi silinecek. Emin misiniz? Bu işlem geri alınamaz.`)) return;
+    setActionLoading(true);
+    const res = await fetchWithAuth(`/api/articles/${article.id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Makale silindi");
+      navigate("/articles");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Makale silinemedi");
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return <ArticleViewSkeleton />;
   }
@@ -250,6 +266,16 @@ export default function ArticleViewPage() {
                 <Edit size={14} />
                 Edit
               </Link>
+            )}
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={actionLoading}
+                className="flex items-center gap-1 px-2 py-1 text-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
             )}
           </div>
         </div>

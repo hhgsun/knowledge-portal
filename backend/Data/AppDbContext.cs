@@ -184,7 +184,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.SearchType).IsRequired().HasDefaultValue("fulltext");
             e.Property(s => s.CreatedAt).IsRequired();
             e.HasOne(s => s.User).WithMany().HasForeignKey(s => s.UserId);
-            e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId);
+            e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId).OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── ArticleEmbeddings ────────────────────────────
