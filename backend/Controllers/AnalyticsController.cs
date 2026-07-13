@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,45 +12,22 @@ namespace KnowledgePortal.Api.Controllers;
 [Authorize]
 [RequirePermission(Permissions.AnalyticsView)]
 [RequireSessionAuth]
-public class AnalyticsController(AppDbContext db) : ControllerBase
+public class AnalyticsController(AppDbContext db, StatsService statsService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var now = DateTime.UtcNow;
-        var weekAgo = now.AddDays(-7);
-        var dayAgo = now.AddDays(-1);
-        var staleThreshold = now.AddDays(-90);
-
-        var totalArticles = await db.Articles.CountAsync();
+        var overview = await statsService.GetOverviewAsync();
 
         var articlesByStatus = await db.Articles
             .GroupBy(a => a.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Status, x => x.Count);
 
-        var viewsThisWeek = await db.ArticleViews.CountAsync(v => v.CreatedAt >= weekAgo);
-        var searchesToday = await db.SearchQueries.CountAsync(s => s.CreatedAt >= dayAgo);
+        var topSearches = await statsService.GetTopSearchesAsync(10);
+        var failedSearches = await statsService.GetFailedSearchesAsync(10);
 
-        var staleArticles = await db.Articles.CountAsync(a =>
-            a.Status == "published" && a.LastReviewedAt != null && a.LastReviewedAt < staleThreshold);
-
-        var topSearches = await db.SearchQueries
-            .Where(s => s.CreatedAt >= weekAgo)
-            .GroupBy(s => s.Query)
-            .Select(g => new { Query = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .Take(10)
-            .ToListAsync();
-
-        var failedSearches = await db.SearchQueries
-            .Where(s => s.ResultsCount == 0)
-            .GroupBy(s => s.Query)
-            .Select(g => new { Query = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .Take(10)
-            .ToListAsync();
-
+        var weekAgo = DateTime.UtcNow.AddDays(-7);
         var topArticles = await db.ArticleViews
             .Where(v => v.CreatedAt >= weekAgo)
             .GroupBy(v => v.ArticleId)
@@ -81,11 +59,11 @@ public class AnalyticsController(AppDbContext db) : ControllerBase
         {
             overview = new
             {
-                totalArticles,
+                totalArticles = overview.TotalArticles,
                 articlesByStatus,
-                viewsThisWeek,
-                searchesToday,
-                staleArticles
+                viewsThisWeek = overview.ViewsThisWeek,
+                searchesToday = overview.SearchesToday,
+                staleArticles = overview.StaleArticles
             },
             topSearches = topSearches.Select(s => new { query = s.Query, count = s.Count }),
             failedSearches = failedSearches.Select(s => new { query = s.Query, count = s.Count }),

@@ -12,7 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles/{articleId}/versions")]
 [Authorize]
-public class ArticleVersionsController(AppDbContext db, FullTextSearchService ftsService) : ControllerBase
+public class ArticleVersionsController(AppDbContext db, ArticleService articleService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(string articleId)
@@ -89,27 +89,14 @@ public class ArticleVersionsController(AppDbContext db, FullTextSearchService ft
         article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(version.Content);
 
         // Create a new version recording the restore
-        var maxVersion = await db.ArticleVersions
-            .Where(v => v.ArticleId == articleId)
-            .MaxAsync(v => (int?)v.Version) ?? 0;
-
-        db.ArticleVersions.Add(new Models.Entities.ArticleVersion
-        {
-            ArticleId = articleId,
-            Title = version.Title,
-            Content = version.Content,
-            ChangedBy = userId,
-            ChangeSummary = $"Restored to version {version.Version}",
-            Version = maxVersion + 1
-        });
-
-        // Dirty flag: restored content on published article → re-embed + FTS sync (same as article update)
-        if (article.Status == "published")
-            article.IndexedAt = null;
+        var newVersion = await articleService.AddVersionAsync(
+            articleId, version.Title, version.Content, userId, $"Restored to version {version.Version}");
 
         await db.SaveChangesAsync();
-        await ftsService.SyncArticleAsync(article);
 
-        return Ok(new { message = "Article restored to selected version", version = maxVersion + 1 });
+        // Restored content on published article → re-embed + FTS sync (same as article update)
+        await articleService.QueueReindexAsync(article);
+
+        return Ok(new { message = "Article restored to selected version", version = newVersion });
     }
 }

@@ -1,7 +1,7 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
-using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtService jwt, IConfiguration config) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwt, IConfiguration config, UserService userService) : ControllerBase
 {
     [HttpPost("login")]
     [EnableRateLimiting("auth")]
@@ -23,9 +23,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Email and password are required" });
 
-        var email = req.Email.Trim().ToLowerInvariant();
+        var email = UserService.NormalizeEmail(req.Email);
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
-        if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+        if (user == null || !UserService.VerifyPassword(req.Password, user.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
         var token = jwt.GenerateToken(user);
@@ -43,26 +43,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Name, email, and password are required" });
 
-        if (req.Password.Length < 8 || req.Password.Length > 128)
-            return BadRequest(new { error = "Password must be 8-128 characters" });
+        var (user, error) = await userService.CreateAsync(req.Name, req.Email, req.Password, "viewer");
+        if (error != null) return error.ToActionResult();
 
-        var email = req.Email.Trim().ToLowerInvariant();
-        if (await db.Users.AnyAsync(u => u.Email == email))
-            return Conflict(new { error = "Email already registered" });
-
-        var user = new User
-        {
-            Name = req.Name.Trim(),
-            Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim()),
-            Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
-            Role = "viewer"
-        };
-
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-
-        return StatusCode(201, new { user.Id, user.Name, user.Email });
+        return StatusCode(201, new { user!.Id, user.Name, user.Email });
     }
 
     [HttpGet("me")]
@@ -93,7 +77,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         {
             if (!string.IsNullOrWhiteSpace(req.Name) && req.Name.Trim() != user.Name)
                 return BadRequest(new { error = "Name is managed by your Microsoft account and cannot be changed" });
-            if (!string.IsNullOrWhiteSpace(req.Email) && req.Email.Trim().ToLowerInvariant() != user.Email)
+            if (!string.IsNullOrWhiteSpace(req.Email) && UserService.NormalizeEmail(req.Email) != user.Email)
                 return BadRequest(new { error = "Email is managed by your Microsoft account and cannot be changed" });
         }
         else
@@ -108,10 +92,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
             // Update email
             if (!string.IsNullOrWhiteSpace(req.Email))
             {
-                var normalizedEmail = req.Email.Trim().ToLowerInvariant();
+                var normalizedEmail = UserService.NormalizeEmail(req.Email);
                 if (normalizedEmail != user.Email)
                 {
-                    if (await db.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != userId))
+                    if (await userService.IsEmailTakenAsync(normalizedEmail, userId))
                         return Conflict(new { error = "Email already in use" });
                     user.Email = normalizedEmail;
                 }
@@ -121,7 +105,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         // Change password
         if (!string.IsNullOrWhiteSpace(req.NewPassword))
         {
-            if (req.NewPassword.Length < 8 || req.NewPassword.Length > 128)
+            if (UserService.ValidatePassword(req.NewPassword) != null)
                 return BadRequest(new { error = "New password must be 8-128 characters" });
 
             // Azure users setting password for the first time don't need currentPassword
@@ -132,11 +116,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
                 if (string.IsNullOrWhiteSpace(req.CurrentPassword))
                     return BadRequest(new { error = "Current password is required to change password" });
 
-                if (!BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash))
+                if (!UserService.VerifyPassword(req.CurrentPassword, user.PasswordHash))
                     return BadRequest(new { error = "Current password is incorrect" });
             }
 
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword, 12);
+            user.PasswordHash = UserService.HashPassword(req.NewPassword);
         }
 
         user.UpdatedAt = DateTime.UtcNow;
@@ -167,9 +151,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         if (graphUser == null || string.IsNullOrWhiteSpace(graphUser.Id))
             return Unauthorized(new { error = "Could not retrieve user info from Azure AD" });
 
-        var email = (graphUser.Mail ?? graphUser.UserPrincipalName)?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email))
+        var rawEmail = graphUser.Mail ?? graphUser.UserPrincipalName;
+        if (string.IsNullOrWhiteSpace(rawEmail))
             return BadRequest(new { error = "Azure AD account has no email address" });
+        var email = UserService.NormalizeEmail(rawEmail);
 
         // Find existing user by AzureObjectId or email
         var user = await db.Users.FirstOrDefaultAsync(u => u.AzureObjectId == graphUser.Id)
@@ -177,18 +162,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
 
         if (user == null)
         {
-            // Auto-create user from Azure AD profile
-            user = new User
-            {
-                Name = graphUser.DisplayName ?? email,
-                Slug = await db.GenerateUniqueUserSlugAsync(graphUser.DisplayName ?? email),
-                Email = email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), 12),
-                Role = "viewer",
-                AzureObjectId = graphUser.Id
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
+            // Auto-create user from Azure AD profile (random password — login happens via Azure)
+            var (created, createError) = await userService.CreateAsync(
+                graphUser.DisplayName ?? email, email, Guid.NewGuid().ToString(), "viewer", graphUser.Id);
+            if (createError != null) return createError.ToActionResult();
+            user = created!;
         }
         else
         {

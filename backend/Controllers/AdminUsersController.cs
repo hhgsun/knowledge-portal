@@ -1,8 +1,8 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
-using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 [Authorize]
 [RequirePermission(Permissions.UsersManage)]
 [RequireSessionAuth]
-public class AdminUsersController(AppDbContext db) : ControllerBase
+public class AdminUsersController(AppDbContext db, UserService userService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(
@@ -60,25 +60,10 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Name, email, and password are required" });
 
-        if (req.Password.Length < 8 || req.Password.Length > 128)
-            return BadRequest(new { error = "Password must be 8-128 characters" });
+        var (user, error) = await userService.CreateAsync(req.Name, req.Email, req.Password, req.Role ?? "viewer");
+        if (error != null) return error.ToActionResult();
 
-        if (await db.Users.AnyAsync(u => u.Email == req.Email.Trim().ToLowerInvariant()))
-            return Conflict(new { error = "Email already exists" });
-
-        var user = new User
-        {
-            Name = req.Name.Trim(),
-            Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim()),
-            Email = req.Email.Trim().ToLowerInvariant(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
-            Role = req.Role ?? "viewer"
-        };
-
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-
-        return StatusCode(201, new { user.Id, user.Name, user.Email, user.Role, CreatedAt = user.CreatedAt.ToString("o") });
+        return StatusCode(201, new { user!.Id, user.Name, user.Email, user.Role, CreatedAt = user.CreatedAt.ToString("o") });
     }
 
     [HttpPut]
@@ -104,14 +89,18 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         }
         if (req.Email != null)
         {
-            var email = req.Email.Trim().ToLowerInvariant();
-            if (email != user.Email && await db.Users.AnyAsync(u => u.Email == email))
+            var email = UserService.NormalizeEmail(req.Email);
+            if (email != user.Email && await userService.IsEmailTakenAsync(email))
                 return Conflict(new { error = "Email already exists" });
             user.Email = email;
         }
         if (req.Role != null) user.Role = req.Role;
         if (!string.IsNullOrWhiteSpace(req.Password))
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12);
+        {
+            if (UserService.ValidatePassword(req.Password) is { } passwordError)
+                return passwordError.ToActionResult();
+            user.PasswordHash = UserService.HashPassword(req.Password);
+        }
 
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();

@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles")]
 [Authorize]
-public class ArticlesController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
+public class ArticlesController(AppDbContext db, IConfiguration config, ArticleService articleService) : ControllerBase
 {
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
 
@@ -41,7 +41,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
 
         var role = User.GetRole();
         var userId = User.GetUserId();
-        var query = db.Articles.Include(a => a.Owner).Include(a => a.ArticleTags).ThenInclude(at => at.Tag).AsQueryable();
+        var query = db.Articles.AsQueryable();
 
         // Viewers see published + their own articles
         if (role == "viewer")
@@ -68,20 +68,14 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
             var ctValues = contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(ct => validContentTypes.Contains(ct)).ToList();
             if (ctValues.Count > 0)
-                query = query.Where(a => ctValues.Contains(a.ContentType));
+                query = query.WhereContentTypeIn(ctValues);
         }
 
         if (tag is { Length: > 0 })
         {
             var tagSlugs = tag.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             if (tagSlugs.Count > 0)
-            {
-                // AND logic: article must have ALL specified tags
-                foreach (var tagSlug in tagSlugs)
-                {
-                    query = query.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tagSlug));
-                }
-            }
+                query = query.WhereHasAllTags(tagSlugs);
         }
 
         if (DateTime.TryParse(dateFrom, out var from))
@@ -105,17 +99,11 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
             {
                 a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
                 a.ContentType,
-                UpdatedAt = a.UpdatedAt.ToString("o"),
-                OwnerName = a.Owner.Name,
-                ApiKeyName = a.CreatedViaApiKeyId != null
-                    ? db.ApiKeys.Where(k => k.Id == a.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefault()
-                    : null,
-                Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
-                ViewCount = db.ArticleViews.Count(v => v.ArticleId == a.Id),
-                HelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && v.IsHelpful),
-                NotHelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && !v.IsHelpful)
+                UpdatedAt = a.UpdatedAt.ToString("o")
             })
             .ToListAsync();
+
+        var enrichment = await articleService.GetEnrichmentAsync(articles.Select(a => a.Id));
 
         // Attachment map if requested
         Dictionary<string, List<object>>? attachmentMap = null;
@@ -134,14 +122,21 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
             contentMap = contents.ToDictionary(c => c.Id, c => ContentExtractor.ExtractPlainText(c.Content));
         }
 
-        var articlesWithScore = articles.Select(a => new
+        var articlesWithScore = articles.Select(a =>
         {
-            a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
-            a.ContentType, a.UpdatedAt,
-            a.OwnerName, a.ApiKeyName, a.Tags, a.ViewCount,
-            WilsonScore = SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount),
-            Content = includeContent ? contentMap?.GetValueOrDefault(a.Id) : null,
-            Attachments = includeAttachments ? attachmentMap?.GetValueOrDefault(a.Id) : null
+            var e = enrichment.GetValueOrDefault(a.Id);
+            return new
+            {
+                a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
+                a.ContentType, a.UpdatedAt,
+                OwnerName = e?.OwnerName,
+                ApiKeyName = e?.ApiKeyName,
+                Tags = e?.Tags,
+                ViewCount = e?.ViewCount ?? 0,
+                WilsonScore = e?.WilsonScore ?? 0.0,
+                Content = includeContent ? contentMap?.GetValueOrDefault(a.Id) : null,
+                Attachments = includeAttachments ? attachmentMap?.GetValueOrDefault(a.Id) : null
+            };
         });
 
         return Ok(new
@@ -192,30 +187,15 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
 
         db.Articles.Add(article);
 
-        // Initial version
-        db.ArticleVersions.Add(new ArticleVersion
-        {
-            ArticleId = article.Id,
-            Title = article.Title,
-            Content = article.Content,
-            ChangedBy = userId,
-            ChangeSummary = "Initial version",
-            Version = 1
-        });
+        await articleService.AddVersionAsync(article.Id, article.Title, article.Content, userId, "Initial version");
 
         if (req.Tags?.Length > 0)
-            await AttachTagsAsync(article.Id, req.Tags);
+            await articleService.AttachTagsAsync(article.Id, req.Tags, User.GetSource() == "api-key");
 
         await db.SaveChangesAsync();
 
-        // Dirty flag: if published, queue for embedding
-        if (article.Status == "published")
-            article.IndexedAt = null;
-
-        await db.SaveChangesAsync();
-
-        // Sync FTS index
-        await ftsService.SyncArticleAsync(article);
+        // If published: queue for embedding + sync FTS index
+        await articleService.QueueReindexAsync(article);
 
         return StatusCode(201, new { article.Id, article.Slug, article.Title });
     }
@@ -348,27 +328,13 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
 
         // Create version if content changed
         if (contentChanged)
-        {
-            var maxVersion = await db.ArticleVersions
-                .Where(v => v.ArticleId == id)
-                .MaxAsync(v => (int?)v.Version) ?? 0;
-
-            db.ArticleVersions.Add(new ArticleVersion
-            {
-                ArticleId = id,
-                Title = article.Title,
-                Content = article.Content,
-                ChangedBy = userId,
-                ChangeSummary = req.ChangeSummary?.Trim(),
-                Version = maxVersion + 1
-            });
-        }
+            await articleService.AddVersionAsync(id, article.Title, article.Content, userId, req.ChangeSummary?.Trim());
 
         if (req.Tags != null)
         {
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
-            await AttachTagsAsync(id, req.Tags);
+            await articleService.AttachTagsAsync(id, req.Tags, User.GetSource() == "api-key");
         }
 
         await db.SaveChangesAsync();
@@ -385,7 +351,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
         }
 
         // Sync FTS index (handles published/unpublished state)
-        await ftsService.SyncArticleAsync(article);
+        await articleService.SyncIndexAsync(article);
 
         return Ok(new { article.Id, article.Slug, article.Title });
     }
@@ -408,7 +374,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
             Directory.Delete(articleDir, true);
 
         // Remove from FTS index
-        await ftsService.RemoveArticleAsync(id);
+        await articleService.RemoveFromIndexAsync(id);
 
         db.Articles.Remove(article);
         await db.SaveChangesAsync();
@@ -430,11 +396,10 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
         article.PublishedAt = DateTime.UtcNow;
         article.LastReviewedAt = DateTime.UtcNow;
         article.UpdatedAt = DateTime.UtcNow;
-        article.IndexedAt = null; // Dirty flag: approved → queue for embedding
         await db.SaveChangesAsync();
 
-        // Sync FTS index
-        await ftsService.SyncArticleAsync(article);
+        // Approved → queue for embedding + sync FTS index
+        await articleService.QueueReindexAsync(article);
 
         return Ok(new { message = "Article approved and published", article.Id, article.Slug });
     }
@@ -494,25 +459,6 @@ public class ArticlesController(AppDbContext db, IConfiguration config, FullText
             .ToListAsync();
 
         return Ok(new { articles = related });
-    }
-
-    // Resolves each input as tag ID, name, or slug; auto-creates missing tags when called via API key
-    private async Task AttachTagsAsync(string articleId, string[] tags)
-    {
-        var isApiKey = User.GetSource() == "api-key";
-        foreach (var tagInput in tags)
-        {
-            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
-                   ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
-            if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
-            {
-                tag = new Tag { Name = tagInput.Trim(), Slug = SlugHelper.GenerateTagSlug(tagInput) };
-                db.Tags.Add(tag);
-                await db.SaveChangesAsync();
-            }
-            if (tag != null)
-                db.ArticleTags.Add(new ArticleTag { ArticleId = articleId, TagId = tag.Id });
-        }
     }
 }
 

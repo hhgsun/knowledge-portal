@@ -24,7 +24,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 ### Backend (`backend/`)
 
 - **Language**: C# 13, .NET 10, nullable enabled
-- **Pattern**: Controllers → EF Core DbContext → PostgreSQL (service layer for AI/embedding only)
+- **Pattern**: Controllers → Services → EF Core DbContext → PostgreSQL. Shared domain logic lives in `Services/` (ArticleService, TagService, ApiKeyService, UserService, StatsService) — controllers keep only routing, auth scoping, and response shaping. **No duplicated logic across controllers**; if two endpoints need the same behavior, extract it into a service (or a `Helpers/` static for pure functions). Service failures return `ServiceError` (mapped via `ToActionResult()`).
 - **Naming**: PascalCase for C# code, snake_case for DB columns (configured in `AppDbContext.OnModelCreating`)
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
@@ -62,10 +62,11 @@ backend/
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, ApiKeyGenerator, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute, RequireSessionAuthAttribute
 ├── Data/                 # AppDbContext, DbInitializer, SlugQueries (unique slug generation)
 ├── Middleware/            # GlobalExceptionMiddleware
-├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper
+├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions
 ├── Logging/              # FileLoggerProvider (date-based file logging)
 ├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
-├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
+├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, ServiceError
+│                         # AI/Search: EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
 │   └── Entities/         # EF Core entity classes (13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding)

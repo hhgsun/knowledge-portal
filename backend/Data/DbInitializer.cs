@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -17,7 +18,7 @@ public static class DbInitializer
                 Name = "Admin",
                 Slug = "admin",
                 Email = "admin@finagotech.com.tr",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("1q2w3E*/", 12),
+                PasswordHash = UserService.HashPassword("1q2w3E*/"),
                 Role = "admin"
             });
             await db.SaveChangesAsync();

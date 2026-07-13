@@ -1,8 +1,8 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
-using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/tags")]
 [Authorize]
-public class TagsController(AppDbContext db) : ControllerBase
+public class TagsController(AppDbContext db, TagService tagService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List()
@@ -36,17 +36,8 @@ public class TagsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 50)
             return BadRequest(new { error = "Name is required (1-50 chars)" });
 
-        var slug = SlugHelper.GenerateTagSlug(req.Name);
-
-        var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
-        if (existing != null)
-            return Ok(new { existing.Id, existing.Name, existing.Slug });
-
-        var tag = new Tag { Name = req.Name.Trim(), Slug = slug };
-        db.Tags.Add(tag);
-        await db.SaveChangesAsync();
-
-        return StatusCode(201, new { tag.Id, tag.Name, tag.Slug });
+        var (tag, created) = await tagService.FindOrCreateAsync(req.Name);
+        return StatusCode(created ? 201 : 200, new { tag.Id, tag.Name, tag.Slug });
     }
 
     [HttpPut]

@@ -32,9 +32,9 @@ public class McpController : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public McpController(AppDbContext db, FullTextSearchService ftsService)
+    public McpController(McpToolExecutor toolExecutor)
     {
-        _toolExecutor = new McpToolExecutor(db, ftsService);
+        _toolExecutor = toolExecutor;
     }
 
     [HttpPost]

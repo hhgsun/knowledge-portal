@@ -125,6 +125,14 @@ builder.Services.AddOpenApi();
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
 
+// ─── Domain Services ─────────────────────────────────────────
+builder.Services.AddScoped<ArticleService>();
+builder.Services.AddScoped<TagService>();
+builder.Services.AddScoped<ApiKeyService>();
+builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<StatsService>();
+builder.Services.AddScoped<McpToolExecutor>();
+
 var app = builder.Build();
 
 // ─── Middleware pipeline ─────────────────────────────────────

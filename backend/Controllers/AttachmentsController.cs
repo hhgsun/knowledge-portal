@@ -12,7 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Authorize]
-public class AttachmentsController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
+public class AttachmentsController(AppDbContext db, IConfiguration config, ArticleService articleService) : ControllerBase
 {
     private static readonly Dictionary<string, string[]> MimeMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -121,7 +121,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
         db.ArticleAttachments.Add(attachment);
         await db.SaveChangesAsync();
 
-        await ReindexIfPublishedAsync(article);
+        // Attachment text is part of the search index
+        await articleService.QueueReindexAsync(article);
 
         return StatusCode(201, new AttachmentResponse(
             attachment.Id,
@@ -153,7 +154,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
         db.ArticleAttachments.Remove(attachment);
         await db.SaveChangesAsync();
 
-        await ReindexIfPublishedAsync(article);
+        // Attachment text is part of the search index
+        await articleService.QueueReindexAsync(article);
 
         return Ok(new { message = "Attachment deleted" });
     }
@@ -184,15 +186,5 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
             return NotFound(new { error = "File not found on disk" });
 
         return PhysicalFile(filePath, attachment.ContentType, attachment.FileName);
-    }
-
-    // Attachment text is part of the search index, so any attachment change re-queues embedding + FTS sync
-    private async Task ReindexIfPublishedAsync(Article article)
-    {
-        if (article.Status != "published") return;
-
-        article.IndexedAt = null;
-        await db.SaveChangesAsync();
-        await ftsService.SyncArticleAsync(article);
     }
 }

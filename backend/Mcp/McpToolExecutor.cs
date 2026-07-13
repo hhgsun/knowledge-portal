@@ -14,12 +14,12 @@ namespace KnowledgePortal.Api.Mcp;
 public class McpToolExecutor
 {
     private readonly AppDbContext _db;
-    private readonly FullTextSearchService _ftsService;
+    private readonly ArticleService _articleService;
 
-    public McpToolExecutor(AppDbContext db, FullTextSearchService ftsService)
+    public McpToolExecutor(AppDbContext db, ArticleService articleService)
     {
         _db = db;
-        _ftsService = ftsService;
+        _articleService = articleService;
     }
 
     // ─── Tool Registry ─────────────────────────────────────────────────
@@ -135,58 +135,26 @@ public class McpToolExecutor
         var contentType = GetString(args, "content_type");
         var includeContent = GetBool(args, "include_content");
 
-        var articlesQuery = _db.Articles
-            .Include(a => a.Owner)
-            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .Where(a => a.Status == "published");
-
-        // Tag filter (AND logic)
-        if (!string.IsNullOrWhiteSpace(tags))
-        {
-            var tagSlugs = tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var tagSlug in tagSlugs)
-                articlesQuery = articlesQuery.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tagSlug));
-        }
-
-        // Author filter (OR logic)
+        // Author filter (OR logic) — tag (AND) and content type filters go through ArticleFilter
+        List<string>? authorIds = null;
         if (!string.IsNullOrWhiteSpace(authors))
         {
-            var authorSlugs = authors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var authorIds = await _db.Users
-                .Where(u => authorSlugs.Contains(u.Slug))
-                .Select(u => u.Id)
-                .ToListAsync();
-            if (authorIds.Count > 0)
-                articlesQuery = articlesQuery.Where(a => authorIds.Contains(a.OwnerId));
+            var resolved = await _db.ResolveAuthorIdsAsync(authors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            if (resolved.Count > 0)
+                authorIds = resolved;
         }
 
-        // Content type filter
-        if (!string.IsNullOrWhiteSpace(contentType))
-        {
-            var types = contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            articlesQuery = articlesQuery.Where(a => a.ContentType != null && types.Contains(a.ContentType));
-        }
+        var filter = new ArticleFilter(
+            OwnerIds: authorIds,
+            ContentTypes: string.IsNullOrWhiteSpace(contentType) ? null : contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-        // Full-text search
-        var articleIds = await articlesQuery.Select(a => a.Id).ToListAsync();
-        var ftsResults = await _ftsService.SearchAsync(query, limit * 2);
-        var matchedIds = ftsResults
-            .Where(r => articleIds.Contains(r.ArticleId))
-            .OrderByDescending(r => r.Rank)
-            .Take(limit)
-            .Select(r => r.ArticleId)
-            .ToList();
+        var articles = await _articleService.SearchPublishedAsync(query, limit, filter);
 
-        var articles = await articlesQuery
-            .Where(a => matchedIds.Contains(a.Id))
-            .ToListAsync();
-
-        var ordered = matchedIds
-            .Select(id => articles.FirstOrDefault(a => a.Id == id))
-            .Where(a => a != null)
+        var ordered = articles
             .Select(a => new
             {
-                id = a!.Id,
+                id = a.Id,
                 title = a.Title,
                 slug = a.Slug,
                 excerpt = a.Excerpt,
@@ -260,17 +228,13 @@ public class McpToolExecutor
         var query = _db.Articles
             .Include(a => a.Owner)
             .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .Where(a => a.Status == "published");
+            .WherePublished();
 
         if (!string.IsNullOrWhiteSpace(contentType))
             query = query.Where(a => a.ContentType == contentType);
 
         if (!string.IsNullOrWhiteSpace(tags))
-        {
-            var tagSlugs = tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var tagSlug in tagSlugs)
-                query = query.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tagSlug));
-        }
+            query = query.WhereHasAllTags(tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
         query = sort switch
         {
@@ -329,7 +293,7 @@ public class McpToolExecutor
 
         var recentArticles = await _db.Articles
             .Include(a => a.Owner)
-            .Where(a => a.Status == "published")
+            .WherePublished()
             .OrderByDescending(a => a.CreatedAt)
             .Take(5)
             .Select(a => new
@@ -342,7 +306,7 @@ public class McpToolExecutor
             .ToListAsync();
 
         var contentTypes = await _db.Articles
-            .Where(a => a.Status == "published" && a.ContentType != null)
+            .WherePublished()
             .GroupBy(a => a.ContentType)
             .Select(g => new { type = g.Key, count = g.Count() })
             .ToListAsync();

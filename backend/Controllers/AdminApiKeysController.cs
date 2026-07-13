@@ -2,7 +2,7 @@ using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models;
-using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 [Authorize]
 [RequirePermission(Permissions.ApiKeysManageAny)]
 [RequireSessionAuth]
-public class AdminApiKeysController(AppDbContext db) : ControllerBase
+public class AdminApiKeysController(AppDbContext db, ApiKeyService apiKeyService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(
@@ -64,36 +64,18 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.UserId))
             return BadRequest(new { error = "userId is required" });
 
-        if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
-            return BadRequest(new { error = "Name is required (1-100 chars)" });
-
         var user = await db.Users.FindAsync(req.UserId);
         if (user == null) return NotFound(new { error = "User not found" });
 
-        var name = req.Name.Trim();
-        var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == user.Id && k.Name.ToLower() == name.ToLower());
-        if (nameTaken)
-            return Conflict(new { error = "This user already has an API key with this name" });
+        if (await apiKeyService.ValidateNameAsync(req.Name, user.Id) is { } error)
+            return error.ToActionResult();
 
-        var expiresInDays = Math.Clamp(req.ExpiresInDays ?? 90, 1, 365);
-
-        var generated = ApiKeyGenerator.Generate();
-        var key = new ApiKey
-        {
-            UserId = user.Id,
-            KeyHash = generated.Hash,
-            KeyPrefix = generated.Prefix,
-            Name = name,
-            ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
-        };
-
-        db.ApiKeys.Add(key);
-        await db.SaveChangesAsync();
+        var (key, rawKey) = await apiKeyService.CreateAsync(user.Id, req.Name, req.ExpiresInDays);
 
         return StatusCode(201, new
         {
             key.Id,
-            Key = generated.RawKey, // Only returned once
+            Key = rawKey, // Only returned once
             key.Name,
             key.KeyPrefix,
             key.UserId,
@@ -113,23 +95,8 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         var key = await db.ApiKeys.Include(k => k.User).FirstOrDefaultAsync(k => k.Id == req.Id);
         if (key == null) return NotFound(new { error = "Key not found" });
 
-        if (req.Name != null)
-        {
-            if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
-                return BadRequest(new { error = "Name must be 1-100 chars" });
-
-            var name = req.Name.Trim();
-            var nameTaken = await db.ApiKeys.AnyAsync(k => k.UserId == key.UserId && k.Id != key.Id && k.Name.ToLower() == name.ToLower());
-            if (nameTaken)
-                return Conflict(new { error = "This user already has an API key with this name" });
-
-            key.Name = name;
-        }
-
-        if (req.ExpiresInDays.HasValue)
-            key.ExpiresAt = DateTime.UtcNow.AddDays(Math.Clamp(req.ExpiresInDays.Value, 1, 365));
-
-        await db.SaveChangesAsync();
+        if (await apiKeyService.UpdateAsync(key, req.Name, req.ExpiresInDays) is { } error)
+            return error.ToActionResult();
 
         return Ok(new
         {
@@ -152,12 +119,8 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         var key = await db.ApiKeys.FindAsync(id);
         if (key == null) return NotFound(new { error = "Key not found" });
 
-        var articleCount = await db.Articles.CountAsync(a => a.CreatedViaApiKeyId == key.Id);
-        if (articleCount > 0)
-            return Conflict(new { error = $"This API key cannot be deleted because {articleCount} article(s) were created with it" });
-
-        db.ApiKeys.Remove(key);
-        await db.SaveChangesAsync();
+        if (await apiKeyService.DeleteAsync(key) is { } error)
+            return error.ToActionResult();
 
         return Ok(new { message = "API key deleted" });
     }
