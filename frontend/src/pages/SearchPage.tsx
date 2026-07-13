@@ -427,7 +427,7 @@ export default function SearchPage() {
                           <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
                           {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
                           <div className="flex items-center gap-2 mt-2">
-                            <ContentTypeBadge contentType={result.contentType} />
+                            <ContentTypeBadge contentType={result.contentType} clickable />
                             {result.status && result.status !== "published" && (
                               <span className={`text-xs px-2 py-0.5 rounded-full ${
                                 result.status === "draft" ? "bg-zinc-100 text-zinc-600" :
@@ -463,7 +463,12 @@ export default function SearchPage() {
                                 {result.tags.map((tag) => (
                                   <span
                                     key={tag.id}
-                                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      navigate(`/articles?tag=${encodeURIComponent(tag.slug)}`);
+                                    }}
+                                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
                                   >
                                     {tag.name}
                                   </span>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
 import { TiptapRenderer } from "../components/editor/tiptap-renderer";
 import { useApi } from "../hooks/useApi";
@@ -12,7 +12,7 @@ import AttachmentList from "../components/attachments/attachment-list";
 
 export default function ArticleViewPage() {
   const params = useParams();
-  //const navigate = useNavigate();
+  const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
 
@@ -255,7 +255,7 @@ export default function ArticleViewPage() {
         </div>
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
         <div className="flex items-center gap-4 mt-4 text-sm text-zinc-500">
-          <ContentTypeBadge contentType={article.contentType} size="md" />
+          <ContentTypeBadge contentType={article.contentType} size="md" clickable />
           {article.status !== "published" && (
             <span className={`text-xs px-2 py-0.5 rounded-full ${article.status === "draft" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" :
               article.status === "pending" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" :
@@ -284,12 +284,13 @@ export default function ArticleViewPage() {
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <Tag size={14} className="text-zinc-400" />
             {article.tags.map((tag) => (
-              <span
+              <Link
                 key={tag.id}
-                className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                to={`/articles?tag=${encodeURIComponent(tag.slug)}`}
+                className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
               >
                 {tag.name}
-              </span>
+              </Link>
             ))}
           </div>
         )}
@@ -327,7 +328,12 @@ export default function ArticleViewPage() {
                     {ra.tags.slice(0, 3).map((tag) => (
                       <span
                         key={tag.id}
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigate(`/articles?tag=${encodeURIComponent(tag.slug)}`);
+                        }}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
                       >
                         {tag.name}
                       </span>

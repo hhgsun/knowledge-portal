@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
@@ -76,6 +76,7 @@ export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
   const { contentTypes } = useLookups();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -117,6 +118,23 @@ export default function ArticlesPage() {
   useEffect(() => {
     syncSearchParams(page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo);
   }, [page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo, syncSearchParams]);
+
+  // Re-sync filter state when the URL changes while already on this page
+  // (e.g. clicking a tag/content-type badge on a card, or browser back/forward)
+  useEffect(() => {
+    const eq = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const urlStatus = searchParams.get("status")?.split(",").filter(Boolean) || [];
+    const urlContentType = searchParams.get("contentType")?.split(",").filter(Boolean) || [];
+    const urlTags = searchParams.getAll("tag").flatMap(v => v.split(",")).filter(Boolean);
+    setPage(Number(searchParams.get("page")) || 1);
+    setStatusFilter(prev => (eq(prev, urlStatus) ? prev : urlStatus));
+    setContentTypeFilter(prev => (eq(prev, urlContentType) ? prev : urlContentType));
+    setTagFilter(prev => (eq(prev, urlTags) ? prev : urlTags));
+    setMineFilter(searchParams.get("mine") === "true");
+    setSortBy(searchParams.get("sort") || "updatedAt");
+    setDateFrom(searchParams.get("dateFrom") || "");
+    setDateTo(searchParams.get("dateTo") || "");
+  }, [searchParams]);
 
   useEffect(() => {
     setLoading(true);
@@ -324,7 +342,7 @@ export default function ArticlesPage() {
                     <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{article.excerpt}</p>
                   )}
                   <div className="flex items-center gap-2 mt-2">
-                    <ContentTypeBadge contentType={article.contentType} />
+                    <ContentTypeBadge contentType={article.contentType} clickable />
                     {article.status !== "published" && (
                       <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
                         {article.status}
@@ -346,7 +364,12 @@ export default function ArticlesPage() {
                         {article.tags.map((tag) => (
                           <span
                             key={tag.id}
-                            className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              navigate(`/articles?tag=${encodeURIComponent(tag.slug)}`);
+                            }}
+                            className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
                           >
                             {tag.name}
                           </span>

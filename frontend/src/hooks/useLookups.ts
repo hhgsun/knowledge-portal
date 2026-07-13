@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApi } from "./useApi";
 import type { LookupValue } from "../types/api";
 
@@ -23,7 +23,8 @@ export function useLookups() {
       .catch(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  const contentTypes = lookups.filter((l) => l.category === "content_type");
+  // Memoized so consumers can safely use contentTypes as an effect dependency
+  const contentTypes = useMemo(() => lookups.filter((l) => l.category === "content_type"), [lookups]);
 
   const invalidateCache = () => {
     cache = null;
