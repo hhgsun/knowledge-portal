@@ -67,6 +67,24 @@ public static class ContentExtractor
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Extracts plain text from TipTap JSON content.
+    /// Returns null when the content is empty, whitespace-only, or malformed.
+    /// </summary>
+    public static string? ExtractPlainText(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson)) return null;
+        try
+        {
+            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
+            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static string ExtractTextFromJson(JsonElement element)
     {
         switch (element.ValueKind)

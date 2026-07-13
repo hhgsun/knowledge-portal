@@ -55,7 +55,7 @@ export default function SearchPage() {
     fetchWithAuth("/api/search/authors")
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setAuthors(data); })
-      .catch(() => {});
+      .catch(() => { });
   }, [fetchWithAuth]);
 
   // Autocomplete logic for @user, #tag, ##contentType
@@ -110,7 +110,7 @@ export default function SearchPage() {
       }
       // Also close history if clicking outside
       if (inputRef.current && !inputRef.current.contains(e.target as Node) &&
-          suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
         setShowHistory(false);
       }
     };
@@ -188,7 +188,7 @@ export default function SearchPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ searchQueryId, articleId }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
     navigate(`/articles/${slug}`);
   }, [searchQueryId, fetchWithAuth, navigate]);
@@ -197,6 +197,13 @@ export default function SearchPage() {
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-4">Search Knowledge Base</h1>
+        <div className="flex gap-1 mb-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit" role="tablist" aria-label="Search type">
+          <SearchTypeTab active={searchType === "hybrid"} onClick={() => setSearchType("hybrid")} icon={<Zap size={14} />} label="Hybrid" />
+          <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
+          <SearchTypeTab active={searchType === "semantic"} onClick={() => setSearchType("semantic")} icon={<Sparkles size={14} />} label="Semantic" />
+          <SearchTypeTab active={searchType === "rag"} onClick={() => setSearchType("rag")} icon={<Bot size={14} />} label="Ask AI" />
+        </div>
+        <p id="search-help" className="sr-only">Use @ for author filter, # for tag filter, ## for content type filter. Press Enter to search.</p>
         <form onSubmit={handleSearch} className="relative" role="search" aria-label="Search knowledge base">
           <SearchIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
           <input
@@ -309,14 +316,6 @@ export default function SearchPage() {
             </div>
           )}
         </form>
-
-        <div className="flex gap-1 mt-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit" role="tablist" aria-label="Search type">
-          <SearchTypeTab active={searchType === "hybrid"} onClick={() => setSearchType("hybrid")} icon={<Zap size={14} />} label="Hybrid" />
-          <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
-          <SearchTypeTab active={searchType === "semantic"} onClick={() => setSearchType("semantic")} icon={<Sparkles size={14} />} label="Semantic" />
-          <SearchTypeTab active={searchType === "rag"} onClick={() => setSearchType("rag")} icon={<Bot size={14} />} label="Ask AI" />
-        </div>
-        <p id="search-help" className="sr-only">Use @ for author filter, # for tag filter, ## for content type filter. Press Enter to search.</p>
       </div>
 
       {loading ? (
@@ -429,11 +428,10 @@ export default function SearchPage() {
                           <div className="flex items-center gap-2 mt-2">
                             <ContentTypeBadge contentType={result.contentType} clickable />
                             {result.status && result.status !== "published" && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                result.status === "draft" ? "bg-zinc-100 text-zinc-600" :
-                                result.status === "pending" ? "bg-amber-100 text-amber-700" :
-                                result.status === "archived" ? "bg-red-100 text-red-700" : ""
-                              }`}>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${result.status === "draft" ? "bg-zinc-100 text-zinc-600" :
+                                  result.status === "pending" ? "bg-amber-100 text-amber-700" :
+                                    result.status === "archived" ? "bg-red-100 text-red-700" : ""
+                                }`}>
                                 {result.status}
                               </span>
                             )}

@@ -197,7 +197,7 @@ public class McpToolExecutor
                 readTimeMinutes = a.ReadTimeMinutes,
                 createdAt = a.CreatedAt.ToString("o"),
                 updatedAt = a.UpdatedAt.ToString("o"),
-                content = includeContent ? ExtractPlainText(a.Content) : null
+                content = includeContent ? ContentExtractor.ExtractPlainText(a.Content) : null
             })
             .ToList();
 
@@ -235,7 +235,7 @@ public class McpToolExecutor
             createdAt = article.CreatedAt.ToString("o"),
             updatedAt = article.UpdatedAt.ToString("o"),
             publishedAt = article.PublishedAt?.ToString("o"),
-            content = ExtractPlainText(article.Content),
+            content = ContentExtractor.ExtractPlainText(article.Content),
             attachments = article.Attachments.Select(att => new
             {
                 id = att.Id,
@@ -411,14 +411,4 @@ public class McpToolExecutor
         return val.ValueKind is JsonValueKind.True or JsonValueKind.False ? val.GetBoolean() : defaultValue;
     }
 
-    private static string? ExtractPlainText(string? contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
-        {
-            var element = JsonDocument.Parse(contentJson).RootElement;
-            return ContentExtractor.ExtractTextFromJson(element);
-        }
-        catch { return null; }
-    }
 }

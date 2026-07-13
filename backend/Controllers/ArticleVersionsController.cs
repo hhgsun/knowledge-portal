@@ -1,6 +1,7 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles/{articleId}/versions")]
 [Authorize]
-public class ArticleVersionsController(AppDbContext db) : ControllerBase
+public class ArticleVersionsController(AppDbContext db, FullTextSearchService ftsService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(string articleId)
@@ -20,9 +21,7 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
         var article = await db.Articles.FindAsync(articleId);
         if (article == null) return NotFound(new { error = "Article not found" });
 
-        var role = User.GetRole();
-        var userId = User.GetUserId();
-        if (role == "viewer" && article.Status != "published" && article.OwnerId != userId)
+        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId()))
             return NotFound(new { error = "Article not found" });
 
         var versions = await db.ArticleVersions
@@ -47,9 +46,7 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
         var article = await db.Articles.FindAsync(articleId);
         if (article == null) return NotFound(new { error = "Article not found" });
 
-        var role = User.GetRole();
-        var userId = User.GetUserId();
-        if (role == "viewer" && article.Status != "published" && article.OwnerId != userId)
+        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId()))
             return NotFound(new { error = "Article not found" });
 
         var version = await db.ArticleVersions
@@ -74,13 +71,9 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
         if (article == null) return NotFound(new { error = "Article not found" });
 
         var userId = User.GetUserId();
-        var role = User.GetRole();
 
         // Check edit permission (same logic as article update)
-        var isOwner = article.OwnerId == userId;
-        if (!isOwner && !RbacService.HasPermission(role, Permissions.ArticlesEditAny))
-            return StatusCode(403, new { error = "You do not have permission to edit this article" });
-        if (isOwner && !RbacService.HasPermission(role, Permissions.ArticlesEditOwn))
+        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
         var version = await db.ArticleVersions
@@ -110,7 +103,12 @@ public class ArticleVersionsController(AppDbContext db) : ControllerBase
             Version = maxVersion + 1
         });
 
+        // Dirty flag: restored content on published article → re-embed + FTS sync (same as article update)
+        if (article.Status == "published")
+            article.IndexedAt = null;
+
         await db.SaveChangesAsync();
+        await ftsService.SyncArticleAsync(article);
 
         return Ok(new { message = "Article restored to selected version", version = maxVersion + 1 });
     }

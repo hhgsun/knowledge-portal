@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -112,6 +113,3 @@ public class LookupsController(AppDbContext db) : ControllerBase
         return Ok(new { message = "Lookup deleted" });
     }
 }
-
-public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
-public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);

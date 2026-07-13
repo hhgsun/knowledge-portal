@@ -58,11 +58,11 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 
 ```
 backend/
-├── Controllers/          # API endpoints (14 controllers)
-├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute
-├── Data/                 # AppDbContext, DbInitializer
+├── Controllers/          # API endpoints (15 controllers)
+├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, ApiKeyGenerator, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute, RequireSessionAuthAttribute
+├── Data/                 # AppDbContext, DbInitializer, SlugQueries (unique slug generation)
 ├── Middleware/            # GlobalExceptionMiddleware
-├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, VectorMath
+├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper
 ├── Logging/              # FileLoggerProvider (date-based file logging)
 ├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
 ├── Services/             # EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
@@ -105,12 +105,12 @@ specs/                    # Detailed specifications (subordinate to this file)
 ## Default Credentials
 
 - **Email**: `admin@finagotech.com.tr`
-- **Password**: `1q2w3e*/`
+- **Password**: `1q2w3E*/`
 
 ## Seed Data
 
 When the backend starts (`dotnet run`), it automatically seeds the database:
-1. **Admin user** created if missing (email: `admin@finagotech.com.tr`, password: `1q2w3e*/`, role: admin)
+1. **Admin user** created if missing (email: `admin@finagotech.com.tr`, password: `1q2w3E*/`, role: admin)
 2. **Default tags** added (project-knowledge-portal, getting-started, tutorial, etc.)
 3. **Content types** added (reference, how-to, adr, runbook, faq, policy, onboarding)
 4. **Articles** loaded from `backend/SeedData/articles/*.json` if Articles table is empty

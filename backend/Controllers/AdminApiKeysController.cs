@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
@@ -78,14 +77,12 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
 
         var expiresInDays = Math.Clamp(req.ExpiresInDays ?? 90, 1, 365);
 
-        // Generate raw key: kp_ + 32 random chars
-        var rawKey = "kp_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-
+        var generated = ApiKeyGenerator.Generate();
         var key = new ApiKey
         {
             UserId = user.Id,
-            KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
-            KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
+            KeyHash = generated.Hash,
+            KeyPrefix = generated.Prefix,
             Name = name,
             ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
         };
@@ -96,7 +93,7 @@ public class AdminApiKeysController(AppDbContext db) : ControllerBase
         return StatusCode(201, new
         {
             key.Id,
-            Key = rawKey, // Only returned once
+            Key = generated.RawKey, // Only returned once
             key.Name,
             key.KeyPrefix,
             key.UserId,

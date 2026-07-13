@@ -23,10 +23,27 @@ public static partial class SlugHelper
 
     public static string GenerateSlug(string text)
     {
-        var transliterated = Transliterate(text).ToLowerInvariant();
-        var slug = SlugRegex().Replace(transliterated, "");
-        slug = WhitespaceRegex().Replace(slug, "-").Trim('-');
+        var slug = GenerateSlugCore(text);
         return string.IsNullOrEmpty(slug) ? "user" : slug;
+    }
+
+    public static string GenerateArticleSlug(string title)
+    {
+        var slug = GenerateSlugCore(title);
+        return slug.Length > 100 ? slug[..100] : slug;
+    }
+
+    public static string GenerateTagSlug(string name)
+    {
+        var slug = TagSlugRegex().Replace(Transliterate(name.ToLowerInvariant().Trim()), "-").Trim('-');
+        return slug.Length > 50 ? slug[..50] : slug;
+    }
+
+    private static string GenerateSlugCore(string text)
+    {
+        var transliterated = Transliterate(text).ToLowerInvariant().Trim();
+        var slug = SlugRegex().Replace(transliterated, "");
+        return WhitespaceRegex().Replace(slug, "-").Trim('-');
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"[^a-z0-9\s-]")]
@@ -34,6 +51,9 @@ public static partial class SlugHelper
 
     [System.Text.RegularExpressions.GeneratedRegex(@"[\s-]+")]
     private static partial System.Text.RegularExpressions.Regex WhitespaceRegex();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[^a-z0-9]+")]
+    private static partial System.Text.RegularExpressions.Regex TagSlugRegex();
 
     /// <summary>
     /// Escapes LIKE wildcard characters (% and _) for safe use in EF.Functions.Like queries.

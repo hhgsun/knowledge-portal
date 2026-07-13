@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace KnowledgePortal.Api.Models;
 
 // Articles
@@ -43,9 +45,32 @@ public record CommentRequest(string Comment);
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
 
+// Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per search type
+public record SearchResultDto(
+    string Id,
+    string Title,
+    string Slug,
+    string? Excerpt,
+    string ContentType,
+    string UpdatedAt,
+    string? Status,
+    string? OwnerName,
+    string? ApiKeyName,
+    List<object>? Tags,
+    int ViewCount,
+    double WilsonScore,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Score,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MatchType,
+    string? Content,
+    List<object>? Attachments);
+
 // Tags
 public record CreateTagRequest(string Name);
 public record UpdateTagRequest(string Id, string Name);
+
+// Lookups
+public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
+public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
 
 // Attachments
 public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
@@ -12,15 +11,14 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/keys")]
 [Authorize]
+[RequirePermission(Permissions.ApiKeysManage)]
+[RequireSessionAuth]
 public class ApiKeysController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
-    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> List()
     {
         var userId = User.GetUserId();
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
 
         var keys = await db.ApiKeys
             .Where(k => k.UserId == userId)
@@ -38,12 +36,8 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Create([FromBody] CreateKeyRequest req)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
-
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 100)
             return BadRequest(new { error = "Name is required (1-100 chars)" });
 
@@ -55,14 +49,12 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
 
         var expiresInDays = Math.Clamp(req.ExpiresInDays ?? 90, 1, 365);
 
-        // Generate raw key: kp_ + 32 random chars
-        var rawKey = "kp_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-
+        var generated = ApiKeyGenerator.Generate();
         var key = new ApiKey
         {
             UserId = userId,
-            KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12),
-            KeyPrefix = rawKey[3..11], // First 8 chars after "kp_" for indexed lookup
+            KeyHash = generated.Hash,
+            KeyPrefix = generated.Prefix,
             Name = name,
             ExpiresAt = DateTime.UtcNow.AddDays(expiresInDays)
         };
@@ -73,19 +65,15 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
         return StatusCode(201, new
         {
             key.Id,
-            Key = rawKey, // Only returned once
+            Key = generated.RawKey, // Only returned once
             key.Name,
             ExpiresAt = key.ExpiresAt?.ToString("o")
         });
     }
 
     [HttpPut]
-    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Update([FromBody] UpdateKeyRequest req)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
-
         if (string.IsNullOrWhiteSpace(req.Id))
             return BadRequest(new { error = "Key id is required" });
 
@@ -122,12 +110,8 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 
     [HttpDelete]
-    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
-
         if (string.IsNullOrWhiteSpace(id))
             return BadRequest(new { error = "Key id is required" });
 
@@ -146,29 +130,23 @@ public class ApiKeysController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost("{id}/rotate")]
-    [RequirePermission(Permissions.ApiKeysManage)]
     public async Task<IActionResult> Rotate(string id)
     {
-        if (User.GetSource() == "api-key")
-            return StatusCode(403, new { error = "API keys cannot be managed via API key auth" });
-
         var userId = User.GetUserId();
         var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
         if (key == null) return NotFound(new { error = "Key not found" });
 
-        // Generate new raw key
-        var rawKey = "kp_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-
-        // Update hash and prefix, reset expiration
-        key.KeyHash = BCrypt.Net.BCrypt.HashPassword(rawKey, 12);
-        key.KeyPrefix = rawKey[3..11];
+        // Replace hash and prefix, reset expiration
+        var generated = ApiKeyGenerator.Generate();
+        key.KeyHash = generated.Hash;
+        key.KeyPrefix = generated.Prefix;
         key.ExpiresAt = DateTime.UtcNow.AddDays(90);
         await db.SaveChangesAsync();
 
         return Ok(new
         {
             key.Id,
-            Key = rawKey,
+            Key = generated.RawKey,
             key.Name,
             ExpiresAt = key.ExpiresAt?.ToString("o")
         });

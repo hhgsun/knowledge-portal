@@ -30,4 +30,16 @@ public static class RbacService
         return RolePermissions.TryGetValue(role, out var permissions)
             && permissions.Contains(permission);
     }
+
+    public static bool CanEditArticle(string role, bool isOwner) =>
+        HasPermission(role, Permissions.ArticlesEditAny)
+        || (isOwner && HasPermission(role, Permissions.ArticlesEditOwn));
+
+    public static bool CanDeleteArticle(string role, bool isOwner) =>
+        HasPermission(role, Permissions.ArticlesDeleteAny)
+        || (isOwner && HasPermission(role, Permissions.ArticlesDeleteOwn));
+
+    /// <summary>Viewers only see published articles or their own; other roles see everything.</summary>
+    public static bool CanViewArticle(string role, string articleStatus, bool isOwner) =>
+        role != "viewer" || articleStatus == "published" || isOwner;
 }

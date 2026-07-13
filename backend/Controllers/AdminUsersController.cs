@@ -69,7 +69,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         var user = new User
         {
             Name = req.Name.Trim(),
-            Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim()),
+            Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim()),
             Email = req.Email.Trim().ToLowerInvariant(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
             Role = req.Role ?? "viewer"
@@ -100,7 +100,7 @@ public class AdminUsersController(AppDbContext db) : ControllerBase
         if (req.Name != null)
         {
             user.Name = req.Name.Trim();
-            user.Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim());
+            user.Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim());
         }
         if (req.Email != null)
         {

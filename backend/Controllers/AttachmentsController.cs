@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
@@ -45,7 +46,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
                 a.FileName,
                 a.ContentType,
                 a.SizeBytes,
-                $"/api/attachments/{a.Id}/download",
+                AttachmentHelper.GetDownloadUrl(a.Id),
                 a.CreatedAt.ToString("o")))
             .ToArrayAsync();
 
@@ -61,11 +62,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
 
         // Permission check: edit_own or edit_any
         var userId = User.GetUserId();
-        var role = User.GetRole();
-        var isOwner = article.OwnerId == userId;
-        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
-        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
-        if (!canEditAny && !canEditOwn)
+        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to upload attachments to this article" });
 
         // Validate file
@@ -99,8 +96,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
 
         // Generate safe stored filename
         var storedFileName = $"{Guid.NewGuid().ToString("N")[..21]}{extension}";
-        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-        var articleDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, articleId));
+        var articleDir = AttachmentHelper.GetArticleDirectory(config, articleId);
         Directory.CreateDirectory(articleDir);
 
         var filePath = Path.Combine(articleDir, storedFileName);
@@ -125,20 +121,14 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
         db.ArticleAttachments.Add(attachment);
         await db.SaveChangesAsync();
 
-        // Trigger re-indexing if article is published
-        if (article.Status == "published")
-        {
-            article.IndexedAt = null;
-            await db.SaveChangesAsync();
-            await ftsService.SyncArticleAsync(article);
-        }
+        await ReindexIfPublishedAsync(article);
 
         return StatusCode(201, new AttachmentResponse(
             attachment.Id,
             attachment.FileName,
             attachment.ContentType,
             attachment.SizeBytes,
-            $"/api/attachments/{attachment.Id}/download",
+            AttachmentHelper.GetDownloadUrl(attachment.Id),
             attachment.CreatedAt.ToString("o")));
     }
 
@@ -149,33 +139,21 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
         if (article == null) return NotFound(new { error = "Article not found" });
 
         // Permission check
-        var userId = User.GetUserId();
-        var role = User.GetRole();
-        var isOwner = article.OwnerId == userId;
-        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
-        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
-        if (!canEditAny && !canEditOwn)
+        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == User.GetUserId()))
             return StatusCode(403, new { error = "You do not have permission to delete attachments from this article" });
 
         var attachment = await db.ArticleAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.ArticleId == articleId);
         if (attachment == null) return NotFound(new { error = "Attachment not found" });
 
         // Delete file from disk
-        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-        var filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, articleId, attachment.StoredFileName));
+        var filePath = AttachmentHelper.GetFilePath(config, articleId, attachment.StoredFileName);
         if (System.IO.File.Exists(filePath))
             System.IO.File.Delete(filePath);
 
         db.ArticleAttachments.Remove(attachment);
         await db.SaveChangesAsync();
 
-        // Trigger re-indexing if article is published
-        if (article.Status == "published")
-        {
-            article.IndexedAt = null;
-            await db.SaveChangesAsync();
-            await ftsService.SyncArticleAsync(article);
-        }
+        await ReindexIfPublishedAsync(article);
 
         return Ok(new { message = "Attachment deleted" });
     }
@@ -200,12 +178,21 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, FullT
         var attachment = await db.ArticleAttachments.FindAsync(id);
         if (attachment == null) return NotFound(new { error = "Attachment not found" });
 
-        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-        var filePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, attachment.ArticleId, attachment.StoredFileName));
+        var filePath = AttachmentHelper.GetFilePath(config, attachment.ArticleId, attachment.StoredFileName);
 
         if (!System.IO.File.Exists(filePath))
             return NotFound(new { error = "File not found on disk" });
 
         return PhysicalFile(filePath, attachment.ContentType, attachment.FileName);
+    }
+
+    // Attachment text is part of the search index, so any attachment change re-queues embedding + FTS sync
+    private async Task ReindexIfPublishedAsync(Article article)
+    {
+        if (article.Status != "published") return;
+
+        article.IndexedAt = null;
+        await db.SaveChangesAsync();
+        await ftsService.SyncArticleAsync(article);
     }
 }

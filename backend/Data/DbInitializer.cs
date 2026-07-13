@@ -27,7 +27,7 @@ public static class DbInitializer
         var usersWithoutSlug = await db.Users.Where(u => u.Slug == "" || u.Slug == null!).ToListAsync();
         foreach (var user in usersWithoutSlug)
         {
-            user.Slug = await GenerateUniqueUserSlugAsync(db, user.Name);
+            user.Slug = await db.GenerateUniqueUserSlugAsync(user.Name);
         }
         if (usersWithoutSlug.Count > 0) await db.SaveChangesAsync();
 
@@ -105,14 +105,7 @@ public static class DbInitializer
             var root = doc.RootElement;
 
             var title = root.GetProperty("title").GetString()!;
-            var baseSlug = SlugHelper.GenerateSlug(title);
-            var slug = baseSlug;
-            var counter = 1;
-            while (await db.Articles.AnyAsync(a => a.Slug == slug))
-            {
-                slug = $"{baseSlug}-{counter}";
-                counter++;
-            }
+            var slug = await db.GenerateUniqueArticleSlugAsync(title);
             var contentType = root.GetProperty("contentType").GetString() ?? "reference";
             var excerpt = root.TryGetProperty("excerpt", out var exc) ? exc.GetString() : null;
             var status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "published" : "published";
@@ -154,18 +147,5 @@ public static class DbInitializer
                 await db.SaveChangesAsync();
             }
         }
-    }
-
-    public static async Task<string> GenerateUniqueUserSlugAsync(AppDbContext db, string name)
-    {
-        var baseSlug = SlugHelper.GenerateSlug(name);
-        var slug = baseSlug;
-        var counter = 1;
-        while (await db.Users.AnyAsync(u => u.Slug == slug))
-        {
-            slug = $"{baseSlug}-{counter}";
-            counter++;
-        }
-        return slug;
     }
 }

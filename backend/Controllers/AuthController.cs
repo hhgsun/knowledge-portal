@@ -53,7 +53,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         var user = new User
         {
             Name = req.Name.Trim(),
-            Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim()),
+            Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim()),
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password, 12),
             Role = "viewer"
@@ -102,7 +102,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
             if (!string.IsNullOrWhiteSpace(req.Name))
             {
                 user.Name = req.Name.Trim();
-                user.Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim());
+                user.Slug = await db.GenerateUniqueUserSlugAsync(req.Name.Trim());
             }
 
             // Update email
@@ -181,7 +181,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
             user = new User
             {
                 Name = graphUser.DisplayName ?? email,
-                Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, graphUser.DisplayName ?? email),
+                Slug = await db.GenerateUniqueUserSlugAsync(graphUser.DisplayName ?? email),
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), 12),
                 Role = "viewer",

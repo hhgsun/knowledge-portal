@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
@@ -13,7 +12,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/tags")]
 [Authorize]
-public partial class TagsController(AppDbContext db) : ControllerBase
+public class TagsController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List()
@@ -37,7 +36,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 50)
             return BadRequest(new { error = "Name is required (1-50 chars)" });
 
-        var slug = TagSlugRegex().Replace(SlugHelper.Transliterate(req.Name.ToLowerInvariant().Trim()), "-").Trim('-');
+        var slug = SlugHelper.GenerateTagSlug(req.Name);
 
         var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
         if (existing != null)
@@ -63,7 +62,7 @@ public partial class TagsController(AppDbContext db) : ControllerBase
         var tag = await db.Tags.FindAsync(req.Id);
         if (tag == null) return NotFound(new { error = "Tag not found" });
 
-        var newSlug = TagSlugRegex().Replace(SlugHelper.Transliterate(req.Name.ToLowerInvariant().Trim()), "-").Trim('-');
+        var newSlug = SlugHelper.GenerateTagSlug(req.Name);
 
         var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == newSlug && t.Id != req.Id);
         if (existing != null)
@@ -95,9 +94,5 @@ public partial class TagsController(AppDbContext db) : ControllerBase
 
         return Ok(new { message = "Tag deleted" });
     }
-
-    [GeneratedRegex(@"[^a-z0-9]+")]
-    private static partial Regex TagSlugRegex();
-
 }
 

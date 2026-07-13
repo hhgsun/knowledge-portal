@@ -120,14 +120,12 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             var tagResultsRaw = await tagQuery.OrderByDescending(a => a.UpdatedAt).Take(limit)
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
-            var tagAttachmentMap = includeAttachments ? await GetAttachmentMap(tagResultsRaw.Select(a => a.Id).ToList()) : null;
+            var tagAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, tagResultsRaw.Select(a => a.Id).ToList()) : null;
             var tagEnrichment = await GetEnrichmentAsync(tagResultsRaw.Select(a => a.Id));
             var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, tagAttachmentMap, tagEnrichment.GetValueOrDefault(a.Id))).ToList();
 
             sw.Stop();
-            var tagSearchRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = tagResults.Count, SearchType = "tag", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
-            db.SearchQueries.Add(tagSearchRecord);
-            await db.SaveChangesAsync();
+            var tagSearchRecord = await RecordSearchAsync(q, tagResults.Count, "tag", sw.ElapsedMilliseconds);
             return Ok(new { results = tagResults, query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count, searchQueryId = tagSearchRecord.Id });
         }
 
@@ -156,9 +154,7 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             {
                 var ragResult = await ragService.AskAsync(searchQuery);
                 sw.Stop();
-                var ragRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = ragResult.Sources.Count, SearchType = "rag", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
-                db.SearchQueries.Add(ragRecord);
-                await db.SaveChangesAsync();
+                var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
             }
             catch (Exception ex)
@@ -186,16 +182,14 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                     .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                     .ToListAsync();
 
-                var semAttachmentMap = includeAttachments ? await GetAttachmentMap(articles.Select(a => a.Id).ToList()) : null;
+                var semAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, articles.Select(a => a.Id).ToList()) : null;
                 var semEnrichment = await GetEnrichmentAsync(articles.Select(a => a.Id));
                 var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(sr.Score, 4), null, includeContent, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id)); })
+                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id), Math.Round(sr.Score, 4)); })
                     .Where(r => r != null).ToList();
 
                 sw.Stop();
-                var semRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = scoredResults.Count, SearchType = "semantic", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
-                db.SearchQueries.Add(semRecord);
-                await db.SaveChangesAsync();
+                var semRecord = await RecordSearchAsync(q, scoredResults.Count, "semantic", sw.ElapsedMilliseconds);
                 return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, indexingPending, searchQueryId = semRecord.Id });
             }
             catch
@@ -205,10 +199,10 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
             }
         }
 
-        // ═══ HYBRID (FTS5 + semantic via RRF) ═══
+        // ═══ HYBRID (full-text + semantic via RRF) ═══
         if (type == "hybrid")
         {
-            // FTS5 fulltext results (ranked by BM25)
+            // PostgreSQL full-text results (weighted tsvector ranking)
             var ftsHybridResults = await ftsService.SearchAsync(searchQuery, limit);
             List<(string Id, string Title, string Slug, string? Excerpt, string ContentType, string UpdatedAt)> fulltextResults;
 
@@ -272,24 +266,22 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
-            var hybridAttachmentMap = includeAttachments ? await GetAttachmentMap(allArticles.Select(a => a.Id).ToList()) : null;
+            var hybridAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, allArticles.Select(a => a.Id).ToList()) : null;
             var hybridEnrichment = await GetEnrichmentAsync(allArticles.Select(a => a.Id));
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildScoredResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, Math.Round(kv.Value.Score, 4), kv.Value.MatchType, includeContent, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id)); })
+                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(kv.Value.Score, 4), kv.Value.MatchType); })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
-            var hybridRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = hybridResults.Count, SearchType = "hybrid", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
-            db.SearchQueries.Add(hybridRecord);
-            await db.SaveChangesAsync();
+            var hybridRecord = await RecordSearchAsync(q, hybridResults.Count, "hybrid", sw.ElapsedMilliseconds);
 
             var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : (string?)null;
             return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, indexingPending, searchQueryId = hybridRecord.Id, warning });
         }
 
-        // ═══ FULLTEXT (default) — uses FTS5 with BM25 ranking ═══
+        // ═══ FULLTEXT (default) — PostgreSQL tsvector with weighted ranking ═══
         var ftsResults = await ftsService.SearchAsync(searchQuery, limit);
-        List<object> ftFinalResults;
+        List<SearchResultDto> ftFinalResults;
 
         if (ftsResults.Count > 0)
         {
@@ -299,9 +291,9 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
 
-            var ftAttachmentMap = includeAttachments ? await GetAttachmentMap(ftArticles.Select(a => a.Id).ToList()) : null;
+            var ftAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, ftArticles.Select(a => a.Id).ToList()) : null;
             var ftEnrichment = await GetEnrichmentAsync(ftArticles.Select(a => a.Id));
-            // Preserve FTS5 BM25 ranking order
+            // Preserve full-text ranking order
             ftFinalResults = ftsResults
                 .Select(fr => ftArticles.FirstOrDefault(a => a.Id == fr.ArticleId))
                 .Where(a => a != null)
@@ -317,15 +309,13 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
                 .OrderByDescending(a => a.UpdatedAt).Take(limit)
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
-            var fallbackAttachmentMap = includeAttachments ? await GetAttachmentMap(fallbackArticles.Select(a => a.Id).ToList()) : null;
+            var fallbackAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, fallbackArticles.Select(a => a.Id).ToList()) : null;
             var fallbackEnrichment = await GetEnrichmentAsync(fallbackArticles.Select(a => a.Id));
             ftFinalResults = fallbackArticles.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, fallbackAttachmentMap, fallbackEnrichment.GetValueOrDefault(a.Id))).ToList();
         }
 
         sw.Stop();
-        var ftRecord = new SearchQuery { Query = q.Trim(), UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null, ResultsCount = ftFinalResults.Count, SearchType = "fulltext", ResponseTimeMs = (int)sw.ElapsedMilliseconds };
-        db.SearchQueries.Add(ftRecord);
-        await db.SaveChangesAsync();
+        var ftRecord = await RecordSearchAsync(q, ftFinalResults.Count, "fulltext", sw.ElapsedMilliseconds);
         return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftFinalResults.Count, indexingPending, searchQueryId = ftRecord.Id });
     }
 
@@ -407,27 +397,19 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
         return query;
     }
 
-    private static string? ExtractPlainText(string? contentJson)
+    private async Task<SearchQuery> RecordSearchAsync(string query, int resultsCount, string searchType, long elapsedMs)
     {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
+        var record = new SearchQuery
         {
-            var text = ContentExtractor.ExtractTextFromJson(System.Text.Json.JsonDocument.Parse(contentJson).RootElement);
-            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-        }
-        catch { return null; }
-    }
-
-    private async Task<Dictionary<string, List<object>>> GetAttachmentMap(List<string> articleIds)
-    {
-        var attachments = await db.ArticleAttachments
-            .Where(a => articleIds.Contains(a.ArticleId))
-            .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes })
-            .ToListAsync();
-
-        return attachments.GroupBy(a => a.ArticleId).ToDictionary(
-            g => g.Key,
-            g => g.Select(a => (object)new { a.Id, a.FileName, a.ContentType, a.SizeBytes, DownloadUrl = $"/api/attachments/{a.Id}/download" }).ToList());
+            Query = query.Trim(),
+            UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
+            ResultsCount = resultsCount,
+            SearchType = searchType,
+            ResponseTimeMs = (int)elapsedMs
+        };
+        db.SearchQueries.Add(record);
+        await db.SaveChangesAsync();
+        return record;
     }
 
     private record SearchEnrichment(string Status, string OwnerName, string? ApiKeyName, List<object> Tags, int ViewCount, double WilsonScore);
@@ -467,40 +449,20 @@ public class SearchController(AppDbContext db, IConfiguration config, FullTextSe
         );
     }
 
-    private static object BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, SearchEnrichment? enrichment)
+    private static SearchResultDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, SearchEnrichment? enrichment, double? score = null, string? matchType = null)
     {
-        var attachments = attachmentMap?.GetValueOrDefault(id);
-        return new
-        {
-            Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt,
-            Status = enrichment?.Status,
-            OwnerName = enrichment?.OwnerName,
-            ApiKeyName = enrichment?.ApiKeyName,
-            Tags = enrichment?.Tags,
-            ViewCount = enrichment?.ViewCount ?? 0,
-            WilsonScore = enrichment?.WilsonScore ?? 0.0,
-            Content = includeContent ? ExtractPlainText(content) : null,
-            Attachments = attachments
-        };
-    }
-
-    private static object? BuildScoredResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, double score, string? matchType, bool includeContent, Dictionary<string, List<object>>? attachmentMap, SearchEnrichment? enrichment)
-    {
-        var attachments = attachmentMap?.GetValueOrDefault(id);
-        return new
-        {
-            Id = id, Title = title, Slug = slug, Excerpt = excerpt, ContentType = contentType, UpdatedAt = updatedAt,
-            Status = enrichment?.Status,
-            OwnerName = enrichment?.OwnerName,
-            ApiKeyName = enrichment?.ApiKeyName,
-            Tags = enrichment?.Tags,
-            ViewCount = enrichment?.ViewCount ?? 0,
-            WilsonScore = enrichment?.WilsonScore ?? 0.0,
-            Score = score,
-            MatchType = matchType,
-            Content = includeContent ? ExtractPlainText(content) : null,
-            Attachments = attachments
-        };
+        return new SearchResultDto(
+            id, title, slug, excerpt, contentType, updatedAt,
+            enrichment?.Status,
+            enrichment?.OwnerName,
+            enrichment?.ApiKeyName,
+            enrichment?.Tags,
+            enrichment?.ViewCount ?? 0,
+            enrichment?.WilsonScore ?? 0.0,
+            score,
+            matchType,
+            includeContent ? ContentExtractor.ExtractPlainText(content) : null,
+            attachmentMap?.GetValueOrDefault(id));
     }
 }
 

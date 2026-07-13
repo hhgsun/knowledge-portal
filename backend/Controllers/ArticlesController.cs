@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
@@ -15,7 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles")]
 [Authorize]
-public partial class ArticlesController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
+public class ArticlesController(AppDbContext db, IConfiguration config, FullTextSearchService ftsService) : ControllerBase
 {
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
 
@@ -121,16 +120,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         // Attachment map if requested
         Dictionary<string, List<object>>? attachmentMap = null;
         if (includeAttachments)
-        {
-            var articleIds = articles.Select(a => a.Id).ToList();
-            var attachments = await db.ArticleAttachments
-                .Where(att => articleIds.Contains(att.ArticleId))
-                .Select(att => new { att.Id, att.ArticleId, att.FileName, att.ContentType, att.SizeBytes })
-                .ToListAsync();
-            attachmentMap = attachments.GroupBy(att => att.ArticleId).ToDictionary(
-                g => g.Key,
-                g => g.Select(att => (object)new { att.Id, att.FileName, att.ContentType, att.SizeBytes, DownloadUrl = $"/api/attachments/{att.Id}/download" }).ToList());
-        }
+            attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, articles.Select(a => a.Id).ToList());
 
         // Content map if requested
         Dictionary<string, string?>? contentMap = null;
@@ -141,7 +131,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
                 .Where(a => articleIds.Contains(a.Id))
                 .Select(a => new { a.Id, a.Content })
                 .ToListAsync();
-            contentMap = contents.ToDictionary(c => c.Id, c => ExtractPlainText(c.Content));
+            contentMap = contents.ToDictionary(c => c.Id, c => ContentExtractor.ExtractPlainText(c.Content));
         }
 
         var articlesWithScore = articles.Select(a => new
@@ -175,14 +165,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
 
-        var slug = GenerateSlug(req.Title);
-        // Ensure unique slug
-        var baseSlug = slug;
-        var counter = 1;
-        while (await db.Articles.AnyAsync(a => a.Slug == slug))
-        {
-            slug = $"{baseSlug}-{counter++}";
-        }
+        var slug = await db.GenerateUniqueArticleSlugAsync(req.Title);
 
         var userId = User.GetUserId();
         var role = User.GetRole();
@@ -220,25 +203,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             Version = 1
         });
 
-        // Tags (supports ID, name, or slug; auto-creates when via API key)
         if (req.Tags?.Length > 0)
-        {
-            var isApiKey = User.GetSource() == "api-key";
-            foreach (var tagInput in req.Tags)
-            {
-                var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
-                       ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
-                if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
-                {
-                    var tagSlug = GenerateTagSlug(tagInput);
-                    tag = new Tag { Name = tagInput.Trim(), Slug = tagSlug };
-                    db.Tags.Add(tag);
-                    await db.SaveChangesAsync();
-                }
-                if (tag != null)
-                    db.ArticleTags.Add(new ArticleTag { ArticleId = article.Id, TagId = tag.Id });
-            }
-        }
+            await AttachTagsAsync(article.Id, req.Tags);
 
         await db.SaveChangesAsync();
 
@@ -268,7 +234,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         // Viewers can only see published articles or their own
         var role = User.GetRole();
         var userId = User.GetUserId();
-        if (role == "viewer" && article.Status != "published" && article.OwnerId != userId)
+        if (!RbacService.CanViewArticle(role, article.Status, article.OwnerId == userId))
             return NotFound(new { error = "Article not found" });
 
         // Record view (deduplicated per user/article within 15 minutes)
@@ -292,17 +258,14 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
 
-        var attachments = await db.ArticleAttachments
-            .Where(a => a.ArticleId == article.Id)
-            .OrderBy(a => a.CreatedAt)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.SizeBytes, DownloadUrl = $"/api/attachments/{a.Id}/download" })
-            .ToListAsync();
+        var attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, [article.Id]);
+        var attachments = attachmentMap.GetValueOrDefault(article.Id) ?? [];
 
         return Ok(new
         {
             article.Id, article.Title, article.Slug, article.Excerpt,
             Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
-            ContentText = ExtractPlainText(article.Content),
+            ContentText = ContentExtractor.ExtractPlainText(article.Content),
             article.Status, article.ContentType,
             article.OwnerId, article.ReadTimeMinutes,
             UpdatedAt = article.UpdatedAt.ToString("o"),
@@ -324,11 +287,8 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         var userId = User.GetUserId();
         var role = User.GetRole();
-        var isOwner = article.OwnerId == userId;
 
-        var canEditAny = RbacService.HasPermission(role, Permissions.ArticlesEditAny);
-        var canEditOwn = RbacService.HasPermission(role, Permissions.ArticlesEditOwn) && isOwner;
-        if (!canEditAny && !canEditOwn)
+        if (!RbacService.CanEditArticle(role, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
         var validContentTypes = await GetValidContentTypesAsync();
@@ -404,26 +364,11 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
             });
         }
 
-        // Update tags (supports ID, name, or slug; auto-creates when via API key)
         if (req.Tags != null)
         {
-            var isApiKey = User.GetSource() == "api-key";
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
-            foreach (var tagInput in req.Tags)
-            {
-                var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
-                       ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
-                if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
-                {
-                    var tagSlug = GenerateTagSlug(tagInput);
-                    tag = new Tag { Name = tagInput.Trim(), Slug = tagSlug };
-                    db.Tags.Add(tag);
-                    await db.SaveChangesAsync();
-                }
-                if (tag != null)
-                    db.ArticleTags.Add(new ArticleTag { ArticleId = id, TagId = tag.Id });
-            }
+            await AttachTagsAsync(id, req.Tags);
         }
 
         await db.SaveChangesAsync();
@@ -431,7 +376,7 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         // Update slug if title changed
         if (req.Title != null)
         {
-            var newSlug = GenerateSlug(req.Title);
+            var newSlug = SlugHelper.GenerateArticleSlug(req.Title);
             if (newSlug != article.Slug && !await db.Articles.AnyAsync(a => a.Slug == newSlug && a.Id != id))
             {
                 article.Slug = newSlug;
@@ -453,16 +398,12 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
 
         var userId = User.GetUserId();
         var role = User.GetRole();
-        var isOwner = article.OwnerId == userId;
 
-        var canDeleteAny = RbacService.HasPermission(role, Permissions.ArticlesDeleteAny);
-        var canDeleteOwn = RbacService.HasPermission(role, Permissions.ArticlesDeleteOwn) && isOwner;
-        if (!canDeleteAny && !canDeleteOwn)
+        if (!RbacService.CanDeleteArticle(role, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
         // Clean up attachment files from disk
-        var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-        var articleDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, id));
+        var articleDir = AttachmentHelper.GetArticleDirectory(config, id);
         if (Directory.Exists(articleDir))
             Directory.Delete(articleDir, true);
 
@@ -555,42 +496,23 @@ public partial class ArticlesController(AppDbContext db, IConfiguration config, 
         return Ok(new { articles = related });
     }
 
-    private static string GenerateSlug(string title)
+    // Resolves each input as tag ID, name, or slug; auto-creates missing tags when called via API key
+    private async Task AttachTagsAsync(string articleId, string[] tags)
     {
-        var slug = SlugHelper.Transliterate(title.ToLowerInvariant().Trim());
-        slug = SlugRegex().Replace(slug, "");
-        slug = WhitespaceRegex().Replace(slug, "-");
-        slug = slug.Trim('-');
-        return slug.Length > 100 ? slug[..100] : slug;
-    }
-
-    private static string GenerateTagSlug(string name)
-    {
-        var slug = SlugHelper.Transliterate(name.ToLowerInvariant().Trim());
-        slug = TagSlugRegex().Replace(slug, "-").Trim('-');
-        return slug.Length > 50 ? slug[..50] : slug;
-    }
-
-
-
-    [GeneratedRegex(@"[^a-z0-9\s-]")]
-    private static partial Regex SlugRegex();
-
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex WhitespaceRegex();
-
-    [GeneratedRegex(@"[^a-z0-9]+")]
-    private static partial Regex TagSlugRegex();
-
-    private static string? ExtractPlainText(string? contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
+        var isApiKey = User.GetSource() == "api-key";
+        foreach (var tagInput in tags)
         {
-            var text = ContentExtractor.ExtractTextFromJson(System.Text.Json.JsonDocument.Parse(contentJson).RootElement);
-            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == tagInput)
+                   ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == tagInput || t.Slug == tagInput);
+            if (tag == null && isApiKey && !string.IsNullOrWhiteSpace(tagInput))
+            {
+                tag = new Tag { Name = tagInput.Trim(), Slug = SlugHelper.GenerateTagSlug(tagInput) };
+                db.Tags.Add(tag);
+                await db.SaveChangesAsync();
+            }
+            if (tag != null)
+                db.ArticleTags.Add(new ArticleTag { ArticleId = articleId, TagId = tag.Id });
         }
-        catch { return null; }
     }
 }
 
