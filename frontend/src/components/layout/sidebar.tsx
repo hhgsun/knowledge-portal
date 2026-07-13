@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   BookOpen,
   Search,
@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   Key,
-  LogOut,
   BookSearch,
   PanelLeftClose,
   PanelLeftOpen,
@@ -116,9 +115,8 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
 }
 
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { theme, setTheme } = useTheme();
-  const navigate = useNavigate();
   const { pathname } = useLocation();
   const role = user?.role;
   const isAdmin = role === "admin";
@@ -245,17 +243,6 @@ export function Sidebar() {
             {theme === "light" ? <Sun size={16} /> : theme === "dark" ? <Moon size={16} /> : <Monitor size={16} />}
           </button>
         </div>
-        <button
-          onClick={() => { logout(); navigate("/login"); }}
-          title={collapsed ? "Sign out" : undefined}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100 transition-colors w-full",
-            collapsed && "justify-center px-2"
-          )}
-        >
-          <LogOut size={18} />
-          {!collapsed && "Sign out"}
-        </button>
       </div>
 
       {/* Copyright */}

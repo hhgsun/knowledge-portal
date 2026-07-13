@@ -212,7 +212,7 @@ tags    = call_tool("list_tags")`;
               {authTab === "bearer" && token && <CopyBtn text={`Bearer ${token}`} label="Bearer Value" />}
               {authTab === "apikey" && (
                 <a
-                  href="/profile"
+                  href="/profile?tab=api-keys"
                   onClick={onClose}
                   className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors shrink-0"
                 >
@@ -242,7 +242,7 @@ tags    = call_tool("list_tags")`;
                       <p className="text-[11px] text-zinc-400 text-center">+{keys.length - 3} daha</p>
                     )}
                     <a
-                      href="/profile"
+                      href="/profile?tab=api-keys"
                       onClick={onClose}
                       className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
                     >

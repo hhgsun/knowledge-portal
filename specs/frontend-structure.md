@@ -56,7 +56,7 @@ frontend/
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
     ├── TagsPage.tsx           # Tag management: list, edit, delete (admin/editor only)
-    ├── ProfilePage.tsx        # Profile settings: name/email update + password change + own API keys (api-keys-section)
+    ├── ProfilePage.tsx        # Profile settings, tabbed (?tab=): Personal Info | Password | API Keys (api-keys-section)
     ├── LookupsPage.tsx        # Lookup value management (content types, difficulties)
     ├── LogsPage.tsx           # System log viewer: date-based log files, view/delete (admin only)
     ├── McpPage.tsx            # MCP integration guide: endpoint info, config snippets, API key shortcuts (admin only)

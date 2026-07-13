@@ -77,7 +77,7 @@ export default function App() {
           <Route path="/tags" element={<RoleRoute roles={["admin", "editor"]}><TagsPage /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
           <Route path="/admin/keys" element={<RoleRoute roles={["admin"]}><AdminApiKeysPage /></RoleRoute>} />
-          <Route path="/settings/keys" element={<Navigate to="/profile" replace />} />
+          <Route path="/settings/keys" element={<Navigate to="/profile?tab=api-keys" replace />} />
           <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
