@@ -148,13 +148,13 @@ Behavior:
 
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
-| `name` | string | No | Min 1 char, trimmed |
-| `email` | string | No | Valid email, unique |
+| `name` | string | No | Min 1 char, trimmed. Rejected (400) for Azure AD users — managed by Microsoft account |
+| `email` | string | No | Valid email, unique. Rejected (400) for Azure AD users — managed by Microsoft account |
 | `currentPassword` | string | No | Required if changing password (not required for Azure users setting password first time) |
 | `newPassword` | string | No | 8–128 characters |
 
 **200 Response**: `{ "id", "name", "email", "role" }`
-**400**: Validation error (password length, current password incorrect).
+**400**: Validation error (password length, current password incorrect, Azure-managed name/email change attempt).
 **409**: Email already in use.
 
 ---

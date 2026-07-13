@@ -86,22 +86,35 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         var user = await db.Users.FindAsync(userId);
         if (user == null) return Unauthorized(new { error = "User not found" });
 
-        // Update name
-        if (!string.IsNullOrWhiteSpace(req.Name))
-        {
-            user.Name = req.Name.Trim();
-            user.Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim());
-        }
+        var isAzureUser = user.AzureObjectId != null;
 
-        // Update email
-        if (!string.IsNullOrWhiteSpace(req.Email))
+        // Name and email of Azure AD users are re-synced from Microsoft Graph on every login
+        if (isAzureUser)
         {
-            var normalizedEmail = req.Email.Trim().ToLowerInvariant();
-            if (normalizedEmail != user.Email)
+            if (!string.IsNullOrWhiteSpace(req.Name) && req.Name.Trim() != user.Name)
+                return BadRequest(new { error = "Name is managed by your Microsoft account and cannot be changed" });
+            if (!string.IsNullOrWhiteSpace(req.Email) && req.Email.Trim().ToLowerInvariant() != user.Email)
+                return BadRequest(new { error = "Email is managed by your Microsoft account and cannot be changed" });
+        }
+        else
+        {
+            // Update name
+            if (!string.IsNullOrWhiteSpace(req.Name))
             {
-                if (await db.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != userId))
-                    return Conflict(new { error = "Email already in use" });
-                user.Email = normalizedEmail;
+                user.Name = req.Name.Trim();
+                user.Slug = await DbInitializer.GenerateUniqueUserSlugAsync(db, req.Name.Trim());
+            }
+
+            // Update email
+            if (!string.IsNullOrWhiteSpace(req.Email))
+            {
+                var normalizedEmail = req.Email.Trim().ToLowerInvariant();
+                if (normalizedEmail != user.Email)
+                {
+                    if (await db.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != userId))
+                        return Conflict(new { error = "Email already in use" });
+                    user.Email = normalizedEmail;
+                }
             }
         }
 
@@ -112,7 +125,6 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
                 return BadRequest(new { error = "New password must be 8-128 characters" });
 
             // Azure users setting password for the first time don't need currentPassword
-            var isAzureUser = user.AzureObjectId != null;
             var isFirstPasswordSet = isAzureUser && string.IsNullOrWhiteSpace(req.CurrentPassword);
 
             if (!isFirstPasswordSet)
