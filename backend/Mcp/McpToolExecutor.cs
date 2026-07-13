@@ -15,11 +15,13 @@ public class McpToolExecutor
 {
     private readonly AppDbContext _db;
     private readonly ArticleService _articleService;
+    private readonly TagService _tagService;
 
-    public McpToolExecutor(AppDbContext db, ArticleService articleService)
+    public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService)
     {
         _db = db;
         _articleService = articleService;
+        _tagService = tagService;
     }
 
     // ─── Tool Registry ─────────────────────────────────────────────────
@@ -33,7 +35,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "search_articles",
-                    Description = "Search published articles in Knowledge Portal using full-text search. Returns matching articles with title, excerpt, author, tags, and optionally full content.",
+                    Description = "Search published articles in Knowledge Portal using full-text search. Returns matching article summaries (title, excerpt, ownerName, tags, viewCount, …) and optionally full content as plain text.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
@@ -51,7 +53,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "get_article",
-                    Description = "Get full details of a specific published article by its ID or URL slug. Returns title, content, author, tags, attachments, and metadata.",
+                    Description = "Get full details of a specific published article by its ID or URL slug. Returns title, contentText (plain text), content (TipTap JSON), owner, tags, attachments, and metadata — the same shape as the REST article detail endpoint.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
@@ -150,26 +152,9 @@ public class McpToolExecutor
             TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
         var articles = await _articleService.SearchPublishedAsync(query, limit, filter);
+        var summaries = await _articleService.BuildSummariesAsync(articles, includeContent);
 
-        var ordered = articles
-            .Select(a => new
-            {
-                id = a.Id,
-                title = a.Title,
-                slug = a.Slug,
-                excerpt = a.Excerpt,
-                contentType = a.ContentType,
-                author = a.Owner?.Name,
-                authorSlug = a.Owner?.Slug,
-                tags = a.ArticleTags.Select(at => new { name = at.Tag.Name, slug = at.Tag.Slug }),
-                readTimeMinutes = a.ReadTimeMinutes,
-                createdAt = a.CreatedAt.ToString("o"),
-                updatedAt = a.UpdatedAt.ToString("o"),
-                content = includeContent ? ContentExtractor.ExtractPlainText(a.Content) : null
-            })
-            .ToList();
-
-        var result = new { articles = ordered, total = ordered.Count, query };
+        var result = new { articles = summaries, total = summaries.Count, query };
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
     }
 
@@ -179,42 +164,13 @@ public class McpToolExecutor
         if (string.IsNullOrWhiteSpace(idOrSlug))
             return ErrorResult("Parameter 'id_or_slug' is required");
 
-        var article = await _db.Articles
-            .Include(a => a.Owner)
-            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .Include(a => a.Attachments)
-            .FirstOrDefaultAsync(a => a.Id == idOrSlug || a.Slug == idOrSlug);
-
+        // Same loader + detail builder as GET /api/articles/{idOrSlug}
+        var article = await _articleService.GetByIdOrSlugAsync(idOrSlug);
         if (article == null || article.Status != "published")
             return ErrorResult("Article not found or not published");
 
-        var result = new
-        {
-            id = article.Id,
-            title = article.Title,
-            slug = article.Slug,
-            excerpt = article.Excerpt,
-            status = article.Status,
-            contentType = article.ContentType,
-            author = article.Owner?.Name,
-            authorSlug = article.Owner?.Slug,
-            tags = article.ArticleTags.Select(at => new { name = at.Tag.Name, slug = at.Tag.Slug }),
-            readTimeMinutes = article.ReadTimeMinutes,
-            createdAt = article.CreatedAt.ToString("o"),
-            updatedAt = article.UpdatedAt.ToString("o"),
-            publishedAt = article.PublishedAt?.ToString("o"),
-            content = ContentExtractor.ExtractPlainText(article.Content),
-            attachments = article.Attachments.Select(att => new
-            {
-                id = att.Id,
-                fileName = att.FileName,
-                contentType = att.ContentType,
-                sizeBytes = att.SizeBytes,
-                downloadUrl = $"/api/attachments/{att.Id}/download"
-            })
-        };
-
-        return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
+        var detail = await _articleService.BuildDetailAsync(article);
+        return TextResult(JsonSerializer.Serialize(detail, _jsonOptions));
     }
 
     private async Task<McpToolCallResult> ListArticlesAsync(JsonElement? args)
@@ -225,61 +181,22 @@ public class McpToolExecutor
         var tags = GetString(args, "tags");
         var sort = GetString(args, "sort") ?? "newest";
 
-        var query = _db.Articles
-            .Include(a => a.Owner)
-            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .WherePublished();
+        // Same filter + paging + summary pipeline as GET /api/articles
+        var filter = new ArticleFilter(
+            ContentTypes: string.IsNullOrWhiteSpace(contentType) ? null : [contentType],
+            TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter);
 
-        if (!string.IsNullOrWhiteSpace(contentType))
-            query = query.Where(a => a.ContentType == contentType);
+        var (articles, total) = await _articleService.ListAsync(query, page, limit, sort);
 
-        if (!string.IsNullOrWhiteSpace(tags))
-            query = query.WhereHasAllTags(tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-
-        query = sort switch
-        {
-            "oldest" => query.OrderBy(a => a.CreatedAt),
-            "most_viewed" => query.OrderByDescending(a => a.Views.Count),
-            _ => query.OrderByDescending(a => a.CreatedAt)
-        };
-
-        var total = await query.CountAsync();
-        var articles = await query
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .ToListAsync();
-
-        var results = articles.Select(a => new
-        {
-            id = a.Id,
-            title = a.Title,
-            slug = a.Slug,
-            excerpt = a.Excerpt,
-            contentType = a.ContentType,
-            author = a.Owner?.Name,
-            authorSlug = a.Owner?.Slug,
-            tags = a.ArticleTags.Select(at => new { name = at.Tag.Name, slug = at.Tag.Slug }),
-            readTimeMinutes = a.ReadTimeMinutes,
-            createdAt = a.CreatedAt.ToString("o")
-        });
-
-        var result = new { articles = results, total, page, limit, totalPages = (int)Math.Ceiling((double)total / limit) };
+        var result = new { articles, total, page, limit, totalPages = (int)Math.Ceiling((double)total / limit) };
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
     }
 
     private async Task<McpToolCallResult> ListTagsAsync()
     {
-        var tags = await _db.Tags
-            .Include(t => t.ArticleTags)
-            .OrderBy(t => t.Name)
-            .Select(t => new
-            {
-                id = t.Id,
-                name = t.Name,
-                slug = t.Slug,
-                articleCount = t.ArticleTags.Count(at => at.Article.Status == "published")
-            })
-            .ToListAsync();
+        // Same listing as GET /api/tags, restricted to published article counts
+        var tags = await _tagService.ListWithCountsAsync(publishedOnly: true);
 
         var result = new { tags, total = tags.Count };
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
@@ -291,19 +208,8 @@ public class McpToolExecutor
         var totalAuthors = await _db.Users.CountAsync();
         var totalTags = await _db.Tags.CountAsync();
 
-        var recentArticles = await _db.Articles
-            .Include(a => a.Owner)
-            .WherePublished()
-            .OrderByDescending(a => a.CreatedAt)
-            .Take(5)
-            .Select(a => new
-            {
-                title = a.Title,
-                slug = a.Slug,
-                author = a.Owner!.Name,
-                createdAt = a.CreatedAt.ToString("o")
-            })
-            .ToListAsync();
+        // Same summary pipeline as the dashboard's recent-articles list
+        var (recentArticles, _) = await _articleService.ListAsync(_db.Articles.WherePublished(), 1, 5, "newest");
 
         var contentTypes = await _db.Articles
             .WherePublished()

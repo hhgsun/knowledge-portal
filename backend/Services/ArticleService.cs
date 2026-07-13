@@ -1,5 +1,7 @@
+using System.Text.Json;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +16,10 @@ public record ArticleFilter(
     IEnumerable<string>? TagSlugs = null);
 
 /// <summary>Presentation metadata shared by article list and search responses.</summary>
-public record ArticleEnrichment(string Status, string OwnerName, string? ApiKeyName, List<object> Tags, int ViewCount, double WilsonScore);
+public record ArticleEnrichment(
+    string Status, string OwnerName, string? OwnerSlug, string? ApiKeyName,
+    List<object> Tags, int ViewCount, double WilsonScore,
+    string CreatedAt, int? ReadTimeMinutes);
 
 /// <summary>
 /// Shared article operations: search/listing queries, versioning, tag linking,
@@ -134,13 +139,16 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 a.Id,
                 a.Status,
                 OwnerName = a.Owner.Name,
+                OwnerSlug = a.Owner.Slug,
                 ApiKeyName = a.CreatedViaApiKeyId != null
                     ? db.ApiKeys.Where(k => k.Id == a.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefault()
                     : null,
                 Tags = a.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
                 ViewCount = db.ArticleViews.Count(v => v.ArticleId == a.Id),
                 HelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && v.IsHelpful),
-                NotHelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && !v.IsHelpful)
+                NotHelpfulCount = db.ArticleVotes.Count(v => v.ArticleId == a.Id && !v.IsHelpful),
+                a.CreatedAt,
+                a.ReadTimeMinutes
             })
             .ToListAsync();
 
@@ -149,9 +157,126 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             a => new ArticleEnrichment(
                 a.Status,
                 a.OwnerName,
+                a.OwnerSlug,
                 a.ApiKeyName,
                 a.Tags.Select(t => (object)new { t.Id, t.Name, t.Slug }).ToList(),
                 a.ViewCount,
-                SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount)));
+                SlugHelper.WilsonScore(a.HelpfulCount, a.NotHelpfulCount),
+                a.CreatedAt.ToString("o"),
+                a.ReadTimeMinutes));
+    }
+
+    /// <summary>Loads an article by ID or slug with Owner and Tags included (tracked).</summary>
+    public Task<Article?> GetByIdOrSlugAsync(string idOrSlug)
+        => db.Articles
+            .Include(a => a.Owner)
+            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
+            .FirstOrDefaultAsync(a => a.Id == idOrSlug || a.Slug == idOrSlug);
+
+    /// <summary>
+    /// Builds the full article detail shared by the REST detail endpoint and the MCP get_article tool.
+    /// The article must have Owner and Tags loaded (see <see cref="GetByIdOrSlugAsync"/>).
+    /// </summary>
+    public async Task<ArticleDetailDto> BuildDetailAsync(Article article)
+    {
+        var apiKeyName = article.CreatedViaApiKeyId != null
+            ? await db.ApiKeys.Where(k => k.Id == article.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefaultAsync()
+            : null;
+        var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
+        var attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, [article.Id]);
+
+        return new ArticleDetailDto(
+            article.Id, article.Title, article.Slug, article.Excerpt,
+            article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
+            ContentExtractor.ExtractPlainText(article.Content),
+            article.Status, article.ContentType,
+            article.OwnerId, article.Owner?.Name, article.Owner?.Slug, apiKeyName,
+            article.ReadTimeMinutes,
+            article.CreatedAt.ToString("o"), article.UpdatedAt.ToString("o"),
+            article.PublishedAt?.ToString("o"), article.LastReviewedAt?.ToString("o"),
+            article.ArticleTags.Select(at => (object)new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
+            viewCount,
+            attachmentMap.GetValueOrDefault(article.Id) ?? []);
+    }
+
+    /// <summary>Builds enriched summaries for already-loaded articles, preserving their order (e.g. search rank).</summary>
+    public async Task<List<ArticleSummaryDto>> BuildSummariesAsync(IReadOnlyList<Article> articles, bool includeContent = false, bool includeAttachments = false)
+    {
+        var ids = articles.Select(a => a.Id).ToList();
+        var enrichment = await GetEnrichmentAsync(ids);
+        var attachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, ids) : null;
+
+        return articles.Select(a => BuildSummary(
+                a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt.ToString("o"),
+                enrichment.GetValueOrDefault(a.Id),
+                includeContent ? ContentExtractor.ExtractPlainText(a.Content) : null,
+                attachmentMap?.GetValueOrDefault(a.Id)))
+            .ToList();
+    }
+
+    /// <summary>Single construction point for the shared article summary shape.</summary>
+    public static ArticleSummaryDto BuildSummary(
+        string id, string title, string slug, string? excerpt, string contentType, string updatedAt,
+        ArticleEnrichment? enrichment, string? content = null, List<object>? attachments = null,
+        double? score = null, string? matchType = null)
+    {
+        return new ArticleSummaryDto(
+            id, title, slug, excerpt,
+            enrichment?.Status,
+            contentType,
+            enrichment?.CreatedAt,
+            updatedAt,
+            enrichment?.OwnerName,
+            enrichment?.OwnerSlug,
+            enrichment?.ApiKeyName,
+            enrichment?.ReadTimeMinutes,
+            enrichment?.Tags,
+            enrichment?.ViewCount ?? 0,
+            enrichment?.WilsonScore ?? 0.0,
+            score,
+            matchType,
+            content,
+            attachments);
+    }
+
+    /// <summary>
+    /// Pages an article query and returns enriched summaries plus the total count.
+    /// Shared by the REST article list and the MCP list_articles tool.
+    /// </summary>
+    public async Task<(List<ArticleSummaryDto> Articles, int Total)> ListAsync(
+        IQueryable<Article> query, int page, int limit, string sort = "updated",
+        bool includeContent = false, bool includeAttachments = false)
+    {
+        query = sort switch
+        {
+            "newest" => query.OrderByDescending(a => a.CreatedAt),
+            "oldest" => query.OrderBy(a => a.CreatedAt),
+            "most_viewed" => query.OrderByDescending(a => a.Views.Count),
+            _ => query.OrderByDescending(a => a.UpdatedAt)
+        };
+
+        var total = await query.CountAsync();
+        var rows = await query
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .Select(a => new
+            {
+                a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType,
+                UpdatedAt = a.UpdatedAt.ToString("o"),
+                Content = includeContent ? a.Content : null
+            })
+            .ToListAsync();
+
+        var enrichment = await GetEnrichmentAsync(rows.Select(r => r.Id));
+        var attachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, rows.Select(r => r.Id).ToList()) : null;
+
+        var articles = rows.Select(r => BuildSummary(
+                r.Id, r.Title, r.Slug, r.Excerpt, r.ContentType, r.UpdatedAt,
+                enrichment.GetValueOrDefault(r.Id),
+                includeContent ? ContentExtractor.ExtractPlainText(r.Content) : null,
+                attachmentMap?.GetValueOrDefault(r.Id)))
+            .ToList();
+
+        return (articles, total);
     }
 }

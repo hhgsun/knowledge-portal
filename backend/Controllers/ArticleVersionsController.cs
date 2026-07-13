@@ -17,11 +17,7 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
     [HttpGet]
     public async Task<IActionResult> List(string articleId)
     {
-        // Verify article exists and user has access
-        var article = await db.Articles.FindAsync(articleId);
-        if (article == null) return NotFound(new { error = "Article not found" });
-
-        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId()))
+        if (await GetViewableArticleAsync(articleId) == null)
             return NotFound(new { error = "Article not found" });
 
         var versions = await db.ArticleVersions
@@ -42,11 +38,7 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
     [HttpGet("{versionId}")]
     public async Task<IActionResult> Get(string articleId, string versionId)
     {
-        // Verify article exists and user has access
-        var article = await db.Articles.FindAsync(articleId);
-        if (article == null) return NotFound(new { error = "Article not found" });
-
-        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId()))
+        if (await GetViewableArticleAsync(articleId) == null)
             return NotFound(new { error = "Article not found" });
 
         var version = await db.ArticleVersions
@@ -98,5 +90,15 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
         await articleService.QueueReindexAsync(article);
 
         return Ok(new { message = "Article restored to selected version", version = newVersion });
+    }
+
+    /// <summary>Loads the article if it exists and the caller may view it (viewers: published or own only).</summary>
+    private async Task<Models.Entities.Article?> GetViewableArticleAsync(string articleId)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return null;
+        return RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId())
+            ? article
+            : null;
     }
 }

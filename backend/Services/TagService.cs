@@ -1,13 +1,31 @@
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
-/// <summary>Shared tag resolution and creation used by articles and the tags endpoint.</summary>
+/// <summary>Shared tag resolution, creation, and listing used by articles, the tags endpoint, and MCP.</summary>
 public class TagService(AppDbContext db)
 {
+    /// <summary>Lists all tags with article counts, optionally counting only published articles.</summary>
+    public async Task<List<TagWithCountDto>> ListWithCountsAsync(bool publishedOnly = false)
+    {
+        var rows = await db.Tags
+            .OrderBy(t => t.Name)
+            .Select(t => new
+            {
+                t.Id, t.Name, t.Slug,
+                Count = publishedOnly
+                    ? t.ArticleTags.Count(at => at.Article.Status == "published")
+                    : t.ArticleTags.Count
+            })
+            .ToListAsync();
+
+        return rows.Select(r => new TagWithCountDto(r.Id, r.Name, r.Slug, r.Count)).ToList();
+    }
+
     /// <summary>Resolves the input as a tag ID, name, or slug.</summary>
     public async Task<Tag?> ResolveAsync(string input)
         => await db.Tags.FirstOrDefaultAsync(t => t.Id == input)

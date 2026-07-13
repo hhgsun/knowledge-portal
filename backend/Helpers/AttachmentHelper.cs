@@ -21,6 +21,35 @@ public static class AttachmentHelper
     public static string GetDownloadUrl(string attachmentId)
         => $"/api/attachments/{attachmentId}/download";
 
+    /// <summary>
+    /// Extracts and concatenates searchable text from all attachments of an article.
+    /// Used by both the embedding pipeline and the FTS index builder.
+    /// </summary>
+    public static async Task<string> GetAttachmentTextAsync(AppDbContext db, IConfiguration config, string articleId, CancellationToken ct = default)
+    {
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == articleId)
+            .Select(a => new { a.StoredFileName, a.FileName })
+            .ToListAsync(ct);
+
+        if (attachments.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var att in attachments)
+        {
+            var extension = Path.GetExtension(att.FileName).ToLowerInvariant();
+            var filePath = GetFilePath(config, articleId, att.StoredFileName);
+            var text = AttachmentTextExtractor.ExtractText(filePath, extension);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append(text);
+                sb.Append(' ');
+            }
+        }
+
+        return sb.ToString();
+    }
+
     /// <summary>Builds articleId → attachment summaries (with download URLs) for a set of articles.</summary>
     public static async Task<Dictionary<string, List<object>>> GetAttachmentMapAsync(AppDbContext db, IReadOnlyCollection<string> articleIds)
     {

@@ -345,20 +345,11 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         return record;
     }
 
-    private static SearchResultDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)
-    {
-        return new SearchResultDto(
-            id, title, slug, excerpt, contentType, updatedAt,
-            enrichment?.Status,
-            enrichment?.OwnerName,
-            enrichment?.ApiKeyName,
-            enrichment?.Tags,
-            enrichment?.ViewCount ?? 0,
-            enrichment?.WilsonScore ?? 0.0,
-            score,
-            matchType,
+    private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)
+        => ArticleService.BuildSummary(
+            id, title, slug, excerpt, contentType, updatedAt, enrichment,
             includeContent ? ContentExtractor.ExtractPlainText(content) : null,
-            attachmentMap?.GetValueOrDefault(id));
-    }
+            attachmentMap?.GetValueOrDefault(id),
+            score, matchType);
 }
 

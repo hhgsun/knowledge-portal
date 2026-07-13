@@ -16,18 +16,7 @@ public class TagsController(AppDbContext db, TagService tagService) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> List()
-    {
-        var tags = await db.Tags
-            .Select(t => new
-            {
-                t.Id, t.Name, t.Slug,
-                articleCount = t.ArticleTags.Count
-            })
-            .OrderBy(t => t.Name)
-            .ToListAsync();
-
-        return Ok(tags);
-    }
+        => Ok(await tagService.ListWithCountsAsync());
 
     [HttpPost]
     [RequirePermission(Permissions.TagsManage)]

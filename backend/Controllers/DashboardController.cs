@@ -10,19 +10,14 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/dashboard")]
 [Authorize]
-public class DashboardController(AppDbContext db, StatsService statsService) : ControllerBase
+public class DashboardController(AppDbContext db, StatsService statsService, ArticleService articleService) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get()
     {
         var overview = await statsService.GetOverviewAsync();
 
-        var recentArticles = await db.Articles
-            .WherePublished()
-            .OrderByDescending(a => a.UpdatedAt)
-            .Take(5)
-            .Select(a => new { a.Id, a.Title, a.Slug, a.ContentType })
-            .ToListAsync();
+        var (recentArticles, _) = await articleService.ListAsync(db.Articles.WherePublished(), 1, 5);
 
         var topSearches = await statsService.GetTopSearchesAsync(5);
 

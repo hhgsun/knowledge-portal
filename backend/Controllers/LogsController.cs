@@ -45,19 +45,10 @@ public class LogsController(IConfiguration configuration) : ControllerBase
     [HttpGet("{fileName}")]
     public IActionResult GetLogContent(string fileName, [FromQuery] int? tail)
     {
-        if (!IsValidLogFileName(fileName))
-            return BadRequest(new { error = "Invalid log file name" });
+        var (filePath, error) = ResolveLogFile(fileName);
+        if (error != null) return error;
 
-        var logsDir = GetLogsDirectory();
-        var filePath = Path.Combine(logsDir, fileName);
-
-        if (!Path.GetFullPath(filePath).StartsWith(Path.GetFullPath(logsDir)))
-            return BadRequest(new { error = "Invalid file path" });
-
-        if (!System.IO.File.Exists(filePath))
-            return NotFound(new { error = "Log file not found" });
-
-        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var stream = new FileStream(filePath!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var reader = new StreamReader(stream);
         var allLines = reader.ReadToEnd().Split('\n');
 
@@ -77,24 +68,33 @@ public class LogsController(IConfiguration configuration) : ControllerBase
     [HttpDelete("{fileName}")]
     public IActionResult DeleteLogFile(string fileName)
     {
-        if (!IsValidLogFileName(fileName))
-            return BadRequest(new { error = "Invalid log file name" });
-
         var today = DateTime.UtcNow.ToString("yyyyMMdd");
         if (fileName == $"log_{today}.log")
             return BadRequest(new { error = "Cannot delete today's log file" });
+
+        var (filePath, error) = ResolveLogFile(fileName);
+        if (error != null) return error;
+
+        System.IO.File.Delete(filePath!);
+        return Ok(new { message = $"Log file '{fileName}' deleted successfully" });
+    }
+
+    /// <summary>Validates the name pattern, blocks path traversal, and checks existence.</summary>
+    private (string? FilePath, IActionResult? Error) ResolveLogFile(string fileName)
+    {
+        if (!IsValidLogFileName(fileName))
+            return (null, BadRequest(new { error = "Invalid log file name" }));
 
         var logsDir = GetLogsDirectory();
         var filePath = Path.Combine(logsDir, fileName);
 
         if (!Path.GetFullPath(filePath).StartsWith(Path.GetFullPath(logsDir)))
-            return BadRequest(new { error = "Invalid file path" });
+            return (null, BadRequest(new { error = "Invalid file path" }));
 
         if (!System.IO.File.Exists(filePath))
-            return NotFound(new { error = "Log file not found" });
+            return (null, NotFound(new { error = "Log file not found" }));
 
-        System.IO.File.Delete(filePath);
-        return Ok(new { message = $"Log file '{fileName}' deleted successfully" });
+        return (filePath, null);
     }
 
     private static bool IsValidLogFileName(string fileName)

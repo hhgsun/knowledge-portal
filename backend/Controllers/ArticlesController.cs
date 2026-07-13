@@ -90,60 +90,10 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             query = query.Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\"));
         }
 
-        var total = await query.CountAsync();
-        var articles = await query
-            .OrderByDescending(a => a.UpdatedAt)
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .Select(a => new
-            {
-                a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
-                a.ContentType,
-                UpdatedAt = a.UpdatedAt.ToString("o")
-            })
-            .ToListAsync();
+        var (articles, total) = await articleService.ListAsync(query, page, limit,
+            includeContent: includeContent, includeAttachments: includeAttachments);
 
-        var enrichment = await articleService.GetEnrichmentAsync(articles.Select(a => a.Id));
-
-        // Attachment map if requested
-        Dictionary<string, List<object>>? attachmentMap = null;
-        if (includeAttachments)
-            attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, articles.Select(a => a.Id).ToList());
-
-        // Content map if requested
-        Dictionary<string, string?>? contentMap = null;
-        if (includeContent)
-        {
-            var articleIds = articles.Select(a => a.Id).ToList();
-            var contents = await db.Articles
-                .Where(a => articleIds.Contains(a.Id))
-                .Select(a => new { a.Id, a.Content })
-                .ToListAsync();
-            contentMap = contents.ToDictionary(c => c.Id, c => ContentExtractor.ExtractPlainText(c.Content));
-        }
-
-        var articlesWithScore = articles.Select(a =>
-        {
-            var e = enrichment.GetValueOrDefault(a.Id);
-            return new
-            {
-                a.Id, a.Title, a.Slug, a.Excerpt, a.Status,
-                a.ContentType, a.UpdatedAt,
-                OwnerName = e?.OwnerName,
-                ApiKeyName = e?.ApiKeyName,
-                Tags = e?.Tags,
-                ViewCount = e?.ViewCount ?? 0,
-                WilsonScore = e?.WilsonScore ?? 0.0,
-                Content = includeContent ? contentMap?.GetValueOrDefault(a.Id) : null,
-                Attachments = includeAttachments ? attachmentMap?.GetValueOrDefault(a.Id) : null
-            };
-        });
-
-        return Ok(new
-        {
-            articles = articlesWithScore,
-            total
-        });
+        return Ok(new { articles, total });
     }
 
     [HttpPost]
@@ -203,18 +153,13 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
     [HttpGet("{idOrSlug}")]
     public async Task<IActionResult> Get(string idOrSlug)
     {
-        var article = await db.Articles
-            .Include(a => a.Owner)
-            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .FirstOrDefaultAsync(a => a.Id == idOrSlug || a.Slug == idOrSlug);
-
+        var article = await articleService.GetByIdOrSlugAsync(idOrSlug);
         if (article == null)
             return NotFound(new { error = "Article not found" });
 
         // Viewers can only see published articles or their own
-        var role = User.GetRole();
         var userId = User.GetUserId();
-        if (!RbacService.CanViewArticle(role, article.Status, article.OwnerId == userId))
+        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == userId))
             return NotFound(new { error = "Article not found" });
 
         // Record view (deduplicated per user/article within 15 minutes)
@@ -232,31 +177,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             await db.SaveChangesAsync();
         }
 
-        var apiKeyName = article.CreatedViaApiKeyId != null
-            ? await db.ApiKeys.Where(k => k.Id == article.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefaultAsync()
-            : null;
-
-        var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
-
-        var attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, [article.Id]);
-        var attachments = attachmentMap.GetValueOrDefault(article.Id) ?? [];
-
-        return Ok(new
-        {
-            article.Id, article.Title, article.Slug, article.Excerpt,
-            Content = article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
-            ContentText = ContentExtractor.ExtractPlainText(article.Content),
-            article.Status, article.ContentType,
-            article.OwnerId, article.ReadTimeMinutes,
-            UpdatedAt = article.UpdatedAt.ToString("o"),
-            PublishedAt = article.PublishedAt?.ToString("o"),
-            LastReviewedAt = article.LastReviewedAt?.ToString("o"),
-            OwnerName = article.Owner.Name,
-            ApiKeyName = apiKeyName,
-            Tags = article.ArticleTags.Select(at => new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
-            ViewCount = viewCount,
-            Attachments = attachments
-        });
+        return Ok(await articleService.BuildDetailAsync(article));
     }
 
     [HttpPut("{id}")]

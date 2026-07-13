@@ -45,17 +45,21 @@ public record CommentRequest(string Comment);
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
 
-// Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per search type
-public record SearchResultDto(
+// Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
+// Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.
+public record ArticleSummaryDto(
     string Id,
     string Title,
     string Slug,
     string? Excerpt,
-    string ContentType,
-    string UpdatedAt,
     string? Status,
+    string ContentType,
+    string? CreatedAt,
+    string UpdatedAt,
     string? OwnerName,
+    string? OwnerSlug,
     string? ApiKeyName,
+    int? ReadTimeMinutes,
     List<object>? Tags,
     int ViewCount,
     double WilsonScore,
@@ -64,9 +68,34 @@ public record SearchResultDto(
     string? Content,
     List<object>? Attachments);
 
+// Full article detail shared by GET /api/articles/{idOrSlug} and the MCP get_article tool.
+// Content is the raw TipTap document; ContentText is the extracted plain text.
+public record ArticleDetailDto(
+    string Id,
+    string Title,
+    string Slug,
+    string? Excerpt,
+    object? Content,
+    string? ContentText,
+    string Status,
+    string ContentType,
+    string OwnerId,
+    string? OwnerName,
+    string? OwnerSlug,
+    string? ApiKeyName,
+    int? ReadTimeMinutes,
+    string CreatedAt,
+    string UpdatedAt,
+    string? PublishedAt,
+    string? LastReviewedAt,
+    List<object>? Tags,
+    int ViewCount,
+    List<object>? Attachments);
+
 // Tags
 public record CreateTagRequest(string Name);
 public record UpdateTagRequest(string Id, string Name);
+public record TagWithCountDto(string Id, string Name, string Slug, int ArticleCount);
 
 // Lookups
 public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
