@@ -139,7 +139,7 @@ React Router v7 with a single `<BrowserRouter>`:
 | `/profile` | ProfilePage | Protected |
 | `/analytics` | AnalyticsPage | Protected |
 | `/admin/users` | AdminUsersPage | Protected |
-| `/settings/keys` | SettingsKeysPage | Protected |
+| `/admin/keys` | AdminApiKeysPage | Protected |
 
 Protected routes use a `<ProtectedRoute>` wrapper that redirects to `/login` if `user` is null.
 

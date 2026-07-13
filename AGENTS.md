@@ -149,7 +149,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `tags:manage` | ✓ | ✓ | |
 | `users:manage` | ✓ | | |
 | `analytics:view` | ✓ | ✓ | |
-| `api_keys:manage` | ✓ | | |
+| `api_keys:manage` | ✓ | ✓ | ✓ |
+| `api_keys:manage_any` | ✓ | | |
 
 ## Endpoint Authorization Matrix
 
@@ -201,6 +202,10 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys/{id}/rotate` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys?id={id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
+| `/api/admin/keys` | GET | ✓ | `api_keys:manage_any` | ✓ |
+| `/api/admin/keys` | POST | ✓ | `api_keys:manage_any` | ✓ |
+| `/api/admin/keys` | PUT | ✓ | `api_keys:manage_any` | ✓ |
+| `/api/admin/keys?id={id}` | DELETE | ✓ | `api_keys:manage_any` | ✓ |
 | `/api/lookups` | GET | ✓ | — | ✗ |
 | `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/lookups` | PUT | ✓ | `tags:manage` | ✗ |
@@ -258,7 +263,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
-| API Key Management | ✅ Implemented | Create/list/rotate/delete |
+| API Key Management | ✅ Implemented | Self-service create/list/rotate/delete (all roles, ProfilePage); admin CRUD over all users' keys (`/api/admin/keys`, `/admin/keys`) |
 | Article Feedback | ✅ Implemented | Vote (1 per user/article, toggle) + Comments (independent, multiple). Wilson Score. View count in responses. |
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |

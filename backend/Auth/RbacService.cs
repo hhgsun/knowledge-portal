@@ -9,17 +9,19 @@ public static class RbacService
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesEditAny,
             Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
             Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
-            Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView, Permissions.ApiKeysManage
+            Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView,
+            Permissions.ApiKeysManage, Permissions.ApiKeysManageAny
         ],
         ["editor"] =
         [
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn,
             Permissions.ArticlesDeleteOwn, Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
-            Permissions.TagsManage, Permissions.AnalyticsView
+            Permissions.TagsManage, Permissions.AnalyticsView, Permissions.ApiKeysManage
         ],
         ["viewer"] =
         [
-            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn,
+            Permissions.ApiKeysManage
         ]
     };
 

@@ -54,9 +54,9 @@ frontend/
     ├── SearchPage.tsx         # Multi-mode search (fulltext/semantic/hybrid/RAG) + tag autocomplete
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
-    ├── SettingsKeysPage.tsx   # API key management: create, copy, delete
+    ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
     ├── TagsPage.tsx           # Tag management: list, edit, delete (admin/editor only)
-    ├── ProfilePage.tsx        # Profile settings: name/email update + password change
+    ├── ProfilePage.tsx        # Profile settings: name/email update + password change + own API keys (api-keys-section)
     ├── LookupsPage.tsx        # Lookup value management (content types, difficulties)
     ├── LogsPage.tsx           # System log viewer: date-based log files, view/delete (admin only)
     ├── McpPage.tsx            # MCP integration guide: endpoint info, config snippets, API key shortcuts (admin only)
@@ -102,9 +102,11 @@ graph TD
     SearchPage --> useApi
     AnalyticsPage --> useApi
     AdminUsersPage --> useApi
-    SettingsKeysPage --> useApi
+    AdminApiKeysPage --> useApi
     ProfilePage --> useApi
     ProfilePage --> useAuth
+    ProfilePage --> ApiKeysSection["ApiKeysSection (components/profile)"]
+    ApiKeysSection --> useApi
 
     TagSelector --> useApi
 
@@ -131,7 +133,8 @@ graph TD
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/admin/users` | AdminUsersPage | Protected | AppShell | admin (RoleRoute) |
-| `/settings/keys` | SettingsKeysPage | Protected | AppShell | admin (RoleRoute) |
+| `/admin/keys` | AdminApiKeysPage | Protected | AppShell | admin (RoleRoute) |
+| `/settings/keys` | → redirects to `/profile` | Protected | — | — |
 | `*` | NotFoundPage | Public | — | — |
 
 ### ProtectedRoute
@@ -261,4 +264,5 @@ Tag picker with inline creation capability.
 | SearchPage | `GET /api/search`, `GET /api/tags` |
 | AnalyticsPage | `GET /api/analytics` |
 | AdminUsersPage | `GET/POST/PUT/DELETE /api/admin/users` |
-| SettingsKeysPage | `GET/POST/DELETE /api/keys` |
+| ProfilePage (ApiKeysSection) | `GET/POST/DELETE /api/keys`, `POST /api/keys/:id/rotate` |
+| AdminApiKeysPage | `GET/POST/PUT/DELETE /api/admin/keys`, `GET /api/admin/users` (user picker) |

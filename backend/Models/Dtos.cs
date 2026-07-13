@@ -31,6 +31,10 @@ public record UpdateUserRequest(string UserId, string? Name = null, string? Emai
 // API Keys
 public record CreateKeyRequest(string Name, int? ExpiresInDays = null);
 
+// Admin API Keys
+public record AdminCreateKeyRequest(string UserId, string Name, int? ExpiresInDays = null);
+public record AdminUpdateKeyRequest(string Id, string? Name = null, int? ExpiresInDays = null);
+
 // Article Feedback
 public record VoteRequest(bool IsHelpful, string? Reason = null);
 public record CommentRequest(string Comment);

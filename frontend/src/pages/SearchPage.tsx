@@ -4,7 +4,7 @@ import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle,
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
-import { useDebounce, useSearchHistory } from "../hooks/useNetworkStatus";
+import { useSearchHistory } from "../hooks/useNetworkStatus";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
 import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue } from "../types/api";

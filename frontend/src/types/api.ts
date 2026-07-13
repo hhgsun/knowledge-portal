@@ -238,6 +238,19 @@ export interface CreateApiKeyResponse extends ApiKey {
   key: string; // Raw key, only returned once
 }
 
+// ─── Admin API Keys ──────────────────────────────────────────
+export interface AdminApiKey extends ApiKey {
+  keyPrefix: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
+
+export interface AdminApiKeysResponse {
+  keys: AdminApiKey[];
+  total: number;
+}
+
 // ─── Admin Users ─────────────────────────────────────────────
 export interface AdminUsersResponse {
   users: AdminUser[];

@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle, RotateCw } from "lucide-react";
-import { useApi } from "../hooks/useApi";
+import { useApi } from "../../hooks/useApi";
 import { toast } from "sonner";
-import { KeysListSkeleton } from "../components/ui/skeleton";
-import type { ApiKey } from "../types/api";
+import type { ApiKey } from "../../types/api";
 
-export default function SettingsKeysPage() {
+export function ApiKeysSection() {
   const { fetchWithAuth } = useApi();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +48,7 @@ export default function SettingsKeysPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this API key? This action cannot be undone.")) return;
     const res = await fetchWithAuth(`/api/keys?id=${id}`, { method: "DELETE" });
     if (res.ok) {
       setKeys(keys.filter((k) => k.id !== id));
@@ -78,16 +78,19 @@ export default function SettingsKeysPage() {
     }
   };
 
-  if (loading) return <KeysListSkeleton />;
-
   return (
-    <div className="max-w-3xl mx-auto">
+    <section>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">API Keys</h1>
-          <p className="text-sm text-zinc-500 mt-1">Manage API keys for external integrations</p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
+            <Key size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">API Keys</h2>
+            <p className="text-xs text-zinc-500">Manage API keys for external integrations</p>
+          </div>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
           <Plus size={16} />
           New Key
         </button>
@@ -132,7 +135,9 @@ export default function SettingsKeysPage() {
         </div>
       )}
 
-      {keys.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-zinc-400 py-4">Loading keys...</p>
+      ) : keys.length === 0 ? (
         <div className="text-center py-8 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
           <Key size={24} className="mx-auto text-zinc-300 mb-2" />
           <p className="text-zinc-500">No API keys yet</p>
@@ -166,6 +171,6 @@ export default function SettingsKeysPage() {
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -103,7 +103,7 @@ export default function HomePage() {
                 <Link to={`/articles/${a.slug}`} className="text-sm text-zinc-700 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400 truncate">
                   {a.title}
                 </Link>
-                <ContentTypeBadge value={a.contentType} />
+                <ContentTypeBadge contentType={a.contentType} />
               </li>
             ))}
           </ul>

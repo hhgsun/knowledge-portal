@@ -14,7 +14,7 @@ import VersionsPage from "./pages/VersionsPage";
 import SearchPage from "./pages/SearchPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
-import SettingsKeysPage from "./pages/SettingsKeysPage";
+import AdminApiKeysPage from "./pages/AdminApiKeysPage";
 import TagsPage from "./pages/TagsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -76,7 +76,8 @@ export default function App() {
           <Route path="/analytics" element={<RoleRoute roles={["admin", "editor"]}><AnalyticsPage /></RoleRoute>} />
           <Route path="/tags" element={<RoleRoute roles={["admin", "editor"]}><TagsPage /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
-          <Route path="/settings/keys" element={<RoleRoute roles={["admin"]}><SettingsKeysPage /></RoleRoute>} />
+          <Route path="/admin/keys" element={<RoleRoute roles={["admin"]}><AdminApiKeysPage /></RoleRoute>} />
+          <Route path="/settings/keys" element={<Navigate to="/profile" replace />} />
           <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />

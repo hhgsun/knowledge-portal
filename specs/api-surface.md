@@ -754,6 +754,62 @@ Generates a new key value for an existing API key. The old key is immediately in
 
 ---
 
+## Admin API Keys
+
+All-user API key management for admins. `api_keys:manage` is granted to every role (each user manages their own keys via `/api/keys`); `api_keys:manage_any` is admin-only.
+
+### `GET /api/admin/keys`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage_any`
+
+| Query Param | Type | Description |
+|-------------|------|-------------|
+| `q` | string | Search by key name, user name, or user email |
+| `userId` | string | Filter to a single user's keys |
+| `page` | int | Default 1 |
+| `limit` | int | Default 50, max 100 |
+
+**200 Response**: `{ "keys": [ { "id", "name", "keyPrefix", "userId", "userName", "userEmail", "lastUsedAt", "expiresAt", "createdAt" } ], "total" }`
+
+---
+
+### `POST /api/admin/keys`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage_any`
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `userId` | string | Yes | Must be an existing user |
+| `name` | string | Yes | 1–100 chars |
+| `expiresInDays` | int | No | 1–365 days, default 90 |
+
+**201 Response**: `{ "id", "key": "kp_abc123...", "name", "keyPrefix", "userId", "userName", "userEmail", "expiresAt", "createdAt" }`
+> The raw key (`kp_...`) is returned **only once** at creation time.
+
+---
+
+### `PUT /api/admin/keys`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage_any`
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Key id (in body, not URL) |
+| `name` | string | No | 1–100 chars |
+| `expiresInDays` | int | No | 1–365; resets expiry from now |
+
+**200 Response**: Updated key summary (same shape as list items).
+
+---
+
+### `DELETE /api/admin/keys?id={id}`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage_any`
+
+**200 Response**: `{ "message": "API key deleted" }`
+
+---
+
 ## System Logs
 
 ### `GET /api/logs`

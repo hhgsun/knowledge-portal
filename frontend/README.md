@@ -53,7 +53,7 @@ src/
 │   ├── VersionsPage.tsx
 │   ├── AnalyticsPage.tsx
 │   ├── AdminUsersPage.tsx
-│   ├── SettingsKeysPage.tsx
+│   ├── AdminApiKeysPage.tsx
 │   └── NotFoundPage.tsx
 └── lib/
     └── utils.ts         # cn() helper (clsx + tailwind-merge)

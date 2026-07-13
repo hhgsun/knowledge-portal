@@ -27,4 +27,5 @@ public static class Permissions
 
     // API Keys
     public const string ApiKeysManage = "api_keys:manage";
+    public const string ApiKeysManageAny = "api_keys:manage_any";
 }

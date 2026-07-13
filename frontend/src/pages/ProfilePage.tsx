@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi";
 
 import { toast } from "sonner";
 import { Lock } from "lucide-react";
+import { ApiKeysSection } from "../components/profile/api-keys-section";
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
@@ -184,6 +185,11 @@ export default function ProfilePage() {
           {changingPassword ? "Saving..." : isAzureUser ? "Set Password" : "Change Password"}
         </button>
       </form>
+
+      {/* API Keys */}
+      <div className="mt-10 pt-10 border-t border-zinc-200 dark:border-zinc-800">
+        <ApiKeysSection />
+      </div>
     </div>
   );
 }

@@ -11,7 +11,11 @@ public class RbacServiceTests
     [InlineData("editor", Permissions.ArticlesCreate, true)]
     [InlineData("editor", Permissions.ArticlesPublish, true)]
     [InlineData("editor", Permissions.UsersManage, false)]
-    [InlineData("editor", Permissions.ApiKeysManage, false)]
+    [InlineData("editor", Permissions.ApiKeysManage, true)]
+    [InlineData("editor", Permissions.ApiKeysManageAny, false)]
+    [InlineData("viewer", Permissions.ApiKeysManage, true)]
+    [InlineData("viewer", Permissions.ApiKeysManageAny, false)]
+    [InlineData("admin", Permissions.ApiKeysManageAny, true)]
     [InlineData("viewer", Permissions.ArticlesCreate, true)]
     [InlineData("viewer", Permissions.ArticlesEditOwn, true)]
     [InlineData("viewer", Permissions.ArticlesPublish, false)]
@@ -35,7 +39,8 @@ public class RbacServiceTests
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesEditAny,
             Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
             Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
-            Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView, Permissions.ApiKeysManage
+            Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView,
+            Permissions.ApiKeysManage, Permissions.ApiKeysManageAny
         };
 
         foreach (var permission in allPermissions)

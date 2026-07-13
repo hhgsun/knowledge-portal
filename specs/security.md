@@ -111,6 +111,7 @@ These endpoints explicitly reject API key authentication:
 | `GET/POST/PUT/DELETE /api/admin/users` | User management is sensitive admin operation |
 | `GET /api/analytics` | Analytics data should not be programmatically scraped |
 | `GET/POST/DELETE /api/keys` | Prevents API key from creating/managing other API keys |
+| `GET/POST/PUT/DELETE /api/admin/keys` | Admin all-user key management; same reason as above |
 
 ## Password Security
 

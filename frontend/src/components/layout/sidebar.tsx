@@ -58,7 +58,7 @@ const adminNavigation: NavItem[] = [
   { label: "Tags", href: "/tags", icon: <Tag size={18} /> },
   { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
-  { label: "API Keys", href: "/settings/keys", icon: <Key size={18} /> },
+  { label: "API Keys", href: "/admin/keys", icon: <Key size={18} /> },
   { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
 ];
 
@@ -194,7 +194,7 @@ export function Sidebar() {
               {adminNavigation
                 .filter((item) => {
                   if (item.href === "/admin/users") return isAdmin;
-                  if (item.href === "/settings/keys") return isAdmin;
+                  if (item.href === "/admin/keys") return isAdmin;
                   if (item.href === "/settings/logs") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
                   if (item.href === "/settings/lookups") return isEditorOrAdmin;
