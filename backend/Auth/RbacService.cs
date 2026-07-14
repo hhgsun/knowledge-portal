@@ -10,7 +10,7 @@ public static class RbacService
             Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
             Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
             Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView,
-            Permissions.ApiKeysManage, Permissions.ApiKeysManageAny
+            Permissions.ApiKeysManage, Permissions.ApiKeysManageAny, Permissions.FeaturedLinksManage
         ],
         ["editor"] =
         [

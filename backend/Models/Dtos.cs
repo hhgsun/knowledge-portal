@@ -101,6 +101,11 @@ public record TagWithCountDto(string Id, string Name, string Slug, int ArticleCo
 public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
 public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
 
+// Featured links (sidebar)
+public record CreateFeaturedLinkRequest(string Label, string LinkType, string Target, string? Icon = null, int? SortOrder = null);
+public record UpdateFeaturedLinkRequest(string Id, string? Label = null, string? Target = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
+public record FeaturedLinkDto(string Id, string Label, string LinkType, string Target, string? Icon, int SortOrder, bool IsActive);
+
 // Attachments
 public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);
 public record AttachmentListResponse(AttachmentResponse[] Attachments, int Total);

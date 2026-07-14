@@ -19,6 +19,7 @@ import TagsPage from "./pages/TagsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
 import LookupsPage from "./pages/LookupsPage";
+import FeaturedLinksPage from "./pages/FeaturedLinksPage";
 import LogsPage from "./pages/LogsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/admin/keys" element={<RoleRoute roles={["admin"]}><AdminApiKeysPage /></RoleRoute>} />
           <Route path="/settings/keys" element={<Navigate to="/profile?tab=api-keys" replace />} />
           <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
+          <Route path="/settings/featured-links" element={<RoleRoute roles={["admin"]}><FeaturedLinksPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

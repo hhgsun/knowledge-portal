@@ -22,6 +22,9 @@ public static class Permissions
     // Users
     public const string UsersManage = "users:manage";
 
+    // Featured sidebar links
+    public const string FeaturedLinksManage = "featured_links:manage";
+
     // Analytics
     public const string AnalyticsView = "analytics:view";
 

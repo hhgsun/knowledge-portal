@@ -17,6 +17,16 @@ export interface LookupValue {
   isActive: boolean;
 }
 
+export interface FeaturedLink {
+  id: string;
+  label: string;
+  linkType: "content_type" | "tag" | "custom";
+  target: string;
+  icon?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 // ─── Auth ────────────────────────────────────────────────────
 export interface User {
   id: string;

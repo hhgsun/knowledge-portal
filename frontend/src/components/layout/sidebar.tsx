@@ -21,12 +21,17 @@ import {
   Settings2,
   ScrollText,
   Cpu,
+  Star,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { McpModal } from "./mcp-modal";
+import { useFeaturedLinks, resolveFeaturedLinkHref } from "../../hooks/useFeaturedLinks";
+import { getIconComponent } from "../../lib/lookup-utils";
+import type { FeaturedLink } from "../../types/api";
 
 interface NavItem {
   label: string;
@@ -56,10 +61,60 @@ const navigation: NavItem[] = [
 const adminNavigation: NavItem[] = [
   { label: "Tags", href: "/tags", icon: <Tag size={18} /> },
   { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
+  { label: "Featured Links", href: "/settings/featured-links", icon: <Star size={18} /> },
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/admin/keys", icon: <Key size={18} /> },
   { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
 ];
+
+function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: boolean }) {
+  const { pathname, search } = useLocation();
+  const { href, external } = resolveFeaturedLinkHref(link);
+  const IconComp = getIconComponent(link.icon || "star");
+  const isActive = !external && pathname + search === href;
+
+  const className = cn(
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+    isActive
+      ? "bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-zinc-100"
+      : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100",
+    collapsed && "justify-center px-2"
+  );
+
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={collapsed ? link.label : undefined}
+        aria-label={link.label}
+        className={className}
+      >
+        <span aria-hidden="true"><IconComp size={18} /></span>
+        {!collapsed && (
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate">{link.label}</span>
+            <ExternalLink size={12} className="shrink-0 text-zinc-400" aria-hidden="true" />
+          </span>
+        )}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      to={href}
+      title={collapsed ? link.label : undefined}
+      aria-label={link.label}
+      aria-current={isActive ? "page" : undefined}
+      className={className}
+    >
+      <span aria-hidden="true"><IconComp size={18} /></span>
+      {!collapsed && <span className="truncate">{link.label}</span>}
+    </Link>
+  );
+}
 
 function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?: number; collapsed?: boolean }) {
   const { pathname } = useLocation();
@@ -125,6 +180,7 @@ export function Sidebar() {
   const [isHovered, setIsHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mcpModalOpen, setMcpModalOpen] = useState(false);
+  const { links: featuredLinks } = useFeaturedLinks();
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -180,6 +236,22 @@ export function Sidebar() {
           ))}
         </div>
 
+        {/* Featured Links */}
+        {featuredLinks.length > 0 && (
+          <div className="pt-6">
+            {!collapsed && (
+              <p className="px-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                Seçkinler
+              </p>
+            )}
+            <div className="space-y-1">
+              {featuredLinks.map((link) => (
+                <FeaturedNavLink key={link.id} link={link} collapsed={collapsed} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Admin Section */}
         {isEditorOrAdmin && (
           <div className="pt-6">
@@ -196,6 +268,7 @@ export function Sidebar() {
                   if (item.href === "/settings/logs") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
                   if (item.href === "/settings/lookups") return isEditorOrAdmin;
+                  if (item.href === "/settings/featured-links") return isAdmin;
                   return true;
                 })
                 .map((item) => (

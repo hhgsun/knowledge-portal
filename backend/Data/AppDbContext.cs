@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+    public DbSet<FeaturedLink> FeaturedLinks => Set<FeaturedLink>();
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -172,6 +173,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(l => l.IsActive).HasDefaultValue(true);
             e.Property(l => l.CreatedAt).IsRequired();
             e.HasIndex(l => new { l.Category, l.Value }).IsUnique();
+        });
+
+        // ─── FeaturedLinks ────────────────────────────────
+        modelBuilder.Entity<FeaturedLink>(e =>
+        {
+            e.ToTable("featured_links");
+            e.HasKey(f => f.Id);
+            e.Property(f => f.Label).IsRequired();
+            e.Property(f => f.LinkType).IsRequired();
+            e.Property(f => f.Target).IsRequired();
+            e.Property(f => f.SortOrder).HasDefaultValue(0);
+            e.Property(f => f.IsActive).HasDefaultValue(true);
+            e.Property(f => f.CreatedAt).IsRequired();
         });
 
         // ─── SearchQueries ────────────────────────────────
