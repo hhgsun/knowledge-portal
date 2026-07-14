@@ -11,7 +11,7 @@ interface McpModalProps {
 }
 
 type AuthTab = "bearer" | "apikey";
-type ClientTab = "claude" | "vscode" | "cursor";
+type ClientTab = "vscode" | "claude" | "claude-code" | "cursor" | "windsurf";
 type LangTab = "dotnet" | "java" | "python";
 
 const LANGS: { id: LangTab; label: string }[] = [
@@ -21,9 +21,11 @@ const LANGS: { id: LangTab; label: string }[] = [
 ];
 
 const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
-  { id: "claude", label: "Claude Desktop", file: "claude_desktop_config.json" },
   { id: "vscode", label: "VS Code", file: ".vscode/mcp.json" },
+  { id: "claude", label: "Claude Desktop", file: "claude_desktop_config.json" },
+  { id: "claude-code", label: "Claude Code", file: "Terminal komutu" },
   { id: "cursor", label: "Cursor", file: "~/.cursor/mcp.json" },
+  { id: "windsurf", label: "Windsurf", file: "~/.codeium/windsurf/mcp_config.json" },
 ];
 
 const TOOLS = [
@@ -39,7 +41,7 @@ export function McpModal({ open, onClose }: McpModalProps) {
   const { fetchWithAuth } = useApi();
   const [copied, setCopied] = useState<string | null>(null);
   const [authTab, setAuthTab] = useState<AuthTab>("bearer");
-  const [clientTab, setClientTab] = useState<ClientTab>("claude");
+  const [clientTab, setClientTab] = useState<ClientTab>("vscode");
   const [langTab, setLangTab] = useState<LangTab>("dotnet");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -65,18 +67,6 @@ export function McpModal({ open, onClose }: McpModalProps) {
       ? { Authorization: `Bearer ${token || "YOUR_JWT_TOKEN"}` }
       : { "X-API-Key": "kp_YOUR_API_KEY" };
 
-  // Client-specific config shapes
-  const buildConfig = (client: ClientTab) => {
-    const entry = {
-      url: mcpEndpoint,
-      headers: authHeader,
-    };
-    if (client === "vscode") return { servers: { "knowledge-portal": entry } };
-    return { mcpServers: { "knowledge-portal": entry } };
-  };
-
-  const configJson = JSON.stringify(buildConfig(clientTab), null, 2);
-
   const authHeaderStr =
     authTab === "bearer"
       ? `Authorization: Bearer ${token ? token.slice(0, 20) + "..." : "YOUR_TOKEN"}`
@@ -86,6 +76,33 @@ export function McpModal({ open, onClose }: McpModalProps) {
     authTab === "bearer"
       ? `Authorization: Bearer ${token || "YOUR_JWT_TOKEN"}`
       : "X-API-Key: kp_YOUR_API_KEY";
+
+  // Client-specific config shapes
+  const buildConfig = (client: ClientTab): string => {
+    const entry = {
+      url: mcpEndpoint,
+      headers: authHeader,
+    };
+    switch (client) {
+      case "vscode":
+        return JSON.stringify(
+          { servers: { "knowledge-portal": { type: "http", ...entry } } },
+          null, 2,
+        );
+      case "claude-code":
+        return `claude mcp add --transport http knowledge-portal ${mcpEndpoint} \\
+  --header "${authHeaderFull}"`;
+      case "windsurf":
+        return JSON.stringify(
+          { mcpServers: { "knowledge-portal": { serverUrl: mcpEndpoint, headers: authHeader } } },
+          null, 2,
+        );
+      default:
+        return JSON.stringify({ mcpServers: { "knowledge-portal": entry } }, null, 2);
+    }
+  };
+
+  const configJson = buildConfig(clientTab);
 
   const curlCmd = `curl -X POST ${mcpEndpoint} \\
   -H "Content-Type: application/json" \\
@@ -346,7 +363,11 @@ String tags    = callTool("list_tags", "{}");`;
               ))}
             </div>
             <p className="mt-1.5 text-xs text-zinc-500">
-              Dosya: <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{currentClient.file}</code>
+              {clientTab === "claude-code" ? (
+                <>Terminalde çalıştırın:</>
+              ) : (
+                <>Dosya: <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{currentClient.file}</code></>
+              )}
             </p>
             <div className="mt-2">
               <CodeBlock content={configJson} copyKey="Config JSON" />
@@ -435,7 +456,7 @@ String tags    = callTool("list_tags", "{}");`;
 
           {/* Footer */}
           <p className="text-xs text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-            JSON-RPC 2.0 • Claude Desktop, VS Code Copilot, Cursor uyumlu
+            JSON-RPC 2.0 • VS Code Copilot, Claude Desktop, Claude Code, Cursor, Windsurf uyumlu
           </p>
         </div>
       </div>
