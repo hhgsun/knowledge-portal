@@ -12,6 +12,13 @@ interface McpModalProps {
 
 type AuthTab = "bearer" | "apikey";
 type ClientTab = "claude" | "vscode" | "cursor";
+type LangTab = "dotnet" | "java" | "python";
+
+const LANGS: { id: LangTab; label: string }[] = [
+  { id: "dotnet", label: ".NET" },
+  { id: "java", label: "Java" },
+  { id: "python", label: "Python" },
+];
 
 const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
   { id: "claude", label: "Claude Desktop", file: "claude_desktop_config.json" },
@@ -33,6 +40,7 @@ export function McpModal({ open, onClose }: McpModalProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [authTab, setAuthTab] = useState<AuthTab>("bearer");
   const [clientTab, setClientTab] = useState<ClientTab>("claude");
+  const [langTab, setLangTab] = useState<LangTab>("dotnet");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(false);
@@ -108,6 +116,70 @@ def call_tool(name, **args):
 results = call_tool("search_articles", query="deployment", limit=5)
 article = call_tool("get_article", id_or_slug="mcp-entegrasyonu")
 tags    = call_tool("list_tags")`;
+
+  const dotnetSnippet = `using System.Net.Http.Json;
+using System.Text.Json;
+
+var mcpUrl = "${mcpEndpoint}";
+var http = new HttpClient();
+http.DefaultRequestHeaders.Add(${authTab === "bearer"
+      ? `"Authorization", "Bearer ${token || "YOUR_JWT_TOKEN"}"`
+      : `"X-API-Key", "kp_YOUR_API_KEY"`});
+
+async Task<JsonElement> CallToolAsync(string name, object args)
+{
+    var res = await http.PostAsJsonAsync(mcpUrl, new
+    {
+        jsonrpc = "2.0", id = 1,
+        method = "tools/call",
+        @params = new { name, arguments = args }
+    });
+    var json = await res.Content.ReadFromJsonAsync<JsonElement>();
+    var text = json.GetProperty("result").GetProperty("content")[0]
+                   .GetProperty("text").GetString()!;
+    return JsonSerializer.Deserialize<JsonElement>(text);
+}
+
+// Örnekler
+var results = await CallToolAsync("search_articles", new { query = "deployment", limit = 5 });
+var article = await CallToolAsync("get_article", new { id_or_slug = "mcp-entegrasyonu" });
+var tags    = await CallToolAsync("list_tags", new { });`;
+
+  const javaSnippet = `import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+HttpClient client = HttpClient.newHttpClient();
+String mcpUrl = "${mcpEndpoint}";
+
+String callTool(String name, String argsJson) throws Exception {
+    String body = """
+        {"jsonrpc":"2.0","id":1,"method":"tools/call",
+         "params":{"name":"%s","arguments":%s}}""".formatted(name, argsJson);
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create(mcpUrl))
+        .header("Content-Type", "application/json")
+        .header(${authTab === "bearer"
+      ? `"Authorization", "Bearer ${token || "YOUR_JWT_TOKEN"}"`
+      : `"X-API-Key", "kp_YOUR_API_KEY"`})
+        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .build();
+    HttpResponse<String> res = client.send(request, HttpResponse.BodyHandlers.ofString());
+    // result.content[0].text alanını Jackson/Gson ile parse edin
+    return res.body();
+}
+
+// Örnekler
+String results = callTool("search_articles", "{\\"query\\":\\"deployment\\",\\"limit\\":5}");
+String article = callTool("get_article", "{\\"id_or_slug\\":\\"mcp-entegrasyonu\\"}");
+String tags    = callTool("list_tags", "{}");`;
+
+  const langSnippets: Record<LangTab, string> = {
+    dotnet: dotnetSnippet,
+    java: javaSnippet,
+    python: pythonSnippet,
+  };
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -289,11 +361,25 @@ tags    = call_tool("list_tags")`;
             </div>
           </div>
 
-          {/* Python */}
+          {/* Kod Örnekleri */}
           <div>
-            <SectionLabel>Python</SectionLabel>
-            <div className="mt-1.5">
-              <CodeBlock content={pythonSnippet} copyKey="Python" />
+            <SectionLabel>Kod Örnekleri</SectionLabel>
+            <div className="mt-1.5 flex gap-1 flex-wrap">
+              {LANGS.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => setLangTab(l.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${langTab === l.id
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-medium"
+                      : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:border-zinc-400 dark:hover:border-zinc-500"
+                    }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2">
+              <CodeBlock content={langSnippets[langTab]} copyKey={LANGS.find((l) => l.id === langTab)!.label} />
             </div>
           </div>
 
