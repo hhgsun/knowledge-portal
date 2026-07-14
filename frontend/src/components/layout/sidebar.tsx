@@ -42,6 +42,7 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { label: "Home", href: "/", icon: <Home size={18} /> },
+  { label: "Search", href: "/search", icon: <Search size={18} /> },
   {
     label: "Articles",
     href: "/articles",
@@ -54,7 +55,6 @@ const navigation: NavItem[] = [
       },
     ],
   },
-  { label: "Search", href: "/search", icon: <Search size={18} /> },
   { label: "Analytics", href: "/analytics", icon: <BarChart3 size={18} /> },
 ];
 
@@ -232,9 +232,11 @@ export function Sidebar() {
       {/* Navigation */}
       <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <div className="space-y-1">
-          {navigation.map((item) => (
-            <NavLink key={item.href} item={item} collapsed={collapsed} />
-          ))}
+          {navigation
+            .filter((item) => item.href !== "/analytics" || isEditorOrAdmin)
+            .map((item) => (
+              <NavLink key={item.href} item={item} collapsed={collapsed} />
+            ))}
         </div>
 
         {/* Featured Links */}
