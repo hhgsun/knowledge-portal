@@ -1,0 +1,51 @@
+{
+  "title": "Analitik, Dashboard ve Geri Bildirim Sistemi",
+  "contentType": "reference",
+  "tags": ["project-knowledge-portal", "monitoring", "best-practices"],
+  "excerpt": "Dashboard metrikleri, analitik paneli, makale oylama ve yorum sisteminin çalışma şekli.",
+  "status": "published",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Dashboard" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Ana sayfa dashboard'u (GET /api/dashboard) tüm giriş yapmış kullanıcılara açıktır ve portalın genel durumunu özetler:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Toplam makale sayısı" }, { "type": "text", "text": " — Sistemdeki tüm makaleler." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Haftalık görüntülenme" }, { "type": "text", "text": " — Son 7 gündeki toplam makale görüntülenmesi." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Bugünkü aramalar" }, { "type": "text", "text": " — Gün içinde yapılan arama sayısı." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Güncelliğini yitirmiş makaleler" }, { "type": "text", "text": " — Uzun süredir gözden geçirilmemiş (stale) makale sayısı." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Son yayınlanan makaleler" }, { "type": "text", "text": " — En yeni 5 yayınlanmış makale." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Popüler aramalar" }, { "type": "text", "text": " — En çok yapılan 5 arama sorgusu." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Analitik Paneli" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Analitik paneli (GET /api/analytics) daha detaylı metrikler sunar. Erişim için analytics:view yetkisi gerekir (admin ve editor rolleri) ve yalnızca session (JWT) ile erişilebilir — API key ile erişilemez." }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Durum dağılımı:" }, { "type": "text", "text": " Makalelerin draft/pending/published/archived durumlarına göre sayıları." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Popüler aramalar:" }, { "type": "text", "text": " En çok yapılan 10 arama sorgusu ve sayıları." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Sonuçsuz aramalar:" }, { "type": "text", "text": " Sonuç döndürmeyen 10 arama — içerik açığı tespiti için en değerli metrik. Kullanıcıların aradığı ama bulamadığı konular yeni makale adaylarıdır." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "En çok görüntülenenler:" }, { "type": "text", "text": " Son 7 günde en çok görüntülenen 10 makale." }] }] }
+      ]},
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Görüntülenme Sayımı" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makale görüntülenmeleri otomatik kaydedilir. Aynı kullanıcının aynı makaleyi 15 dakika içinde tekrar açması yeni görüntülenme olarak sayılmaz (deduplication). Bu sayede metrikler yapay olarak şişmez." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Oylama (Faydalı / Faydasız)" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Her kullanıcı bir makaleye tek oy verebilir. Oylama davranışı:" }] },
+      { "type": "bulletList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Yeni oy:" }, { "type": "text", "text": " POST /api/articles/{id}/vote ile isHelpful değeri gönderilir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Aynı oyu tekrarlama:" }, { "type": "text", "text": " Oy geri çekilir (toggle davranışı)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Farklı oy:" }, { "type": "text", "text": " Mevcut oy güncellenir (faydalı → faydasız veya tersi)." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Gerekçe:" }, { "type": "text", "text": " Faydasız oylarında isteğe bağlı gerekçe (reason) eklenebilir. Faydalı oylarda gerekçe alınmaz." }] }] }
+      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Oy dağılımı GET /api/articles/{id}/votes ile sorgulanabilir. Faydasız oy gerekçeleri, makale sahibinin içeriği iyileştirmesi için önemli bir sinyaldir." }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Yorumlar" }] },
+      { "type": "paragraph", "content": [{ "type": "text", "text": "Makalelere yorum bırakılabilir:" }] },
+      { "type": "codeBlock", "attrs": { "language": "bash" }, "content": [{ "type": "text", "text": "# Yorum ekle\nPOST /api/articles/{articleId}/comments\n{\"content\": \"Bu makaleye X senaryosu da eklenebilir.\"}\n\n# Yorumları listele\nGET /api/articles/{articleId}/comments\n\n# Yorum sil (kendi yorumu veya admin)\nDELETE /api/articles/{articleId}/comments/{commentId}" }] },
+      { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "Metrikleri İçerik Kalitesi İçin Kullanma" }] },
+      { "type": "orderedList", "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Sonuçsuz aramaları düzenli inceleyin — her sonuçsuz arama, eksik bir makale demektir." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Faydasız oy alan makaleleri gerekçeleriyle birlikte gözden geçirin ve güncelleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Güncelliğini yitirmiş (stale) makaleleri periyodik olarak gözden geçirip yeniden yayınlayın veya arşivleyin." }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "En çok görüntülenen makaleleri öne çıkan bağlantılara (Featured Links) ekleyerek erişimi kolaylaştırın." }] }] }
+      ]}
+    ]
+  }
+}

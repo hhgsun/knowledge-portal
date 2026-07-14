@@ -24,11 +24,7 @@
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta ve Şifre:" }, { "type": "text", "text": " Kayıt olurken belirlediğiniz e-posta ve şifre ile giriş yapın." }] }] },
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Azure AD:" }, { "type": "text", "text": " Kurumsal Microsoft hesabınız ile tek tıkla giriş yapın. İlk girişte otomatik hesap oluşturulur." }] }] }
       ]},
-      { "type": "paragraph", "content": [{ "type": "text", "text": "İlk kurulumda varsayılan admin hesabı kullanılabilir:" }] },
-      { "type": "bulletList", "content": [
-        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "E-posta:" }, { "type": "text", "text": " admin@finagotech.com.tr" }] }] },
-        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "marks": [{ "type": "bold" }], "text": "Şifre:" }, { "type": "text", "text": " 1q2w3E*/" }] }] }
-      ]},
+      { "type": "paragraph", "content": [{ "type": "text", "text": "İlk kurulumda otomatik olarak bir yönetici hesabı oluşturulur. Giriş bilgileri için sistem yöneticinize başvurun ve ilk girişten sonra şifrenizi güncellemeyi unutmayın." }] },
       { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "İlk Makalenizi Oluşturun" }] },
       { "type": "orderedList", "content": [
         { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Sol menüden 'Yeni Makale' butonuna tıklayın." }] }] },
