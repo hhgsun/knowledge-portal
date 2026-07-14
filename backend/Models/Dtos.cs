@@ -102,9 +102,9 @@ public record CreateLookupRequest(string Category, string Value, string Label, s
 public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
 
 // Featured links (sidebar)
-public record CreateFeaturedLinkRequest(string Label, string LinkType, string Target, string? Icon = null, int? SortOrder = null);
-public record UpdateFeaturedLinkRequest(string Id, string? Label = null, string? Target = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
-public record FeaturedLinkDto(string Id, string Label, string LinkType, string Target, string? Icon, int SortOrder, bool IsActive);
+public record CreateFeaturedLinkRequest(string Label, string LinkType, string Target, string? Icon = null, string? Color = null, int? SortOrder = null);
+public record UpdateFeaturedLinkRequest(string Id, string? Label = null, string? Target = null, string? Icon = null, string? Color = null, int? SortOrder = null, bool? IsActive = null);
+public record FeaturedLinkDto(string Id, string Label, string LinkType, string Target, string? Icon, string? Color, int SortOrder, bool IsActive);
 
 // Attachments
 public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);

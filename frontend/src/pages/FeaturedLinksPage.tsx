@@ -4,8 +4,8 @@ import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
 import { invalidateFeaturedLinksCache, resolveFeaturedLinkHref } from "../hooks/useFeaturedLinks";
 import { toast } from "sonner";
-import { getIconComponent } from "../lib/lookup-utils";
-import { IconPicker } from "../components/lookup-pickers";
+import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
+import { ColorPicker, IconPicker } from "../components/lookup-pickers";
 import type { FeaturedLink, TagWithCount } from "../types/api";
 
 const LINK_TYPE_LABELS: Record<FeaturedLink["linkType"], string> = {
@@ -25,9 +25,11 @@ export default function FeaturedLinksPage() {
   const [newLinkType, setNewLinkType] = useState<FeaturedLink["linkType"]>("content_type");
   const [newTarget, setNewTarget] = useState("");
   const [newIcon, setNewIcon] = useState("star");
+  const [newColor, setNewColor] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editIcon, setEditIcon] = useState("");
+  const [editColor, setEditColor] = useState("");
 
   const loadLinks = async () => {
     const res = await fetchWithAuth("/api/featured-links?includeInactive=true");
@@ -59,13 +61,14 @@ export default function FeaturedLinksPage() {
     }
     const res = await fetchWithAuth("/api/featured-links", {
       method: "POST",
-      body: JSON.stringify({ label: newLabel.trim(), linkType: newLinkType, target: newTarget.trim(), icon: newIcon }),
+      body: JSON.stringify({ label: newLabel.trim(), linkType: newLinkType, target: newTarget.trim(), icon: newIcon, color: newColor || null }),
     });
     if (res.ok) {
       toast.success("Featured link added");
       setNewLabel("");
       setNewTarget("");
       setNewIcon("star");
+      setNewColor("");
       setShowAdd(false);
       afterMutation();
     } else {
@@ -123,10 +126,11 @@ export default function FeaturedLinksPage() {
     setEditingId(link.id);
     setEditLabel(link.label);
     setEditIcon(link.icon || "star");
+    setEditColor(link.color || "");
   };
 
   const handleSaveEdit = async (link: FeaturedLink) => {
-    const ok = await handleUpdate({ id: link.id, label: editLabel.trim(), icon: editIcon }, "Updated");
+    const ok = await handleUpdate({ id: link.id, label: editLabel.trim(), icon: editIcon, color: editColor }, "Updated");
     if (ok) setEditingId(null);
   };
 
@@ -221,6 +225,10 @@ export default function FeaturedLinksPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-end mt-3">
             <div>
+              <label className="text-xs font-medium text-zinc-500 block mb-1">Color</label>
+              <ColorPicker value={newColor} onChange={setNewColor} allowNone />
+            </div>
+            <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
               <IconPicker value={newIcon} onChange={setNewIcon} />
             </div>
@@ -240,6 +248,9 @@ export default function FeaturedLinksPage() {
         ) : (
           links.map((link, index) => {
             const IconComp = getIconComponent(link.icon || "star");
+            const colorClasses = link.color
+              ? getColorClasses(link.color)
+              : { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-300" };
             const { href, external } = resolveFeaturedLinkHref(link);
             return (
               <div
@@ -250,8 +261,8 @@ export default function FeaturedLinksPage() {
               >
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 shrink-0">
-                      <IconComp size={16} className="text-zinc-600 dark:text-zinc-300" />
+                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${colorClasses.bg}`}>
+                      <IconComp size={16} className={colorClasses.text} />
                     </span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -315,6 +326,10 @@ export default function FeaturedLinksPage() {
                           onChange={(e) => setEditLabel(e.target.value)}
                           className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
                         />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 block mb-1">Color</label>
+                        <ColorPicker value={editColor} onChange={setEditColor} allowNone />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>

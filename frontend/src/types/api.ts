@@ -23,6 +23,7 @@ export interface FeaturedLink {
   linkType: "content_type" | "tag" | "custom";
   target: string;
   icon?: string;
+  color?: string;
   sortOrder: number;
   isActive: boolean;
 }

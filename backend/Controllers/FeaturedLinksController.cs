@@ -26,7 +26,7 @@ public class FeaturedLinksController(AppDbContext db) : ControllerBase
         var results = await query
             .OrderBy(f => f.SortOrder)
             .ThenBy(f => f.CreatedAt)
-            .Select(f => new FeaturedLinkDto(f.Id, f.Label, f.LinkType, f.Target, f.Icon, f.SortOrder, f.IsActive))
+            .Select(f => new FeaturedLinkDto(f.Id, f.Label, f.LinkType, f.Target, f.Icon, f.Color, f.SortOrder, f.IsActive))
             .ToListAsync();
 
         return Ok(results);
@@ -55,6 +55,7 @@ public class FeaturedLinksController(AppDbContext db) : ControllerBase
             LinkType = req.LinkType,
             Target = target,
             Icon = req.Icon?.Trim(),
+            Color = string.IsNullOrWhiteSpace(req.Color) ? null : req.Color.Trim(),
             SortOrder = req.SortOrder ?? (maxOrder + 1),
             IsActive = true
         };
@@ -63,7 +64,7 @@ public class FeaturedLinksController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Created($"/api/featured-links/{link.Id}",
-            new FeaturedLinkDto(link.Id, link.Label, link.LinkType, link.Target, link.Icon, link.SortOrder, link.IsActive));
+            new FeaturedLinkDto(link.Id, link.Label, link.LinkType, link.Target, link.Icon, link.Color, link.SortOrder, link.IsActive));
     }
 
     [HttpPut]
@@ -88,12 +89,13 @@ public class FeaturedLinksController(AppDbContext db) : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(req.Label)) link.Label = req.Label.Trim();
         if (req.Icon != null) link.Icon = req.Icon.Trim();
+        if (req.Color != null) link.Color = string.IsNullOrWhiteSpace(req.Color) ? null : req.Color.Trim();
         if (req.SortOrder.HasValue) link.SortOrder = req.SortOrder.Value;
         if (req.IsActive.HasValue) link.IsActive = req.IsActive.Value;
 
         await db.SaveChangesAsync();
 
-        return Ok(new FeaturedLinkDto(link.Id, link.Label, link.LinkType, link.Target, link.Icon, link.SortOrder, link.IsActive));
+        return Ok(new FeaturedLinkDto(link.Id, link.Label, link.LinkType, link.Target, link.Icon, link.Color, link.SortOrder, link.IsActive));
     }
 
     [HttpDelete]

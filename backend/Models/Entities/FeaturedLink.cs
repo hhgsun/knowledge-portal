@@ -7,6 +7,7 @@ public class FeaturedLink
     public string LinkType { get; set; } = null!;  // "content_type" | "tag" | "custom"
     public string Target { get; set; } = null!;    // content_type value, tag slug, or custom URL/path
     public string? Icon { get; set; }              // Lucide icon name e.g. "star", "bookmark"
+    public string? Color { get; set; }             // Tailwind color key e.g. "blue", "green", "red"
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
