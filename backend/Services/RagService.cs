@@ -12,7 +12,9 @@ public class RagService(
     IConfiguration config,
     ILogger<RagService> logger)
 {
-    private const int DefaultContextLimit = 5;
+    // Fewer, more relevant chunks keep small local models focused and cut prompt-eval time;
+    // raise via Ollama:RagSourceLimit when running a stronger model on capable hardware
+    private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     private const int MaxContextWords = 3000;
 
     private static readonly string SystemPrompt = """
@@ -31,7 +33,7 @@ public class RagService(
 
     public async Task<RagResult> AskAsync(string question, CancellationToken ct = default)
     {
-        var searchResults = await vectorSearch.SearchAsync(question, DefaultContextLimit, ct);
+        var searchResults = await vectorSearch.SearchAsync(question, _sourceLimit, ct);
 
         if (searchResults.Count == 0)
         {

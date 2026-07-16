@@ -76,7 +76,11 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     private async Task UpdateSearchVectorAsync(string articleId, string title, string? excerpt, string? contentJson, CancellationToken ct = default)
     {
         var attachmentText = await AttachmentHelper.GetAttachmentTextAsync(db, config, articleId, ct);
-        var contentText = ContentExtractor.ExtractSearchableText(title, excerpt, contentJson, attachmentText);
+        // Weight C carries only body + attachment text — title/excerpt already live in A/B;
+        // repeating them here would inflate their effective weight
+        var contentText = string.Join(". ",
+            new[] { ContentExtractor.ExtractPlainText(contentJson), attachmentText }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
         await db.Database.ExecuteSqlRawAsync(
             $$"""
             UPDATE articles SET search_vector =

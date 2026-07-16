@@ -109,12 +109,19 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 {
     var ollamaBaseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
     var embeddingModel = builder.Configuration["Ollama:EmbeddingModel"] ?? "nomic-embed-text";
+    // llama3.2 (3B) is the pragmatic default for CPU-only hosts; on GPU hardware set
+    // Ollama:ChatModel to a stronger multilingual model (e.g. llama3.1:latest) for better Turkish
     var chatModel = builder.Configuration["Ollama:ChatModel"] ?? "llama3.2";
+    // Local LLM cold starts (model load + generation) routinely exceed HttpClient's
+    // default 100s timeout — make it configurable
+    var ollamaTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Ollama:TimeoutSeconds", 300));
 
-    var embeddingClient = new OllamaApiClient(new Uri(ollamaBaseUrl), embeddingModel);
+    var embeddingClient = new OllamaApiClient(
+        new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, embeddingModel);
     builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(embeddingClient);
 
-    var chatClientInstance = new OllamaApiClient(new Uri(ollamaBaseUrl), chatModel);
+    var chatClientInstance = new OllamaApiClient(
+        new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, chatModel);
     builder.Services.AddSingleton<IChatClient>(chatClientInstance);
 
     builder.Services.AddScoped<EmbeddingService>();

@@ -24,24 +24,28 @@ public sealed class VectorSearchService(
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         // pgvector cosine distance: 1 - cosine_similarity, so score = 1 - distance.
-        // DISTINCT ON keeps the best (closest) chunk per article so RAG can quote the matched chunk.
-        var results = await db.Database
+        // Single ORDER BY distance LIMIT N scan so the HNSW index can drive the query;
+        // published-only at the source; best chunk per article picked in memory.
+        var rowLimit = Math.Max(limit * 5, 50);
+        var rows = await db.Database
             .SqlQueryRaw<PgvectorResult>(
                 """
-                SELECT "ArticleId", "ChunkIndex", "Distance"
-                FROM (
-                    SELECT DISTINCT ON ("ArticleId") "ArticleId", "ChunkIndex", "Embedding" <=> {0}::vector AS "Distance"
-                    FROM article_embeddings
-                    ORDER BY "ArticleId", "Embedding" <=> {0}::vector
-                ) best
-                WHERE "Distance" <= {1}
-                ORDER BY "Distance" ASC
-                LIMIT {2}
+                SELECT e."ArticleId", e."ChunkIndex", e."Embedding" <=> {0}::vector AS "Distance"
+                FROM article_embeddings e
+                JOIN articles a ON a."Id" = e."ArticleId"
+                WHERE a."Status" = 'published'
+                ORDER BY e."Embedding" <=> {0}::vector
+                LIMIT {1}
                 """,
-                queryVector.ToString(), 1.0 - _minScore, limit)
+                queryVector.ToString(), rowLimit)
             .ToListAsync(ct);
 
-        return results
+        return rows
+            .GroupBy(r => r.ArticleId)
+            .Select(g => g.OrderBy(r => r.Distance).First())
+            .Where(r => 1.0 - r.Distance >= _minScore)
+            .OrderBy(r => r.Distance)
+            .Take(limit)
             .Select(r => new VectorSearchResult(r.ArticleId, 1.0 - r.Distance, r.ChunkIndex))
             .ToList();
     }

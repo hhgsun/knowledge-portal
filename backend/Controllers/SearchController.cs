@@ -172,7 +172,8 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
 
             try
             {
-                var semanticResults = await vectorSearch.SearchAsync(searchQuery, limit);
+                // Over-fetch: post-search filters (author/tag/contentType) may drop candidates
+                var semanticResults = await vectorSearch.SearchAsync(searchQuery, limit * 3);
                 var articleIds = semanticResults.Select(r => r.ArticleId).ToList();
                 var semQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => articleIds.Contains(a.Id)), filter);
                 var articles = await semQuery
@@ -183,7 +184,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
                 var semEnrichment = await articleService.GetEnrichmentAsync(articles.Select(a => a.Id));
                 var scoredResults = semanticResults
                     .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id), Math.Round(sr.Score, 4)); })
-                    .Where(r => r != null).ToList();
+                    .Where(r => r != null).Take(limit).ToList();
 
                 sw.Stop();
                 var semRecord = await RecordSearchAsync(q, scoredResults.Count, "semantic", sw.ElapsedMilliseconds);
@@ -199,15 +200,19 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         // ═══ HYBRID (full-text + semantic via RRF) ═══
         if (type == "hybrid")
         {
+            // Each leg over-fetches so RRF fuses a wide candidate pool and the final
+            // Take(limit) is applied after merging + filtering
+            var candidateLimit = Math.Min(limit * 3, 50);
+
             // Full-text leg (rank order + LIKE fallback handled by the service)
-            var fulltextResults = (await articleService.SearchPublishedAsync(searchQuery, limit, filter))
+            var fulltextResults = (await articleService.SearchPublishedAsync(searchQuery, candidateLimit, filter))
                 .Select(a => a.Id)
                 .ToList();
 
             List<VectorSearchService.VectorSearchResult>? semanticHits = null;
             if (ollamaEnabled && vectorSearch != null)
             {
-                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, limit); }
+                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit); }
                 catch { /* semantic unavailable — fulltext only */ }
             }
 
