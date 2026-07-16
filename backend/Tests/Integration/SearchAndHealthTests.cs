@@ -70,6 +70,51 @@ public class SearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Search_TurkishStemming_FindsSingularFromPluralQuery()
+    {
+        await AuthenticateAsAdmin();
+
+        // Singular in title, plural in query — only matches when the turkish stemmer
+        // is active (the ILIKE fallback can't match: "toplantılar" is not a substring)
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Toplantı Notları Standardı",
+            status = "published"
+        });
+
+        var response = await _client.GetAsync($"/api/search?q={Uri.EscapeDataString("toplantılar")}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var titles = body.GetProperty("results").EnumerateArray()
+            .Select(r => r.GetProperty("title").GetString())
+            .ToList();
+        Assert.Contains("Toplantı Notları Standardı", titles);
+    }
+
+    [Fact]
+    public async Task Search_AccentInsensitive_FindsAccentedTitle()
+    {
+        await AuthenticateAsAdmin();
+
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Şirket Güvenlik Politikası",
+            status = "published"
+        });
+
+        // ASCII query must match the accented Turkish title via unaccent
+        var response = await _client.GetAsync("/api/search?q=sirket");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var titles = body.GetProperty("results").EnumerateArray()
+            .Select(r => r.GetProperty("title").GetString())
+            .ToList();
+        Assert.Contains("Şirket Güvenlik Politikası", titles);
+    }
+
+    [Fact]
     public async Task Search_RagPlaceholder_ReturnsStub()
     {
         await AuthenticateAsAdmin();

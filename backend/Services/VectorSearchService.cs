@@ -11,9 +11,9 @@ public sealed class VectorSearchService(
     IConfiguration config,
     ILogger<VectorSearchService> logger)
 {
-    private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.3);
+    private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.5);
 
-    public record VectorSearchResult(string ArticleId, double Score);
+    public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex);
 
     public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default)
     {
@@ -23,14 +23,18 @@ public sealed class VectorSearchService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // pgvector cosine distance: 1 - cosine_similarity, so score = 1 - distance
+        // pgvector cosine distance: 1 - cosine_similarity, so score = 1 - distance.
+        // DISTINCT ON keeps the best (closest) chunk per article so RAG can quote the matched chunk.
         var results = await db.Database
             .SqlQueryRaw<PgvectorResult>(
                 """
-                SELECT "ArticleId", MIN("Embedding" <=> {0}::vector) AS "Distance"
-                FROM article_embeddings
-                GROUP BY "ArticleId"
-                HAVING MIN("Embedding" <=> {0}::vector) <= {1}
+                SELECT "ArticleId", "ChunkIndex", "Distance"
+                FROM (
+                    SELECT DISTINCT ON ("ArticleId") "ArticleId", "ChunkIndex", "Embedding" <=> {0}::vector AS "Distance"
+                    FROM article_embeddings
+                    ORDER BY "ArticleId", "Embedding" <=> {0}::vector
+                ) best
+                WHERE "Distance" <= {1}
                 ORDER BY "Distance" ASC
                 LIMIT {2}
                 """,
@@ -38,13 +42,14 @@ public sealed class VectorSearchService(
             .ToListAsync(ct);
 
         return results
-            .Select(r => new VectorSearchResult(r.ArticleId, 1.0 - r.Distance))
+            .Select(r => new VectorSearchResult(r.ArticleId, 1.0 - r.Distance, r.ChunkIndex))
             .ToList();
     }
 
     private class PgvectorResult
     {
         public string ArticleId { get; set; } = null!;
+        public int ChunkIndex { get; set; }
         public double Distance { get; set; }
     }
 }

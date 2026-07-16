@@ -65,6 +65,7 @@ builder.Services.AddRateLimiter(options =>
     var isTest = builder.Environment.EnvironmentName == "Testing";
     var authLimit = isTest ? 10000 : builder.Configuration.GetValue("RateLimiting:AuthLimit", 10);
     var searchLimit = isTest ? 10000 : builder.Configuration.GetValue("RateLimiting:SearchLimit", 30);
+    var mcpLimit = isTest ? 10000 : builder.Configuration.GetValue("RateLimiting:McpLimit", 60);
 
     options.AddFixedWindowLimiter("auth", opt =>
     {
@@ -76,6 +77,13 @@ builder.Services.AddRateLimiter(options =>
     options.AddFixedWindowLimiter("search", opt =>
     {
         opt.PermitLimit = searchLimit;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+
+    options.AddFixedWindowLimiter("mcp", opt =>
+    {
+        opt.PermitLimit = mcpLimit;
         opt.Window = TimeSpan.FromMinutes(1);
         opt.QueueLimit = 0;
     });

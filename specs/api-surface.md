@@ -21,6 +21,7 @@ In endpoint descriptions below, **"JWT or API Key"** means the endpoint accepts 
 |--------|-------|--------|-----------|
 | `auth` | 10 requests | 1 minute | `POST /api/auth/login`, `POST /api/auth/register`, `POST /api/auth/azure-login` |
 | `search` | 30 requests | 1 minute | `GET /api/search` |
+| `mcp` | 60 requests | 1 minute | `GET /mcp`, `POST /mcp` |
 
 When rate limit is exceeded, returns `429 Too Many Requests`.
 

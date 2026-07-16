@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Middleware;
 
@@ -30,9 +31,19 @@ public class GlobalExceptionMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
-        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-        var response = new { error = "An unexpected error occurred." };
+        object response;
+        if (exception is DbUpdateConcurrencyException)
+        {
+            context.Response.StatusCode = (int)HttpStatusCode.Conflict;
+            response = new { error = "The record was modified by another operation. Please reload and try again." };
+        }
+        else
+        {
+            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            response = new { error = "An unexpected error occurred." };
+        }
+
         var json = JsonSerializer.Serialize(response);
         await context.Response.WriteAsync(json);
     }

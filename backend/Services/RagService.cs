@@ -9,6 +9,7 @@ public class RagService(
     IChatClient chatClient,
     VectorSearchService vectorSearch,
     IServiceScopeFactory scopeFactory,
+    IConfiguration config,
     ILogger<RagService> logger)
 {
     private const int DefaultContextLimit = 5;
@@ -59,16 +60,22 @@ public class RagService(
             var article = articles.FirstOrDefault(a => a.Id == sr.ArticleId);
             if (article == null) continue;
 
-            var text = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content);
-            var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             var availableWords = MaxContextWords - totalWords;
             if (availableWords <= 0) break;
 
+            // Rebuild the exact text that was chunked at embedding time (attachments included)
+            // and use the chunk that actually matched the query as context.
+            var attachmentText = await AttachmentHelper.GetAttachmentTextAsync(db, config, article.Id, ct);
+            var text = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
+            var chunks = EmbeddingService.ChunkText(text);
+            var chunkText = chunks[Math.Clamp(sr.ChunkIndex, 0, chunks.Count - 1)];
+
+            var words = chunkText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             var truncatedText = words.Length > availableWords
                 ? string.Join(' ', words.Take(availableWords))
-                : text;
+                : chunkText;
 
-            contextParts.Add($"[{contextParts.Count + 1}] {article.Title}\n{truncatedText}");
+            contextParts.Add($"[{article.Title}]\n{truncatedText}");
             sources.Add(new RagSource(article.Id, article.Title, article.Slug, sr.Score));
             totalWords += Math.Min(words.Length, availableWords);
         }

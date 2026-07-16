@@ -9,6 +9,11 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 {
     public record FtsResult(string ArticleId, double Rank);
 
+    // Built-in Turkish snowball configuration (stemming + stopwords). Accent folding is
+    // done in C# via SlugHelper.Transliterate, applied symmetrically at index and query
+    // time — no PostgreSQL extension (unaccent) required.
+    private const string TsConfig = "turkish";
+
     /// <summary>
     /// Initialize the full-text search infrastructure (search_vector column + GIN index).
     /// Called once at startup.
@@ -73,14 +78,17 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var attachmentText = await AttachmentHelper.GetAttachmentTextAsync(db, config, articleId, ct);
         var contentText = ContentExtractor.ExtractSearchableText(title, excerpt, contentJson, attachmentText);
         await db.Database.ExecuteSqlRawAsync(
-            """
+            $$"""
             UPDATE articles SET search_vector =
-                setweight(to_tsvector('simple', COALESCE({0}, '')), 'A') ||
-                setweight(to_tsvector('simple', COALESCE({1}, '')), 'B') ||
-                setweight(to_tsvector('simple', COALESCE({2}, '')), 'C')
+                setweight(to_tsvector('{{TsConfig}}', COALESCE({0}, '')), 'A') ||
+                setweight(to_tsvector('{{TsConfig}}', COALESCE({1}, '')), 'B') ||
+                setweight(to_tsvector('{{TsConfig}}', COALESCE({2}, '')), 'C')
             WHERE "Id" = {3}
             """,
-            title, excerpt ?? "", contentText, articleId);
+            SlugHelper.Transliterate(title),
+            SlugHelper.Transliterate(excerpt ?? ""),
+            SlugHelper.Transliterate(contentText),
+            articleId);
     }
 
     /// <summary>
@@ -104,10 +112,10 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
         var results = await db.Database
             .SqlQueryRaw<FtsRawResult>(
-                """
-                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('simple', {0})) AS "Rank"
+                $$"""
+                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('{{TsConfig}}', {0})) AS "Rank"
                 FROM articles
-                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('simple', {0})
+                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('{{TsConfig}}', {0})
                 ORDER BY "Rank" DESC
                 LIMIT {1}
                 """,
@@ -144,8 +152,10 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var tokens = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (tokens.Length == 0) return "";
 
-        // Escape special characters and join with | (OR) operator
-        var escaped = tokens.Select(t => t.Replace("'", "").Replace("\\", "").Replace("&", "").Replace("|", "").Replace("!", "").Replace("(", "").Replace(")", "").Replace(":", "").Trim())
+        // Escape special characters, fold Turkish accents (must mirror the indexing side),
+        // and join with | (OR) operator
+        var escaped = tokens.Select(t => SlugHelper.Transliterate(
+                t.Replace("'", "").Replace("\\", "").Replace("&", "").Replace("|", "").Replace("!", "").Replace("(", "").Replace(")", "").Replace(":", "").Trim()))
             .Where(t => t.Length > 0);
         return string.Join(" | ", escaped);
     }

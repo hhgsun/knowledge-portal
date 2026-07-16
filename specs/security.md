@@ -129,6 +129,7 @@ These endpoints explicitly reject API key authentication:
 |--------|-------|--------|-----------|
 | `auth` | 10 requests | 1 minute | Login, Register |
 | `search` | 30 requests | 1 minute | Search |
+| `mcp` | 60 requests | 1 minute | MCP endpoint (`/mcp`) |
 
 Implemented via ASP.NET Core built-in `AddRateLimiter` with `FixedWindowLimiter`.
 Returns `429 Too Many Requests` when exceeded.
@@ -141,7 +142,7 @@ The following are documented security concerns in the current baseline:
 
 All critical issues have been resolved:
 - ~~API key verification O(n)~~ → **Fixed**: prefix-indexed lookup (8-char prefix column)
-- ~~No rate limiting~~ → **Fixed**: auth + search rate limited
+- ~~No rate limiting~~ → **Fixed**: auth + search + mcp rate limited
 
 ### Medium
 
@@ -156,7 +157,7 @@ All critical issues have been resolved:
 | # | Issue | Resolution |
 |---|-------|-----------|
 | 1 | API key O(n) BCrypt | Fixed: prefix-indexed lookup |
-| 2 | No rate limiting | Fixed: auth + search rate limited |
+| 2 | No rate limiting | Fixed: auth + search + mcp rate limited |
 | 7 | LIKE wildcard injection | Fixed: `%` and `_` escaped in all LIKE queries |
 | 9 | View tracking no dedup | Fixed: 15-minute deduplication window per user/article |
 

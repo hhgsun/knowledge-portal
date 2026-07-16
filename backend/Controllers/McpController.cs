@@ -5,6 +5,7 @@ using KnowledgePortal.Api.Mcp;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace KnowledgePortal.Api.Controllers;
 
@@ -22,6 +23,7 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("mcp")]
 [Authorize]
+[EnableRateLimiting("mcp")]
 public class McpController : ControllerBase
 {
     private readonly McpToolExecutor _toolExecutor;

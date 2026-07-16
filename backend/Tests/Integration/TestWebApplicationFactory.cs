@@ -25,7 +25,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // Use a temporary PostgreSQL database for test isolation
             services.AddDbContext<AppDbContext>(options =>
             {
-                options.UseNpgsql($"Host=192.168.84.21;Port=5432;Database={_dbName};Username=hasan.gunes;Password=Hasan123..");
+                options.UseNpgsql($"Host=192.168.84.21;Port=5432;Database={_dbName};Username=hasan.gunes;Password=Hasan123.!");
             });
         });
     }
@@ -37,7 +37,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // Drop the temporary test database
             try
             {
-                using var conn = new Npgsql.NpgsqlConnection("Host=192.168.84.21;Port=5432;Database=postgres;Username=hasan.gunes;Password=Hasan123..");
+                using var conn = new Npgsql.NpgsqlConnection("Host=192.168.84.21;Port=5432;Database=postgres;Username=hasan.gunes;Password=Hasan123.!");
                 conn.Open();
                 using var cmd = conn.CreateCommand();
                 // Terminate existing connections

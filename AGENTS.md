@@ -33,9 +33,9 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
-- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search endpoints (defaults: auth=10/min, search=30/min, configurable via `appsettings.json` → `RateLimiting`)
+- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`)
 - **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
-- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. pgvector extension for vector storage (`vector(768)`) and cosine distance search in PostgreSQL. PostgreSQL tsvector/tsquery for full-text search with GIN index and weighted ranking (rebuilt on startup).
+- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG). Background service polls for dirty articles. pgvector extension for vector storage (`vector(768)`) and cosine distance search in PostgreSQL. PostgreSQL tsvector/tsquery for full-text search with GIN index and weighted ranking (rebuilt on startup). FTS uses the built-in `turkish` text search configuration (snowball stemming); Turkish accent folding is done in C# via `SlugHelper.Transliterate`, applied symmetrically at index and query time (no `unaccent` extension required).
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
@@ -256,11 +256,11 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | API Key Auth | ✅ Implemented | kp_ prefix, BCrypt hash, prefix-indexed lookup |
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
-| Search (fulltext) | ✅ Implemented | PostgreSQL tsvector/tsquery with GIN index and weighted ranking (fallback to ILIKE), content body indexed |
+| Search (fulltext) | ✅ Implemented | PostgreSQL tsvector/tsquery (`turkish` config: stemming + stopwords) with GIN index and weighted ranking (fallback to ILIKE), content body indexed, Turkish accent folding via C# transliteration |
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
-| Search (semantic) | ✅ Implemented | Ollama embedding + chunking (~500 words/chunk) + SIMD cosine similarity, best-chunk scoring |
+| Search (semantic) | ✅ Implemented | Ollama embedding + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60) |
-| Search (RAG) | ✅ Implemented | Ollama llama3.2, top-5 context, source citations |
+| Search (RAG) | ✅ Implemented | Ollama llama3.2, top-5 matched-chunk context (attachments included), source citations |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
@@ -269,7 +269,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
-| Rate Limiting | ✅ Implemented | Login, register, search endpoints |
+| Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints |
 | Health Check | ✅ Implemented | GET /api/health |
 | OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
@@ -306,10 +306,11 @@ No known gaps at this time.
 - **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
 - **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes article content as extracted plain text in results), `includeAttachments` (boolean — includes attachment metadata array per article), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
-- **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(768)` column in `article_embeddings` table. Best-chunk scoring per article (MIN distance → highest similarity). MinSimilarityScore=0.3 (configurable via appsettings.json).
+- **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(768)` column in `article_embeddings` table. Best-chunk scoring per article (`DISTINCT ON` → closest chunk, its index returned for RAG). MinSimilarityScore=0.5 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
-- **Search RAG**: Top-5 semantic results → article context (max 3000 words) → Ollama llama3.2 → answer with source citations. Response includes `sources: [{articleId, title, slug, score}]`.
-- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. Full-text search vector synced on publish/update/delete/approve/attachment-change.
+- **Search RAG**: Top-5 semantic results → matched-chunk context (the chunk that scored best per article, rebuilt from title+excerpt+content+attachment text, max 3000 words total) → Ollama llama3.2 → answer with `[Article Title]` source citations. Response includes `sources: [{articleId, title, slug, score}]`.
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10, one DI scope per article. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. Full-text search vector synced on publish/update/delete/approve/attachment-change.
+- **Search indexing concurrency**: `IndexedAt` is claimed with an optimistic conditional update (`UPDATE ... WHERE xmin = <captured>` on the PostgreSQL xmin system column). If the article was edited while being embedded, the claim fails, `IndexedAt` stays null, and the next poll re-embeds the fresh content — the background service can never mask a concurrent edit. `DbUpdateConcurrencyException` is mapped to HTTP 409 by `GlobalExceptionMiddleware`.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
 - **Vote toggle**: POST `/api/articles/{id}/vote` with same `isHelpful` value → removes vote. Different value → changes vote. No existing vote → creates vote. One vote per user per article (unique constraint).
@@ -350,6 +351,7 @@ No known gaps at this time.
   - **JWT Bearer**: `Authorization: Bearer <token>` header (HMAC-SHA256, 24h expiry)
   - Both methods are equivalent; choose based on use case (API keys for long-lived integrations, JWT for user sessions)
 - **Stateless execution**: Each request is independent; no session state is maintained between requests
+- **Rate limiting**: `/mcp` (GET + POST) is covered by the `mcp` fixed-window rate limit policy (default 60/min, `RateLimiting:McpLimit`)
 - **Tool access control**: Tools do not enforce RBAC beyond authentication. All authenticated users can access all tools. Tools only return published articles.
 
 ## Placeholder Fields (Not Yet Active)

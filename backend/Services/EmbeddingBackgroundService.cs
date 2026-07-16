@@ -48,34 +48,45 @@ public class EmbeddingBackgroundService(
 
     private async Task<int> ProcessBatchAsync(CancellationToken ct)
     {
-        using var scope = scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
+        List<string> staleArticleIds;
+        using (var listScope = scopeFactory.CreateScope())
+        {
+            var listDb = listScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            staleArticleIds = await listDb.Articles
+                .Where(a => a.Status == "published" && a.IndexedAt == null)
+                .OrderBy(a => a.UpdatedAt)
+                .Take(_batchSize)
+                .Select(a => a.Id)
+                .ToListAsync(ct);
+        }
 
-        var staleArticles = await db.Articles
-            .Where(a => a.Status == "published" && a.IndexedAt == null)
-            .OrderBy(a => a.UpdatedAt)
-            .Take(_batchSize)
-            .ToListAsync(ct);
-
-        if (staleArticles.Count == 0) return 0;
+        if (staleArticleIds.Count == 0) return 0;
 
         var processed = 0;
-        foreach (var article in staleArticles)
+        foreach (var articleId in staleArticleIds)
         {
+            // One scope per article: a failed save can't poison change tracking for the rest of the batch
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
+
             try
             {
-                var embedded = await embeddingService.EmbedArticleAsync(article, ct);
+                var article = await db.Articles
+                    .FirstOrDefaultAsync(a => a.Id == articleId && a.Status == "published" && a.IndexedAt == null, ct);
+                if (article == null) continue;
+
+                await embeddingService.EmbedArticleAsync(article, ct);
                 processed++;
             }
             catch (HttpRequestException) { throw; }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to embed article {ArticleId}, skipping", article.Id);
+                logger.LogError(ex, "Failed to embed article {ArticleId}, skipping", articleId);
             }
         }
 
-        logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticles.Count);
+        logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticleIds.Count);
         return processed;
     }
 

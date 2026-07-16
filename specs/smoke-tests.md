@@ -129,6 +129,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 1 | `GET /api/health` (no auth) | 200: `{ status: "healthy", timestamp: "..." }` |
 | 2 | 11x `POST /api/auth/login` in 1 minute | 11th request returns 429 |
 | 3 | 31x `GET /api/search?q=test` in 1 minute | 31st request returns 429 |
+| 4 | 61x `POST /mcp` (ping) in 1 minute | 61st request returns 429 |
 
 ---
 

@@ -75,7 +75,7 @@ Request → GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddlew
 
 1. **GlobalExceptionMiddleware** — catches unhandled exceptions, logs them, returns `{ "error": "An unexpected error occurred." }` with HTTP 500.
 2. **CORS** — allows `localhost:5173` and `localhost:3000` with any header/method and credentials.
-3. **RateLimiter** — fixed window rate limiting (auth: 10/min, search: 30/min). Returns 429 when exceeded.
+3. **RateLimiter** — fixed window rate limiting (auth: 10/min, search: 30/min, mcp: 60/min). Returns 429 when exceeded.
 4. **ApiKeyMiddleware** — intercepts `Authorization: Bearer kp_*` headers. Extracts the 8-char prefix after `kp_`, performs a prefix-indexed database lookup, BCrypt-verifies the raw key against matched candidates, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
 5. **JWT Bearer Authentication** — validates standard JWT tokens against configured issuer, audience, and signing key.
 6. **Authorization** — enforces `[Authorize]` and `[RequirePermission("...")]` attributes.
