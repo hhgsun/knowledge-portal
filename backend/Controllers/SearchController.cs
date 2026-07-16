@@ -23,6 +23,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         [FromQuery] string? q,
         [FromQuery] string type = "fulltext",
         [FromQuery] int limit = 20,
+        [FromQuery] int page = 1,
         [FromQuery] bool onlyOwnContent = false,
         [FromQuery] bool includeContent = false,
         [FromQuery] bool includeAttachments = false,
@@ -34,6 +35,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
             return BadRequest(new { error = "Query parameter 'q' is required" });
 
         limit = Math.Clamp(limit, 1, 50);
+        page = Math.Max(1, page);
         var sw = Stopwatch.StartNew();
 
         // Parse inline syntax: ## → contentType, # → tag, @ → user
@@ -94,7 +96,9 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
             if (tags.Count == 0)
             {
                 sw.Stop();
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = 0 });
+                // Record the miss too — zero-result searches feed content-gap analytics
+                var missRecord = await RecordSearchAsync(q, 0, "tag", sw.ElapsedMilliseconds);
+                return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = 0, page = 1, totalPages = 0, searchQueryId = missRecord.Id });
             }
 
             var foundTagIds = tags.Select(t => t.Id).ToList();
@@ -109,21 +113,26 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         // All resolved filters, applied uniformly to every search flavor below
         var filter = new ArticleFilter(authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
 
+        // Query terms used for match-context snippets in the result list
+        var snippetTokens = searchQuery.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
         // Tag-only search (no remaining query text or explicit tag type)
         if (tagSlugs.Count > 0 && string.IsNullOrWhiteSpace(searchQuery))
         {
             var tagQuery = ArticleService.ApplyFilter(db.Articles.WherePublished(), filter);
 
-            var tagResultsRaw = await tagQuery.OrderByDescending(a => a.UpdatedAt).Take(limit)
+            var tagTotal = await tagQuery.CountAsync();
+            var tagResultsRaw = await tagQuery.OrderByDescending(a => a.UpdatedAt)
+                .Skip((page - 1) * limit).Take(limit)
                 .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
                 .ToListAsync();
             var tagAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, tagResultsRaw.Select(a => a.Id).ToList()) : null;
             var tagEnrichment = await articleService.GetEnrichmentAsync(tagResultsRaw.Select(a => a.Id));
-            var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, tagAttachmentMap, tagEnrichment.GetValueOrDefault(a.Id))).ToList();
+            var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, tagAttachmentMap, tagEnrichment.GetValueOrDefault(a.Id))).ToList();
 
             sw.Stop();
-            var tagSearchRecord = await RecordSearchAsync(q, tagResults.Count, "tag", sw.ElapsedMilliseconds);
-            return Ok(new { results = tagResults, query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = tagResults.Count, searchQueryId = tagSearchRecord.Id });
+            var tagSearchRecord = await RecordSearchAsync(q, tagTotal, "tag", sw.ElapsedMilliseconds);
+            return Ok(new { results = tagResults, query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = tagTotal, page, totalPages = (int)Math.Ceiling(tagTotal / (double)limit), searchQueryId = tagSearchRecord.Id });
         }
 
         // Resolve AI services
@@ -183,12 +192,12 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
                 var semAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, articles.Select(a => a.Id).ToList()) : null;
                 var semEnrichment = await articleService.GetEnrichmentAsync(articles.Select(a => a.Id));
                 var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id), Math.Round(sr.Score, 4)); })
+                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id), Math.Round(sr.Score, 4)); })
                     .Where(r => r != null).Take(limit).ToList();
 
                 sw.Stop();
                 var semRecord = await RecordSearchAsync(q, scoredResults.Count, "semantic", sw.ElapsedMilliseconds);
-                return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, indexingPending, searchQueryId = semRecord.Id });
+                return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, page = 1, totalPages = 1, indexingPending, searchQueryId = semRecord.Id });
             }
             catch
             {
@@ -247,27 +256,28 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
             var hybridAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, allArticles.Select(a => a.Id).ToList()) : null;
             var hybridEnrichment = await articleService.GetEnrichmentAsync(allArticles.Select(a => a.Id));
             var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(kv.Value.Score, 4), kv.Value.MatchType); })
+                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(kv.Value.Score, 4), kv.Value.MatchType); })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
             var hybridRecord = await RecordSearchAsync(q, hybridResults.Count, "hybrid", sw.ElapsedMilliseconds);
 
             var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : (string?)null;
-            return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, indexingPending, searchQueryId = hybridRecord.Id, warning });
+            return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, page = 1, totalPages = 1, indexingPending, searchQueryId = hybridRecord.Id, warning });
         }
 
         // ═══ FULLTEXT (default) — rank order + LIKE fallback handled by the service ═══
-        var ftArticles = await articleService.SearchPublishedAsync(searchQuery, limit, filter);
+        var ftPage = await articleService.SearchPublishedPagedAsync(searchQuery, page, limit, filter);
+        var ftArticles = ftPage.Articles;
         var ftAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, ftArticles.Select(a => a.Id).ToList()) : null;
         var ftEnrichment = await articleService.GetEnrichmentAsync(ftArticles.Select(a => a.Id));
         var ftFinalResults = ftArticles
-            .Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt.ToString("o"), includeContent, ftAttachmentMap, ftEnrichment.GetValueOrDefault(a.Id)))
+            .Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt.ToString("o"), includeContent, snippetTokens, ftAttachmentMap, ftEnrichment.GetValueOrDefault(a.Id)))
             .ToList();
 
         sw.Stop();
-        var ftRecord = await RecordSearchAsync(q, ftFinalResults.Count, "fulltext", sw.ElapsedMilliseconds);
-        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftFinalResults.Count, indexingPending, searchQueryId = ftRecord.Id });
+        var ftRecord = await RecordSearchAsync(q, ftPage.Total, "fulltext", sw.ElapsedMilliseconds);
+        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftPage.Total, page, totalPages = (int)Math.Ceiling(ftPage.Total / (double)limit), indexingPending, searchQueryId = ftRecord.Id });
     }
 
     [HttpPost("click")]
@@ -350,11 +360,15 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         return record;
     }
 
-    private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)
-        => ArticleService.BuildSummary(
+    private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, string[] snippetTokens, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)
+    {
+        var plainText = includeContent || snippetTokens.Length > 0 ? ContentExtractor.ExtractPlainText(content) : null;
+        return ArticleService.BuildSummary(
             id, title, slug, excerpt, contentType, updatedAt, enrichment,
-            includeContent ? ContentExtractor.ExtractPlainText(content) : null,
+            includeContent ? plainText : null,
             attachmentMap?.GetValueOrDefault(id),
-            score, matchType);
+            score, matchType,
+            SearchSnippetHelper.Build(plainText, snippetTokens));
+    }
 }
 

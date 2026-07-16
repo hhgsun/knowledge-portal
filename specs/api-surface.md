@@ -505,7 +505,8 @@ Ordered by version number descending.
 |-------|------|---------|-------|
 | `q` | string | — | Required. Inline syntax: `@user-slug` (author), `#tag-slug` (tag), `##content-type` (type) |
 | `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid`, `rag` |
-| `limit` | int | 20 | Max results (1–50) |
+| `limit` | int | 20 | Max results per page (1–50) |
+| `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
 | `includeContent` | bool | false | Optional. When true → includes article content as plain text (extracted from TipTap JSON) in search results |
 | `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article |
@@ -520,26 +521,30 @@ Ordered by version number descending.
 - Example: `@ahmet #react #typescript ##guide nasıl yapılır`
 
 **Search modes**:
-- **Tag-only** (only `#` tags, no remaining text): Returns tag-browse results
-- **Fulltext**: FTS5 with BM25 ranking (fallback to LIKE), published articles only
+- **Tag-only** (only `#` tags, no remaining text): Returns tag-browse results, paged
+- **Fulltext**: PostgreSQL tsvector (`turkish` config) with `ts_rank_cd` ranking, published articles only. Multi-word queries require **all** terms (AND); if nothing matches, retries with any-term (OR), then falls back to ILIKE on title/excerpt
 - **Semantic**: Ollama embeddings, cosine similarity
-- **Hybrid**: Reciprocal Rank Fusion (FTS5 + semantic)
+- **Hybrid**: Reciprocal Rank Fusion (fulltext + semantic)
 - **RAG**: AI-generated answer with source citations
 
-**Side effects**: Logs a `SearchQuery` record with query text, result count, response time, and search type.
+**Side effects**: Logs a `SearchQuery` record with query text, result count, response time, and search type (including zero-result tag searches).
 
 **200 Response (non-RAG)**:
 ```json
 {
   "results": [
-    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "contentType": "...", "updatedAt": "..." }
+    { "id": "...", "title": "...", "slug": "...", "excerpt": "...", "snippet": "…match context…", "contentType": "...", "updatedAt": "..." }
   ],
-  "total": 5,
+  "total": 137,
+  "page": 1,
+  "totalPages": 7,
   "searchType": "fulltext",
   "responseTimeMs": 12,
   "searchQueryId": "abc123..."
 }
 ```
+> `total` is the true post-filter match count for `fulltext`/tag searches (`totalPages = ceil(total/limit)`); for `semantic`/`hybrid` it is the returned top-N count (`page`/`totalPages` fixed at 1).
+> `snippet` is a match-context window from the article body (query terms matched accent/case-insensitively, stem-prefix tolerant); `null` when the match is title-only — clients fall back to `excerpt`.
 > `searchQueryId` is used to track which result was clicked via `POST /api/search/click`.
 
 **200 Response (RAG)**:

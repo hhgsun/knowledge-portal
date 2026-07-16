@@ -182,11 +182,16 @@ export interface SearchResult {
   wilsonScore: number;
   score?: number;
   matchType?: "fulltext" | "semantic" | "both";
+  /** Match-context window from the article body; null → fall back to excerpt */
+  snippet?: string | null;
 }
 
 export interface SearchResponse {
   results: SearchResult[];
+  /** True post-filter match count (fulltext/tag); returned count for semantic/hybrid */
   total: number;
+  page?: number;
+  totalPages?: number;
   searchQueryId: string;
   responseTimeMs: number;
   tags?: string[];

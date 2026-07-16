@@ -92,16 +92,14 @@ public static class ContentExtractor
             case JsonValueKind.String:
                 return element.GetString() ?? "";
             case JsonValueKind.Object:
+                // Only "text" values and "content" children carry human-readable text in a
+                // TipTap document. Recursing into other properties (attrs, marks) would leak
+                // link URLs, image paths, and style metadata into the search index.
                 var sb = new StringBuilder();
                 if (element.TryGetProperty("text", out var textProp))
                     sb.Append(textProp.GetString() ?? "").Append(' ');
                 if (element.TryGetProperty("content", out var contentProp))
                     sb.Append(ExtractTextFromJson(contentProp));
-                foreach (var prop in element.EnumerateObject())
-                {
-                    if (prop.Name != "text" && prop.Name != "content")
-                        sb.Append(ExtractTextFromJson(prop.Value));
-                }
                 return sb.ToString();
             case JsonValueKind.Array:
                 var arrSb = new StringBuilder();

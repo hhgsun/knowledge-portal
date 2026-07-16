@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2 } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -27,6 +27,9 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexingPending, setIndexingPending] = useState(false);
@@ -132,7 +135,7 @@ export default function SearchPage() {
     inputRef.current?.focus();
   };
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = async (e?: React.FormEvent, pageArg = 1) => {
     e?.preventDefault();
     if (!query.trim()) return;
 
@@ -155,7 +158,7 @@ export default function SearchPage() {
     setWarning(null);
 
     const res = await fetchWithAuth(
-      `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}`
+      `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}&page=${pageArg}`
     );
     const data = await res.json();
 
@@ -168,9 +171,17 @@ export default function SearchPage() {
       setRagResponse({ answer: data.answer, sources: data.sources || [], query: data.query, type: "rag", responseTimeMs: data.responseTimeMs, indexingPending: data.indexingPending });
     } else {
       setResults(data.results || []);
+      setTotal(data.total ?? (data.results || []).length);
+      setPage(data.page ?? 1);
+      setTotalPages(data.totalPages ?? 1);
     }
     setResponseTime(data.responseTimeMs || null);
     setLoading(false);
+  };
+
+  const goToPage = (p: number) => {
+    handleSearch(undefined, p);
+    window.scrollTo({ top: 0 });
   };
 
   // Auto-search on mount if query param exists
@@ -396,7 +407,7 @@ export default function SearchPage() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-zinc-500">
-                  {results.length} result{results.length !== 1 ? "s" : ""}
+                  {total} result{total !== 1 ? "s" : ""}
                   {activeTags.length > 0 && activeTags.map((tag) => (
                     <span key={tag} className="inline-flex items-center gap-1 ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-xs">
                       <Tag size={10} />
@@ -424,7 +435,13 @@ export default function SearchPage() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{result.title}</h3>
-                          {result.excerpt && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>}
+                          {result.snippet ? (
+                            <p className="text-sm text-zinc-500 mt-1 line-clamp-2">
+                              <HighlightedText text={result.snippet} query={query} />
+                            </p>
+                          ) : result.excerpt ? (
+                            <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{result.excerpt}</p>
+                          ) : null}
                           <div className="flex items-center gap-2 mt-2">
                             <ContentTypeBadge contentType={result.contentType} clickable />
                             {result.status && result.status !== "published" && (
@@ -494,6 +511,32 @@ export default function SearchPage() {
                   ))}
                 </div>
               )}
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                  <span className="text-sm text-zinc-500">
+                    Page {page} of {totalPages}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => goToPage(Math.max(1, page - 1))}
+                      disabled={page <= 1}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      <ChevronLeft size={14} />
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => goToPage(Math.min(totalPages, page + 1))}
+                      disabled={page >= totalPages}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      Next
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -506,6 +549,66 @@ export default function SearchPage() {
       )}
     </div>
   );
+}
+
+// Turkish accent folding mirroring the backend's SlugHelper.Transliterate — 1 char in,
+// 1 char out, so match indices in folded text map straight back to the original.
+const TR_FOLD: Record<string, string> = {
+  "ş": "s", "ç": "c", "ğ": "g", "ü": "u", "ö": "o", "ı": "i",
+  "Ş": "s", "Ç": "c", "Ğ": "g", "Ü": "u", "Ö": "o", "İ": "i",
+};
+
+function foldText(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const mapped = TR_FOLD[s[i]] ?? s[i];
+    const lower = mapped.toLowerCase();
+    out += lower.length === 1 ? lower : mapped;
+  }
+  return out;
+}
+
+/** Renders snippet text with query terms wrapped in <mark>, accent/case-insensitively. */
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const tokens = query
+    .split(/\s+/)
+    .filter((w) => w && !w.startsWith("#") && !w.startsWith("@"))
+    .map(foldText)
+    .filter((w) => w.length > 1);
+  if (tokens.length === 0) return <>{text}</>;
+
+  const folded = foldText(text);
+  const ranges: [number, number][] = [];
+  for (const t of tokens) {
+    let idx = 0;
+    while ((idx = folded.indexOf(t, idx)) !== -1) {
+      ranges.push([idx, idx + t.length]);
+      idx += t.length;
+    }
+  }
+  if (ranges.length === 0) return <>{text}</>;
+
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  merged.forEach(([start, end], i) => {
+    if (start > pos) parts.push(text.slice(pos, start));
+    parts.push(
+      <mark key={i} className="bg-yellow-100 dark:bg-yellow-900/60 text-inherit rounded px-0.5">
+        {text.slice(start, end)}
+      </mark>
+    );
+    pos = end;
+  });
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <>{parts}</>;
 }
 
 function SearchTypeTab({ active, onClick, icon, label }: {

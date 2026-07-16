@@ -106,25 +106,20 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
     /// <summary>
     /// Search using PostgreSQL full-text search. Returns article IDs ranked by relevance.
+    /// Precision-first: all terms must match (AND); when that yields nothing, retries with
+    /// any-term matching (OR), then falls back to ILIKE on title/excerpt.
     /// </summary>
     public async Task<List<FtsResult>> SearchAsync(string query, int limit)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
 
-        var tsQuery = BuildTsQuery(query);
-        if (string.IsNullOrWhiteSpace(tsQuery)) return [];
+        var tokens = TokenizeQuery(query);
+        if (tokens.Count == 0) return [];
 
-        var results = await db.Database
-            .SqlQueryRaw<FtsRawResult>(
-                $$"""
-                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('{{TsConfig}}', {0})) AS "Rank"
-                FROM articles
-                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('{{TsConfig}}', {0})
-                ORDER BY "Rank" DESC
-                LIMIT {1}
-                """,
-                tsQuery, limit)
-            .ToListAsync();
+        var results = await RunTsQueryAsync(string.Join(" & ", tokens), limit);
+
+        if (results.Count == 0 && tokens.Count > 1)
+            results = await RunTsQueryAsync(string.Join(" | ", tokens), limit);
 
         // Fallback to ILIKE if tsquery yields no results
         if (results.Count == 0)
@@ -147,22 +142,29 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         return results.Select(r => new FtsResult(r.ArticleId, r.Rank)).ToList();
     }
 
-    /// <summary>
-    /// Build a PostgreSQL tsquery string from user input.
-    /// Tokens are joined with OR operator for broader matching.
-    /// </summary>
-    private static string BuildTsQuery(string input)
-    {
-        var tokens = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length == 0) return "";
+    private async Task<List<FtsRawResult>> RunTsQueryAsync(string tsQuery, int limit)
+        => await db.Database
+            .SqlQueryRaw<FtsRawResult>(
+                $$"""
+                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('{{TsConfig}}', {0})) AS "Rank"
+                FROM articles
+                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('{{TsConfig}}', {0})
+                ORDER BY "Rank" DESC
+                LIMIT {1}
+                """,
+                tsQuery, limit)
+            .ToListAsync();
 
-        // Escape special characters, fold Turkish accents (must mirror the indexing side),
-        // and join with | (OR) operator
-        var escaped = tokens.Select(t => SlugHelper.Transliterate(
+    /// <summary>
+    /// Splits user input into sanitized tsquery lexemes: tsquery meta-characters stripped,
+    /// Turkish accents folded (must mirror the indexing side).
+    /// </summary>
+    private static List<string> TokenizeQuery(string input)
+        => input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => SlugHelper.Transliterate(
                 t.Replace("'", "").Replace("\\", "").Replace("&", "").Replace("|", "").Replace("!", "").Replace("(", "").Replace(")", "").Replace(":", "").Trim()))
-            .Where(t => t.Length > 0);
-        return string.Join(" | ", escaped);
-    }
+            .Where(t => t.Length > 0)
+            .ToList();
 
     private class FtsRawResult
     {

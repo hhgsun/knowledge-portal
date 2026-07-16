@@ -66,7 +66,9 @@ public record ArticleSummaryDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Score,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MatchType,
     string? Content,
-    List<object>? Attachments);
+    List<object>? Attachments,
+    // Match-context window from the article body (search results only; null → clients show Excerpt)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Snippet = null);
 
 // Full article detail shared by GET /api/articles/{idOrSlug} and the MCP get_article tool.
 // Content is the raw TipTap document; ContentText is the extracted plain text.

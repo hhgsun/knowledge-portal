@@ -45,32 +45,68 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     }
 
     /// <summary>
+    /// Cap on ranked FTS candidates considered per search. Bounds memory while keeping the
+    /// true match count accurate for any realistic result set; matches beyond this are dropped.
+    /// </summary>
+    private const int MaxSearchCandidates = 1000;
+
+    /// <summary>Page of search results plus the true total match count (post-filter).</summary>
+    public record SearchPage(List<Article> Articles, int Total);
+
+    /// <summary>
     /// Full-text search over published articles (rank order preserved), falling back to
     /// LIKE matching on title/excerpt when FTS finds nothing (handles special chars better).
     /// Returned entities include Owner and Tags.
     /// </summary>
     public async Task<List<Article>> SearchPublishedAsync(string query, int limit, ArticleFilter? filter = null)
-    {
-        var baseQuery = ApplyFilter(db.Articles
-            .Include(a => a.Owner)
-            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
-            .WherePublished(), filter);
+        => (await SearchPublishedPagedAsync(query, 1, limit, filter)).Articles;
 
-        var ftsResults = await ftsService.SearchAsync(query, limit * 2);
+    /// <summary>
+    /// Paged full-text search over published articles. Filters (author/tag/contentType/API key)
+    /// are applied to the full ranked candidate set before paging, so <see cref="SearchPage.Total"/>
+    /// is the true post-filter match count and no page under-fills while matches remain.
+    /// </summary>
+    public async Task<SearchPage> SearchPublishedPagedAsync(string query, int page, int limit, ArticleFilter? filter = null)
+    {
+        var filteredQuery = ApplyFilter(db.Articles.WherePublished(), filter);
+
+        var ftsResults = await ftsService.SearchAsync(query, MaxSearchCandidates);
         if (ftsResults.Count > 0)
         {
             var rankedIds = ftsResults.Select(r => r.ArticleId).ToList();
-            var articles = await baseQuery.Where(a => rankedIds.Contains(a.Id)).ToListAsync();
-            return ArticleQueryExtensions.OrderByRankedIds(rankedIds, articles, a => a.Id).Take(limit).ToList();
+            var matchingIds = (await filteredQuery
+                .Where(a => rankedIds.Contains(a.Id))
+                .Select(a => a.Id)
+                .ToListAsync()).ToHashSet();
+
+            var orderedIds = rankedIds.Where(matchingIds.Contains).ToList();
+            var pageIds = orderedIds.Skip((page - 1) * limit).Take(limit).ToList();
+            var articles = await db.Articles
+                .Include(a => a.Owner)
+                .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
+                .Where(a => pageIds.Contains(a.Id))
+                .ToListAsync();
+
+            return new SearchPage(
+                ArticleQueryExtensions.OrderByRankedIds(pageIds, articles, a => a.Id).ToList(),
+                orderedIds.Count);
         }
 
         var escaped = SlugHelper.EscapeLikePattern(query);
-        return await baseQuery
+        var likeQuery = filteredQuery
             .Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\")
-                || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escaped}%", "\\")))
+                || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escaped}%", "\\")));
+
+        var total = await likeQuery.CountAsync();
+        var likeArticles = await likeQuery
+            .Include(a => a.Owner)
+            .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
             .OrderByDescending(a => a.UpdatedAt)
+            .Skip((page - 1) * limit)
             .Take(limit)
             .ToListAsync();
+
+        return new SearchPage(likeArticles, total);
     }
 
     /// <summary>Appends the next version snapshot for an article. Caller saves.</summary>
@@ -218,7 +254,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     public static ArticleSummaryDto BuildSummary(
         string id, string title, string slug, string? excerpt, string contentType, string updatedAt,
         ArticleEnrichment? enrichment, string? content = null, List<object>? attachments = null,
-        double? score = null, string? matchType = null)
+        double? score = null, string? matchType = null, string? snippet = null)
     {
         return new ArticleSummaryDto(
             id, title, slug, excerpt,
@@ -236,7 +272,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             score,
             matchType,
             content,
-            attachments);
+            attachments,
+            snippet);
     }
 
     /// <summary>

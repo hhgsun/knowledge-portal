@@ -115,6 +115,130 @@ public class SearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Search_MultiWordQuery_RequiresAllTerms()
+    {
+        await AuthenticateAsAdmin();
+
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Zeplin Kalibrasyon Rehberi",
+            status = "published"
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Zeplin Envanter Listesi",
+            status = "published"
+        });
+
+        // AND semantics: both terms must match — the envanter article shares only "zeplin"
+        var response = await _client.GetAsync($"/api/search?q={Uri.EscapeDataString("zeplin kalibrasyon")}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var titles = body.GetProperty("results").EnumerateArray()
+            .Select(r => r.GetProperty("title").GetString())
+            .ToList();
+        Assert.Contains("Zeplin Kalibrasyon Rehberi", titles);
+        Assert.DoesNotContain("Zeplin Envanter Listesi", titles);
+    }
+
+    [Fact]
+    public async Task Search_MultiWordQuery_FallsBackToAnyTermWhenAndFindsNothing()
+    {
+        await AuthenticateAsAdmin();
+
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Jeneratör Bakım Talimatı",
+            status = "published"
+        });
+
+        // "hicbiryerdegecmeyenkelime" matches nothing → AND yields 0 → OR fallback still finds the article
+        var response = await _client.GetAsync($"/api/search?q={Uri.EscapeDataString("jeneratör hicbiryerdegecmeyenkelime")}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var titles = body.GetProperty("results").EnumerateArray()
+            .Select(r => r.GetProperty("title").GetString())
+            .ToList();
+        Assert.Contains("Jeneratör Bakım Talimatı", titles);
+    }
+
+    [Fact]
+    public async Task Search_Pagination_ReturnsTrueTotalAndPages()
+    {
+        await AuthenticateAsAdmin();
+
+        for (var i = 1; i <= 3; i++)
+        {
+            await _client.PostAsJsonAsync("/api/articles", new
+            {
+                title = $"Sayfalamatesti Makalesi {i}",
+                status = "published"
+            });
+        }
+
+        var response = await _client.GetAsync("/api/search?q=sayfalamatesti&limit=2");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("total").GetInt32() >= 3);
+        Assert.Equal(2, body.GetProperty("results").GetArrayLength());
+        Assert.Equal(1, body.GetProperty("page").GetInt32());
+        Assert.True(body.GetProperty("totalPages").GetInt32() >= 2);
+
+        var page2 = await (await _client.GetAsync("/api/search?q=sayfalamatesti&limit=2&page=2"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, page2.GetProperty("page").GetInt32());
+        Assert.True(page2.GetProperty("results").GetArrayLength() >= 1);
+
+        // Page 2 must not repeat page 1's results
+        var page1Ids = body.GetProperty("results").EnumerateArray().Select(r => r.GetProperty("id").GetString()).ToHashSet();
+        var page2Ids = page2.GetProperty("results").EnumerateArray().Select(r => r.GetProperty("id").GetString()).ToList();
+        Assert.DoesNotContain(page2Ids, id => page1Ids.Contains(id));
+    }
+
+    [Fact]
+    public async Task Search_BodyMatch_ReturnsSnippetWithContext()
+    {
+        await AuthenticateAsAdmin();
+
+        var filler = string.Join(" ", Enumerable.Repeat("dolgu kelimeleri burada devam ediyor", 20));
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Snippet Deneme Dokümanı",
+            excerpt = "Bu özette aranan kelime yok",
+            content = new
+            {
+                type = "doc",
+                content = new object[]
+                {
+                    new
+                    {
+                        type = "paragraph",
+                        content = new object[]
+                        {
+                            new { type = "text", text = $"{filler} uzaktankumanda cihazının eşleştirme adımları {filler}" }
+                        }
+                    }
+                }
+            },
+            status = "published"
+        });
+
+        var response = await _client.GetAsync("/api/search?q=uzaktankumanda");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = body.GetProperty("results").EnumerateArray()
+            .FirstOrDefault(r => r.GetProperty("title").GetString() == "Snippet Deneme Dokümanı");
+        Assert.NotEqual(JsonValueKind.Undefined, result.ValueKind);
+
+        Assert.True(result.TryGetProperty("snippet", out var snippet));
+        Assert.Contains("uzaktankumanda", snippet.GetString());
+    }
+
+    [Fact]
     public async Task Search_RagPlaceholder_ReturnsStub()
     {
         await AuthenticateAsAdmin();
