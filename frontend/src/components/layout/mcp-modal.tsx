@@ -20,6 +20,9 @@ const LANGS: { id: LangTab; label: string }[] = [
   { id: "python", label: "Python" },
 ];
 
+// Config dosyalarındaki server kaydının adı (backend: McpConstants.ServerName)
+const MCP_SERVER_NAME = "knowledge-portal";
+
 const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
   { id: "vscode", label: "VS Code", file: ".vscode/mcp.json" },
   { id: "claude", label: "Claude Desktop", file: "claude_desktop_config.json" },
@@ -46,6 +49,7 @@ export function McpModal({ open, onClose }: McpModalProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(false);
+  const [protocolVersion, setProtocolVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +59,14 @@ export function McpModal({ open, onClose }: McpModalProps) {
         if (res.ok) setKeys(await res.json());
       })
       .finally(() => setLoadingKeys(false));
+    fetchWithAuth("/mcp")
+      .then(async (res) => {
+        if (res.ok) {
+          const info = await res.json();
+          if (info?.protocolVersion) setProtocolVersion(info.protocolVersion);
+        }
+      })
+      .catch(() => {});
   }, [open]);
 
   if (!open) return null;
@@ -86,19 +98,19 @@ export function McpModal({ open, onClose }: McpModalProps) {
     switch (client) {
       case "vscode":
         return JSON.stringify(
-          { servers: { "knowledge-portal": { type: "http", ...entry } } },
+          { servers: { [MCP_SERVER_NAME]: { type: "http", ...entry } } },
           null, 2,
         );
       case "claude-code":
-        return `claude mcp add --transport http knowledge-portal ${mcpEndpoint} \\
+        return `claude mcp add --transport http ${MCP_SERVER_NAME} ${mcpEndpoint} \\
   --header "${authHeaderFull}"`;
       case "windsurf":
         return JSON.stringify(
-          { mcpServers: { "knowledge-portal": { serverUrl: mcpEndpoint, headers: authHeader } } },
+          { mcpServers: { [MCP_SERVER_NAME]: { serverUrl: mcpEndpoint, headers: authHeader } } },
           null, 2,
         );
       default:
-        return JSON.stringify({ mcpServers: { "knowledge-portal": entry } }, null, 2);
+        return JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: entry } }, null, 2);
     }
   };
 
@@ -242,7 +254,9 @@ String tags    = callTool("list_tags", "{}");`;
           <div className="flex items-center gap-2">
             <Cpu size={20} className="text-blue-500" />
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">MCP Bağlantı Bilgileri</h2>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500">2024-11-05</span>
+            {protocolVersion && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500">{protocolVersion}</span>
+            )}
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
             <X size={18} className="text-zinc-500" />
@@ -410,7 +424,7 @@ String tags    = callTool("list_tags", "{}");`;
               onClick={() => setToolsOpen((v) => !v)}
               className="flex items-center gap-2 w-full group"
             >
-              <SectionLabel>Araçlar (5 tool)</SectionLabel>
+              <SectionLabel>Araçlar ({TOOLS.length} tool)</SectionLabel>
               {toolsOpen ? (
                 <ChevronUp size={14} className="text-zinc-400 ml-auto" />
               ) : (
@@ -456,7 +470,7 @@ String tags    = callTool("list_tags", "{}");`;
 
           {/* Footer */}
           <p className="text-xs text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-            JSON-RPC 2.0 • VS Code Copilot, Claude Desktop, Claude Code, Cursor, Windsurf uyumlu
+            JSON-RPC 2.0 • {CLIENTS.map((c) => c.label).join(", ")} uyumlu
           </p>
         </div>
       </div>

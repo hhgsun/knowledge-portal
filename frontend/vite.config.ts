@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_BASE_URL || 'http://localhost:5174',
           changeOrigin: true,
         },
+        '/mcp': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:5174',
+          changeOrigin: true,
+        },
       },
     },
   }

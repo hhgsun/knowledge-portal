@@ -11,7 +11,7 @@ namespace KnowledgePortal.Api.Controllers;
 /// <summary>
 /// MCP (Model Context Protocol) server endpoint.
 /// Implements JSON-RPC 2.0 over HTTP (Streamable HTTP transport).
-/// Protocol version: 2024-11-05
+/// Protocol version: see <see cref="McpConstants.ProtocolVersion"/>
 /// 
 /// Authentication: X-API-Key header or Bearer token (no OAuth).
 /// 
@@ -84,7 +84,9 @@ public class McpController : ControllerBase
             endpoint = "/mcp",
             method = "POST",
             authentication = new[] { "X-API-Key: kp_xxx", "Authorization: Bearer <token>" },
-            protocolVersion = "2024-11-05"
+            protocolVersion = McpConstants.ProtocolVersion,
+            serverName = McpConstants.ServerName,
+            serverVersion = McpConstants.ServerVersion
         });
     }
 
@@ -92,19 +94,8 @@ public class McpController : ControllerBase
 
     private IActionResult HandleInitialize(JsonRpcRequest request)
     {
-        var result = new McpInitializeResult
-        {
-            ProtocolVersion = "2024-11-05",
-            Capabilities = new McpCapabilities
-            {
-                Tools = new McpToolsCapability { ListChanged = false }
-            },
-            ServerInfo = new McpServerInfo
-            {
-                Name = "knowledge-portal",
-                Version = "2.0.0"
-            }
-        };
+        // Defaults come from McpConstants via McpInitializeResult/McpServerInfo
+        var result = new McpInitializeResult();
 
         return JsonRpcSuccessResponse(request.Id, result);
     }

@@ -3,6 +3,15 @@ using System.Text.Json.Serialization;
 
 namespace KnowledgePortal.Api.Mcp;
 
+// ─── MCP Server Constants (single source of truth) ─────────────────────
+
+public static class McpConstants
+{
+    public const string ProtocolVersion = "2024-11-05";
+    public const string ServerName = "knowledge-portal";
+    public const string ServerVersion = "2.0.0";
+}
+
 // ─── JSON-RPC 2.0 Request/Response ─────────────────────────────────────
 
 public class JsonRpcRequest
@@ -55,7 +64,7 @@ public class JsonRpcError
 public class McpInitializeResult
 {
     [JsonPropertyName("protocolVersion")]
-    public string ProtocolVersion { get; set; } = "2024-11-05";
+    public string ProtocolVersion { get; set; } = McpConstants.ProtocolVersion;
 
     [JsonPropertyName("capabilities")]
     public McpCapabilities Capabilities { get; set; } = new();
@@ -79,10 +88,10 @@ public class McpToolsCapability
 public class McpServerInfo
 {
     [JsonPropertyName("name")]
-    public string Name { get; set; } = "knowledge-portal";
+    public string Name { get; set; } = McpConstants.ServerName;
 
     [JsonPropertyName("version")]
-    public string Version { get; set; } = "2.0.0";
+    public string Version { get; set; } = McpConstants.ServerVersion;
 }
 
 public class McpToolsListResult
