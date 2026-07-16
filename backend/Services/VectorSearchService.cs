@@ -15,8 +15,11 @@ public sealed class VectorSearchService(
 
     public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex);
 
-    public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default)
+    /// <param name="minScore">Overrides Ollama:MinSimilarityScore when set — RAG uses a lower
+    /// threshold than list-style semantic search (the LLM judges relevance itself).</param>
+    public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default, double? minScore = null)
     {
+        var effectiveMinScore = minScore ?? _minScore;
         var queryResults = await embeddingGenerator.GenerateAsync([queryText], cancellationToken: ct);
         var queryVector = new Vector(queryResults[0].Vector.ToArray());
 
@@ -43,7 +46,7 @@ public sealed class VectorSearchService(
         return rows
             .GroupBy(r => r.ArticleId)
             .Select(g => g.OrderBy(r => r.Distance).First())
-            .Where(r => 1.0 - r.Distance >= _minScore)
+            .Where(r => 1.0 - r.Distance >= effectiveMinScore)
             .OrderBy(r => r.Distance)
             .Take(limit)
             .Select(r => new VectorSearchResult(r.ArticleId, 1.0 - r.Distance, r.ChunkIndex))
