@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
@@ -193,7 +193,8 @@ export default function SearchPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const trackClick = useCallback((articleId: string, slug: string) => {
+  // Fire-and-forget click analytics; navigation is handled by the result <Link>
+  const trackClick = useCallback((articleId: string) => {
     if (searchQueryId) {
       fetchWithAuth("/api/search/click", {
         method: "POST",
@@ -201,8 +202,7 @@ export default function SearchPage() {
         body: JSON.stringify({ searchQueryId, articleId }),
       }).catch(() => { });
     }
-    navigate(`/articles/${slug}`);
-  }, [searchQueryId, fetchWithAuth, navigate]);
+  }, [searchQueryId, fetchWithAuth]);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -389,15 +389,17 @@ export default function SearchPage() {
                   <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Sources ({ragResponse.sources.length})</h3>
                   <div className="flex flex-wrap gap-2">
                     {ragResponse.sources.map((source: RagSource) => (
-                      <button
+                      <a
                         key={source.articleId}
-                        onClick={() => navigate(`/articles/${source.slug}`)}
+                        href={`/articles/${source.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-3 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                       >
                         <FileText size={14} className="text-blue-500" />
                         <span className="text-zinc-900 dark:text-zinc-100">{source.title}</span>
                         <span className="text-xs text-purple-500 font-medium">{(source.score * 100).toFixed(0)}%</span>
-                      </button>
+                      </a>
                     ))}
                   </div>
                 </div>
@@ -427,9 +429,10 @@ export default function SearchPage() {
               ) : (
                 <div className="space-y-3">
                   {results.map((result) => (
-                    <button
+                    <Link
                       key={result.id}
-                      onClick={() => trackClick(result.id, result.slug)}
+                      to={`/articles/${result.slug}`}
+                      onClick={() => trackClick(result.id)}
                       className="block w-full text-left p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                     >
                       <div className="flex items-start justify-between">
@@ -507,7 +510,7 @@ export default function SearchPage() {
                           {new Date(result.updatedAt).toLocaleDateString()}
                         </span>
                       </div>
-                    </button>
+                    </Link>
                   ))}
                 </div>
               )}
