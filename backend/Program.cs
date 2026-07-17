@@ -107,7 +107,11 @@ builder.Services.AddControllers();
 // ─── Ollama AI Services ──────────────────────────────────────
 if (builder.Configuration.GetValue("Ollama:Enabled", false))
 {
+    // OllamaSharp appends relative paths (api/chat, api/embed); without a trailing slash
+    // HttpClient drops the base URL's last path segment when resolving them
     var ollamaBaseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+    if (!ollamaBaseUrl.EndsWith('/'))
+        ollamaBaseUrl += "/";
     var embeddingModel = builder.Configuration["Ollama:EmbeddingModel"] ?? "nomic-embed-text";
     // llama3.2 (3B) is the pragmatic default for CPU-only hosts; on GPU hardware set
     // Ollama:ChatModel to a stronger multilingual model (e.g. llama3.1:latest) for better Turkish
