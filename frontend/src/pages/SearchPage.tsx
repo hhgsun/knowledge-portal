@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -399,6 +399,7 @@ export default function SearchPage() {
                         <FileText size={14} className="text-blue-500" />
                         <span className="text-zinc-900 dark:text-zinc-100">{source.title}</span>
                         <span className="text-xs text-purple-500 font-medium">{(source.score * 100).toFixed(0)}%</span>
+                        <ExternalLink size={12} className="text-zinc-400" aria-label="Yeni sekmede açılır" />
                       </a>
                     ))}
                   </div>
