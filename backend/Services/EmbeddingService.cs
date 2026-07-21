@@ -81,6 +81,7 @@ public class EmbeddingService(
                 Embedding = new Vector(vector),
                 ModelName = _modelName,
                 TextHash = i == 0 ? textHash : ContentExtractor.ComputeHash(chunks[i]),
+                Content = chunks[i],
                 Dimensions = vector.Length,
             });
         }

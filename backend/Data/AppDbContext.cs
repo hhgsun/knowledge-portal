@@ -218,6 +218,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 e.Property(ae => ae.Embedding).IsRequired().HasColumnType("vector(1024)");
             e.Property(ae => ae.ModelName).IsRequired();
             e.Property(ae => ae.TextHash).IsRequired();
+            e.Property(ae => ae.Content).HasColumnType("text");
             e.Property(ae => ae.Dimensions).IsRequired();
             e.Property(ae => ae.CreatedAt).IsRequired();
             e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();

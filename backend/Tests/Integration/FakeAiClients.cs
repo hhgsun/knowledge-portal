@@ -47,6 +47,30 @@ public sealed class FakeVectorSearchService(IServiceScopeFactory scopeFactory) :
             .Take(limit)
             .ToList();
     }
+
+    public async Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks,
+        CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3)
+    {
+        // Reuse the article-level ranking, then attach each article's searchable text as the
+        // (single) chunk text — mirrors the real service returning stored chunk Content.
+        var ranked = await SearchAsync(queryText, maxChunks, ct, minScore);
+        if (ranked.Count == 0) return [];
+
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var ids = ranked.Select(r => r.ArticleId).ToList();
+        var byId = (await db.Articles.Where(a => ids.Contains(a.Id))
+                .Select(a => new { a.Id, a.Title, a.Excerpt, a.Content })
+                .ToListAsync(ct))
+            .ToDictionary(a => a.Id);
+
+        return ranked
+            .Select(r => new VectorChunkResult(r.ArticleId, r.ChunkIndex, r.Score,
+                byId.TryGetValue(r.ArticleId, out var a)
+                    ? ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "")
+                    : ""))
+            .ToList();
+    }
 }
 
 /// <summary>
@@ -115,6 +139,8 @@ public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
 public sealed class FakeChatClient : IChatClient
 {
     public IReadOnlyList<ChatMessage> LastMessages { get; private set; } = [];
+    /// <summary>Number of completion calls — lets tests distinguish single-pass from map-reduce.</summary>
+    public int CallCount { get; private set; }
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -122,6 +148,7 @@ public sealed class FakeChatClient : IChatClient
         CancellationToken cancellationToken = default)
     {
         LastMessages = messages.ToList();
+        CallCount++;
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "FAKE-ANSWER")));
     }
 

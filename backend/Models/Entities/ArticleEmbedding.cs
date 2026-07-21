@@ -10,6 +10,11 @@ public class ArticleEmbedding
     public Vector Embedding { get; set; } = null!;
     public string ModelName { get; set; } = null!;
     public string TextHash { get; set; } = null!;
+    /// <summary>
+    /// The exact chunk text that was embedded. Persisted so RAG can build its prompt context
+    /// directly from the DB instead of re-extracting attachments and re-chunking on every query.
+    /// </summary>
+    public string? Content { get; set; }
     public int Dimensions { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
 using KnowledgePortal.Api.Tests.Integration;
@@ -21,10 +22,27 @@ public class RagServiceTests
 {
     // ─── Fakes ─────────────────────────────────────────────────────────
 
-    private sealed class FakeVectorSearch(List<VectorSearchResult> results) : IVectorSearchService
+    private sealed class FakeVectorSearch(IServiceScopeFactory scopeFactory, List<VectorSearchResult> results) : IVectorSearchService
     {
         public Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit,
             CancellationToken ct = default, double? minScore = null) => Task.FromResult(results);
+
+        // RAG uses chunk-level retrieval; build each chunk's text from the seeded article so the
+        // prompt-injection / delimiter / filter assertions still see the body text.
+        public async Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks,
+            CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3)
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var chunks = new List<VectorChunkResult>();
+            foreach (var r in results)
+            {
+                var a = await db.Articles.FirstOrDefaultAsync(x => x.Id == r.ArticleId, ct);
+                var text = a == null ? "" : ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
+                chunks.Add(new VectorChunkResult(r.ArticleId, r.ChunkIndex, r.Score, text));
+            }
+            return chunks.Take(maxChunks).ToList();
+        }
     }
 
     // ─── Harness ───────────────────────────────────────────────────────
@@ -51,10 +69,11 @@ public class RagServiceTests
             seed(scope.ServiceProvider.GetRequiredService<AppDbContext>());
 
         var chat = new FakeChatClient();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         var rag = new RagService(
             chat,
-            new FakeVectorSearch(vectorResults),
-            provider.GetRequiredService<IServiceScopeFactory>(),
+            new FakeVectorSearch(scopeFactory, vectorResults),
+            scopeFactory,
             new ConfigurationBuilder().Build(),
             NullLogger<RagService>.Instance);
 
@@ -194,5 +213,40 @@ public class RagServiceTests
 
         var prompt = UserMessage(h.Chat);
         Assert.Contains("<source id=\"1\" title=\"Delimiter Kontrol\">", prompt);
+    }
+
+    [Fact]
+    public async Task AskAsync_NarrowQuestion_UsesSinglePass()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db => { db.Articles.Add(Article("a1", "Vpn Kurulum")); db.SaveChanges(); });
+
+        var result = await h.Rag.AskAsync("vpn nasıl kurulur");
+
+        Assert.Equal("FAKE-ANSWER", result.Answer);
+        Assert.Equal(1, h.Chat.CallCount); // one LLM call for a focused question
+    }
+
+    [Fact]
+    public async Task AskAsync_BroadQuestion_RunsMapReduceOverAllSources()
+    {
+        // 8 candidate articles + a broad-intent keyword ("özetle") → map-reduce:
+        // 8 chunks / 6-per-batch = 2 map calls + 1 reduce = 3 completions, all 8 kept as sources.
+        var results = Enumerable.Range(0, 8)
+            .Select(i => new VectorSearchResult($"a{i}", 0.9 - i * 0.01, 0)).ToList();
+
+        var h = BuildRag(results, db =>
+        {
+            for (var i = 0; i < 8; i++)
+                db.Articles.Add(Article($"a{i}", $"Politika {i}", bodyText: $"Kural {i} içeriği."));
+            db.SaveChanges();
+        });
+
+        var result = await h.Rag.AskAsync("tüm güvenlik politikalarını özetle");
+
+        Assert.Equal("FAKE-ANSWER", result.Answer);
+        Assert.Equal(3, h.Chat.CallCount);   // 2 map + 1 reduce
+        Assert.Equal(8, result.Sources.Count); // every consulted document is cited
     }
 }
