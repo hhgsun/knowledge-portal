@@ -90,6 +90,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
 
     [HttpDelete]
     [RequirePermission(Permissions.TagsManage)]
+    [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
         if (string.IsNullOrWhiteSpace(id))

@@ -1,8 +1,9 @@
-using KnowledgePortal.Api.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -14,19 +15,27 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
+        // Per-class isolated database inside the shared Testcontainers PostgreSQL instance.
+        // Overriding configuration (not the DbContext registration) also covers the
+        // "ensure database exists" startup block in Program.cs, which reads the same key.
+        var csb = new NpgsqlConnectionStringBuilder(TestPostgresContainer.AdminConnectionString)
+        {
+            Database = _dbName
+        };
+        builder.UseSetting("ConnectionStrings:DefaultConnection", csb.ConnectionString);
+
+        // Each factory hosts its own app instance in the same process — the file logger
+        // opens its log file exclusively, so every host needs a unique log directory.
+        builder.UseSetting("Logging:FilePath", Path.Combine(Path.GetTempPath(), "kp-test-logs", _dbName));
+
         builder.ConfigureServices(services =>
         {
-            // Remove the existing DbContext registration
-            var descriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
-            if (descriptor != null)
-                services.Remove(descriptor);
-
-            // Use a temporary PostgreSQL database for test isolation
-            services.AddDbContext<AppDbContext>(options =>
-            {
-                options.UseNpgsql($"Host=192.168.84.21;Port=5432;Database={_dbName};Username=hasan.gunes;Password=Hasan123.!");
-            });
+            // Replace the Ollama-backed AI singletons with deterministic fakes so the
+            // full embedding/RAG pipeline runs without any network dependency.
+            services.RemoveAll<IEmbeddingGenerator<string, Embedding<float>>>();
+            services.RemoveAll<IChatClient>();
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+            services.AddSingleton<IChatClient>(new FakeChatClient());
         });
     }
 
@@ -34,13 +43,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         if (disposing)
         {
-            // Drop the temporary test database
+            // Drop the per-class database — best-effort; the container itself is
+            // removed by the Testcontainers reaper after the test process exits.
             try
             {
-                using var conn = new Npgsql.NpgsqlConnection("Host=192.168.84.21;Port=5432;Database=postgres;Username=hasan.gunes;Password=Hasan123.!");
+                using var conn = new NpgsqlConnection(TestPostgresContainer.AdminConnectionString);
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                // Terminate existing connections
                 cmd.CommandText = $"""
                     SELECT pg_terminate_backend(pid) FROM pg_stat_activity
                     WHERE datname = '{_dbName}' AND pid <> pg_backend_pid();

@@ -23,6 +23,27 @@ public class HealthCheckTests : IClassFixture<TestWebApplicationFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("healthy", body.GetProperty("status").GetString());
         Assert.True(body.TryGetProperty("timestamp", out _));
+        Assert.True(body.TryGetProperty("pendingEmbeddings", out _));
+    }
+
+    [Fact]
+    public async Task LivenessEndpoint_AlwaysReturns200()
+    {
+        var response = await _client.GetAsync("/api/health/live");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("alive", body.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task MetricsEndpoint_ReturnsPrometheusText()
+    {
+        var response = await _client.GetAsync("/metrics");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.Contains("kp_pending_embeddings", text);
     }
 }
 

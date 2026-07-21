@@ -146,6 +146,7 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     }
 
     [HttpDelete("comments/{commentId}")]
+    [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> DeleteComment(string articleId, string commentId)
     {
         var userId = User.GetUserId();

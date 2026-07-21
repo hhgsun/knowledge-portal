@@ -133,6 +133,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
                     WHERE "Status" = 'published' AND (
                         "Title" ILIKE {0} OR "Excerpt" ILIKE {0}
                     )
+                    ORDER BY "Id"
                     LIMIT {1}
                     """,
                     likePattern, limit)
@@ -149,7 +150,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
                 SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('{{TsConfig}}', {0})) AS "Rank"
                 FROM articles
                 WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('{{TsConfig}}', {0})
-                ORDER BY "Rank" DESC
+                ORDER BY "Rank" DESC, "Id"
                 LIMIT {1}
                 """,
                 tsQuery, limit)

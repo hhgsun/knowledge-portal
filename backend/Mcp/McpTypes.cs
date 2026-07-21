@@ -10,6 +10,13 @@ public static class McpConstants
     public const string ProtocolVersion = "2024-11-05";
     public const string ServerName = "knowledge-portal";
     public const string ServerVersion = "2.0.0";
+
+    /// <summary>
+    /// Protocol revisions this server can speak. initialize echoes the client's
+    /// requested version when it is in this list, otherwise falls back to
+    /// <see cref="ProtocolVersion"/> (per MCP version negotiation).
+    /// </summary>
+    public static readonly string[] SupportedProtocolVersions = ["2025-03-26", "2024-11-05"];
 }
 
 // ─── JSON-RPC 2.0 Request/Response ─────────────────────────────────────

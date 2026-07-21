@@ -1,93 +1,342 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
 public class McpTests : IClassFixture<TestWebApplicationFactory>
 {
+    private readonly TestWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public McpTests(TestWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
+    private Task<HttpResponseMessage> RpcAsync(object body) => _client.PostAsJsonAsync("/mcp", body);
+
+    private async Task<JsonElement> RpcResultAsync(object body)
+    {
+        var response = await RpcAsync(body);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return json.GetProperty("result");
+    }
+
+    private static string ToolText(JsonElement result) =>
+        result.GetProperty("content").EnumerateArray().First().GetProperty("text").GetString()!;
+
+    private static object ToolCall(string name, object arguments) => new
+    {
+        jsonrpc = "2.0",
+        id = 1,
+        method = "tools/call",
+        @params = new { name, arguments }
+    };
+
+    // ─── Auth ──────────────────────────────────────────────────────────
+
     [Fact]
-    public async Task Mcp_RequiresAuth()
+    public async Task Mcp_RequiresAuth_WithWwwAuthenticateChallenge()
     {
         var response = await _client.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "ping" });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Bearer", response.Headers.WwwAuthenticate.ToString());
     }
+
+    [Fact]
+    public async Task Mcp_ApiKeyHeader_Authenticates()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var keyResponse = await _client.PostAsJsonAsync("/api/keys", new { name = "mcp-test-key" });
+        Assert.Equal(HttpStatusCode.Created, keyResponse.StatusCode);
+        var keyBody = await keyResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var rawKey = keyBody.GetProperty("key").GetString()!;
+
+        using var keyClient = _factory.CreateClient();
+        keyClient.DefaultRequestHeaders.Add("X-API-Key", rawKey);
+        var response = await keyClient.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("result").GetProperty("tools").GetArrayLength() > 0);
+    }
+
+    // ─── Protocol ──────────────────────────────────────────────────────
 
     [Fact]
     public async Task Mcp_Initialize_ReturnsProtocolAndServerInfo()
     {
-        await AuthenticateAsAdmin();
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
 
-        var response = await _client.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "initialize" });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var result = body.GetProperty("result");
+        var result = await RpcResultAsync(new { jsonrpc = "2.0", id = 1, method = "initialize" });
         Assert.False(string.IsNullOrEmpty(result.GetProperty("protocolVersion").GetString()));
         Assert.Equal("knowledge-portal", result.GetProperty("serverInfo").GetProperty("name").GetString());
     }
 
     [Fact]
-    public async Task Mcp_ToolsList_ContainsSearchTool()
+    public async Task Mcp_Initialize_EchoesSupportedClientVersion()
     {
-        await AuthenticateAsAdmin();
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
 
-        var response = await _client.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 2, method = "tools/list" });
+        var result = await RpcResultAsync(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "initialize",
+            @params = new { protocolVersion = "2025-03-26" }
+        });
+        Assert.Equal("2025-03-26", result.GetProperty("protocolVersion").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_Initialize_UnsupportedVersion_FallsBackToDefault()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "initialize",
+            @params = new { protocolVersion = "1999-01-01" }
+        });
+        Assert.Equal("2024-11-05", result.GetProperty("protocolVersion").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_NotificationsInitialized_Returns202()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "2.0", method = "notifications/initialized" });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_Get_WithSseAccept_Returns405()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/mcp");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_Get_PlainRequest_ReturnsTransportDescriptor()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await _client.GetAsync("/mcp");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var toolNames = body.GetProperty("result").GetProperty("tools").EnumerateArray()
+        Assert.Equal("/mcp", body.GetProperty("endpoint").GetString());
+    }
+
+    // ─── Error paths ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Mcp_UnknownMethod_ReturnsMethodNotFound()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "2.0", id = 1, method = "does/not/exist" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(-32601, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_MalformedJson_ReturnsParseError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        using var content = new StringContent("{not valid json", Encoding.UTF8, "application/json");
+        var response = await _client.PostAsync("/mcp", content);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(-32700, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_ToolsCall_MissingParams_ReturnsInvalidParams()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "2.0", id = 1, method = "tools/call" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(-32602, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_UnknownTool_ReturnsIsError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("no_such_tool", new { }));
+        Assert.True(result.GetProperty("isError").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_MissingQuery_ReturnsIsError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("search_articles", new { }));
+        Assert.True(result.GetProperty("isError").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Mcp_ListArticles_InvalidSort_ReturnsIsError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("list_articles", new { sort = "banana" }));
+        Assert.True(result.GetProperty("isError").GetBoolean());
+    }
+
+    // ─── Tools ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Mcp_ToolsList_ContainsAllTools()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(new { jsonrpc = "2.0", id = 2, method = "tools/list" });
+        var toolNames = result.GetProperty("tools").EnumerateArray()
             .Select(t => t.GetProperty("name").GetString())
             .ToList();
+
         Assert.Contains("search_articles", toolNames);
+        Assert.Contains("get_article", toolNames);
+        Assert.Contains("list_articles", toolNames);
+        Assert.Contains("list_tags", toolNames);
+        Assert.Contains("get_portal_info", toolNames);
     }
 
     [Fact]
     public async Task Mcp_ToolCall_SearchArticles_ReturnsContent()
     {
-        await AuthenticateAsAdmin();
-
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
         await _client.PostAsJsonAsync("/api/articles", new
         {
             title = "MCP Arama Testi Makalesi",
             status = "published"
         });
 
-        var response = await _client.PostAsJsonAsync("/mcp", new
-        {
-            jsonrpc = "2.0",
-            id = 3,
-            method = "tools/call",
-            @params = new { name = "search_articles", arguments = new { query = "MCP Arama Testi" } }
-        });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await RpcResultAsync(ToolCall("search_articles", new { query = "MCP Arama Testi" }));
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var result = body.GetProperty("result");
         if (result.TryGetProperty("isError", out var isError))
             Assert.False(isError.GetBoolean());
-
-        var text = result.GetProperty("content").EnumerateArray().First().GetProperty("text").GetString();
-        Assert.Contains("MCP Arama Testi Makalesi", text);
+        Assert.Contains("MCP Arama Testi Makalesi", ToolText(result));
     }
 
-    private async Task AuthenticateAsAdmin()
+    [Fact]
+    public async Task Mcp_SearchArticles_Pagination_ReturnsTrueTotals()
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/login", new
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        for (var i = 1; i <= 3; i++)
+            await _client.PostAsJsonAsync("/api/articles", new
+            {
+                title = $"Sayfalama Mcp Qwka Deneme {i}",
+                status = "published"
+            });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "sayfalama qwka", limit = 2, page = 2 }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.Equal(3, payload.GetProperty("total").GetInt32());
+        Assert.Equal(2, payload.GetProperty("totalPages").GetInt32());
+        Assert.Equal(2, payload.GetProperty("page").GetInt32());
+        Assert.Equal(1, payload.GetProperty("articles").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Mcp_DraftArticle_InvisibleToSearchAndGet()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var createResponse = await _client.PostAsJsonAsync("/api/articles", new
         {
-            email = "admin@finagotech.com.tr",
-            password = "1q2w3E*/"
+            title = "Gizli Taslak Mcp Zzkv",
+            status = "draft"
         });
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var token = body.GetProperty("token").GetString();
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var draftId = created.GetProperty("id").GetString();
+
+        var searchResult = await RpcResultAsync(ToolCall("search_articles", new { query = "gizli taslak zzkv" }));
+        Assert.DoesNotContain("Gizli Taslak Mcp Zzkv", ToolText(searchResult));
+
+        var getResult = await RpcResultAsync(ToolCall("get_article", new { id_or_slug = draftId }));
+        Assert.True(getResult.GetProperty("isError").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Mcp_GetArticle_ReturnsDetail()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var createResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Mcp Detay Makalesi Ppqr",
+            status = "published"
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var slug = created.GetProperty("slug").GetString();
+
+        var result = await RpcResultAsync(ToolCall("get_article", new { id_or_slug = slug }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.Equal("Mcp Detay Makalesi Ppqr", payload.GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_ListArticles_ReturnsPagedList()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new { title = "Mcp Liste Makalesi", status = "published" });
+
+        var result = await RpcResultAsync(ToolCall("list_articles", new { page = 1, limit = 5 }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.True(payload.GetProperty("total").GetInt32() >= 1);
+        Assert.True(payload.GetProperty("totalPages").GetInt32() >= 1);
+        Assert.True(payload.GetProperty("articles").GetArrayLength() >= 1);
+    }
+
+    [Fact]
+    public async Task Mcp_ListTags_ReturnsTags()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("list_tags", new { }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.True(payload.TryGetProperty("tags", out _));
+        Assert.True(payload.TryGetProperty("total", out _));
+    }
+
+    [Fact]
+    public async Task Mcp_GetPortalInfo_CountsOnlyPublishedScope()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var before = JsonSerializer.Deserialize<JsonElement>(
+            ToolText(await RpcResultAsync(ToolCall("get_portal_info", new { }))));
+
+        // An unused tag must not change the published-scoped tag count
+        await _client.PostAsJsonAsync("/api/tags", new { name = "mcp-kullanilmayan-etiket" });
+
+        var after = JsonSerializer.Deserialize<JsonElement>(
+            ToolText(await RpcResultAsync(ToolCall("get_portal_info", new { }))));
+
+        Assert.Equal(
+            before.GetProperty("totalTags").GetInt32(),
+            after.GetProperty("totalTags").GetInt32());
+        Assert.True(after.GetProperty("totalAuthors").GetInt32() >= 1);
+        Assert.True(after.GetProperty("totalArticles").GetInt32() >= 1);
     }
 }

@@ -6,6 +6,8 @@ namespace KnowledgePortal.Api.Services;
 public class EmbeddingBackgroundService(
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
+    EmbeddingFailureTracker failureTracker,
+    PortalMetrics metrics,
     ILogger<EmbeddingBackgroundService> logger) : BackgroundService
 {
     private readonly int _batchSize = config.GetValue("Ollama:BatchSize", 10);
@@ -48,22 +50,29 @@ public class EmbeddingBackgroundService(
 
     private async Task<int> ProcessBatchAsync(CancellationToken ct)
     {
-        List<string> staleArticleIds;
+        var nowUtc = DateTime.UtcNow;
+        List<(string Id, DateTime UpdatedAt)> staleArticles;
         using (var listScope = scopeFactory.CreateScope())
         {
             var listDb = listScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            staleArticleIds = await listDb.Articles
+            // Over-fetch so articles waiting out a failure backoff don't starve the batch
+            var candidates = await listDb.Articles
                 .Where(a => a.Status == "published" && a.IndexedAt == null)
                 .OrderBy(a => a.UpdatedAt)
-                .Take(_batchSize)
-                .Select(a => a.Id)
+                .Take(_batchSize * 3)
+                .Select(a => new { a.Id, a.UpdatedAt })
                 .ToListAsync(ct);
+            staleArticles = candidates
+                .Where(a => failureTracker.ShouldAttempt(a.Id, a.UpdatedAt, nowUtc))
+                .Take(_batchSize)
+                .Select(a => (a.Id, a.UpdatedAt))
+                .ToList();
         }
 
-        if (staleArticleIds.Count == 0) return 0;
+        if (staleArticles.Count == 0) return 0;
 
         var processed = 0;
-        foreach (var articleId in staleArticleIds)
+        foreach (var (articleId, updatedAt) in staleArticles)
         {
             // One scope per article: a failed save can't poison change tracking for the rest of the batch
             using var scope = scopeFactory.CreateScope();
@@ -77,16 +86,20 @@ public class EmbeddingBackgroundService(
                 if (article == null) continue;
 
                 await embeddingService.EmbedArticleAsync(article, ct);
+                failureTracker.RecordSuccess(articleId);
                 processed++;
             }
             catch (HttpRequestException) { throw; }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to embed article {ArticleId}, skipping", articleId);
+                var info = failureTracker.RecordFailure(articleId, updatedAt, DateTime.UtcNow);
+                metrics.EmbeddingFailures.Add(1);
+                logger.LogError(ex, "Failed to embed article {ArticleId} (failure #{Count}), next retry at {NextAttempt:o}",
+                    articleId, info.Count, info.NextAttemptUtc);
             }
         }
 
-        logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticleIds.Count);
+        logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticles.Count);
         return processed;
     }
 

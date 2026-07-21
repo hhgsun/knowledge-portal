@@ -24,8 +24,34 @@ variables:
     composeFile: 'docker-compose.test.yml'
 
 stages:
+  - stage: Test
+    displayName: 'Run Backend Tests'
+    jobs:
+      - job: BackendTests
+        displayName: 'Backend Tests (xUnit + Testcontainers)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: '10.0.x'
+
+          - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --logger trx --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'dotnet test'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            condition: always()
+            inputs:
+              testResultsFormat: 'VSTest'
+              testResultsFiles: '$(Agent.TempDirectory)/testresults/**/*.trx'
+
   - stage: Build
     displayName: 'Build & Push Images'
+    dependsOn: Test
+    condition: succeeded()
     jobs:
       - job: BuildBackend
         displayName: 'Build Backend'

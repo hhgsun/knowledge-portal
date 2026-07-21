@@ -9,7 +9,7 @@ Enterprise knowledge management system with WYSIWYG editing, RBAC, content versi
 
 | Layer | Technology |
 |-------|-----------|
-| **Backend** | ASP.NET Core Web API (.NET 10), EF Core, SQLite |
+| **Backend** | ASP.NET Core Web API (.NET 10), EF Core, PostgreSQL + pgvector |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4 |
 | **Auth** | JWT Bearer + API Key (kp_ prefix) |
 | **Editor** | TipTap (ProseMirror) |

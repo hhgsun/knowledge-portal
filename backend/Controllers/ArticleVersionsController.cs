@@ -65,7 +65,7 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
         var userId = User.GetUserId();
 
         // Check edit permission (same logic as article update)
-        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == userId))
+        if (!RbacService.CanEditArticle(User, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
         var version = await db.ArticleVersions
@@ -97,7 +97,7 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
     {
         var article = await db.Articles.FindAsync(articleId);
         if (article == null) return null;
-        return RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == User.GetUserId())
+        return RbacService.CanViewArticle(User, article.Status, article.OwnerId == User.GetUserId())
             ? article
             : null;
     }

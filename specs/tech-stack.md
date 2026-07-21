@@ -41,6 +41,10 @@
 | `ModelContextProtocol.AspNetCore` | 2.0.0-preview.1 | MCP server over Streamable HTTP transport |
 | `UglyToad.PdfPig` | 1.7.0-custom-5 | PDF text extraction for attachment indexing |
 | `DocumentFormat.OpenXml` | 3.3.0 | DOCX text extraction for attachment indexing |
+| `Serilog.AspNetCore` | 9.0.0 | Structured logging: console + rolling daily JSON file (CompactJsonFormatter), retention limit |
+| `OpenTelemetry.Extensions.Hosting` | 1.12.0 | OpenTelemetry host wiring for metrics |
+| `OpenTelemetry.Instrumentation.AspNetCore` | 1.12.0 | HTTP request metrics |
+| `OpenTelemetry.Exporter.Prometheus.AspNetCore` | 1.12.0-beta.1 (pinned prerelease) | Prometheus scrape endpoint at /metrics |
 
 ### Frontend
 
@@ -89,10 +93,11 @@ None. The application is fully self-contained with no external service dependenc
 |-----------|-----------|---------|
 | Test runner | xUnit | Unit + integration tests |
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
-| Database (tests) | PostgreSQL (remote) | Isolated per test class, auto-migrated |
-| Test project | `backend.Tests/` | 46 tests (unit + integration) |
+| Database (tests) | `Testcontainers.PostgreSql` (`pgvector/pgvector:pg17` image) | Single shared container per run, isolated database per test class, auto-migrated. Requires Docker |
+| AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama — no network |
+| Test project | `backend/Tests/` | 142 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
 
-Run tests: `cd backend.Tests && dotnet test`
+Run tests: `cd backend/Tests && dotnet test` (Docker must be running)
 
 ## Deployment Target
 

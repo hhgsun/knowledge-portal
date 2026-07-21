@@ -1,7 +1,7 @@
 # Current State Validation
 
 > **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
-> **Last verified**: 2026-06-02
+> **Last verified**: 2026-07-17
 > **Note**: This is a smoke-test checklist. For authoritative system docs see `AGENTS.md`.
 
 This document describes how to verify the Knowledge Portal is functioning correctly. Use it before making changes (baseline) and after modifications (regression).
@@ -17,7 +17,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 1 | `cd backend && dotnet build` | Build succeeds with zero errors |
 | 2 | `cd backend && dotnet run` | Server starts on `http://localhost:5174` |
 | 3 | Check console | "Now listening on: http://localhost:5174" logged |
-| 4 | Verify DB | `../data/knowledge.db` file exists and contains tables |
+| 4 | Verify DB | PostgreSQL database exists (auto-created on startup) and contains tables |
 
 ### Frontend
 
@@ -96,7 +96,8 @@ This document describes how to verify the Knowledge Portal is functioning correc
 |---|--------|----------|
 | 1 | `GET /api/search?q=test` | 200: results array (may be empty) |
 | 2 | `GET /api/search?q=@tutorial` | 200: tag-based search results |
-| 3 | `GET /api/search?q=test&type=rag` | 200: placeholder RAG response |
+| 3 | `GET /api/search?q=test&type=rag` | 200: `{ answer, sources }` (real RAG when Ollama up; graceful message otherwise) |
+| 3b | `GET /api/search?q=test&type=rag&tag=x` | 200: sources restricted to tag `x` (filters apply to RAG) |
 | 4 | Check `search_queries` table | New record with query, results_count, response_time_ms |
 
 ---
@@ -106,9 +107,11 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | # | Action | Expected |
 |---|--------|----------|
 | 1 | `POST /api/keys` with `{"name":"test-key"}` | 201: returns raw key (`kp_...`), permissions, expiresAt |
-| 2 | Use returned key as `Authorization: Bearer kp_...` on `GET /api/articles` | 200: articles returned |
+| 2 | Use returned key as `X-API-Key: kp_...` header on `GET /api/articles` | 200: articles returned |
 | 3 | Use API key on `GET /api/admin/users` | 403: API key rejected for session-only endpoint |
-| 4 | `DELETE /api/keys?id={id}` | 200: key deleted |
+| 4 | Use API key on `DELETE /api/articles/{id}` | 403: destructive deletes are session-only (key cap) |
+| 5 | Use admin-owned API key on `PUT /api/articles/{id}` of another user's article | 403: key capped at editor (`edit_own` only) |
+| 6 | `DELETE /api/keys?id={id}` (session) | 200: key deleted |
 
 ---
 
@@ -122,14 +125,18 @@ This document describes how to verify the Knowledge Portal is functioning correc
 
 ---
 
-## Health Check & Rate Limiting
+## Health Check, Metrics & Rate Limiting
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | `GET /api/health` (no auth) | 200: `{ status: "healthy", timestamp: "..." }` |
-| 2 | 11x `POST /api/auth/login` in 1 minute | 11th request returns 429 |
-| 3 | 31x `GET /api/search?q=test` in 1 minute | 31st request returns 429 |
-| 4 | 61x `POST /mcp` (ping) in 1 minute | 61st request returns 429 |
+| 1 | `GET /api/health` (no auth) | 200: `{ status: "healthy" \| "degraded", ollamaStatus, pendingEmbeddings, ... }` — `degraded` when Ollama down |
+| 2 | `GET /api/health` while PostgreSQL is stopped | 503: `{ status: "unhealthy", error: "database unreachable" }` |
+| 3 | `GET /api/health/live` (no auth) | 200: `{ status: "alive" }` (no dependency probes) |
+| 4 | `GET /metrics` (internal network) | 200: Prometheus text incl. `kp_pending_embeddings` |
+| 5 | 11x `POST /api/auth/login` in 1 minute from one IP | 11th request returns 429 (per-client partition — another IP unaffected) |
+| 6 | 31x `GET /api/search?q=test` in 1 minute as one user | 31st request returns 429 (another user unaffected) |
+| 7 | 61x `POST /mcp` (ping) in 1 minute with one key | 61st request returns 429 (another key unaffected) |
+| 8 | `curl -I` any API response | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` present |
 
 ---
 
@@ -165,11 +172,8 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Behavior | Reason |
 |----------|--------|
-| Semantic search returns fulltext results | Not yet implemented (placeholder, needs embedding model) |
-| Hybrid search returns fulltext results | Not yet implemented (placeholder, needs embedding model) |
-| RAG search returns placeholder response | Not yet implemented (placeholder endpoint) |
-| No service layer | Business logic in controllers (design decision) |
-| Dark mode follows system only (no toggle) | Dark mode toggle is a backlog item |
+| Semantic/hybrid search falls back to fulltext when Ollama is unavailable | Graceful degradation by design (`warning` field set in response) |
+| `/metrics` is anonymous | Not proxied by nginx — reachable only from the internal network |
 | Notifications bell is non-functional | Visual indicator only; real notifications are backlog |
 | Tag deletion not exposed in UI | Backend supports `DELETE /api/tags?id=` but no frontend control |
 
@@ -179,10 +183,11 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Command | Expected |
 |---------|----------|
-| `cd backend.Tests && dotnet test` | 46 tests pass |
+| `cd backend/Tests && dotnet test` | 142 tests pass (Docker required — Testcontainers PostgreSQL) |
+
+Also runs as the gating `Test` stage in `azure-pipelines.yml` before image build/deploy.
 
 ### Coverage Gaps (known)
-- No ArticleFeedback tests
 - No ArticleVersions tests
 - Limited Tags scenario testing
 - No Admin corner cases (self-demote, bulk ops)

@@ -25,17 +25,32 @@ In endpoint descriptions below, **"JWT or API Key"** means the endpoint accepts 
 
 When rate limit is exceeded, returns `429 Too Many Requests`.
 
+Limits are **partitioned per client**: partition key = API key id > user id > client IP (real client IP resolved via ForwardedHeaders behind the reverse proxy). Each client gets its own window; one abuser cannot exhaust the shared budget.
+
 ---
 
 ## Health Check
 
-### `GET /api/health`
+### `GET /api/health` (readiness)
 **Auth**: None
 
-**200 Response**:
+**200 Response** (healthy, or degraded when only Ollama is down):
 ```json
-{ "status": "healthy", "timestamp": "2026-01-01T00:00:00.0000000Z" }
+{ "status": "healthy", "timestamp": "2026-01-01T00:00:00.0000000Z", "ollamaStatus": "connected", "embeddingModel": "bge-m3", "pendingEmbeddings": 0 }
 ```
+`status` values: `healthy` | `degraded` (Ollama unavailable — search falls back to fulltext) | `unhealthy`.
+
+**503 Response** (database unreachable): same shape with `status: "unhealthy"`, `pendingEmbeddings: null`, `error: "database unreachable"`.
+
+### `GET /api/health/live` (liveness)
+**Auth**: None
+
+Always `200` — `{ "status": "alive" }`. No dependency probes.
+
+### `GET /metrics`
+**Auth**: None (not proxied by nginx — reachable only from the internal network)
+
+Prometheus text exposition: ASP.NET Core request metrics + `kp_pending_embeddings` gauge + `kp_embedding_failures` counter.
 
 ---
 
@@ -44,16 +59,16 @@ When rate limit is exceeded, returns `429 Too Many Requests`.
 ### `POST /mcp`
 **Auth**: X-API-Key or Bearer token (required)  
 **Transport**: Streamable HTTP (stateless, JSON-RPC 2.0)  
-**Protocol Version**: 2024-11-05
+**Protocol Version**: negotiated — supported: 2025-03-26, 2024-11-05 (default; `initialize` echoes the client's version when supported)
 
 Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude Desktop, Cursor, VS Code Copilot) can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
 
-**Supported Methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
+**Supported Methods**: `initialize`, `notifications/initialized` (returns 202 Accepted, empty body), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Full-text search across published articles (params: query*, limit, tags, authors, content_type, include_content)
+- `search_articles` — Full-text search across published articles (params: query*, page, limit, tags, authors, content_type, include_content). Paged: returns true post-filter `total`, `page`, `limit`, `totalPages`
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
-- `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort)
+- `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort — sort validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
 - `get_portal_info` — Portal statistics (counts, content type distribution, recent articles)
 
@@ -74,7 +89,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 ### `GET /mcp`
 **Auth**: X-API-Key or Bearer token (required)
 
-Returns server transport info for MCP client discovery.
+Returns server transport info for MCP client discovery. With `Accept: text/event-stream` returns `405 Method Not Allowed` (no SSE stream — stateless server).
 
 ---
 
@@ -608,7 +623,11 @@ Marks all published articles for re-embedding by clearing `IndexedAt` and deleti
   "totalIndexed": 38,
   "pendingCount": 4,
   "ollamaEnabled": true,
-  "modelName": "nomic-embed-text"
+  "modelName": "bge-m3",
+  "configuredDimensions": 1024,
+  "failedArticles": [
+    { "articleId": "...", "failureCount": 3, "nextRetryAt": "2026-07-17T12:02:00.000Z" }
+  ]
 }
 ```
 

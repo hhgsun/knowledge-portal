@@ -46,39 +46,40 @@
      └─────────────────────────┼───────────────────────────────┘
                                │
      ┌─────────────────────────▼───────────────────────────────┐
-     │  SQLite  ../data/knowledge.db                           │
+     │  PostgreSQL + pgvector                                  │
      └─────────────────────────────────────────────────────────┘
 ```
 
 ## Layering
 
-The system is a **two-tier split monorepo** with no intermediate service layer:
+The system is a **split monorepo** with a shared service layer between controllers and data:
 
 | Layer | Location | Responsibility |
 |-------|----------|---------------|
 | **Presentation** | `frontend/src/` | React SPA — routing, state, UI rendering |
-| **API** | `backend/Controllers/` | HTTP endpoint mapping, request validation, response shaping |
-| **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC |
+| **API** | `backend/Controllers/` | HTTP endpoint mapping, request validation, auth scoping, response shaping |
+| **Services** | `backend/Services/` | Domain logic (ArticleService, TagService, ApiKeyService, UserService, StatsService) + AI/search (EmbeddingService, VectorSearchService, RagService, FullTextSearchService) + observability (PortalMetrics) |
+| **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
 | **Domain** | `backend/Models/` | Entity classes, DTO records (`Models/Dtos.cs`) |
-| **Storage** | `data/knowledge.db` | SQLite database file |
-
-There is **no dedicated service/business-logic layer** — no `backend/Services/` directory exists. All business logic resides in controller action methods.
+| **Storage** | PostgreSQL + pgvector | Relational data + vector embeddings (FTS + semantic search) |
 
 ## Middleware Pipeline
 
 Request processing order in ASP.NET Core:
 
 ```
-Request → GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → JwtBearerAuth → Authorization → Controller
+Request → ForwardedHeaders → HSTS (non-dev) → SecurityHeaders → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → JwtBearerAuth → RateLimiter → Authorization → Controller
 ```
 
-1. **GlobalExceptionMiddleware** — catches unhandled exceptions, logs them, returns `{ "error": "An unexpected error occurred." }` with HTTP 500.
-2. **CORS** — allows `localhost:5173` and `localhost:3000` with any header/method and credentials.
-3. **RateLimiter** — fixed window rate limiting (auth: 10/min, search: 30/min, mcp: 60/min). Returns 429 when exceeded.
-4. **ApiKeyMiddleware** — intercepts `Authorization: Bearer kp_*` headers. Extracts the 8-char prefix after `kp_`, performs a prefix-indexed database lookup, BCrypt-verifies the raw key against matched candidates, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
-5. **JWT Bearer Authentication** — validates standard JWT tokens against configured issuer, audience, and signing key.
-6. **Authorization** — enforces `[Authorize]` and `[RequirePermission("...")]` attributes.
+1. **ForwardedHeaders** — rewrites client IP/scheme from `X-Forwarded-For`/`X-Forwarded-Proto` (trusted proxies via `ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy).
+2. **HSTS + SecurityHeaders** — `Strict-Transport-Security` (non-dev, https requests), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` on every response.
+3. **GlobalExceptionMiddleware** — catches unhandled exceptions, logs them, returns `{ "error": "An unexpected error occurred." }` with HTTP 500.
+4. **CORS** — configured origins with any header/method and credentials.
+5. **ApiKeyMiddleware** — intercepts `X-API-Key: kp_*` headers. Extracts the 8-char prefix after `kp_`, performs a prefix-indexed database lookup, BCrypt-verifies the raw key against matched candidates, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
+6. **JWT Bearer Authentication** — validates standard JWT tokens against configured issuer, audience, and signing key.
+7. **RateLimiter** — partitioned fixed-window limiting (auth: 10/min, search: 30/min, mcp: 60/min; partition key = API key id > user id > client IP). Runs after auth so partitioning sees the principal. Returns 429 when exceeded.
+8. **Authorization** — enforces `[Authorize]`, `[RequirePermission("...")]`, and `[RequireSessionAuth]` attributes.
 
 ## Authentication Model
 
@@ -179,6 +180,6 @@ Supported marks: bold, italic, strikethrough, code, link, highlight.
 1. **No service layer** — Business logic lives in controllers. Acceptable for current complexity; becomes a liability if controller methods exceed ~80 lines.
 2. **No external dependencies** — Fully self-contained. Search is SQL LIKE; semantic/RAG endpoints are stubs returning placeholder responses.
 3. **Centralized DTOs** — Request/response shapes are C# records defined in `backend/Models/Dtos.cs`.
-4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for single-node SQLite.
+4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for a single-database deployment.
 5. **Cascade deletes** — Deleting an article cascades to versions, tags, feedback, and views. Deleting a user cascades to API keys. API key deletion sets `created_via_api_key_id` to null on articles.
 6. **UTC timestamps** — All `DateTime` values stored and transmitted in UTC.

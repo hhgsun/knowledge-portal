@@ -77,6 +77,14 @@ public class McpController : ControllerBase
     [HttpGet]
     public IActionResult GetSseEndpoint()
     {
+        // Streamable HTTP spec: a GET expecting an SSE stream must get 405 when the
+        // server doesn't offer one (we're stateless, no server-initiated messages)
+        if (Request.Headers.Accept.ToString().Contains("text/event-stream", StringComparison.OrdinalIgnoreCase))
+        {
+            Response.Headers.Allow = "POST";
+            return StatusCode(StatusCodes.Status405MethodNotAllowed);
+        }
+
         // For clients that probe GET /mcp to discover transport
         // Return endpoint info as JSON (not SSE stream, since we're stateless)
         return Ok(new
@@ -96,17 +104,24 @@ public class McpController : ControllerBase
 
     private IActionResult HandleInitialize(JsonRpcRequest request)
     {
-        // Defaults come from McpConstants via McpInitializeResult/McpServerInfo
+        // Version negotiation: echo the client's requested version when supported,
+        // otherwise answer with our default and let the client decide.
         var result = new McpInitializeResult();
+        if (request.Params is { } p
+            && p.TryGetProperty("protocolVersion", out var requested)
+            && requested.ValueKind == JsonValueKind.String
+            && McpConstants.SupportedProtocolVersions.Contains(requested.GetString()))
+        {
+            result.ProtocolVersion = requested.GetString()!;
+        }
 
         return JsonRpcSuccessResponse(request.Id, result);
     }
 
     private IActionResult HandleNotification(JsonRpcRequest request)
     {
-        // Notifications don't require a response per JSON-RPC spec,
-        // but since this is HTTP we return empty success
-        return Ok();
+        // Streamable HTTP: notifications (no response expected) get 202 Accepted, no body
+        return StatusCode(StatusCodes.Status202Accepted);
     }
 
     private IActionResult HandleToolsList(JsonRpcRequest request)

@@ -62,7 +62,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
 
         // Permission check: edit_own or edit_any
         var userId = User.GetUserId();
-        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == userId))
+        if (!RbacService.CanEditArticle(User, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to upload attachments to this article" });
 
         // Validate file
@@ -134,13 +134,14 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
     }
 
     [HttpDelete("api/articles/{articleId}/attachments/{attachmentId}")]
+    [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> Delete(string articleId, string attachmentId)
     {
         var article = await db.Articles.FindAsync(articleId);
         if (article == null) return NotFound(new { error = "Article not found" });
 
         // Permission check
-        if (!RbacService.CanEditArticle(User.GetRole(), article.OwnerId == User.GetUserId()))
+        if (!RbacService.CanEditArticle(User, article.OwnerId == User.GetUserId()))
             return StatusCode(403, new { error = "You do not have permission to delete attachments from this article" });
 
         var attachment = await db.ArticleAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.ArticleId == articleId);

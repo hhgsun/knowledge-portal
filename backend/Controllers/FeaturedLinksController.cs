@@ -100,6 +100,7 @@ public class FeaturedLinksController(AppDbContext db) : ControllerBase
 
     [HttpDelete]
     [RequirePermission(Permissions.FeaturedLinksManage)]
+    [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> Delete([FromQuery] string id)
     {
         if (string.IsNullOrWhiteSpace(id))

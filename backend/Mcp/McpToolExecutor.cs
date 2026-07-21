@@ -16,12 +16,17 @@ public class McpToolExecutor
     private readonly AppDbContext _db;
     private readonly ArticleService _articleService;
     private readonly TagService _tagService;
+    private readonly ILogger<McpToolExecutor> _logger;
 
-    public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService)
+    private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
+
+    public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
+        ILogger<McpToolExecutor> logger)
     {
         _db = db;
         _articleService = articleService;
         _tagService = tagService;
+        _logger = logger;
     }
 
     // ─── Tool Registry ─────────────────────────────────────────────────
@@ -41,7 +46,8 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["query"] = new() { Type = "string", Description = "Search query text" },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum number of results to return (1-50)", Default = 20 },
+                            ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20 },
                             ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated (AND logic)" },
                             ["authors"] = new() { Type = "string", Description = "Filter by author slugs, comma-separated (OR logic)" },
                             ["content_type"] = new() { Type = "string", Description = "Filter by content type, comma-separated (OR logic)" },
@@ -119,7 +125,9 @@ public class McpToolExecutor
         }
         catch (Exception ex)
         {
-            return ErrorResult($"Tool execution failed: {ex.Message}");
+            // Full detail server-side only — exception messages can leak internals
+            _logger.LogError(ex, "MCP tool {ToolName} execution failed", toolName);
+            return ErrorResult("Tool execution failed");
         }
     }
 
@@ -131,6 +139,7 @@ public class McpToolExecutor
         if (string.IsNullOrWhiteSpace(query))
             return ErrorResult("Parameter 'query' is required");
 
+        var page = Math.Max(1, GetInt(args, "page", 1));
         var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
         var tags = GetString(args, "tags");
         var authors = GetString(args, "authors");
@@ -151,10 +160,19 @@ public class McpToolExecutor
             ContentTypes: string.IsNullOrWhiteSpace(contentType) ? null : contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-        var articles = await _articleService.SearchPublishedAsync(query, limit, filter);
-        var summaries = await _articleService.BuildSummariesAsync(articles, includeContent);
+        // Same paged pipeline as GET /api/search — true post-filter total, real pagination
+        var pageResult = await _articleService.SearchPublishedPagedAsync(query, page, limit, filter);
+        var summaries = await _articleService.BuildSummariesAsync(pageResult.Articles, includeContent);
 
-        var result = new { articles = summaries, total = summaries.Count, query };
+        var result = new
+        {
+            articles = summaries,
+            total = pageResult.Total,
+            page,
+            limit,
+            totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit),
+            query
+        };
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
     }
 
@@ -180,6 +198,8 @@ public class McpToolExecutor
         var contentType = GetString(args, "content_type");
         var tags = GetString(args, "tags");
         var sort = GetString(args, "sort") ?? "newest";
+        if (!AllowedSorts.Contains(sort))
+            return ErrorResult($"Invalid sort '{sort}'. Allowed: {string.Join(", ", AllowedSorts)}");
 
         // Same filter + paging + summary pipeline as GET /api/articles
         var filter = new ArticleFilter(
@@ -205,8 +225,13 @@ public class McpToolExecutor
     private async Task<McpToolCallResult> GetPortalInfoAsync()
     {
         var totalArticles = await _db.Articles.CountAsync(a => a.Status == "published");
-        var totalAuthors = await _db.Users.CountAsync();
-        var totalTags = await _db.Tags.CountAsync();
+        // Authors = distinct owners of published articles; tags = tags actually used
+        // by published articles — consistent with the published-only scope of all tools
+        var totalAuthors = await _db.Articles.WherePublished()
+            .Select(a => a.OwnerId).Distinct().CountAsync();
+        var totalTags = await _db.ArticleTags
+            .Where(at => at.Article.Status == "published")
+            .Select(at => at.TagId).Distinct().CountAsync();
 
         // Same summary pipeline as the dashboard's recent-articles list
         var (recentArticles, _) = await _articleService.ListAsync(_db.Articles.WherePublished(), 1, 5, "newest");

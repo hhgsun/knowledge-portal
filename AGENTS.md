@@ -16,7 +16,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
-| Tests | xUnit + WebApplicationFactory (backend only) |
+| Tests | xUnit + WebApplicationFactory (backend only). Integration tests use Testcontainers (`pgvector/pgvector:pg17`, Docker required) with a per-class isolated database, plus deterministic fake AI clients (`FakeEmbeddingGenerator`/`FakeChatClient`) replacing Ollama — no network dependency. CI runs `dotnet test` as a gating stage in `azure-pipelines.yml` |
 | MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
 
 ## Conventions
@@ -33,9 +33,9 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
 - **Port**: 5174
-- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`)
-- **Middleware pipeline**: GlobalExceptionMiddleware → CORS → RateLimiter → ApiKeyMiddleware → Authentication → Authorization → Controllers
-- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: nomic-embed-text (768 dims). Chat model: llama3.2 (RAG; on GPU hardware set `Ollama:ChatModel` to a stronger multilingual model such as `llama3.1:latest`). Ollama HTTP timeout configurable via `Ollama:TimeoutSeconds` (default 300 — local LLM cold starts exceed the 100s HttpClient default). Background service polls for dirty articles. pgvector extension for vector storage (`vector(768)`), cosine distance search, and HNSW ANN index on `article_embeddings`. PostgreSQL tsvector/tsquery for full-text search with GIN index and weighted ranking — title=A, excerpt=B, body+attachments=C — (rebuilt on startup). FTS uses the built-in `turkish` text search configuration (snowball stemming); Turkish accent folding is done in C# via `SlugHelper.Transliterate`, applied symmetrically at index and query time (no `unaccent` extension required).
+- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
+- **Middleware pipeline**: ForwardedHeaders → HSTS (non-dev) → SecurityHeaders (nosniff/DENY/Referrer-Policy) → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → Authentication → RateLimiter → Authorization → Controllers. RateLimiter runs after auth so partitioning sees the principal; ForwardedHeaders first so everything sees real client IP/scheme (`ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy — no in-app HTTPS redirect)
+- **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: bge-m3 (1024 dims; `Ollama:EmbeddingDimensions` guard validates vector length before persisting — a mismatch fails with an actionable error instead of an opaque pgvector INSERT error). Chat model: qwen2.5vl:7b (RAG; configurable via `Ollama:ChatModel`). Ollama HTTP timeout configurable via `Ollama:TimeoutSeconds` (default 300 — local LLM cold starts exceed the 100s HttpClient default). Background service polls for dirty articles; repeated per-article failures back off exponentially (`Ollama:BackoffSeconds` base, `Ollama:MaxFailureBackoffSeconds` cap, in-memory `EmbeddingFailureTracker`, reset on content change). pgvector extension for vector storage (`vector(1024)`), cosine distance search, and HNSW ANN index on `article_embeddings`. PostgreSQL tsvector/tsquery for full-text search with GIN index and weighted ranking — title=A, excerpt=B, body+attachments=C — (rebuilt on startup). FTS uses the built-in `turkish` text search configuration (snowball stemming); Turkish accent folding is done in C# via `SlugHelper.Transliterate`, applied symmetrically at index and query time (no `unaccent` extension required).
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
 
@@ -62,11 +62,11 @@ backend/
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, ApiKeyGenerator, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute, RequireSessionAuthAttribute
 ├── Data/                 # AppDbContext, DbInitializer, SlugQueries (unique slug generation)
 ├── Middleware/            # GlobalExceptionMiddleware
-├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions
-├── Logging/              # FileLoggerProvider (date-based file logging)
+├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions, RrfHelper
 ├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
 ├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, ServiceError
-│                         # AI/Search: EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, FullTextSearchService
+│                         # AI/Search: EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, EmbeddingFailureTracker, FullTextSearchService
+│                         # Observability: PortalMetrics (OpenTelemetry meters)
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
 │   └── Entities/         # EF Core entity classes (13 models: User, Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding)
@@ -121,7 +121,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
    - Slug is auto-generated from title (with collision detection)
    - Articles marked as "published" get `PublishedAt` and `LastReviewedAt` timestamps
 
-**To reset seed data**: Delete `data/knowledge-portal.db` (SQLite) or drop the database (PostgreSQL), then restart backend.
+**To reset seed data**: Drop the PostgreSQL database, then restart backend (it recreates and reseeds automatically).
 
 ## Commands
 
@@ -152,12 +152,17 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `analytics:view` | ✓ | ✓ | |
 | `api_keys:manage` | ✓ | ✓ | ✓ |
 | `api_keys:manage_any` | ✓ | | |
+| `featured_links:manage` | ✓ | | |
+
+**API key effective permissions**: a `source=api-key` principal carries at most **editor** authority — an admin-owned key acts as editor (no `users:manage`, `articles:edit_any/delete_any`, `api_keys:manage_any`); editor/viewer-owned keys keep their owner's role. On top of the cap, **all delete permissions are removed** (`articles:delete_own/any` always denied) and destructive DELETE endpoints are `[RequireSessionAuth]` (see matrix below). All view/read operations follow the effective role. Exception: `DELETE /api/articles/{id}/vote` (removing one's own vote) stays available to keys — it is an interaction toggle, not content deletion.
 
 ## Endpoint Authorization Matrix
 
 | Endpoint | Method | Auth | Permission | Session-Only |
 |----------|--------|:----:|-----------|:------------:|
 | `/api/health` | GET | ✗ | — | — |
+| `/api/health/live` | GET | ✗ | — | — |
+| `/metrics` | GET | ✗ | — | — (Prometheus; not proxied by nginx — internal network only) |
 | `/api/auth/login` | POST | ✗ | — | — |
 | `/api/auth/register` | POST | ✗ | — | — |
 | `/api/auth/azure-login` | POST | ✗ | — | — |
@@ -167,7 +172,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/articles` | POST | ✓ | `articles:create` | ✗ |
 | `/api/articles/{idOrSlug}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` + `articles:publish` (for status→published) + `articles:archive` (for status→archived) | ✗ |
-| `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✗ |
+| `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✓ |
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
@@ -178,16 +183,16 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/articles/{id}/votes` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/comments` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/comments` | POST | ✓ | — | ✗ |
-| `/api/articles/{id}/comments/{commentId}` | DELETE | ✓ | — | ✗ |
+| `/api/articles/{id}/comments/{commentId}` | DELETE | ✓ | — | ✓ |
 | `/api/articles/{id}/related` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/attachments` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/attachments` | POST | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
-| `/api/articles/{id}/attachments/{attachmentId}` | DELETE | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
+| `/api/articles/{id}/attachments/{attachmentId}` | DELETE | ✓ | `articles:edit_own` / `articles:edit_any` | ✓ |
 | `/api/attachments/{id}/download` | GET | ✓ | — | ✗ |
 | `/api/tags` | GET | ✓ | — | ✗ |
 | `/api/tags` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
-| `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
+| `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
 | `/api/search` | GET | ✓ | — | ✗ |
 | `/api/search/authors` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
@@ -207,10 +212,14 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/admin/keys` | POST | ✓ | `api_keys:manage_any` | ✓ |
 | `/api/admin/keys` | PUT | ✓ | `api_keys:manage_any` | ✓ |
 | `/api/admin/keys?id={id}` | DELETE | ✓ | `api_keys:manage_any` | ✓ |
+| `/api/featured-links` | GET | ✓ | — | ✗ |
+| `/api/featured-links` | POST | ✓ | `featured_links:manage` | ✗ |
+| `/api/featured-links` | PUT | ✓ | `featured_links:manage` | ✗ |
+| `/api/featured-links?id={id}` | DELETE | ✓ | `featured_links:manage` | ✓ |
 | `/api/lookups` | GET | ✓ | — | ✗ |
 | `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/lookups` | PUT | ✓ | `tags:manage` | ✗ |
-| `/api/lookups?id={id}` | DELETE | ✓ | `tags:manage` | ✗ |
+| `/api/lookups?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
 | `/api/logs` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
@@ -259,9 +268,9 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Tags | ✅ Implemented | CRUD + article tagging |
 | Search (fulltext) | ✅ Implemented | PostgreSQL tsvector/tsquery (`turkish` config: stemming + stopwords) with GIN index and weighted ranking, content body indexed, Turkish accent folding via C# transliteration. Multi-word queries are AND-first (all terms must match), retrying with OR then ILIKE when empty. Paged (`page` param) with true post-filter `total`/`totalPages` and match-context `snippet` per result |
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
-| Search (semantic) | ✅ Implemented | Ollama embedding + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
-| Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60) |
-| Search (RAG) | ✅ Implemented | Ollama llama3.2, top-3 matched-chunk context (configurable via `Ollama:RagSourceLimit`, attachments included), source citations |
+| Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
+| Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
+| Search (RAG) | ✅ Implemented | Configured Ollama chat model (default qwen2.5vl:7b), top-3 matched-chunk context (configurable via `Ollama:RagSourceLimit`, attachments included), source citations, search filters applied, prompt-injection-hardened `<source>` context blocks |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
@@ -270,8 +279,9 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
-| Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints |
-| Health Check | ✅ Implemented | GET /api/health |
+| Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints — partitioned per API key/user/IP |
+| Health Check | ✅ Implemented | GET /api/health (readiness: 503 "unhealthy" when DB unreachable, 200 "degraded" when only Ollama down, else "healthy") + GET /api/health/live (liveness, always 200) |
+| Metrics | ✅ Implemented | OpenTelemetry → Prometheus at /metrics (not proxied by nginx — internal only): ASP.NET Core instrumentation + `kp_pending_embeddings` gauge + `kp_embedding_failures` counter |
 | OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
 | 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |
@@ -281,7 +291,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
 | Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
-| System Logs | ✅ Implemented | Date-based file logging (log_YYYYMMDD.log), view/delete via admin UI, today's log protected |
+| System Logs | ✅ Implemented | Serilog: console + rolling daily JSON file (CompactJsonFormatter, same log_YYYYMMDD.log naming), retention `Logging:RetainedFileCountLimit` (default 30), min level via `Serilog:MinimumLevel` config. View/delete via admin UI, today's log protected |
 
 ## Known Frontend Gaps
 
@@ -301,20 +311,21 @@ No known gaps at this time.
 - **Azure AD password set**: Azure users can set a local password via PUT `/api/auth/profile` without providing `currentPassword` (first-time set). After setting, both Azure and email+password login work.
 - **`/api/auth/me` response**: Includes `isAzureUser` boolean field (true if user has AzureObjectId linked).
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
+- **API key permission cap**: RBAC checks are principal-aware (`RbacService.HasPermission(ClaimsPrincipal, …)`, `CanEdit/CanDelete/CanViewArticle(ClaimsPrincipal, …)`). For `source=api-key`: effective role = owner role capped at editor (admin→editor), all delete permissions denied, `CanDeleteArticle` always false. Destructive DELETE endpoints additionally carry `[RequireSessionAuth]`. Vote removal (own vote) remains key-accessible.
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. When request comes via API key, unknown tags are auto-created.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search query semantics**: Multi-word queries are joined with AND (all terms must match, precision-first). When AND yields nothing, the query retries with OR (any term), then falls back to ILIKE on title/excerpt. tsquery meta-characters are stripped from tokens.
-- **Search pagination**: `GET /api/search` accepts `page` (default 1). Fulltext and tag-browse responses return the true post-filter `total` plus `page`/`totalPages` (filters are applied to the full ranked candidate set — capped at 1000 FTS candidates — before paging, so filtered searches don't under-return). Semantic/hybrid remain top-N (`page`/`totalPages` fixed at 1, `total` = returned count).
+- **Search pagination**: `GET /api/search` accepts `page` (default 1). Fulltext and tag-browse responses return the true post-filter `total` plus `page`/`totalPages` (filters are applied to the full ranked candidate set — capped at 1000 FTS candidates — before paging, so filtered searches don't under-return). FTS ordering is deterministic (`rank DESC, Id` tiebreaker) so pages never overlap on rank ties. Semantic/hybrid remain top-N (`page`/`totalPages` fixed at 1, `total` = returned count).
 - **Search snippet**: Non-RAG search results include a `snippet` field — a ~240-char match-context window from the article body around the earliest query-term occurrence (accent/case-folded matching mirroring the FTS index, stem-prefix tolerant). `null` when no term occurs in the body (e.g. title-only match) — clients fall back to `excerpt`. Frontend highlights query terms in the snippet.
 - **Plain-text extraction scope**: `ContentExtractor` walks only `text` values and `content` children of TipTap JSON — node `attrs`/`marks` (link URLs, image paths, styling) are excluded from read-time calculation, search indexes, embeddings, and `contentText`/`includeContent` output.
 - **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
 - **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes article content as extracted plain text in results), `includeAttachments` (boolean — includes attachment metadata array per article), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
-- **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(768)` column in `article_embeddings` table, accelerated by an HNSW index (`ix_article_embeddings_embedding_hnsw`). Query over-fetches chunk rows (published-only via JOIN), best chunk per article is picked in memory (its index returned for RAG). MinSimilarityScore=0.5 (configurable via appsettings.json).
+- **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(1024)` column in `article_embeddings` table, accelerated by an HNSW index (`ix_article_embeddings_embedding_hnsw`). Query over-fetches chunk rows (published-only via JOIN), best chunk per article is picked in memory (its index returned for RAG). MinSimilarityScore=0.5 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Both legs over-fetch (limit×3, cap 50) so post-merge filters don't starve the final `Take(limit)`. Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
-- **Search RAG**: Top-3 semantic results (configurable via `Ollama:RagSourceLimit` — small local models stay focused with fewer chunks) → matched-chunk context (the chunk that scored best per article, rebuilt from title+excerpt+content+attachment text, max 3000 words total) → Ollama llama3.2 → answer with `[Article Title]` source citations. Response includes `sources: [{articleId, title, slug, score}]`. RAG retrieval uses its own lower similarity threshold (`Ollama:RagMinSimilarityScore`, default 0.3, vs. 0.5 for list-style semantic search) because generic questions score low in cosine similarity and the LLM already refuses when context is insufficient. Zero-retrieval responses distinguish "index empty" from "no relevant match".
-- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10, one DI scope per article. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. Full-text search vector synced on publish/update/delete/approve/attachment-change.
+- **Search RAG**: Semantic retrieval over-fetches `RagSourceLimit×3` candidates, applies the search filters (tag/author/contentType/onlyOwnContent — same `ArticleFilter` as other search types), then takes the top `Ollama:RagSourceLimit` (default 3) → matched-chunk context (the chunk that scored best per article, rebuilt from title+excerpt+content+attachment text, max 3000 words total) → configured Ollama chat model (default qwen2.5vl:7b) → answer with `[Title]` source citations. Context is passed as numbered `<source id title>` blocks; article text is sanitized (`</?source` sequences neutralized) and the system prompt instructs the model to treat source content strictly as data — prompt-injection hardening. Response includes `sources: [{articleId, title, slug, score}]`. RAG retrieval uses its own lower similarity threshold (`Ollama:RagMinSimilarityScore`, default 0.3, vs. 0.5 for list-style semantic search) because generic questions score low in cosine similarity and the LLM already refuses when context is insufficient. Zero-retrieval responses distinguish "index empty" from "no relevant match".
+- **Search indexing**: Dirty flag pattern — controllers set `IndexedAt=null` on publish/content-change/approve/attachment-upload/attachment-delete. EmbeddingBackgroundService polls every 5s, batch size 10, one DI scope per article. On startup invalidates stale model embeddings. Articles are chunked (~500 words, 50-word overlap) before embedding. Full-text search vector synced on publish/update/delete/approve/attachment-change. Per-article embedding failures back off exponentially (in-memory `EmbeddingFailureTracker`: base `Ollama:BackoffSeconds`, cap `Ollama:MaxFailureBackoffSeconds` default 3600s; state resets on success, content change, or restart) — a poison article can't hot-loop; failures are visible in `GET /api/search/embedding-status` (`failedArticles`).
 - **Search indexing concurrency**: `IndexedAt` is claimed with an optimistic conditional update (`UPDATE ... WHERE xmin = <captured>` on the PostgreSQL xmin system column). If the article was edited while being embedded, the claim fails, `IndexedAt` stays null, and the next poll re-embeds the fresh content — the background service can never mask a concurrent edit. `DbUpdateConcurrencyException` is mapped to HTTP 409 by `GlobalExceptionMiddleware`.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **View deduplication**: Same user viewing same article within 15 minutes counts as 1 view (hardcoded window)
@@ -329,7 +340,7 @@ No known gaps at this time.
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
 - **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
-- **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission()` for ownership-based or conditional checks (edit/delete/publish/archive)
+- **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission(User, …)` / `CanEditArticle(User, …)` for ownership-based or conditional checks (edit/delete/publish/archive). Both are principal-aware and apply the API-key permission cap; the string-based `(role, permission)` overloads remain as the core matrix (no cap — use only when no principal is available)
 - **Attachment upload**: Files stored on disk at `data/uploads/{articleId}/{storedFileName}`, metadata in `article_attachments` table. Extension whitelist + MIME validation enforced. Max 20MB/file, 20 files/article.
 - **Attachment deferred upload**: Frontend uses deferred upload pattern — files are queued locally and only uploaded when the article is saved. New files show "Kaydedilince yüklenecek" badge with green background.
 - **Attachment deferred delete**: In edit mode, deleting a file marks it with strikethrough + "Kaydedilince silinecek" badge. Undo is available. Actual API DELETE happens on save.
@@ -341,16 +352,19 @@ No known gaps at this time.
 
 ## MCP Server Behaviors
 
-- **MCP protocol version**: 2024-11-05 (JSON-RPC 2.0 spec-compliant)
+- **MCP protocol version**: negotiated — supported: 2025-03-26, 2024-11-05 (default). `initialize` echoes the client's requested version when supported, otherwise answers with the default (JSON-RPC 2.0 spec-compliant)
 - **Server info**: name=`knowledge-portal`, version=`2.0.0`
 - **Supported methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
 - **Server discovery**: POST `/mcp` with `method: "initialize"` returns server capabilities, protocol version, and implementation info
-- **Transport discovery**: GET `/mcp` returns transport info (endpoint URL, auth methods, protocol version)
+- **Transport discovery**: GET `/mcp` returns transport info (endpoint URL, auth methods, protocol version). GET with `Accept: text/event-stream` returns **405** (no SSE stream — stateless server, per Streamable HTTP spec)
+- **Notifications**: `notifications/initialized` returns **202 Accepted** with empty body (Streamable HTTP spec for response-less messages)
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
 - **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns MCP content array
 - **Tool result format**: `{ "content": [{"type": "text", "text": "..."}], "isError": false }` — results are JSON-serialized strings inside `text` field
 - **Available tools**: `search_articles`, `get_article`, `list_articles`, `list_tags`, `get_portal_info` (all snake_case)
-- **Error handling**: JSON-RPC 2.0 error format on protocol errors: `{error: {code, message}, jsonrpc: "2.0"}`. Tool errors use `isError: true` in content result.
+- **Error handling**: JSON-RPC 2.0 error format on protocol errors: `{error: {code, message}, jsonrpc: "2.0"}`. Tool errors use `isError: true` in content result. Unexpected tool exceptions are logged server-side with full detail; the client receives only a generic "Tool execution failed" (no internal detail leakage).
+- **search_articles pagination**: accepts `page` (1-based) + `limit` (1-50); returns true post-filter `total`, `page`, `limit`, `totalPages` (same paged pipeline as `GET /api/search`).
+- **get_portal_info counts**: `totalAuthors` = distinct owners of published articles; `totalTags` = tags used by ≥1 published article (consistent with the published-only scope of all tools). `list_articles` `sort` is validated against `newest|oldest|most_viewed` — invalid values return `isError`.
 - **Authentication**: **NO OAUTH.** All `/mcp` requests require ONE of:
   - **API Key**: `X-API-Key: kp_*` header (BCrypt hashed, prefix-indexed lookup)
   - **JWT Bearer**: `Authorization: Bearer <token>` header (HMAC-SHA256, 24h expiry)
@@ -358,13 +372,6 @@ No known gaps at this time.
 - **Stateless execution**: Each request is independent; no session state is maintained between requests
 - **Rate limiting**: `/mcp` (GET + POST) is covered by the `mcp` fixed-window rate limit policy (default 60/min, `RateLimiting:McpLimit`)
 - **Tool access control**: Tools do not enforce RBAC beyond authentication. All authenticated users can access all tools. Tools only return published articles.
-
-## Placeholder Fields (Not Yet Active)
-
-These entity fields exist in the database but are not yet used in business logic:
-
-| Field | Entity | Purpose | Status |
-|-------|--------|---------|--------|
 
 ## Placeholder Fields (Not Yet Active)
 

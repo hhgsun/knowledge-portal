@@ -159,7 +159,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         // Viewers can only see published articles or their own
         var userId = User.GetUserId();
-        if (!RbacService.CanViewArticle(User.GetRole(), article.Status, article.OwnerId == userId))
+        if (!RbacService.CanViewArticle(User, article.Status, article.OwnerId == userId))
             return NotFound(new { error = "Article not found" });
 
         // Record view (deduplicated per user/article within 15 minutes)
@@ -187,9 +187,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         if (article == null) return NotFound(new { error = "Article not found" });
 
         var userId = User.GetUserId();
-        var role = User.GetRole();
 
-        if (!RbacService.CanEditArticle(role, article.OwnerId == userId))
+        if (!RbacService.CanEditArticle(User, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to edit this article" });
 
         var validContentTypes = await GetValidContentTypesAsync();
@@ -213,12 +212,12 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         {
             // Publishing requires articles:publish permission
             if (req.Status == "published" && article.Status != "published"
-                && !RbacService.HasPermission(role, Permissions.ArticlesPublish))
+                && !RbacService.HasPermission(User, Permissions.ArticlesPublish))
                 return StatusCode(403, new { error = "You do not have permission to publish articles" });
 
             // Archiving requires articles:archive permission
             if (req.Status == "archived" && article.Status != "archived"
-                && !RbacService.HasPermission(role, Permissions.ArticlesArchive))
+                && !RbacService.HasPermission(User, Permissions.ArticlesArchive))
                 return StatusCode(403, new { error = "You do not have permission to archive articles" });
 
             if (req.Status == "published" && article.Status != "published")
@@ -278,15 +277,15 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
     }
 
     [HttpDelete("{id}")]
+    [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> Delete(string id)
     {
         var article = await db.Articles.FindAsync(id);
         if (article == null) return NotFound(new { error = "Article not found" });
 
         var userId = User.GetUserId();
-        var role = User.GetRole();
 
-        if (!RbacService.CanDeleteArticle(role, article.OwnerId == userId))
+        if (!RbacService.CanDeleteArticle(User, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
         // Clean up attachment files from disk

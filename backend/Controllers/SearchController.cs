@@ -158,7 +158,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
 
             try
             {
-                var ragResult = await ragService.AskAsync(searchQuery);
+                var ragResult = await ragService.AskAsync(searchQuery, filter);
                 sw.Stop();
                 var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
@@ -225,27 +225,10 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
                 catch { /* semantic unavailable — fulltext only */ }
             }
 
-            // RRF merge
-            const int k = 60;
-            const double alphaFulltext = 0.4;
-            const double alphaSemantic = 0.6;
-            var rrfScores = new Dictionary<string, (double Score, string MatchType)>();
-
-            for (int i = 0; i < fulltextResults.Count; i++)
-                rrfScores[fulltextResults[i]] = (alphaFulltext / (k + i + 1), "fulltext");
-
-            if (semanticHits != null)
-            {
-                for (int i = 0; i < semanticHits.Count; i++)
-                {
-                    var id = semanticHits[i].ArticleId;
-                    var score = alphaSemantic / (k + i + 1);
-                    if (rrfScores.TryGetValue(id, out var existing))
-                        rrfScores[id] = (existing.Score + score, "both");
-                    else
-                        rrfScores[id] = (score, "semantic");
-                }
-            }
+            // RRF merge (weights/k documented in RrfHelper)
+            var rrfScores = RrfHelper.Merge(
+                fulltextResults,
+                semanticHits?.Select(h => h.ArticleId).ToList());
 
             var allIds = rrfScores.Keys.ToList();
             var hybridMergeQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => allIds.Contains(a.Id)), filter);
@@ -331,7 +314,16 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
             totalIndexed,
             pendingCount = totalPublished - totalIndexed,
             ollamaEnabled = config.GetValue("Ollama:Enabled", false),
-            modelName = config["Ollama:EmbeddingModel"] ?? "nomic-embed-text"
+            modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3",
+            configuredDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024),
+            failedArticles = HttpContext.RequestServices.GetService<EmbeddingFailureTracker>()?.Snapshot()
+                .Select(kv => new
+                {
+                    articleId = kv.Key,
+                    failureCount = kv.Value.Count,
+                    nextRetryAt = kv.Value.NextAttemptUtc.ToString("o")
+                })
+                .ToList()
         });
     }
 

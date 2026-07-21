@@ -13,7 +13,8 @@ public class EmbeddingService(
     IConfiguration config,
     ILogger<EmbeddingService> logger)
 {
-    private readonly string _modelName = config["Ollama:EmbeddingModel"] ?? "nomic-embed-text";
+    private readonly string _modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3";
+    private readonly int _expectedDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024);
     private const int ChunkWordLimit = 500;
     private const int ChunkOverlap = 50;
 
@@ -56,6 +57,14 @@ public class EmbeddingService(
 
         // Generate embeddings for all chunks
         var embedResults = await embeddingGenerator.GenerateAsync(chunks, cancellationToken: ct);
+
+        // Guard: a model/column dimension mismatch would otherwise only surface as an opaque
+        // pgvector INSERT error. Fail with an actionable message instead.
+        if (embedResults.Any(r => r.Vector.Length != _expectedDimensions))
+            throw new InvalidOperationException(
+                $"Embedding dimension mismatch: model '{_modelName}' returned {embedResults[0].Vector.Length} dims, " +
+                $"expected {_expectedDimensions} (Ollama:EmbeddingDimensions / vector({_expectedDimensions}) column). " +
+                "Fix the model/config or migrate the article_embeddings column.");
 
         // Remove old embeddings
         if (existingChunks.Count > 0)

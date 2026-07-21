@@ -98,9 +98,18 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 | Mechanism | Where | Effect |
 |-----------|-------|--------|
 | `[Authorize]` attribute | Controller/action level | Requires authenticated user (401 if not) |
-| `[RequirePermission("...")]` attribute | Controller/action level | Checks role→permission matrix (403 if denied) |
-| Inline RBAC checks | Inside controller actions | Ownership checks (e.g., article owner or `edit_any`) |
-| API key source rejection | Controller actions | `User.GetSource() == "api-key"` returns 403 for session-only endpoints |
+| `[RequirePermission("...")]` attribute | Controller/action level | Principal-aware permission check incl. API-key cap (403 if denied) |
+| Inline RBAC checks | Inside controller actions | Principal-aware ownership checks (`RbacService.CanEditArticle(User, …)` etc.) |
+| `[RequireSessionAuth]` attribute | Controller/action level | `source == "api-key"` returns 403 for session-only endpoints |
+
+### API Key Capability Model ("editor minus delete")
+
+API-key principals (`source=api-key`) are capped independently of their owner's role:
+
+- **Effective role**: owner role capped at `editor` — an admin-owned key acts as editor (no `users:manage`, `articles:edit_any/delete_any`, `api_keys:manage_any`). Editor/viewer-owned keys keep their owner's role.
+- **Delete denial**: `articles:delete_own` / `articles:delete_any` are always denied for keys; `RbacService.CanDeleteArticle(principal)` is always false for keys.
+- **Session-only DELETEs**: destructive DELETE endpoints (articles, attachments, comments, tags, lookups, featured-links) carry `[RequireSessionAuth]` as a second enforcement layer.
+- **Allowed**: all reads per effective role, article create/edit/publish/archive, tag create/rename + auto-create, own-vote removal.
 
 ### Session-Only Endpoints
 
@@ -112,6 +121,7 @@ These endpoints explicitly reject API key authentication:
 | `GET /api/analytics` | Analytics data should not be programmatically scraped |
 | `GET/POST/DELETE /api/keys` | Prevents API key from creating/managing other API keys |
 | `GET/POST/PUT/DELETE /api/admin/keys` | Admin all-user key management; same reason as above |
+| `DELETE /api/articles/{id}`, `DELETE .../attachments/{id}`, `DELETE .../comments/{id}`, `DELETE /api/tags`, `DELETE /api/lookups`, `DELETE /api/featured-links` | Destructive deletes are session-only (API key capability model) |
 
 ## Password Security
 
@@ -131,8 +141,17 @@ These endpoints explicitly reject API key authentication:
 | `search` | 30 requests | 1 minute | Search |
 | `mcp` | 60 requests | 1 minute | MCP endpoint (`/mcp`) |
 
-Implemented via ASP.NET Core built-in `AddRateLimiter` with `FixedWindowLimiter`.
-Returns `429 Too Many Requests` when exceeded.
+Implemented via ASP.NET Core built-in `AddRateLimiter` with **partitioned** fixed-window limiters:
+partition key = API key id > user id > client IP (real IPs via ForwardedHeaders behind the reverse proxy).
+Each client gets its own window. Returns `429 Too Many Requests` when exceeded.
+
+## Transport & Headers
+
+- TLS terminates at the company reverse proxy; the app and nginx stay HTTP internally.
+- `UseForwardedHeaders` (first middleware) honors `X-Forwarded-For`/`X-Forwarded-Proto` from proxies listed in `ForwardedHeaders:KnownProxies`/`KnownNetworks` config.
+- HSTS (365 days) is emitted in non-Development environments on https requests.
+- API responses carry `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+- The SPA (nginx) adds the same headers plus a CSP (`default-src 'self'`; `style-src 'unsafe-inline'` for TipTap; MSAL endpoints allowed in `connect-src`/`frame-src`).
 
 ## Known Security Gaps
 

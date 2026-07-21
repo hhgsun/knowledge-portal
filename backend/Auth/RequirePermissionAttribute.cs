@@ -16,8 +16,8 @@ public class RequirePermissionAttribute(string permission) : Attribute, IAuthori
             return;
         }
 
-        var role = user.FindFirstValue("role") ?? user.FindFirstValue(ClaimTypes.Role) ?? "";
-        if (!RbacService.HasPermission(role, permission))
+        // Principal-aware check — applies the API-key permission cap (editor max, no deletes)
+        if (!RbacService.HasPermission(user, permission))
         {
             context.Result = new ObjectResult(new { error = "Forbidden" }) { StatusCode = 403 };
         }
