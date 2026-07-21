@@ -202,13 +202,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         });
 
         // ─── ArticleEmbeddings ────────────────────────────
+        // The non-relational InMemory provider (used by Docker-free RAG unit tests)
+        // can't map the pgvector Vector type; ignore the column there. Vector queries
+        // always run through VectorSearchService (Npgsql only), never InMemory.
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
         modelBuilder.Entity<ArticleEmbedding>(e =>
         {
             e.ToTable("article_embeddings");
             e.HasKey(ae => ae.Id);
             e.Property(ae => ae.ArticleId).IsRequired();
             e.Property(ae => ae.ChunkIndex).IsRequired().HasDefaultValue(0);
-            e.Property(ae => ae.Embedding).IsRequired().HasColumnType("vector(1024)");
+            if (isInMemory)
+                e.Ignore(ae => ae.Embedding);
+            else
+                e.Property(ae => ae.Embedding).IsRequired().HasColumnType("vector(1024)");
             e.Property(ae => ae.ModelName).IsRequired();
             e.Property(ae => ae.TextHash).IsRequired();
             e.Property(ae => ae.Dimensions).IsRequired();

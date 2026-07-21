@@ -137,7 +137,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
 
         // Resolve AI services
         var ollamaEnabled = config.GetValue("Ollama:Enabled", false);
-        var vectorSearch = ollamaEnabled ? HttpContext.RequestServices.GetService<VectorSearchService>() : null;
+        var vectorSearch = ollamaEnabled ? HttpContext.RequestServices.GetService<IVectorSearchService>() : null;
         var indexingPending = await db.Articles.AnyAsync(a => a.Status == "published" && a.IndexedAt == null);
 
         // ═══ RAG ═══
@@ -218,7 +218,7 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
                 .Select(a => a.Id)
                 .ToList();
 
-            List<VectorSearchService.VectorSearchResult>? semanticHits = null;
+            List<VectorSearchResult>? semanticHits = null;
             if (ollamaEnabled && vectorSearch != null)
             {
                 try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit); }

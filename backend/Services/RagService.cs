@@ -7,7 +7,7 @@ namespace KnowledgePortal.Api.Services;
 
 public class RagService(
     IChatClient chatClient,
-    VectorSearchService vectorSearch,
+    IVectorSearchService vectorSearch,
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
     ILogger<RagService> logger)

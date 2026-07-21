@@ -5,15 +5,24 @@ using Pgvector;
 
 namespace KnowledgePortal.Api.Services;
 
+public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex);
+
+/// <summary>
+/// pgvector-backed semantic retrieval. Abstracted so RAG (and its tests) can depend on
+/// the retrieval contract without the pgvector/Docker infrastructure.
+/// </summary>
+public interface IVectorSearchService
+{
+    Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default, double? minScore = null);
+}
+
 public sealed class VectorSearchService(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
-    ILogger<VectorSearchService> logger)
+    ILogger<VectorSearchService> logger) : IVectorSearchService
 {
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.5);
-
-    public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex);
 
     /// <param name="minScore">Overrides Ollama:MinSimilarityScore when set — RAG uses a lower
     /// threshold than list-style semantic search (the LLM judges relevance itself).</param>

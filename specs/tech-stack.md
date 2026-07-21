@@ -93,11 +93,11 @@ None. The application is fully self-contained with no external service dependenc
 |-----------|-----------|---------|
 | Test runner | xUnit | Unit + integration tests |
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
-| Database (tests) | `Testcontainers.PostgreSql` (`pgvector/pgvector:pg17` image) | Single shared container per run, isolated database per test class, auto-migrated. Requires Docker |
-| AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama — no network |
-| Test project | `backend/Tests/` | 142 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
+| Database (tests) | `Microsoft.EntityFrameworkCore.InMemory` | Whole suite is Docker-free: isolated in-memory database per test class. App degrades to `EnsureCreated` + LINQ FTS fallback on non-relational providers |
+| AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama; `FakeVectorSearchService` replaces pgvector search (`IVectorSearchService`) — no Docker, no network |
+| Test project | `backend/Tests/` | 145 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
 
-Run tests: `cd backend/Tests && dotnet test` (Docker must be running)
+Run tests: `cd backend/Tests && dotnet test` (no Docker required)
 
 ## Deployment Target
 

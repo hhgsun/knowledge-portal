@@ -92,10 +92,21 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 orderedIds.Count);
         }
 
-        var escaped = SlugHelper.EscapeLikePattern(query);
-        var likeQuery = filteredQuery
-            .Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\")
-                || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escaped}%", "\\")));
+        // EF.Functions.Like needs a relational provider; the InMemory test suite uses a
+        // literal Contains fallback (equivalent for the plain substrings tests exercise).
+        IQueryable<Article> likeQuery;
+        if (db.Database.IsRelational())
+        {
+            var escaped = SlugHelper.EscapeLikePattern(query);
+            likeQuery = filteredQuery
+                .Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\")
+                    || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escaped}%", "\\")));
+        }
+        else
+        {
+            likeQuery = filteredQuery
+                .Where(a => a.Title.Contains(query) || (a.Excerpt != null && a.Excerpt.Contains(query)));
+        }
 
         var total = await likeQuery.CountAsync();
         var likeArticles = await likeQuery

@@ -20,6 +20,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task InitializeAsync()
     {
+        if (!db.Database.IsRelational()) return; // InMemory (Docker-free tests): LINQ search, no tsvector column
         await db.Database.ExecuteSqlRawAsync("""
             DO $$
             BEGIN
@@ -44,6 +45,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task RebuildAsync(CancellationToken ct = default)
     {
+        if (!db.Database.IsRelational()) return; // LINQ search reads live article data — no index to rebuild
         await db.Database.ExecuteSqlRawAsync("UPDATE articles SET search_vector = NULL", ct);
 
         var articles = await db.Articles
@@ -63,6 +65,8 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task SyncArticleAsync(Article article)
     {
+        if (!db.Database.IsRelational()) return; // no tsvector column on non-relational providers
+
         if (article.Status != "published")
         {
             await RemoveArticleAsync(article.Id);
@@ -100,6 +104,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// </summary>
     public async Task RemoveArticleAsync(string articleId)
     {
+        if (!db.Database.IsRelational()) return;
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE articles SET search_vector = NULL WHERE \"Id\" = {0}", articleId);
     }
@@ -115,6 +120,11 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
         var tokens = TokenizeQuery(query);
         if (tokens.Count == 0) return [];
+
+        // Non-relational providers (Docker-free InMemory test suite) can't run tsquery —
+        // use an in-memory, accent-folded, AND→OR substring search instead.
+        if (!db.Database.IsRelational())
+            return await LinqSearchAsync(tokens, limit);
 
         var results = await RunTsQueryAsync(string.Join(" & ", tokens), limit);
 
@@ -141,6 +151,51 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         }
 
         return results.Select(r => new FtsResult(r.ArticleId, r.Rank)).ToList();
+    }
+
+    /// <summary>
+    /// Provider-agnostic full-text fallback for non-relational databases. Mirrors the
+    /// production semantics that don't depend on the Postgres snowball stemmer:
+    /// symmetric accent folding (C# transliteration), title-weighted ranking, and
+    /// AND-first precision (all terms) falling back to OR (any term). Turkish stemming
+    /// (plural→singular) is Postgres-only and not reproduced here.
+    /// </summary>
+    private async Task<List<FtsResult>> LinqSearchAsync(List<string> tokens, int limit)
+    {
+        var lowered = tokens.Select(t => t.ToLowerInvariant()).ToList();
+
+        var articles = await db.Articles
+            .WherePublished()
+            .Select(a => new { a.Id, a.Title, a.Excerpt, a.Content, a.UpdatedAt })
+            .ToListAsync();
+
+        var scored = new List<(string Id, double Rank, DateTime Updated)>();
+        foreach (var a in articles)
+        {
+            var titleHay = SlugHelper.Transliterate(a.Title ?? "").ToLowerInvariant();
+            var bodyHay = SlugHelper.Transliterate(
+                (a.Excerpt ?? "") + " " + ContentExtractor.ExtractPlainText(a.Content)).ToLowerInvariant();
+            var haystack = titleHay + " " + bodyHay;
+
+            var matched = lowered.Count(t => haystack.Contains(t));
+            if (matched == 0) continue;
+
+            var titleMatches = lowered.Count(t => titleHay.Contains(t));
+            var allMatch = matched == lowered.Count;
+            // AND-matches float to the top; within a tier, title hits rank higher (weight A > B/C)
+            var rank = (allMatch ? 1000.0 : 0.0) + titleMatches * 10.0 + matched;
+            scored.Add((a.Id, rank, a.UpdatedAt));
+        }
+
+        // Precision-first: if anything matches ALL terms, drop partial (OR) matches
+        if (scored.Any(s => s.Rank >= 1000.0))
+            scored = scored.Where(s => s.Rank >= 1000.0).ToList();
+
+        return scored
+            .OrderByDescending(s => s.Rank).ThenByDescending(s => s.Updated).ThenBy(s => s.Id)
+            .Take(limit)
+            .Select(s => new FtsResult(s.Id, s.Rank))
+            .ToList();
     }
 
     private async Task<List<FtsRawResult>> RunTsQueryAsync(string tsQuery, int limit)

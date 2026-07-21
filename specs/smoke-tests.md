@@ -183,7 +183,7 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Command | Expected |
 |---------|----------|
-| `cd backend/Tests && dotnet test` | 142 tests pass (Docker required — Testcontainers PostgreSQL) |
+| `cd backend/Tests && dotnet test` | 145 tests pass — no Docker required (EF Core InMemory + in-process fakes) |
 
 Also runs as the gating `Test` stage in `azure-pipelines.yml` before image build/deploy.
 

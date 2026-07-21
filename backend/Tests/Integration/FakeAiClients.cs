@@ -1,6 +1,53 @@
+using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgePortal.Api.Tests.Integration;
+
+/// <summary>
+/// Deterministic, Docker-free replacement for the pgvector-backed VectorSearchService.
+/// Ranks published articles by query-token overlap over title + plain-text content, so
+/// semantic / hybrid / RAG endpoints return sensible results against the InMemory database
+/// without any vector index. Mirrors the real minScore thresholding.
+/// </summary>
+public sealed class FakeVectorSearchService(IServiceScopeFactory scopeFactory) : IVectorSearchService
+{
+    public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit,
+        CancellationToken ct = default, double? minScore = null)
+    {
+        var threshold = minScore ?? 0.5;
+        var tokens = queryText.ToLowerInvariant()
+            .Split([' ', '\t', '\r', '\n', '.', ',', ';', ':', '!', '?'], StringSplitOptions.RemoveEmptyEntries)
+            .Distinct()
+            .ToList();
+        if (tokens.Count == 0) return [];
+
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var articles = await db.Articles
+            .Where(a => a.Status == "published")
+            .Select(a => new { a.Id, a.Title, a.Content })
+            .ToListAsync(ct);
+
+        var results = new List<VectorSearchResult>();
+        foreach (var a in articles)
+        {
+            var hay = ((a.Title ?? "") + " " + ContentExtractor.ExtractPlainText(a.Content)).ToLowerInvariant();
+            var overlap = tokens.Count(t => hay.Contains(t));
+            var score = (double)overlap / tokens.Count;
+            if (score >= threshold)
+                results.Add(new VectorSearchResult(a.Id, score, 0));
+        }
+
+        return results
+            .OrderByDescending(r => r.Score).ThenBy(r => r.ArticleId)
+            .Take(limit)
+            .ToList();
+    }
+}
 
 /// <summary>
 /// Deterministic in-process replacement for the Ollama embedding client.

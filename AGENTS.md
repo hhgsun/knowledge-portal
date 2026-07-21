@@ -16,7 +16,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | TipTap (ProseMirror) |
-| Tests | xUnit + WebApplicationFactory (backend only). Integration tests use Testcontainers (`pgvector/pgvector:pg17`, Docker required) with a per-class isolated database, plus deterministic fake AI clients (`FakeEmbeddingGenerator`/`FakeChatClient`) replacing Ollama — no network dependency. CI runs `dotnet test` as a gating stage in `azure-pipelines.yml` |
+| Tests | xUnit + WebApplicationFactory (backend only). **No Docker** — the entire suite runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. Postgres-only fidelity (snowball stemming, real pgvector ranking) is therefore not covered by tests. CI runs `dotnet test` as a gating stage in `azure-pipelines.yml` |
 | MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
 
 ## Conventions
@@ -65,7 +65,7 @@ backend/
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions, RrfHelper
 ├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
 ├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, ServiceError
-│                         # AI/Search: EmbeddingService, VectorSearchService, RagService, EmbeddingBackgroundService, EmbeddingFailureTracker, FullTextSearchService
+│                         # AI/Search: EmbeddingService, VectorSearchService (IVectorSearchService), RagService, EmbeddingBackgroundService, EmbeddingFailureTracker, FullTextSearchService
 │                         # Observability: PortalMetrics (OpenTelemetry meters)
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)

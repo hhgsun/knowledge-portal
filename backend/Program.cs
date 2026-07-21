@@ -171,7 +171,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IChatClient>(chatClientInstance);
 
     builder.Services.AddScoped<EmbeddingService>();
-    builder.Services.AddSingleton<VectorSearchService>();
+    builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
     builder.Services.AddScoped<RagService>();
     builder.Services.AddSingleton<EmbeddingFailureTracker>();
     builder.Services.AddHostedService<EmbeddingBackgroundService>();
@@ -301,31 +301,41 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    // Ensure the PostgreSQL database exists before applying migrations
+    if (db.Database.IsRelational())
     {
-        var connStr = builder.Configuration.GetConnectionString("DefaultConnection")!;
-        var csb = new Npgsql.NpgsqlConnectionStringBuilder();
-        csb.PersistSecurityInfo = true;
-        csb.ConnectionString = connStr;
-        var dbName = csb.Database;
-        csb.Database = "postgres";
-        using var conn = new Npgsql.NpgsqlConnection(csb.ConnectionString);
-        await conn.OpenAsync();
-        using var checkCmd = conn.CreateCommand();
-        checkCmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = '{dbName}'";
-        var exists = await checkCmd.ExecuteScalarAsync();
-        if (exists == null)
+        // Ensure the PostgreSQL database exists before applying migrations
         {
-            using var createCmd = conn.CreateCommand();
-            createCmd.CommandText = $"CREATE DATABASE \"{dbName}\"";
-            await createCmd.ExecuteNonQueryAsync();
+            var connStr = builder.Configuration.GetConnectionString("DefaultConnection")!;
+            var csb = new Npgsql.NpgsqlConnectionStringBuilder();
+            csb.PersistSecurityInfo = true;
+            csb.ConnectionString = connStr;
+            var dbName = csb.Database;
+            csb.Database = "postgres";
+            using var conn = new Npgsql.NpgsqlConnection(csb.ConnectionString);
+            await conn.OpenAsync();
+            using var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = '{dbName}'";
+            var exists = await checkCmd.ExecuteScalarAsync();
+            if (exists == null)
+            {
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = $"CREATE DATABASE \"{dbName}\"";
+                await createCmd.ExecuteNonQueryAsync();
+            }
         }
+
+        await db.Database.MigrateAsync();
+    }
+    else
+    {
+        // Non-relational provider (EF InMemory, used by the Docker-free test suite):
+        // migrations/raw-SQL FTS init don't apply — just materialize the schema.
+        await db.Database.EnsureCreatedAsync();
     }
 
-    await db.Database.MigrateAsync();
     await DbInitializer.SeedAsync(db);
 
-    // Initialize full-text search infrastructure and rebuild index
+    // FTS infrastructure is PostgreSQL raw SQL; the service no-ops on non-relational providers.
     var ftsService = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
     await ftsService.InitializeAsync();
     await ftsService.RebuildAsync();
