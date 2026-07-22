@@ -1,7 +1,9 @@
 using System.Text;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Wordprocessing;
 using UglyToad.PdfPig;
+using A = DocumentFormat.OpenXml.Drawing;
 
 namespace KnowledgePortal.Api.Helpers;
 
@@ -29,6 +31,9 @@ public static class AttachmentTextExtractor
             {
                 ".pdf" => ExtractFromPdf(filePath),
                 ".docx" => ExtractFromDocx(filePath),
+                ".xlsx" => ExtractFromXlsx(filePath),
+                ".pptx" => ExtractFromPptx(filePath),
+                ".xls" => ExtractFromXls(filePath),
                 _ when TextExtensions.Contains(ext) => ExtractFromTextFile(filePath),
                 _ => ""
             };
@@ -79,6 +84,87 @@ public static class AttachmentTextExtractor
         }
 
         return sb.ToString();
+    }
+
+    // ── Modern Office (OpenXML) — no extra dependency ──
+
+    private static string ExtractFromXlsx(string filePath)
+    {
+        using var doc = SpreadsheetDocument.Open(filePath, false);
+        var workbookPart = doc.WorkbookPart;
+        if (workbookPart == null) return "";
+
+        var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
+        var sb = new StringBuilder();
+
+        foreach (var worksheetPart in workbookPart.WorksheetParts)
+        {
+            foreach (var cell in worksheetPart.Worksheet.Descendants<Cell>())
+            {
+                var value = GetCellText(cell, sharedStrings);
+                if (!string.IsNullOrEmpty(value))
+                {
+                    sb.Append(value);
+                    sb.Append(' ');
+                }
+
+                if (sb.Length > MaxCharacters) return sb.ToString();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GetCellText(Cell cell, SharedStringTable? sharedStrings)
+    {
+        if (cell.CellValue == null && cell.InlineString == null) return "";
+
+        // Shared strings are stored once and referenced by index from each cell.
+        if (cell.DataType?.Value == CellValues.SharedString
+            && sharedStrings != null
+            && int.TryParse(cell.CellValue?.InnerText, out var idx)
+            && idx >= 0 && idx < sharedStrings.ChildElements.Count)
+        {
+            return sharedStrings.ChildElements[idx].InnerText;
+        }
+
+        if (cell.DataType?.Value == CellValues.InlineString)
+            return cell.InlineString?.InnerText ?? "";
+
+        return cell.CellValue?.InnerText ?? "";
+    }
+
+    private static string ExtractFromPptx(string filePath)
+    {
+        using var doc = PresentationDocument.Open(filePath, false);
+        var presentationPart = doc.PresentationPart;
+        if (presentationPart == null) return "";
+
+        var sb = new StringBuilder();
+        foreach (var slidePart in presentationPart.SlideParts)
+        {
+            // a:t (DrawingML Text) elements carry the run text inside every shape/table on a slide.
+            foreach (var text in slidePart.Slide.Descendants<A.Text>())
+            {
+                sb.Append(text.Text);
+                sb.Append(' ');
+
+                if (sb.Length > MaxCharacters) return sb.ToString();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    // ── Legacy binary Excel (OLE2) via NPOI. NPOI 2.8 ships HSSF (.xls) but not HWPF (.doc),
+    //    so legacy Word is intentionally unsupported rather than uploadable-but-unindexed. ──
+
+    private static string ExtractFromXls(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        var workbook = new NPOI.HSSF.UserModel.HSSFWorkbook(stream);
+        var extractor = new NPOI.HSSF.Extractor.ExcelExtractor(workbook);
+        return extractor.Text ?? "";
     }
 
     private static string ExtractFromTextFile(string filePath)

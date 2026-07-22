@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Upload, File as FileIcon, FileText, Image, Trash2, Clock } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.yaml,.json,.csv,.svg";
+const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.xls,.yaml,.json,.csv,.svg";
 
 function getFileIconForType(type: string) {
   if (type.startsWith("image/")) return <Image size={16} className="text-blue-500" />;

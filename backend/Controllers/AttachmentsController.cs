@@ -27,6 +27,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         [".txt"] = ["text/plain"],
         [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
         [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"],
+        [".pptx"] = ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/octet-stream"],
+        [".xls"] = ["application/vnd.ms-excel", "application/octet-stream"],
         [".yaml"] = ["text/yaml", "application/x-yaml", "text/plain", "application/octet-stream"],
         [".json"] = ["application/json", "text/plain"],
         [".csv"] = ["text/csv", "text/plain", "application/octet-stream"],
@@ -76,7 +78,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         // Extension whitelist check
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         var allowedExtensions = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>()
-            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".yaml", ".json", ".csv", ".svg"];
+            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".pptx", ".xls", ".yaml", ".json", ".csv", ".svg"];
 
         if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
             return BadRequest(new { error = $"File type '{extension}' is not allowed" });
