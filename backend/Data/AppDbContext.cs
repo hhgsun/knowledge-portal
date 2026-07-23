@@ -79,6 +79,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.CreatedAt).IsRequired();
             e.Property(a => a.UpdatedAt).IsRequired();
             e.HasIndex(a => a.Slug).IsUnique();
+            // Nearly every read path filters WHERE Status='published' (search, listings, counts,
+            // MCP tools), and the embedding backfill queue hits (Status='published' AND IndexedAt IS
+            // NULL) on every poll. A (Status, IndexedAt) composite serves both: the leading column
+            // covers status-only filters, and the pair makes the highly-selective backfill-queue
+            // lookup an index scan instead of a seq scan over all articles at 750k+ rows.
+            e.HasIndex(a => new { a.Status, a.IndexedAt });
             e.HasOne(a => a.Owner).WithMany(u => u.Articles).HasForeignKey(a => a.OwnerId);
             e.HasOne(a => a.CreatedViaApiKey).WithMany().HasForeignKey(a => a.CreatedViaApiKeyId).OnDelete(DeleteBehavior.SetNull);
         });
