@@ -13,6 +13,9 @@ public class EmbeddingBackgroundService(
     private readonly int _batchSize = config.GetValue("Ollama:BatchSize", 10);
     private readonly int _pollingInterval = config.GetValue("Ollama:PollingIntervalSeconds", 5);
     private readonly int _backoffSeconds = config.GetValue("Ollama:BackoffSeconds", 30);
+    // Orphan-embedding safety net: sweep how often (hours). <=0 disables it.
+    private readonly int _orphanCleanupIntervalHours = config.GetValue("Ollama:OrphanCleanupIntervalHours", 24);
+    private DateTime _lastOrphanCleanupUtc = DateTime.MinValue; // MinValue → runs once shortly after startup
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -23,6 +26,8 @@ public class EmbeddingBackgroundService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            await MaybeCleanupOrphansAsync(stoppingToken);
+
             try
             {
                 var processed = await ProcessBatchAsync(stoppingToken);
@@ -101,6 +106,33 @@ public class EmbeddingBackgroundService(
 
         logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticles.Count);
         return processed;
+    }
+
+    /// <summary>
+    /// Periodically deletes embeddings for articles that are no longer published (the residual
+    /// unpublish-during-embedding race the transactional guard can't fully close, plus any legacy
+    /// orphans). Gated to once per <see cref="_orphanCleanupIntervalHours"/>; failures are logged
+    /// and never disrupt the embedding loop.
+    /// </summary>
+    private async Task MaybeCleanupOrphansAsync(CancellationToken ct)
+    {
+        if (_orphanCleanupIntervalHours <= 0) return; // disabled
+        if (DateTime.UtcNow - _lastOrphanCleanupUtc < TimeSpan.FromHours(_orphanCleanupIntervalHours)) return;
+        _lastOrphanCleanupUtc = DateTime.UtcNow; // set before running so a failure won't tight-loop
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
+            var removed = await embeddingService.CleanupOrphanEmbeddingsAsync(ct);
+            if (removed > 0)
+                logger.LogInformation("Orphan embedding cleanup removed {Count} chunk(s)", removed);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Orphan embedding cleanup failed");
+        }
     }
 
     private async Task InvalidateStaleModelsAsync(CancellationToken ct)

@@ -66,11 +66,19 @@ public class EmbeddingService(
                 $"expected {_expectedDimensions} (Ollama:EmbeddingDimensions / vector({_expectedDimensions}) column). " +
                 "Fix the model/config or migrate the article_embeddings column.");
 
-        // Remove old embeddings
+        // Persist the chunks and claim IndexedAt ATOMICALLY. Embedding generation above is a slow
+        // network call; the article can be unpublished meanwhile (ArticlesController deletes its
+        // embeddings and bumps xmin). Committing the chunks first and only then checking xmin —
+        // as this used to — leaves orphan embeddings for a now-draft article that the background
+        // service will never revisit (its query filters Status='published'). Instead, stage the
+        // chunk changes inside a transaction and let the xmin-guarded claim gate the commit: if the
+        // article changed (xmin bumped), the claim matches 0 rows and we roll the whole thing back,
+        // so no chunk row is ever committed for a no-longer-published article.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         if (existingChunks.Count > 0)
             db.ArticleEmbeddings.RemoveRange(existingChunks);
 
-        // Insert new chunk embeddings
         for (int i = 0; i < chunks.Count; i++)
         {
             var vector = embedResults[i].Vector.ToArray();
@@ -86,10 +94,17 @@ public class EmbeddingService(
             });
         }
 
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct); // staged in the transaction — not visible until commit
 
         if (!await TryClaimIndexedAsync(article.Id, xmin.Value, ct))
-            return false; // article changed while embedding — chunks get replaced on the retry
+        {
+            // Article changed mid-embed (e.g. unpublished). Undo the staged chunks so none leak;
+            // if it is still published, it stays queued (IndexedAt=null) and re-embeds next poll.
+            await tx.RollbackAsync(ct);
+            return false;
+        }
+
+        await tx.CommitAsync(ct);
 
         logger.LogInformation("Embedded article {ArticleId} ({Chunks} chunks, {Dimensions} dims, model={Model})",
             article.Id, chunks.Count, embedResults[0].Vector.Length, _modelName);
@@ -131,6 +146,20 @@ public class EmbeddingService(
             db.ArticleEmbeddings.RemoveRange(existing);
             await db.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>
+    /// Deletes embeddings whose article is missing or no longer published, enforcing the
+    /// "published-only" invariant. The transactional xmin guard in <see cref="EmbedArticleAsync"/>
+    /// prevents the common unpublish-during-embedding race, but a narrow residual window (and rows
+    /// from older builds) can still leave orphans; this is the periodic safety net. Returns the
+    /// number of chunk rows removed. See scripts/cleanup_orphan_embeddings.sql for the manual form.
+    /// </summary>
+    public async Task<int> CleanupOrphanEmbeddingsAsync(CancellationToken ct = default)
+    {
+        return await db.ArticleEmbeddings
+            .Where(e => !db.Articles.Any(a => a.Id == e.ArticleId && a.Status == "published"))
+            .ExecuteDeleteAsync(ct);
     }
 
     public async Task<int> InvalidateStaleModelAsync(CancellationToken ct = default)
