@@ -33,9 +33,16 @@ public sealed class VectorSearchService(
     IConfiguration config) : IVectorSearchService
 {
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.5);
-    // HNSW candidate-list size at query time. The default (40) is far below the row limits we
-    // ask for at 50k+ scale, so recall collapses without raising it. Kept >= rowLimit per query.
+    // HNSW candidate-list size at query time. HNSW recall depends on ef_search being several times
+    // the number of rows requested (rowLimit); when ef_search ≈ rowLimit recall degrades sharply at
+    // millions of chunks. So ef_search = clamp(rowLimit * multiplier, floor, max):
+    //   floor (HnswEfSearch)      — minimum candidate list even for tiny rowLimits (default 200)
+    //   multiplier (…Multiplier)  — how many times rowLimit to scan; the main recall/latency knob
+    //   max (…Max)                — latency safety rail so a large rowLimit can't explode ef_search
+    // Tune the multiplier with scripts/hnsw_recall_benchmark.sql before changing the default.
     private readonly int _efSearch = config.GetValue("Ollama:HnswEfSearch", 200);
+    private readonly int _efSearchMultiplier = config.GetValue("Ollama:HnswEfSearchMultiplier", 4);
+    private readonly int _efSearchMax = config.GetValue("Ollama:HnswEfSearchMax", 1000);
 
     /// <param name="minScore">Overrides Ollama:MinSimilarityScore when set — RAG uses a lower
     /// threshold than list-style semantic search (the LLM judges relevance itself).</param>
@@ -121,7 +128,10 @@ public sealed class VectorSearchService(
     /// </summary>
     private async Task<List<T>> QueryWithEfSearchAsync<T>(AppDbContext db, int rowLimit, Func<Task<List<T>>> runQuery, CancellationToken ct)
     {
-        var efSearch = Math.Max(_efSearch, rowLimit);
+        // ef_search = clamp(rowLimit * multiplier, floor, max). Guard the ceiling against a
+        // misconfigured max < floor so Math.Clamp never sees min > max.
+        var ceiling = Math.Max(_efSearch, _efSearchMax);
+        var efSearch = Math.Clamp(rowLimit * _efSearchMultiplier, _efSearch, ceiling);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         // efSearch is a validated int (Math.Max of two ints), so the interpolation is injection-safe.
         // SET LOCAL cannot bind parameters for GUCs, hence ExecuteSqlRaw over ExecuteSql.
