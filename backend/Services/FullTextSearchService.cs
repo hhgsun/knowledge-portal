@@ -43,23 +43,98 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         logger.LogInformation("PostgreSQL full-text search infrastructure ensured");
     }
 
+    /// <summary>Articles per pass. Each one re-reads and re-parses that article's attachments
+    /// from disk, so this is deliberately small — the batch bounds memory, not IO.</summary>
+    private const int IndexBatchSize = 200;
+
     /// <summary>
-    /// Rebuild the entire FTS index from scratch.
+    /// Brings the index up to date without ever taking it down: only articles that have no
+    /// search_vector are computed. This is what startup calls, so a restart costs one indexed
+    /// COUNT when everything is already indexed instead of re-deriving the whole corpus.
+    /// Resumable — each batch commits, so an interrupted run continues where it stopped.
     /// </summary>
-    public async Task RebuildAsync(CancellationToken ct = default)
+    public Task<int> EnsureIndexedAsync(CancellationToken ct = default)
+        => IndexPublishedAsync(onlyMissing: true, "backfill", ct);
+
+    /// <summary>
+    /// Recomputes every published article's vector, for when the indexing rules themselves
+    /// change. Unlike the previous version this does NOT blank the index first: each article is
+    /// overwritten in place, so search keeps working throughout and merely serves some entries
+    /// from the old rules until their turn comes. Blanking first meant search was broken for the
+    /// entire length of the rebuild, which grows with the corpus.
+    /// </summary>
+    public Task<int> RebuildAsync(CancellationToken ct = default)
+        => IndexPublishedAsync(onlyMissing: false, "rebuild", ct);
+
+    /// <summary>
+    /// Walks published articles by keyset (no OFFSET, which degrades on a large corpus) and
+    /// recomputes each one's tsvector. Returns the number of articles indexed.
+    /// </summary>
+    private async Task<int> IndexPublishedAsync(bool onlyMissing, string what, CancellationToken ct)
     {
-        if (!db.Database.IsRelational()) return; // LINQ search reads live article data — no index to rebuild
-        await db.Database.ExecuteSqlRawAsync("UPDATE articles SET search_vector = NULL", ct);
+        if (!db.Database.IsRelational()) return 0; // LINQ search reads live article data — no index
 
-        var articles = await db.Articles
-            .WherePublished()
-            .Select(a => new { a.Id, a.Title, a.Excerpt, a.Content })
-            .ToListAsync(ct);
+        // Anything that left 'published' must stop being searchable. SyncArticleAsync already
+        // handles this per article; this covers rows that changed while the app was down. One
+        // indexed statement, unlike the per-article work below.
+        await db.Database.ExecuteSqlRawAsync(
+            """UPDATE articles SET search_vector = NULL WHERE "Status" <> 'published' AND search_vector IS NOT NULL""", ct);
 
-        foreach (var article in articles)
-            await UpdateSearchVectorAsync(article.Id, article.Title ?? "", article.Excerpt, article.Content, ct);
+        var missingOnly = onlyMissing ? "AND search_vector IS NULL" : "";
+        var lastId = "";
+        var indexed = 0;
+        var failed = 0;
 
-        logger.LogInformation("Full-text search index rebuilt with {Count} articles", articles.Count);
+        while (!ct.IsCancellationRequested)
+        {
+            // search_vector is raw-SQL infrastructure, not a mapped property, so the batch of
+            // ids has to be selected in SQL; the fields themselves then load through EF.
+#pragma warning disable EF1002
+            var batchIds = await db.Database.SqlQueryRaw<string>(
+                $$"""
+                SELECT "Id" AS "Value" FROM articles
+                WHERE "Status" = 'published' AND "Id" > {0} {{missingOnly}}
+                ORDER BY "Id" LIMIT {1}
+                """,
+                lastId, IndexBatchSize).ToListAsync(ct);
+#pragma warning restore EF1002
+
+            if (batchIds.Count == 0) break;
+
+            var batch = await db.Articles
+                .Where(a => batchIds.Contains(a.Id))
+                .Select(a => new { a.Id, a.Title, a.Excerpt, a.Content })
+                .ToListAsync(ct);
+
+            foreach (var article in batch.OrderBy(a => a.Id, StringComparer.Ordinal))
+            {
+                try
+                {
+                    await UpdateSearchVectorAsync(article.Id, article.Title ?? "", article.Excerpt, article.Content, ct);
+                    indexed++;
+                }
+                catch (Exception ex)
+                {
+                    // One unindexable article must not stop the walk. Postgres caps a tsvector at
+                    // 1 MB, which a document with enough attachment text can exceed — and since
+                    // this runs at startup, an unhandled failure would both block every article
+                    // after it in the keyset and stop the application from booting.
+                    failed++;
+                    logger.LogError(ex, "Full-text indexing failed for article {ArticleId}", article.Id);
+                }
+            }
+
+            lastId = batchIds[^1];
+
+            // A large corpus makes this a long job; without progress it looks like a hang.
+            if (indexed % (IndexBatchSize * 10) == 0)
+                logger.LogInformation("Full-text {What} in progress: {Count} articles indexed", what, indexed);
+        }
+
+        if (indexed > 0 || failed > 0)
+            logger.LogInformation("Full-text {What} complete: {Count} articles indexed, {Failed} failed",
+                what, indexed, failed);
+        return indexed;
     }
 
     /// <summary>

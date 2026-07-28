@@ -16,7 +16,13 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/search")]
 [Authorize]
 [EnableRateLimiting("search")]
-public class SearchController(AppDbContext db, IConfiguration config, ArticleService articleService) : ControllerBase
+public class SearchController(
+    AppDbContext db,
+    IConfiguration config,
+    ArticleService articleService,
+    IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
+    ILogger<SearchController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -291,12 +297,37 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         if (!config.GetValue("Ollama:Enabled", false))
             return StatusCode(503, new { error = "Ollama is not enabled" });
 
+        // Invalidate rather than delete. Dropping every chunk up front left semantic search
+        // blind for the whole re-embed, which on a large corpus is days. Clearing the stored
+        // text hash of each article's first chunk defeats the up-to-date check in
+        // EmbeddingService.EmbedArticleAsync, so each article re-embeds on its turn and replaces
+        // its own chunks in a single transaction — results go stale gradually instead of
+        // vanishing. Hashes first, then IndexedAt: the other order lets a worker claim an
+        // article and short-circuit before its hash was cleared.
+        await db.ArticleEmbeddings
+            .Where(e => e.ChunkIndex == 0)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.TextHash, ""));
+
         var count = await db.Articles.WherePublished()
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null));
-        await db.ArticleEmbeddings.ExecuteDeleteAsync();
 
-        // Rebuild FTS index
-        await articleService.RebuildIndexAsync();
+        // The full-text rebuild re-reads and re-parses every article's attachments from disk, so
+        // it cannot be awaited inside the request once the corpus is large. It overwrites vectors
+        // in place, so search stays usable while it runs and an interrupted run leaves entries
+        // stale rather than missing.
+        var stopping = lifetime.ApplicationStopping;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<ArticleService>().RebuildIndexAsync(stopping);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Full-text rebuild queued by reindex failed");
+            }
+        }, stopping);
 
         return Ok(new { message = "Reindex queued", articlesQueued = count });
     }

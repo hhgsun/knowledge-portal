@@ -338,7 +338,10 @@ using (var scope = app.Services.CreateScope())
     // FTS infrastructure is PostgreSQL raw SQL; the service no-ops on non-relational providers.
     var ftsService = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
     await ftsService.InitializeAsync();
-    await ftsService.RebuildAsync();
+    // Backfill only what is missing. A full rebuild here used to blank every search_vector and
+    // re-derive it — including re-reading each article's attachments from disk — so every boot
+    // broke search for a stretch that grew with the corpus. This is a no-op on a warm database.
+    await ftsService.EnsureIndexedAsync();
 }
 
 // ─── Ensure uploads directory ────────────────────────────────

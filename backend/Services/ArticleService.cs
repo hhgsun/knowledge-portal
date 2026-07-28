@@ -182,7 +182,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
 
     public Task RemoveFromIndexAsync(string articleId) => ftsService.RemoveArticleAsync(articleId);
 
-    public Task RebuildIndexAsync() => ftsService.RebuildAsync();
+    /// <summary>Recomputes every published article's search vector in place. Long-running on a
+    /// large corpus — see <see cref="FullTextSearchService.RebuildAsync"/>.</summary>
+    public Task<int> RebuildIndexAsync(CancellationToken ct = default) => ftsService.RebuildAsync(ct);
 
     /// <summary>Loads presentation metadata (owner, API key, tags, views, votes) for a set of articles.</summary>
     public async Task<Dictionary<string, ArticleEnrichment>> GetEnrichmentAsync(IEnumerable<string> articleIds)
