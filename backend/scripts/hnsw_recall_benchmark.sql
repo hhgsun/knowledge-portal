@@ -9,6 +9,10 @@
 --      filtered? A filtered query that falls back to a sort over every embedding is
 --      the difference between 50 ms and a full-table scan.
 --   4. Does hnsw.iterative_scan recover the rows a filter removes?
+--   5. What does FULL-TEXT search cost at that size? It is the default search type, and
+--      since the candidate cap was removed every query pays an exact COUNT and ranks the
+--      whole match set — cheap on a small corpus, not obviously cheap on a large one.
+--   6. Does the per-article chunk cap actually buy the article diversity it costs content for?
 --
 -- Everything lives in TEMP tables: nothing touches application data, and the whole
 -- corpus disappears when the session ends. Safe to run against any database that
@@ -59,6 +63,14 @@
 -- Candidate windows to measure article yield for (chunk rows fetched before collapsing).
 \if :{?windows}            \else \set windows '100,200,400,1000,2000' \endif
 \if :{?ef_searches}        \else \set ef_searches '40,100,200,400,1000,2000' \endif
+-- Section 6 (full-text) corpus shape. Documents are built from a shared paragraph pool so that
+-- some terms match a large slice of the corpus and some match a single row.
+\if :{?fts_vocabulary}         \else \set fts_vocabulary 4000  \endif
+\if :{?fts_paragraph_pool}     \else \set fts_paragraph_pool 400 \endif
+\if :{?fts_paragraph_words}    \else \set fts_paragraph_words 120 \endif
+\if :{?fts_paragraphs_per_doc} \else \set fts_paragraphs_per_doc 4 \endif
+-- Section 7: the value of Ollama:MaxIndexChunksPerArticle being tested.
+\if :{?chunk_cap}              \else \set chunk_cap 100 \endif
 
 \timing off
 \set ON_ERROR_STOP on
@@ -68,6 +80,7 @@
 SET bench.k = :k;
 SET bench.ef_searches = :'ef_searches';
 SET bench.windows = :'windows';
+SET bench.chunk_cap = :chunk_cap;
 
 \echo ''
 \echo '=== corpus ==================================================================='
@@ -81,6 +94,16 @@ SET bench.windows = :'windows';
 -- either — an uncorrelated LATERAL is still hoisted. A VOLATILE function cannot be.
 CREATE FUNCTION pg_temp.rand_unit_vector(dims int) RETURNS vector AS $$
     SELECT l2_normalize(array_agg(random()::real - 0.5)::vector) FROM generate_series(1, dims);
+$$ LANGUAGE sql VOLATILE;
+
+-- Same trap, same fix, for the section 6 text corpus. An inline
+-- `(SELECT string_agg(...) FROM generate_series(...))` is uncorrelated and gets hoisted, so
+-- every paragraph in the pool comes out IDENTICAL — every vocabulary word then matches 100%
+-- of documents, there is no selective term to probe, and the section measures nothing.
+-- floor(exp(u * ln(vocab))) is log-uniform over 1..vocab: w1 very common, high numbers rare.
+CREATE FUNCTION pg_temp.rand_words(n int, vocab int) RETURNS text AS $$
+    SELECT string_agg('w' || floor(exp(random() * ln(vocab)))::int::text, ' ')
+    FROM generate_series(1, n);
 $$ LANGUAGE sql VOLATILE;
 
 -- pgvector has element-wise vector * vector but no vector * scalar, so scales are vectors.
@@ -335,6 +358,183 @@ SELECT count(*) AS rows_with_iterative_scan FROM (
 RESET hnsw.iterative_scan;
 
 \echo ''
+\echo '=== 6. full-text at scale ===================================================='
+\echo '(the DEFAULT search type. Sections 1-5 only measure the vector path, which most'
+\echo ' users never touch. What is measured here is the cost SearchPagedAsync pays now'
+\echo ' that the 1000-candidate cap is gone: an exact COUNT over the real match set, and'
+\echo ' a ts_rank_cd sort over every matching row rather than the first thousand.)'
+
+-- Documents are assembled from a pool of shared paragraphs plus one unique marker term each.
+-- That is what produces a realistic term-frequency spread: pool words match a large slice of
+-- the corpus, the marker matches exactly one row, and the gap between those two is the whole
+-- question — a query matching 100k rows and one matching 1 cost wildly different things.
+--
+CREATE TEMP TABLE bench_paragraph AS
+SELECT g AS para_no, pg_temp.rand_words(:fts_paragraph_words, :fts_vocabulary) AS body
+FROM generate_series(1, :fts_paragraph_pool) g;
+
+-- The ordering key must depend on BOTH the document and the paragraph. Hashing the document
+-- alone is constant within the subquery, so every document would receive the same paragraphs.
+CREATE TEMP TABLE bench_fts AS
+SELECT a."Id", a."Status", a."OwnerId", a."ContentType",
+       (SELECT string_agg(pp.body, ' ')
+        FROM (SELECT bp.body FROM bench_paragraph bp
+              ORDER BY abs(hashtext(g::text || ':' || bp.para_no::text))
+              LIMIT :fts_paragraphs_per_doc) pp)
+       || ' marker' || g AS body
+FROM generate_series(1, :n_articles) g
+JOIN bench_articles a ON a."Id" = 'a' || g;
+
+ALTER TABLE bench_fts ADD COLUMN search_vector tsvector;
+UPDATE bench_fts SET search_vector = to_tsvector('simple', body);
+\timing on
+CREATE INDEX bench_fts_gin ON bench_fts USING gin(search_vector);
+\timing off
+ANALYZE bench_fts;
+
+SELECT count(*)                                            AS documents,
+       pg_size_pretty(pg_total_relation_size('bench_fts')) AS table_size,
+       pg_size_pretty(pg_relation_size('bench_fts_gin'))   AS gin_size
+FROM bench_fts;
+
+-- Probe terms are chosen FROM the corpus, not hard-coded. A guessed term can easily match
+-- nothing (the generator's distribution is not something to assume), and a probe that matches
+-- zero rows silently reports a fast query while measuring nothing at all.
+-- ts_stat is sampled: it is only used to pick the terms, and the real match counts come from
+-- the COUNT inside the timing loop below.
+-- Each branch needs its own parentheses: an unparenthesized ORDER BY/LIMIT binds to the whole
+-- UNION, not to the branch it is written on.
+CREATE TEMP TABLE bench_fts_term AS
+WITH stats AS (
+    SELECT word, ndoc FROM ts_stat('SELECT search_vector FROM bench_fts LIMIT 20000')
+), sampled AS (
+    SELECT LEAST(20000, (SELECT count(*) FROM bench_fts))::numeric AS sample_size
+)
+(SELECT 'common' AS role, word FROM stats ORDER BY ndoc DESC LIMIT 1)
+UNION ALL
+-- The selective case: frequent enough to be a plausible query, rare enough that the GIN index
+-- is worth using. This is the term the plan probe cares about.
+-- ndoc > 1 excludes the per-document marker terms. There is one of those per article, so
+-- without this they flood the statistics and the "closest to 5%" pick lands on a term that
+-- matches a single row — measuring the rare case twice and the selective case never.
+(SELECT 'selective', word FROM stats, sampled
+ WHERE ndoc > 1
+ ORDER BY abs(ndoc / greatest(sampled.sample_size, 1) - 0.05) LIMIT 1)
+UNION ALL
+SELECT 'rare', 'marker1';
+
+SELECT role, word AS term FROM bench_fts_term ORDER BY role;
+
+-- One row per probe term, so the cost curve from "matches everything" to "matches one row"
+-- is visible in a single table instead of scattered across \timing output.
+CREATE TEMP TABLE bench_fts_timing(
+    term text, matches int, count_ms numeric,
+    first_page_ms numeric, deep_page_ms numeric, filtered_ms numeric);
+
+DO $bench$
+DECLARE
+    t   text;
+    t0  timestamptz;
+    n   int;
+    c_ms numeric; p_ms numeric; d_ms numeric; f_ms numeric;
+BEGIN
+    FOR t IN SELECT word FROM bench_fts_term LOOP
+        -- 1. the exact COUNT SearchPagedAsync runs for every search
+        t0 := clock_timestamp();
+        SELECT count(*) INTO n FROM bench_fts a
+        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t);
+        c_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
+
+        -- 2. first ranked page: ts_rank_cd is computed for every match, then sorted
+        t0 := clock_timestamp();
+        PERFORM a."Id" FROM bench_fts a
+        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        LIMIT 20;
+        p_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
+
+        -- 3. a deep page — unreachable at all under the old 1000-candidate cap
+        t0 := clock_timestamp();
+        PERFORM a."Id" FROM bench_fts a
+        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        OFFSET 5000 LIMIT 20;
+        d_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
+
+        -- 4. the filtered shape ArticleFilterSql emits: filter inside the ranked query
+        t0 := clock_timestamp();
+        PERFORM a."Id" FROM bench_fts a
+        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+          AND a."ContentType" = ANY(ARRAY['reference'])
+          AND a."OwnerId" = ANY(ARRAY['owner1', 'owner2'])
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        LIMIT 20;
+        f_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
+
+        INSERT INTO bench_fts_timing VALUES (t, n, c_ms, p_ms, d_ms, f_ms);
+    END LOOP;
+END
+$bench$;
+
+SELECT term,
+       matches,
+       round(100.0 * matches / (SELECT count(*) FROM bench_fts), 1) AS pct_of_corpus,
+       count_ms, first_page_ms, deep_page_ms, filtered_ms
+FROM bench_fts_timing
+ORDER BY matches DESC;
+
+\echo ''
+\echo '--- plan for the SELECTIVE term: is the GIN index driving the match? ---'
+\echo '(deliberately not the common term: when a term matches most of the corpus a Seq Scan is'
+\echo ' the correct plan, so probing with it would prove nothing either way)'
+SELECT word AS selective_term FROM bench_fts_term WHERE role = 'selective' \gset fts_
+EXPLAIN (COSTS OFF, SUMMARY OFF)
+SELECT a."Id" FROM bench_fts a
+WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', :'fts_selective_term')
+ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', :'fts_selective_term')) DESC, a."Id"
+LIMIT 20;
+
+\echo ''
+\echo '=== 7. does the per-article chunk cap fix the crowding? ======================'
+\echo '(Ollama:MaxIndexChunksPerArticle truncates long documents at index time. Section 3'
+\echo ' measured the window WITHOUT that cap; this repeats it WITH the cap applied, so the'
+\echo ' two tables together say whether the setting buys the article diversity it costs'
+\echo ' content for.)'
+CREATE TEMP TABLE bench_yield_capped(window_size int, probe_no int, articles int);
+
+DO $bench$
+DECLARE
+    w        int;
+    p        record;
+    n        int;
+    windows  int[] := string_to_array(current_setting('bench.windows'), ',')::int[];
+    cap      int   := current_setting('bench.chunk_cap')::int;
+BEGIN
+    PERFORM set_config('hnsw.ef_search',
+                       greatest((SELECT max(x) FROM unnest(windows) x), 200)::text, false);
+    FOREACH w IN ARRAY windows LOOP
+        FOR p IN SELECT probe_no, v FROM bench_probe ORDER BY probe_no LOOP
+            SELECT count(DISTINCT c."ArticleId") INTO n
+            FROM (SELECT b."ArticleId" FROM bench_embeddings b
+                  WHERE b."ChunkIndex" < cap
+                  ORDER BY b."Embedding" <=> p.v LIMIT w) c;
+            INSERT INTO bench_yield_capped VALUES (w, p.probe_no, n);
+        END LOOP;
+    END LOOP;
+END
+$bench$;
+
+SELECT y.window_size                             AS chunk_window,
+       round(avg(y.articles), 1)                 AS uncapped_avg,
+       min(y.articles)                           AS uncapped_worst,
+       round(avg(c.articles), 1)                 AS capped_avg,
+       min(c.articles)                           AS capped_worst
+FROM bench_yield y
+JOIN bench_yield_capped c USING (window_size, probe_no)
+GROUP BY y.window_size
+ORDER BY y.window_size;
+
+\echo ''
 \echo '=== how to read this ========================================================='
 \echo 'Ollama:HnswEfSearch*     -> lowest ef_search in table 2 whose recall you accept.'
 \echo '                            ef_search must be >= the candidate window (table 3),'
@@ -349,6 +549,18 @@ RESET hnsw.iterative_scan;
 \echo '                            probe is there for contrast, not as a target: it is'
 \echo '                            expected to lose the index, which is why the filter'
 \echo '                            columns were denormalized onto article_embeddings.'
+\echo 'Section 6                -> read the cost curve across the three terms. The rare one is'
+\echo '                            the best case; the common one is the ceiling, because both'
+\echo '                            COUNT and ts_rank_cd touch every match. A common term that'
+\echo '                            costs seconds is the price of the exact total — switch to an'
+\echo '                            approximate count if that is too much. If deep_page_ms is'
+\echo '                            far worse than first_page_ms, OFFSET is the problem, not FTS.'
+\echo '                            The plan (selective term) should show a Bitmap Index Scan on'
+\echo '                            bench_fts_gin. A Seq Scan there is only alarming for a'
+\echo '                            SELECTIVE term — for one matching most rows it is correct.'
+\echo 'Section 7                -> if capped_worst is not meaningfully better than'
+\echo '                            uncapped_worst, MaxIndexChunksPerArticle is discarding'
+\echo '                            content without buying diversity — raise or disable it.'
 \echo 'Section 5                -> a large gap means filtered search silently under-fills'
 \echo '                            without iterative_scan (Ollama:HnswIterativeScan).'
 \echo '                            READ SECTION 4 FIRST: iterative_scan only applies to an'

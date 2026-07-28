@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useApi } from "../hooks/useApi";
 import {
   RefreshCw, AlertTriangle, CheckCircle2, XCircle, Database,
-  FileSearch, Boxes, ChevronDown, ChevronRight, Settings2,
+  FileSearch, Boxes, ChevronDown, ChevronRight, Settings2, Workflow,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { SearchFlowModal } from "../components/layout/search-flow-modal";
 
 interface PlanProbe {
   name: string;
@@ -103,6 +104,7 @@ export default function SearchDiagnosticsPage() {
   const [loading, setLoading] = useState(true);
   const [openPlan, setOpenPlan] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showFlow, setShowFlow] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +124,7 @@ export default function SearchDiagnosticsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <SearchFlowModal open={showFlow} onClose={() => setShowFlow(false)} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Arama Teşhisi</h1>
@@ -129,14 +132,23 @@ export default function SearchDiagnosticsPage() {
             Tam metin ve vektör indekslerinin durumu, etkin ayarlar ve sorgu planı kontrolü
           </p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-        >
-          <RefreshCw size={16} className={cn(loading && "animate-spin")} />
-          Yenile
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFlow(true)}
+            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Workflow size={16} />
+            Nasıl çalışıyor?
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <RefreshCw size={16} className={cn(loading && "animate-spin")} />
+            Yenile
+          </button>
+        </div>
       </div>
 
       {loading && !data ? (
