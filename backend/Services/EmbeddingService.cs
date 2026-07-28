@@ -15,6 +15,22 @@ public class EmbeddingService(
 {
     private readonly string _modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3";
     private readonly int _expectedDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024);
+
+    // Chunks sent to the embedding model per request. An article's chunks used to go in a single
+    // call, so a document with enough attachment text (20 attachments x 50k chars is ~330 chunks)
+    // exceeded Ollama:TimeoutSeconds and could never finish — the article stayed queued and
+    // retried forever. Batching bounds each request instead of letting it scale with the document.
+    private readonly int _chunkBatchSize = config.GetValue("Ollama:ChunkBatchSize", 16);
+
+    // Hard ceiling on chunks stored per article; 0 disables it. This is a retrieval-quality knob,
+    // not a cost one: the vector scan fetches a fixed window of CHUNKS before collapsing them to
+    // articles, so one document with hundreds of near-identical chunks can fill that window on its
+    // own and push every other article out of the results (measured in
+    // scripts/hnsw_recall_benchmark.sql section 3). The cost is real, though — text past the cap
+    // is not semantically searchable, only full-text searchable — so every truncation is logged.
+    // Distinct from Ollama:RagMaxChunksPerArticle, which caps chunks per article at query time.
+    private readonly int _maxChunksPerArticle = config.GetValue("Ollama:MaxIndexChunksPerArticle", 100);
+
     private const int ChunkWordLimit = 500;
     private const int ChunkOverlap = 50;
 
@@ -52,11 +68,18 @@ public class EmbeddingService(
             return false;
         }
 
-        // Chunk the text
+        // Chunk the text, then cap how much of a very long document gets embedded
         var chunks = ChunkText(text);
+        if (_maxChunksPerArticle > 0 && chunks.Count > _maxChunksPerArticle)
+        {
+            logger.LogWarning(
+                "Article {ArticleId} produced {Total} chunks; embedding only the first {Cap} " +
+                "(Ollama:MaxIndexChunksPerArticle). The remaining {Dropped} stay full-text searchable only",
+                article.Id, chunks.Count, _maxChunksPerArticle, chunks.Count - _maxChunksPerArticle);
+            chunks = chunks.Take(_maxChunksPerArticle).ToList();
+        }
 
-        // Generate embeddings for all chunks
-        var embedResults = await embeddingGenerator.GenerateAsync(chunks, cancellationToken: ct);
+        var embedResults = await GenerateInBatchesAsync(chunks, ct);
 
         // Guard: a model/column dimension mismatch would otherwise only surface as an opaque
         // pgvector INSERT error. Fail with an actionable message instead.
@@ -109,6 +132,25 @@ public class EmbeddingService(
         logger.LogInformation("Embedded article {ArticleId} ({Chunks} chunks, {Dimensions} dims, model={Model})",
             article.Id, chunks.Count, embedResults[0].Vector.Length, _modelName);
         return true;
+    }
+
+    /// <summary>
+    /// Embeds the chunks in fixed-size requests, preserving order. One request per article made
+    /// its duration scale with the document, so the longest documents — the ones that most need
+    /// indexing — were the ones that timed out.
+    /// </summary>
+    internal async Task<List<Embedding<float>>> GenerateInBatchesAsync(List<string> chunks, CancellationToken ct)
+    {
+        var batchSize = Math.Max(1, _chunkBatchSize);
+        var results = new List<Embedding<float>>(chunks.Count);
+
+        for (var offset = 0; offset < chunks.Count; offset += batchSize)
+        {
+            var batch = chunks.GetRange(offset, Math.Min(batchSize, chunks.Count - offset));
+            results.AddRange(await embeddingGenerator.GenerateAsync(batch, cancellationToken: ct));
+        }
+
+        return results;
     }
 
     /// <summary>Reads the current xmin row version of an article (null if the row is gone).</summary>

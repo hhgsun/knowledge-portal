@@ -1,0 +1,121 @@
+using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace KnowledgePortal.Api.Tests.Unit;
+
+/// <summary>
+/// Chunk batching, covered on its own because the method that uses it —
+/// <see cref="EmbeddingService.EmbedArticleAsync"/> — reads xmin through raw SQL and so cannot
+/// run on the Docker-free InMemory provider. The behaviour under test is what keeps a long
+/// document indexable: its chunks must be embedded in bounded requests rather than one request
+/// whose duration grows with the document, which is how large attachments used to exhaust
+/// Ollama:TimeoutSeconds and leave the article queued forever.
+/// </summary>
+public class EmbeddingBatchTests
+{
+    /// <summary>Records the size of every request instead of doing real work.</summary>
+    private sealed class RecordingGenerator : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        public List<int> RequestSizes { get; } = [];
+        public List<string> Received { get; } = [];
+
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            var batch = values.ToList();
+            RequestSizes.Add(batch.Count);
+            Received.AddRange(batch);
+            return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(
+                batch.Select(_ => new Embedding<float>(new float[4])).ToList()));
+        }
+
+        public void Dispose() { }
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            serviceType.IsInstanceOfType(this) ? this : null;
+    }
+
+    private static EmbeddingService BuildService(RecordingGenerator generator, int chunkBatchSize)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:ChunkBatchSize"] = chunkBatchSize.ToString()
+            })
+            .Build();
+
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+
+        return new EmbeddingService(generator, db, config, NullLogger<EmbeddingService>.Instance);
+    }
+
+    [Fact]
+    public async Task GenerateInBatches_SplitsIntoRequestsOfAtMostBatchSize()
+    {
+        var generator = new RecordingGenerator();
+        var service = BuildService(generator, chunkBatchSize: 16);
+        var chunks = Enumerable.Range(0, 50).Select(i => $"chunk{i}").ToList();
+
+        var results = await service.GenerateInBatchesAsync(chunks, CancellationToken.None);
+
+        Assert.Equal(50, results.Count);
+        Assert.Equal([16, 16, 16, 2], generator.RequestSizes);
+        Assert.All(generator.RequestSizes, size => Assert.True(size <= 16));
+    }
+
+    [Fact]
+    public async Task GenerateInBatches_PreservesChunkOrderAcrossRequests()
+    {
+        var generator = new RecordingGenerator();
+        var service = BuildService(generator, chunkBatchSize: 3);
+        var chunks = Enumerable.Range(0, 10).Select(i => $"chunk{i}").ToList();
+
+        await service.GenerateInBatchesAsync(chunks, CancellationToken.None);
+
+        // Order matters: the results are zipped back onto ChunkIndex positions by their offset.
+        Assert.Equal(chunks, generator.Received);
+    }
+
+    [Fact]
+    public async Task GenerateInBatches_SingleRequestWhenChunksFitInOneBatch()
+    {
+        var generator = new RecordingGenerator();
+        var service = BuildService(generator, chunkBatchSize: 16);
+
+        var results = await service.GenerateInBatchesAsync(["only", "three", "chunks"], CancellationToken.None);
+
+        Assert.Equal(3, results.Count);
+        Assert.Equal([3], generator.RequestSizes);
+    }
+
+    [Fact]
+    public async Task GenerateInBatches_MisconfiguredBatchSizeStillMakesProgress()
+    {
+        // A 0 or negative setting would otherwise loop forever without advancing the offset.
+        var generator = new RecordingGenerator();
+        var service = BuildService(generator, chunkBatchSize: 0);
+
+        var results = await service.GenerateInBatchesAsync(["a", "b", "c"], CancellationToken.None);
+
+        Assert.Equal(3, results.Count);
+        Assert.Equal([1, 1, 1], generator.RequestSizes);
+    }
+
+    [Fact]
+    public async Task GenerateInBatches_NoChunksMakesNoRequests()
+    {
+        var generator = new RecordingGenerator();
+        var service = BuildService(generator, chunkBatchSize: 16);
+
+        var results = await service.GenerateInBatchesAsync([], CancellationToken.None);
+
+        Assert.Empty(results);
+        Assert.Empty(generator.RequestSizes);
+    }
+}
