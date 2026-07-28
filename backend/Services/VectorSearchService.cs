@@ -56,7 +56,11 @@ public sealed class VectorSearchService(
     // that monopolise the candidate window and collapse it to a handful of distinct articles.
     // So the window is sized well above the requested article count; the collapsing happens in
     // SQL (DISTINCT ON / ROW_NUMBER), so the surplus rows never cross the wire.
-    private readonly int _candidateMultiplier = config.GetValue("Ollama:VectorCandidateMultiplier", 20);
+    // Default of 30 comes from scripts/hnsw_recall_benchmark.sql section 3: on a clustered
+    // corpus with a realistic spread of chunk counts, a window of N chunk rows collapsed to
+    // roughly 0.08N distinct articles, and the worst-case probe to far fewer. Re-measure on
+    // the real corpus before trusting this number — that is what the script is for.
+    private readonly int _candidateMultiplier = config.GetValue("Ollama:VectorCandidateMultiplier", 30);
     private readonly int _candidateMax = config.GetValue("Ollama:VectorCandidateMax", 2000);
 
     // pgvector ≥ 0.8 iterative index scan. Without it a filtered vector query returns whatever
