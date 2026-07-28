@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, FileInput, Search, Sparkles, Layers, Bot, ArrowDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -251,13 +252,18 @@ export function SearchFlowModal({ open, onClose }: SearchFlowModalProps) {
 
   const flow = FLOWS.find((f) => f.id === active)!;
 
-  return (
+  // Rendered into document.body rather than in place: the page container uses space-y, which
+  // would give the element after this one a margin it does not have while the modal is closed,
+  // nudging the whole page down on open. A portal also keeps the overlay viewport-sized
+  // regardless of what the surrounding layout does.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[88vh] flex flex-col"
+        // overflow-hidden so the scroll area cannot paint over the rounded bottom corners
+        className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
@@ -296,7 +302,10 @@ export function SearchFlowModal({ open, onClose }: SearchFlowModalProps) {
           ))}
         </div>
 
-        <div className="px-6 py-4 overflow-y-auto">
+        {/* flex-1 makes this the region that absorbs the leftover height; min-h-0 lets it
+            shrink below its content so it actually scrolls instead of pushing the panel open
+            and spilling past its bottom edge. */}
+        <div className="flex-1 min-h-0 px-6 py-4 overflow-y-auto">
           <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-5 leading-relaxed">
             {flow.summary}
           </p>
@@ -351,6 +360,7 @@ export function SearchFlowModal({ open, onClose }: SearchFlowModalProps) {
           </ol>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
