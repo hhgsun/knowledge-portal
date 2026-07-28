@@ -20,6 +20,7 @@ import {
   Monitor,
   Settings2,
   ScrollText,
+  Stethoscope,
   Cpu,
   Star,
   ExternalLink,
@@ -65,6 +66,7 @@ const adminNavigation: NavItem[] = [
   { label: "Users", href: "/admin/users", icon: <Users size={18} /> },
   { label: "API Keys", href: "/admin/keys", icon: <Key size={18} /> },
   { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
+  { label: "Search Health", href: "/settings/search", icon: <Stethoscope size={18} /> },
 ];
 
 function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: boolean }) {
@@ -269,6 +271,7 @@ export function Sidebar() {
                   if (item.href === "/admin/users") return isAdmin;
                   if (item.href === "/admin/keys") return isAdmin;
                   if (item.href === "/settings/logs") return isAdmin;
+                  if (item.href === "/settings/search") return isAdmin;
                   if (item.href === "/tags") return isEditorOrAdmin;
                   if (item.href === "/settings/lookups") return isEditorOrAdmin;
                   if (item.href === "/settings/featured-links") return isAdmin;

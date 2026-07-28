@@ -332,6 +332,16 @@ public class SearchController(
         return Ok(new { message = "Reindex queued", articlesQueued = count });
     }
 
+    /// <summary>
+    /// Read-only health report for both search indexes: coverage, sizes, effective settings and
+    /// EXPLAIN probes of the real query shapes. Nothing here executes a plan or writes anything.
+    /// </summary>
+    [HttpGet("diagnostics")]
+    [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
+    public async Task<IActionResult> Diagnostics([FromServices] SearchDiagnosticsService diagnostics, CancellationToken ct)
+        => Ok(await diagnostics.CollectAsync(ct));
+
     [HttpGet("embedding-status")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]

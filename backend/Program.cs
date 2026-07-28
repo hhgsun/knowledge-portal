@@ -186,6 +186,7 @@ builder.Services.AddOpenApi();
 
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
+builder.Services.AddScoped<SearchDiagnosticsService>();
 
 // ─── Domain Services ─────────────────────────────────────────
 builder.Services.AddScoped<ArticleService>();

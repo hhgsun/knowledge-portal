@@ -187,6 +187,9 @@ public sealed class VectorSearchService(
     /// <see cref="EmbeddingService.CleanupOrphanEmbeddingsAsync"/> sweeps the residue. A chunk
     /// left over from that narrow race only costs a candidate slot — the over-fetch absorbs it and
     /// every caller re-checks published when resolving article metadata.
+    /// If you change the shape emitted here, update section 4 of
+    /// scripts/hnsw_recall_benchmark.sql to match — it probes these exact shapes, and a probe of
+    /// a shape the application no longer emits raises false alarms about the behaviour it guards.
     /// </summary>
     private static string ScanPredicate(ArticleFilter? filter, List<object> args)
     {

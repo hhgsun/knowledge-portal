@@ -111,3 +111,35 @@ public record FeaturedLinkDto(string Id, string Label, string LinkType, string T
 // Attachments
 public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);
 public record AttachmentListResponse(AttachmentResponse[] Attachments, int Total);
+
+// Search diagnostics (admin ops screen). Read-only health report for the FTS and vector indexes.
+public record SearchDiagnosticsDto(
+    IndexingHealthDto Embedding,
+    FullTextHealthDto FullText,
+    VectorHealthDto Vector,
+    IndexHealthDto[] Indexes,
+    PlanProbeDto[] Plans,
+    SearchTrafficDto[] Traffic,
+    SearchSettingDto[] Settings,
+    string[] Warnings);
+
+/// <summary>Queue depth plus the articles that keep failing — "backlog" and "stuck" need
+/// opposite responses, so they are never merged into one number.</summary>
+public record IndexingHealthDto(int Published, int Indexed, int Pending, int Failing, FailingArticleDto[] TopFailures);
+public record FailingArticleDto(string ArticleId, string? Title, int FailureCount, string NextRetryAt);
+
+public record FullTextHealthDto(int Published, int Indexed, int Missing);
+public record VectorHealthDto(
+    long Chunks, long Articles, long OrphanChunks, string? TableSize, bool DenormalizedFilterColumns);
+
+/// <summary>Existence and validity matter separately: an interrupted build leaves an index
+/// Postgres silently refuses to use.</summary>
+public record IndexHealthDto(string Name, string Table, bool Exists, bool Valid, string? Size, string? Definition);
+
+/// <summary>One EXPLAIN probe: whether the expected index drives that query shape, plus the plan.</summary>
+public record PlanProbeDto(string Name, bool UsesVectorIndex, string Plan, string? Error);
+
+/// <summary>What users actually experienced, per search type, over the reporting window.</summary>
+public record SearchTrafficDto(string SearchType, int Total, int ZeroResults, int P50Ms, int P95Ms);
+
+public record SearchSettingDto(string Name, string Value, string? Note);

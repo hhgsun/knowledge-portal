@@ -14,6 +14,16 @@
 -- corpus disappears when the session ends. Safe to run against any database that
 -- has the vector extension — but see the cost note before pointing it at a shared one.
 --
+-- Not to be confused with the Search Health screen (/settings/search). That reports on the
+-- REAL corpus and answers "is search healthy right now"; it can only ever measure the data you
+-- actually have. This file builds a SYNTHETIC corpus at a size you do not have yet and answers
+-- "what happens at N articles" — recall, candidate-window crowding, plan shape and the memory
+-- the index build needs. Neither substitutes for the other.
+--
+-- The query shapes in section 4 must stay in sync with VectorSearchService.ScanPredicate. A
+-- benchmark that probes a shape the application no longer emits does not merely go stale — it
+-- raises false alarms about the exact behaviour it was written to protect.
+--
 -- Usage:
 --   psql "$CONN" -f scripts/hnsw_recall_benchmark.sql
 --   psql "$CONN" -v n_articles=50000 -v chunks_per_article=15 -v n_probes=20 \
@@ -111,16 +121,25 @@ FROM generate_series(1, 256) g;
 
 -- The cast to vector(:dims) is required: hnsw cannot index a vector column with no
 -- declared dimension, and CREATE TABLE AS has nowhere else to put the typmod.
+--
+-- ContentType/TagSlugs mirror the columns DenormalizeEmbeddingFilterColumns puts on the real
+-- article_embeddings. They are what lets a filtered search stay single-table, so the corpus
+-- must carry them or section 4 would be measuring a query shape the application stopped
+-- emitting.
 CREATE TEMP TABLE bench_embeddings AS
 SELECT 'a' || c.article_no AS "ArticleId",
        k                   AS "ChunkIndex",
-       l2_normalize(c.v + (n.v * s.noise))::vector(:dims) AS "Embedding"
+       l2_normalize(c.v + (n.v * s.noise))::vector(:dims) AS "Embedding",
+       (ARRAY['reference','tutorial','howto','faq'])[1 + (c.article_no % 4)] AS "ContentType",
+       'owner' || (c.article_no % 50)                                        AS "OwnerId",
+       ARRAY['tag' || (c.article_no % 20), 'tag-all']                        AS "TagSlugs"
 FROM bench_centroid c
 CROSS JOIN LATERAL generate_series(0, c.n_chunks - 1) AS k
 CROSS JOIN bench_scale s
 JOIN bench_noise n ON n.noise_no = 1 + (abs(hashtext(c.article_no::text || ':' || k::text)) % 256);
 
--- Mirror of the columns ArticleFilterSql filters on, so the filtered-plan check is honest.
+-- Kept only so the pre-migration (join) shape can still be measured alongside the current one
+-- in section 4. The application no longer queries this way.
 CREATE TEMP TABLE bench_articles AS
 SELECT 'a' || g                                                        AS "Id",
        'published'                                                     AS "Status",
@@ -260,7 +279,10 @@ ORDER BY window_size;
 
 \echo ''
 \echo '=== 4. plan check: does the HNSW index drive the scan? ======================='
-\echo '(UNFILTERED must show "Index Scan using bench_hnsw"; FILTERED is the one at risk)'
+\echo '(UNFILTERED and filtered-CURRENT must both show "Index Scan using bench_hnsw" at'
+\echo ' production scale. The PRE-MIGRATION probe is a contrast, not a target. Below roughly'
+\echo ' 10k chunks every probe is a Seq Scan because that is genuinely cheaper — at that size'
+\echo ' compare the SHAPE instead: a plain Filter on one table vs. a Hash Semi Join.)'
 
 SET hnsw.ef_search = 400;
 
@@ -270,7 +292,16 @@ SELECT b."ArticleId" FROM bench_embeddings b
 ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
 LIMIT 400;
 
-\echo '--- filtered (EXISTS against articles, the shape a tag/author search uses) ---'
+\echo '--- filtered, CURRENT shape (single table, denormalized filter columns) ---'
+EXPLAIN (COSTS OFF, SUMMARY OFF)
+SELECT b."ArticleId" FROM bench_embeddings b
+WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
+        AND b."TagSlugs" @> ARRAY['tag-all']
+ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+LIMIT 400;
+
+\echo '--- filtered, PRE-MIGRATION shape (joins articles) — comparison only ---'
+\echo '(this is what DenormalizeEmbeddingFilterColumns removed; expect the index to be dropped)'
 EXPLAIN (COSTS OFF, SUMMARY OFF)
 SELECT b."ArticleId" FROM bench_embeddings b
 WHERE EXISTS (SELECT 1 FROM bench_articles a
@@ -281,13 +312,14 @@ LIMIT 400;
 
 \echo ''
 \echo '=== 5. iterative_scan: does a filter still fill the window? =================='
-\echo '(rows returned for a filter matching ~25% of articles; want close to the 400 asked for)'
+\echo '(rows returned for a filter matching ~25% of chunks; want close to the 400 asked for.'
+\echo ' Only meaningful if section 4 showed an Index Scan — the setting governs index scans,'
+\echo ' so on a sequential plan both numbers come back at 400 and mean nothing.)'
 SET hnsw.iterative_scan = off;
 SELECT count(*) AS rows_without_iterative_scan FROM (
     SELECT b."ArticleId" FROM bench_embeddings b
-    WHERE EXISTS (SELECT 1 FROM bench_articles a
-                  WHERE a."Id" = b."ArticleId" AND a."Status" = 'published'
-                    AND a."ContentType" = 'reference')
+    WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
+            AND b."TagSlugs" @> ARRAY['tag-all']
     ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
     LIMIT 400
 ) s;
@@ -295,9 +327,8 @@ SELECT count(*) AS rows_without_iterative_scan FROM (
 SET hnsw.iterative_scan = relaxed_order;
 SELECT count(*) AS rows_with_iterative_scan FROM (
     SELECT b."ArticleId" FROM bench_embeddings b
-    WHERE EXISTS (SELECT 1 FROM bench_articles a
-                  WHERE a."Id" = b."ArticleId" AND a."Status" = 'published'
-                    AND a."ContentType" = 'reference')
+    WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
+            AND b."TagSlugs" @> ARRAY['tag-all']
     ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
     LIMIT 400
 ) s;
@@ -312,10 +343,12 @@ RESET hnsw.iterative_scan;
 \echo '                            comfortably exceeds the result count you serve,'
 \echo '                            divided by that result count. Judge it on worst_case,'
 \echo '                            not the average — that column is the bad query.'
-\echo 'Section 4                -> if UNFILTERED is not an Index Scan on bench_hnsw at'
-\echo '                            production scale, nothing else in this file matters.'
-\echo '                            If only FILTERED falls back, denormalize the filter'
-\echo '                            columns onto article_embeddings so no join is needed.'
+\echo 'Section 4                -> UNFILTERED and filtered-CURRENT must both be an Index Scan'
+\echo '                            on bench_hnsw at production scale. If they are not,'
+\echo '                            nothing else in this file matters. The PRE-MIGRATION'
+\echo '                            probe is there for contrast, not as a target: it is'
+\echo '                            expected to lose the index, which is why the filter'
+\echo '                            columns were denormalized onto article_embeddings.'
 \echo 'Section 5                -> a large gap means filtered search silently under-fills'
 \echo '                            without iterative_scan (Ollama:HnswIterativeScan).'
 \echo '                            READ SECTION 4 FIRST: iterative_scan only applies to an'

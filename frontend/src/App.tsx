@@ -21,6 +21,7 @@ import ProfilePage from "./pages/ProfilePage";
 import LookupsPage from "./pages/LookupsPage";
 import FeaturedLinksPage from "./pages/FeaturedLinksPage";
 import LogsPage from "./pages/LogsPage";
+import SearchDiagnosticsPage from "./pages/SearchDiagnosticsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="/settings/lookups" element={<RoleRoute roles={["admin", "editor"]}><LookupsPage /></RoleRoute>} />
           <Route path="/settings/featured-links" element={<RoleRoute roles={["admin"]}><FeaturedLinksPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
+          <Route path="/settings/search" element={<RoleRoute roles={["admin"]}><SearchDiagnosticsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
