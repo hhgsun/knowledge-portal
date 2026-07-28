@@ -81,8 +81,9 @@ public class RagService(
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null, CancellationToken ct = default)
     {
         // Retrieve a wide chunk-level candidate pool (multiple chunks per article) so long
-        // documents aren't reduced to a single window.
-        var chunks = await vectorSearch.SearchChunksAsync(question, _candidateLimit, ct, _ragMinScore, _maxChunksPerArticle);
+        // documents aren't reduced to a single window. The filter goes into the retrieval query
+        // so the pool isn't spent on articles that would be discarded straight afterwards.
+        var chunks = await vectorSearch.SearchChunksAsync(question, _candidateLimit, ct, _ragMinScore, _maxChunksPerArticle, filter);
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -97,8 +98,10 @@ public class RagService(
                 : "Henüz indexlenmiş makale bulunamadı. İndeksleme devam ediyor olabilir — lütfen daha sonra tekrar deneyin.", []);
         }
 
-        // Resolve titles/slugs and enforce the filter (published + tag/author/contentType/onlyOwnContent)
-        // at the DB, then drop chunks whose article didn't survive — keeping retrieval score order.
+        // Resolve titles/slugs, and re-enforce the filter (published + tag/author/contentType/
+        // onlyOwnContent) here as a safety net: retrieval already applied it, but this lookup has
+        // to happen anyway, and it keeps the guarantee independent of the IVectorSearchService
+        // implementation. Chunks whose article didn't survive are dropped, in retrieval order.
         var articleIds = chunks.Select(c => c.ArticleId).Distinct().ToList();
         var allowed = await ArticleService.ApplyFilter(
                 db.Articles.Where(a => articleIds.Contains(a.Id) && a.Status == "published"), filter)

@@ -1,4 +1,3 @@
-using System.Text;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
@@ -152,7 +151,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
     private static SearchStage TsStage(List<object> args, string tsQuery)
     {
-        var q = Placeholder(args, tsQuery);
+        var q = ArticleFilterSql.Placeholder(args, tsQuery);
         return new SearchStage(
             Match: $"a.search_vector @@ to_tsquery('{TsConfig}', {q})",
             OrderBy: $"""ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', {q})) DESC, a."Id" """);
@@ -160,7 +159,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
     private static SearchStage LikeStage(List<object> args, string query)
     {
-        var p = Placeholder(args, $"%{SlugHelper.EscapeLikePattern(query)}%");
+        var p = ArticleFilterSql.Placeholder(args, $"%{SlugHelper.EscapeLikePattern(query)}%");
         return new SearchStage(
             Match: $"""(a."Title" ILIKE {p} OR a."Excerpt" ILIKE {p})""",
             OrderBy: """a."UpdatedAt" DESC, a."Id" """);
@@ -177,7 +176,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var stage = buildStage(args);
         var from = $"""
             FROM articles a
-            WHERE a."Status" = 'published' AND {stage.Match}{BuildFilterSql(filter, args)}
+            WHERE a."Status" = 'published' AND {stage.Match}{ArticleFilterSql.Build(filter, args)}
             """;
 
         // EF1002: the interpolated fragments are SQL skeletons assembled from compile-time
@@ -189,8 +188,8 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
             .SingleAsync(ct);
         if (total == 0) return new FtsPage([], 0);
 
-        var offset = Placeholder(args, (page - 1) * limit);
-        var take = Placeholder(args, limit);
+        var offset = ArticleFilterSql.Placeholder(args, (page - 1) * limit);
+        var take = ArticleFilterSql.Placeholder(args, limit);
         var ids = await db.Database
             .SqlQueryRaw<string>(
                 $"""
@@ -203,42 +202,6 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 #pragma warning restore EF1002
 
         return new FtsPage(ids, total);
-    }
-
-    /// <summary>
-    /// Renders an <see cref="ArticleFilter"/> as SQL predicates against alias <c>a</c>, mirroring
-    /// <see cref="ArticleService.ApplyFilter"/>. Every value goes in via a positional placeholder,
-    /// so nothing user-supplied is ever concatenated into the statement.
-    /// </summary>
-    private static string BuildFilterSql(ArticleFilter? filter, List<object> args)
-    {
-        if (filter == null) return "";
-        var sb = new StringBuilder();
-
-        if (filter.OwnerIds is { Count: > 0 })
-            sb.Append($""" AND a."OwnerId" = ANY({Placeholder(args, filter.OwnerIds.ToArray())})""");
-        if (filter.ContentTypes is { Count: > 0 })
-            sb.Append($""" AND a."ContentType" = ANY({Placeholder(args, filter.ContentTypes.ToArray())})""");
-        if (!string.IsNullOrWhiteSpace(filter.ApiKeyId))
-            sb.Append($""" AND a."CreatedViaApiKeyId" = {Placeholder(args, filter.ApiKeyId)}""");
-        // Matches ApplyFilter: a non-null but empty ID list means "nothing matches"
-        if (filter.ArticleIds != null)
-            sb.Append($""" AND a."Id" = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
-        // AND logic: one EXISTS per slug, so the article must carry every requested tag
-        foreach (var slug in filter.TagSlugs ?? [])
-            sb.Append($"""
-                 AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg."Id" = ats."TagId"
-                             WHERE ats."ArticleId" = a."Id" AND tg."Slug" = {Placeholder(args, slug)})
-                """);
-
-        return sb.ToString();
-    }
-
-    /// <summary>Appends a value and returns the positional placeholder (<c>{n}</c>) EF binds it to.</summary>
-    private static string Placeholder(List<object> args, object value)
-    {
-        args.Add(value);
-        return $"{{{args.Count - 1}}}";
     }
 
     /// <summary>

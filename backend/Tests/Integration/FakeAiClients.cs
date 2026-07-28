@@ -16,7 +16,7 @@ namespace KnowledgePortal.Api.Tests.Integration;
 public sealed class FakeVectorSearchService(IServiceScopeFactory scopeFactory) : IVectorSearchService
 {
     public async Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit,
-        CancellationToken ct = default, double? minScore = null)
+        CancellationToken ct = default, double? minScore = null, ArticleFilter? filter = null)
     {
         var threshold = minScore ?? 0.5;
         var tokens = queryText.ToLowerInvariant()
@@ -27,8 +27,9 @@ public sealed class FakeVectorSearchService(IServiceScopeFactory scopeFactory) :
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var articles = await db.Articles
-            .Where(a => a.Status == "published")
+        // Filter during retrieval, as the real service does in SQL — so callers that rely on
+        // the returned set already being eligible behave the same against this double.
+        var articles = await ArticleService.ApplyFilter(db.Articles.WherePublished(), filter)
             .Select(a => new { a.Id, a.Title, a.Content })
             .ToListAsync(ct);
 
@@ -49,11 +50,11 @@ public sealed class FakeVectorSearchService(IServiceScopeFactory scopeFactory) :
     }
 
     public async Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks,
-        CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3)
+        CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3, ArticleFilter? filter = null)
     {
         // Reuse the article-level ranking, then attach each article's searchable text as the
         // (single) chunk text — mirrors the real service returning stored chunk Content.
-        var ranked = await SearchAsync(queryText, maxChunks, ct, minScore);
+        var ranked = await SearchAsync(queryText, maxChunks, ct, minScore, filter);
         if (ranked.Count == 0) return [];
 
         using var scope = scopeFactory.CreateScope();

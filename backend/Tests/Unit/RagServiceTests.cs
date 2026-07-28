@@ -25,12 +25,13 @@ public class RagServiceTests
     private sealed class FakeVectorSearch(IServiceScopeFactory scopeFactory, List<VectorSearchResult> results) : IVectorSearchService
     {
         public Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit,
-            CancellationToken ct = default, double? minScore = null) => Task.FromResult(results);
+            CancellationToken ct = default, double? minScore = null, ArticleFilter? filter = null) => Task.FromResult(results);
 
         // RAG uses chunk-level retrieval; build each chunk's text from the seeded article so the
-        // prompt-injection / delimiter / filter assertions still see the body text.
+        // prompt-injection / delimiter / filter assertions still see the body text. The filter is
+        // deliberately ignored here: RAG must enforce it itself, and these tests assert that.
         public async Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks,
-            CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3)
+            CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3, ArticleFilter? filter = null)
         {
             using var scope = scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

@@ -178,8 +178,10 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
 
             try
             {
-                // Over-fetch: post-search filters (author/tag/contentType) may drop candidates
-                var semanticResults = await vectorSearch.SearchAsync(searchQuery, limit * 3);
+                // The filter is part of the vector query itself, so no over-fetch is needed to
+                // survive it. It is re-applied below only as a cheap safety net — that lookup
+                // has to run anyway to resolve titles/slugs.
+                var semanticResults = await vectorSearch.SearchAsync(searchQuery, limit, filter: filter);
                 var articleIds = semanticResults.Select(r => r.ArticleId).ToList();
                 var semQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => articleIds.Contains(a.Id)), filter);
                 var articles = await semQuery
@@ -218,7 +220,9 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
             List<VectorSearchResult>? semanticHits = null;
             if (ollamaEnabled && vectorSearch != null)
             {
-                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit); }
+                // candidateLimit is the RRF fusion pool, not filter headroom — the filter runs
+                // inside the vector query, so every candidate here is already eligible.
+                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit, filter: filter); }
                 catch { /* semantic unavailable — fulltext only */ }
             }
 
