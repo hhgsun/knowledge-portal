@@ -20,8 +20,14 @@ public static class ArticleFilterSql
     /// Renders <paramref name="filter"/> as WHERE predicates (each one prefixed with " AND ")
     /// against <paramref name="alias"/>, appending the bound values to <paramref name="args"/>.
     /// </summary>
-    /// <param name="alias">Alias the articles table carries in the target query.</param>
-    public static string Build(ArticleFilter? filter, List<object> args, string alias = "a")
+    /// <param name="alias">Alias the target table carries in the query.</param>
+    /// <param name="idColumn">Column holding the article id — "Id" on articles, "ArticleId" on
+    /// article_embeddings.</param>
+    /// <param name="tagArrayColumn">Set when the target carries a denormalized text[] of tag
+    /// slugs (article_embeddings), which turns the whole tag filter into one containment test.
+    /// Left null for articles, where tags have to be reached through article_tags.</param>
+    public static string Build(ArticleFilter? filter, List<object> args, string alias = "a",
+                               string idColumn = "Id", string? tagArrayColumn = null)
     {
         if (filter == null) return "";
         var sb = new StringBuilder();
@@ -34,13 +40,23 @@ public static class ArticleFilterSql
             sb.Append($""" AND {alias}."CreatedViaApiKeyId" = {Placeholder(args, filter.ApiKeyId)}""");
         // Matches ApplyFilter: a non-null but empty ID list means "nothing matches"
         if (filter.ArticleIds != null)
-            sb.Append($""" AND {alias}."Id" = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
-        // AND logic: one EXISTS per slug, so the article must carry every requested tag
-        foreach (var slug in filter.TagSlugs ?? [])
-            sb.Append($"""
-                 AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg."Id" = ats."TagId"
-                             WHERE ats."ArticleId" = {alias}."Id" AND tg."Slug" = {Placeholder(args, slug)})
-                """);
+            sb.Append($""" AND {alias}."{idColumn}" = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
+
+        var tagSlugs = (filter.TagSlugs ?? []).ToArray();
+        if (tagSlugs.Length > 0)
+        {
+            if (tagArrayColumn != null)
+                // @> is "contains all of", which is exactly the AND semantics — and it stays a
+                // plain filter on the row, so a vector scan keeps its index-ordered plan.
+                sb.Append($""" AND {alias}."{tagArrayColumn}" @> {Placeholder(args, tagSlugs)}""");
+            else
+                // AND logic: one EXISTS per slug, so the article must carry every requested tag
+                foreach (var slug in tagSlugs)
+                    sb.Append($"""
+                         AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg."Id" = ats."TagId"
+                                     WHERE ats."ArticleId" = {alias}."{idColumn}" AND tg."Slug" = {Placeholder(args, slug)})
+                        """);
+        }
 
         return sb.ToString();
     }

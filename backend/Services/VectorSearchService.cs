@@ -174,26 +174,26 @@ public sealed class VectorSearchService(
     }
 
     /// <summary>
-    /// The WHERE clause of the vector scan — and, when there is no filter, no WHERE clause at all.
-    /// That absence is the point. Anything joined to <c>articles</c> inside the distance-ordered
-    /// subquery gives the planner the option of joining first and sorting afterwards, which throws
-    /// the HNSW index away and turns the query into a full scan of every embedding. An unfiltered
-    /// scan is a bare "ORDER BY distance LIMIT n", the one shape the index can always drive.
-    /// Dropping the published check is safe because embeddings only ever exist for published
-    /// articles: <see cref="EmbeddingService.EmbedArticleAsync"/> commits chunks and the
-    /// published claim in one transaction, unpublishing deletes them, and
+    /// The WHERE clause of the vector scan. Critically, it never joins: the filter columns are
+    /// denormalized onto article_embeddings (migration DenormalizeEmbeddingFilterColumns, kept
+    /// current by triggers), so a filtered search is still a single-table
+    /// "ORDER BY distance LIMIT n" with row filters — the one shape the HNSW index can drive.
+    /// Joining articles in here instead lets the planner join first and sort afterwards, which
+    /// discards the index and scans every embedding; it also makes hnsw.iterative_scan inert,
+    /// since that only applies to a real index scan.
+    /// There is no published check because embeddings only ever exist for published articles:
+    /// <see cref="EmbeddingService.EmbedArticleAsync"/> commits chunks and the published claim in
+    /// one transaction, unpublishing deletes them, and
     /// <see cref="EmbeddingService.CleanupOrphanEmbeddingsAsync"/> sweeps the residue. A chunk
     /// left over from that narrow race only costs a candidate slot — the over-fetch absorbs it and
     /// every caller re-checks published when resolving article metadata.
-    /// A filtered search has to consult <c>articles</c> regardless, so it pays for the join and
-    /// leans on hnsw.iterative_scan to keep filling the window.
     /// </summary>
     private static string ScanPredicate(ArticleFilter? filter, List<object> args)
     {
-        var filterSql = ArticleFilterSql.Build(filter, args);
-        return filterSql.Length == 0
-            ? ""
-            : $"""WHERE EXISTS (SELECT 1 FROM articles a WHERE a."Id" = e."ArticleId" AND a."Status" = 'published'{filterSql})""";
+        var filterSql = ArticleFilterSql.Build(filter, args, "e", idColumn: "ArticleId", tagArrayColumn: "TagSlugs");
+        // Build emits " AND ..." fragments; "WHERE true" saves trimming the first one, and the
+        // planner folds the constant away.
+        return filterSql.Length == 0 ? "" : $"WHERE true{filterSql}";
     }
 
     /// <summary>Cosine distance ceiling equivalent to the effective minimum similarity score.</summary>
