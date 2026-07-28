@@ -88,11 +88,14 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
         var callerApiKeyId = User.FindFirst("apiKeyId")?.Value;
         var scopedApiKeyId = onlyOwnContent && callerApiKeyId != null ? callerApiKeyId : null;
 
-        // Resolve tag article IDs for filtering
-        List<string>? tagFilterArticleIds = null;
+        // Resolve tag slugs for filtering. Only the slugs that actually exist are kept — an
+        // unknown slug must not turn the whole query into a no-match. The filter itself is
+        // pushed into the search query (EXISTS per tag) instead of materializing every
+        // matching article ID here, which would not survive a large corpus.
+        List<string>? tagSlugFilter = null;
         if (tagSlugs.Count > 0)
         {
-            var tags = await db.Tags.Where(t => tagSlugs.Contains(t.Slug)).ToListAsync();
+            var tags = await db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync();
             if (tags.Count == 0)
             {
                 sw.Stop();
@@ -101,17 +104,11 @@ public class SearchController(AppDbContext db, IConfiguration config, ArticleSer
                 return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = 0, page = 1, totalPages = 0, searchQueryId = missRecord.Id });
             }
 
-            var foundTagIds = tags.Select(t => t.Id).ToList();
-            tagFilterArticleIds = await db.ArticleTags
-                .Where(at => foundTagIds.Contains(at.TagId))
-                .GroupBy(at => at.ArticleId)
-                .Where(g => g.Count() >= foundTagIds.Count)
-                .Select(g => g.Key)
-                .ToListAsync();
+            tagSlugFilter = tags;
         }
 
         // All resolved filters, applied uniformly to every search flavor below
-        var filter = new ArticleFilter(authorFilterIds, contentTypeFilter, scopedApiKeyId, tagFilterArticleIds);
+        var filter = new ArticleFilter(authorFilterIds, contentTypeFilter, scopedApiKeyId, TagSlugs: tagSlugFilter);
 
         // Query terms used for match-context snippets in the result list
         var snippetTokens = searchQuery.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);

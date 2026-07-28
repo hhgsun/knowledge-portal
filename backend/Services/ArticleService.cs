@@ -45,8 +45,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     }
 
     /// <summary>
-    /// Cap on ranked FTS candidates considered per search. Bounds memory while keeping the
-    /// true match count accurate for any realistic result set; matches beyond this are dropped.
+    /// Cap on ranked candidates for the non-relational (InMemory test) search path only, which
+    /// scores every published article in memory. Postgres ranks, filters and pages inside a
+    /// single statement and needs no cap — see <see cref="FullTextSearchService.SearchPagedAsync"/>.
     /// </summary>
     private const int MaxSearchCandidates = 1000;
 
@@ -62,15 +63,35 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         => (await SearchPublishedPagedAsync(query, 1, limit, filter)).Articles;
 
     /// <summary>
-    /// Paged full-text search over published articles. Filters (author/tag/contentType/API key)
-    /// are applied to the full ranked candidate set before paging, so <see cref="SearchPage.Total"/>
-    /// is the true post-filter match count and no page under-fills while matches remain.
+    /// Paged full-text search over published articles. Matching, filtering (author/tag/
+    /// contentType/API key), ranking and paging all happen in one database statement, so
+    /// <see cref="SearchPage.Total"/> is the true post-filter match count at any corpus size and
+    /// no page under-fills while matches remain.
     /// </summary>
     public async Task<SearchPage> SearchPublishedPagedAsync(string query, int page, int limit, ArticleFilter? filter = null)
     {
+        if (db.Database.IsRelational())
+        {
+            var ftsPage = await ftsService.SearchPagedAsync(query, filter, page, limit);
+            if (ftsPage.ArticleIds.Count == 0)
+                return new SearchPage([], ftsPage.Total);
+
+            var ranked = await db.Articles
+                .Include(a => a.Owner)
+                .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
+                .Where(a => ftsPage.ArticleIds.Contains(a.Id))
+                .ToListAsync();
+
+            return new SearchPage(
+                ArticleQueryExtensions.OrderByRankedIds(ftsPage.ArticleIds, ranked, a => a.Id),
+                ftsPage.Total);
+        }
+
+        // ── Non-relational (Docker-free InMemory tests): score in memory, then filter and page
+        // with EF. Equivalent semantics on a corpus small enough for the candidate cap to be moot.
         var filteredQuery = ApplyFilter(db.Articles.WherePublished(), filter);
 
-        var ftsResults = await ftsService.SearchAsync(query, MaxSearchCandidates);
+        var ftsResults = await ftsService.SearchInMemoryAsync(query, MaxSearchCandidates);
         if (ftsResults.Count > 0)
         {
             var rankedIds = ftsResults.Select(r => r.ArticleId).ToList();
@@ -92,21 +113,11 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 orderedIds.Count);
         }
 
-        // EF.Functions.Like needs a relational provider; the InMemory test suite uses a
-        // literal Contains fallback (equivalent for the plain substrings tests exercise).
-        IQueryable<Article> likeQuery;
-        if (db.Database.IsRelational())
-        {
-            var escaped = SlugHelper.EscapeLikePattern(query);
-            likeQuery = filteredQuery
-                .Where(a => EF.Functions.Like(a.Title, $"%{escaped}%", "\\")
-                    || (a.Excerpt != null && EF.Functions.Like(a.Excerpt, $"%{escaped}%", "\\")));
-        }
-        else
-        {
-            likeQuery = filteredQuery
-                .Where(a => a.Title.Contains(query) || (a.Excerpt != null && a.Excerpt.Contains(query)));
-        }
+        // Substring fallback, mirroring the ILIKE rung Postgres runs inside SearchPagedAsync.
+        // EF.Functions.Like needs a relational provider, so this path uses literal Contains
+        // (equivalent for the plain substrings the tests exercise).
+        var likeQuery = filteredQuery
+            .Where(a => a.Title.Contains(query) || (a.Excerpt != null && a.Excerpt.Contains(query)));
 
         var total = await likeQuery.CountAsync();
         var likeArticles = await likeQuery

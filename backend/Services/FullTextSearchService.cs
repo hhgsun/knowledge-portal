@@ -1,3 +1,4 @@
+using System.Text;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models.Entities;
@@ -8,6 +9,9 @@ namespace KnowledgePortal.Api.Services;
 public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogger<FullTextSearchService> logger)
 {
     public record FtsResult(string ArticleId, double Rank);
+
+    /// <summary>One ranked page of article IDs plus the true total match count (both post-filter).</summary>
+    public record FtsPage(List<string> ArticleIds, int Total);
 
     // Built-in Turkish snowball configuration (stemming + stopwords). Accent folding is
     // done in C# via SlugHelper.Transliterate, applied symmetrically at index and query
@@ -110,58 +114,146 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     }
 
     /// <summary>
-    /// Search using PostgreSQL full-text search. Returns article IDs ranked by relevance.
-    /// Precision-first: all terms must match (AND); when that yields nothing, retries with
-    /// any-term matching (OR), then falls back to ILIKE on title/excerpt.
+    /// Ranked, filtered and paged full-text search, executed entirely in PostgreSQL.
+    /// The filters (author/tag/contentType/API key) live in the same statement as the tsquery
+    /// match, so ranking, the total count and paging all operate on the real post-filter match
+    /// set. There is deliberately no candidate cap: capping first and filtering afterwards hides
+    /// matches whenever a common term hits a large slice of the corpus (a filtered search would
+    /// return nothing while thousands of real matches sat below the cap).
+    /// Precision-first ladder: all terms (AND) → any term (OR) → ILIKE on title/excerpt. Each
+    /// rung is itself filtered, so a rung whose matches are all filtered out falls through to
+    /// the next one instead of ending the search.
+    /// Postgres-only; see <see cref="SearchInMemoryAsync"/> for the non-relational path.
     /// </summary>
-    public async Task<List<FtsResult>> SearchAsync(string query, int limit)
+    public async Task<FtsPage> SearchPagedAsync(string query, ArticleFilter? filter, int page, int limit, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(query)) return [];
-
         var tokens = TokenizeQuery(query);
-        if (tokens.Count == 0) return [];
 
-        // Non-relational providers (Docker-free InMemory test suite) can't run tsquery —
-        // use an in-memory, accent-folded, AND→OR substring search instead.
-        if (!db.Database.IsRelational())
-            return await LinqSearchAsync(tokens, limit);
-
-        var results = await RunTsQueryAsync(string.Join(" & ", tokens), limit);
-
-        if (results.Count == 0 && tokens.Count > 1)
-            results = await RunTsQueryAsync(string.Join(" | ", tokens), limit);
-
-        // Fallback to ILIKE if tsquery yields no results
-        if (results.Count == 0)
+        if (tokens.Count > 0)
         {
-            var likePattern = $"%{SlugHelper.EscapeLikePattern(query)}%";
-            results = await db.Database
-                .SqlQueryRaw<FtsRawResult>(
-                    """
-                    SELECT "Id" AS "ArticleId", 0.1 AS "Rank"
-                    FROM articles
-                    WHERE "Status" = 'published' AND (
-                        "Title" ILIKE {0} OR "Excerpt" ILIKE {0}
-                    )
-                    ORDER BY "Id"
-                    LIMIT {1}
-                    """,
-                    likePattern, limit)
-                .ToListAsync();
+            var andPage = await RunStageAsync(args => TsStage(args, string.Join(" & ", tokens)), filter, page, limit, ct);
+            if (andPage.Total > 0) return andPage;
+
+            if (tokens.Count > 1)
+            {
+                var orPage = await RunStageAsync(args => TsStage(args, string.Join(" | ", tokens)), filter, page, limit, ct);
+                if (orPage.Total > 0) return orPage;
+            }
         }
 
-        return results.Select(r => new FtsResult(r.ArticleId, r.Rank)).ToList();
+        // Also the entry point for a filter-only search (e.g. "@author" with no terms left after
+        // stripping): an empty query yields the '%%' pattern, i.e. every filtered article.
+        return await RunStageAsync(args => LikeStage(args, query), filter, page, limit, ct);
+    }
+
+    /// <summary>How one rung of the ladder matches and orders rows. Both fragments are SQL
+    /// built from constants plus positional placeholders — never from user input directly.</summary>
+    private sealed record SearchStage(string Match, string OrderBy);
+
+    private static SearchStage TsStage(List<object> args, string tsQuery)
+    {
+        var q = Placeholder(args, tsQuery);
+        return new SearchStage(
+            Match: $"a.search_vector @@ to_tsquery('{TsConfig}', {q})",
+            OrderBy: $"""ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', {q})) DESC, a."Id" """);
+    }
+
+    private static SearchStage LikeStage(List<object> args, string query)
+    {
+        var p = Placeholder(args, $"%{SlugHelper.EscapeLikePattern(query)}%");
+        return new SearchStage(
+            Match: $"""(a."Title" ILIKE {p} OR a."Excerpt" ILIKE {p})""",
+            OrderBy: """a."UpdatedAt" DESC, a."Id" """);
     }
 
     /// <summary>
-    /// Provider-agnostic full-text fallback for non-relational databases. Mirrors the
-    /// production semantics that don't depend on the Postgres snowball stemmer:
-    /// symmetric accent folding (C# transliteration), title-weighted ranking, and
-    /// AND-first precision (all terms) falling back to OR (any term). Turkish stemming
-    /// (plural→singular) is Postgres-only and not reproduced here.
+    /// Runs one rung: a COUNT over the full post-filter match set, then — only if anything
+    /// matched — the ranked page itself. Counting first keeps a rung that matches nothing from
+    /// paying for the rank+sort, and gives the caller a true total for pagination.
     /// </summary>
-    private async Task<List<FtsResult>> LinqSearchAsync(List<string> tokens, int limit)
+    private async Task<FtsPage> RunStageAsync(Func<List<object>, SearchStage> buildStage, ArticleFilter? filter, int page, int limit, CancellationToken ct)
     {
+        var args = new List<object>();
+        var stage = buildStage(args);
+        var from = $"""
+            FROM articles a
+            WHERE a."Status" = 'published' AND {stage.Match}{BuildFilterSql(filter, args)}
+            """;
+
+        // EF1002: the interpolated fragments are SQL skeletons assembled from compile-time
+        // constants and {n} placeholders only — every user-supplied value (query terms, owner
+        // ids, tag slugs, paging) enters through the args array as a bound parameter.
+#pragma warning disable EF1002
+        var total = await db.Database
+            .SqlQueryRaw<int>($"""SELECT COUNT(*)::int AS "Value" {from}""", args.ToArray())
+            .SingleAsync(ct);
+        if (total == 0) return new FtsPage([], 0);
+
+        var offset = Placeholder(args, (page - 1) * limit);
+        var take = Placeholder(args, limit);
+        var ids = await db.Database
+            .SqlQueryRaw<string>(
+                $"""
+                SELECT a."Id" AS "Value" {from}
+                ORDER BY {stage.OrderBy}
+                OFFSET {offset} LIMIT {take}
+                """,
+                args.ToArray())
+            .ToListAsync(ct);
+#pragma warning restore EF1002
+
+        return new FtsPage(ids, total);
+    }
+
+    /// <summary>
+    /// Renders an <see cref="ArticleFilter"/> as SQL predicates against alias <c>a</c>, mirroring
+    /// <see cref="ArticleService.ApplyFilter"/>. Every value goes in via a positional placeholder,
+    /// so nothing user-supplied is ever concatenated into the statement.
+    /// </summary>
+    private static string BuildFilterSql(ArticleFilter? filter, List<object> args)
+    {
+        if (filter == null) return "";
+        var sb = new StringBuilder();
+
+        if (filter.OwnerIds is { Count: > 0 })
+            sb.Append($""" AND a."OwnerId" = ANY({Placeholder(args, filter.OwnerIds.ToArray())})""");
+        if (filter.ContentTypes is { Count: > 0 })
+            sb.Append($""" AND a."ContentType" = ANY({Placeholder(args, filter.ContentTypes.ToArray())})""");
+        if (!string.IsNullOrWhiteSpace(filter.ApiKeyId))
+            sb.Append($""" AND a."CreatedViaApiKeyId" = {Placeholder(args, filter.ApiKeyId)}""");
+        // Matches ApplyFilter: a non-null but empty ID list means "nothing matches"
+        if (filter.ArticleIds != null)
+            sb.Append($""" AND a."Id" = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
+        // AND logic: one EXISTS per slug, so the article must carry every requested tag
+        foreach (var slug in filter.TagSlugs ?? [])
+            sb.Append($"""
+                 AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg."Id" = ats."TagId"
+                             WHERE ats."ArticleId" = a."Id" AND tg."Slug" = {Placeholder(args, slug)})
+                """);
+
+        return sb.ToString();
+    }
+
+    /// <summary>Appends a value and returns the positional placeholder (<c>{n}</c>) EF binds it to.</summary>
+    private static string Placeholder(List<object> args, object value)
+    {
+        args.Add(value);
+        return $"{{{args.Count - 1}}}";
+    }
+
+    /// <summary>
+    /// Provider-agnostic full-text fallback for non-relational databases (the Docker-free
+    /// InMemory test suite). Mirrors the production semantics that don't depend on the Postgres
+    /// snowball stemmer: symmetric accent folding (C# transliteration), title-weighted ranking,
+    /// and AND-first precision (all terms) falling back to OR (any term). Turkish stemming
+    /// (plural→singular) is Postgres-only and not reproduced here. Filtering and paging are the
+    /// caller's job — the InMemory corpus is small enough that the candidate cap is harmless.
+    /// </summary>
+    public async Task<List<FtsResult>> SearchInMemoryAsync(string query, int limit)
+    {
+        var tokens = TokenizeQuery(query);
+        if (tokens.Count == 0) return [];
+
         var lowered = tokens.Select(t => t.ToLowerInvariant()).ToList();
 
         var articles = await db.Articles
@@ -198,19 +290,6 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
             .ToList();
     }
 
-    private async Task<List<FtsRawResult>> RunTsQueryAsync(string tsQuery, int limit)
-        => await db.Database
-            .SqlQueryRaw<FtsRawResult>(
-                $$"""
-                SELECT "Id" AS "ArticleId", ts_rank_cd(search_vector, to_tsquery('{{TsConfig}}', {0})) AS "Rank"
-                FROM articles
-                WHERE search_vector IS NOT NULL AND search_vector @@ to_tsquery('{{TsConfig}}', {0})
-                ORDER BY "Rank" DESC, "Id"
-                LIMIT {1}
-                """,
-                tsQuery, limit)
-            .ToListAsync();
-
     /// <summary>
     /// Splits user input into sanitized tsquery lexemes: tsquery meta-characters stripped,
     /// Turkish accents folded (must mirror the indexing side).
@@ -221,10 +300,4 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
                 t.Replace("'", "").Replace("\\", "").Replace("&", "").Replace("|", "").Replace("!", "").Replace("(", "").Replace(")", "").Replace(":", "").Trim()))
             .Where(t => t.Length > 0)
             .ToList();
-
-    private class FtsRawResult
-    {
-        public string ArticleId { get; set; } = null!;
-        public double Rank { get; set; }
-    }
 }
