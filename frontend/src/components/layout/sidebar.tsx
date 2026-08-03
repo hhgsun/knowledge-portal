@@ -232,7 +232,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav aria-label="Main navigation" className="sidebar-scrollbar flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <div className="space-y-1">
           {navigation
             .filter((item) => item.href !== "/analytics" || isEditorOrAdmin)

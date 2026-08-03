@@ -25,6 +25,41 @@ body {
   color: var(--foreground);
 }
 
+/* Keep the sidebar scrollbar subtle against both theme backgrounds. */
+.sidebar-scrollbar {
+  scrollbar-color: #d4d4d8 transparent;
+  scrollbar-width: thin;
+}
+
+.dark .sidebar-scrollbar {
+  scrollbar-color: #3f3f46 transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #d4d4d8;
+  border-radius: 9999px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #a1a1aa;
+}
+
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #3f3f46;
+}
+
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #52525b;
+}
+
 /* Reduce excessive prose spacing for article content */
 .prose h1,
 .prose h2,
