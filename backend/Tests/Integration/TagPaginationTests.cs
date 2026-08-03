@@ -54,4 +54,30 @@ public class TagPaginationTests : IClassFixture<TestWebApplicationFactory>
         var result = await _client.GetFromJsonAsync<JsonElement>("/api/tags");
         Assert.Equal(JsonValueKind.Array, result.ValueKind);
     }
+
+    [Fact]
+    public async Task ArticleCreate_WithNewTagName_CreatesAndAttachesTagOnSave()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var tagName = $"deferred-tag-{Guid.NewGuid():N}";
+
+        var articleResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Deferred tag article",
+            status = "draft",
+            tags = new[] { tagName }
+        });
+        Assert.Equal(HttpStatusCode.Created, articleResponse.StatusCode);
+        var articleSummary = await articleResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        var article = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/articles/{articleSummary.GetProperty("id").GetString()}");
+        var attachedNames = article.GetProperty("tags").EnumerateArray()
+            .Select(tag => tag.GetProperty("name").GetString());
+        Assert.Contains(tagName, attachedNames);
+
+        var tags = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/tags?page=1&limit=30&q={Uri.EscapeDataString(tagName)}");
+        Assert.Equal(1, tags.GetProperty("total").GetInt32());
+    }
 }

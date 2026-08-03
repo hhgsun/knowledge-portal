@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
-import { toast } from "sonner";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -8,6 +7,7 @@ interface Tag {
   id: string;
   name: string;
   slug: string;
+  pending?: boolean;
 }
 
 interface TagSelectorProps {
@@ -47,7 +47,6 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
 
   const loadPage = useCallback(async (nextPage: number, query: string, replace: boolean) => {
     if (loadingRef.current && !replace) return;
@@ -170,9 +169,9 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
     }
   };
 
-  const handleCreateTag = async () => {
+  const handleCreateTag = () => {
     const name = searchQuery.trim();
-    if (!name || name.length > 50 || isCreating) return;
+    if (!name || name.length > 50) return;
 
     const duplicate = Object.values(tagsById).find(
       (tag) => queryKey(tag.name) === queryKey(name)
@@ -183,26 +182,10 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
       return;
     }
 
-    setIsCreating(true);
-    try {
-      const res = await fetchWithAuth("/api/tags", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast.error(data?.error || "Etiket oluşturulamadı");
-        return;
-      }
-
-      const tag = await res.json();
-      cacheRef.current.clear();
-      setTagsById((current) => ({ ...current, [tag.id]: tag }));
-      if (!selectedTags.includes(tag.id)) onChange([...selectedTags, tag.id]);
-      setSearchQuery("");
-    } finally {
-      setIsCreating(false);
-    }
+    const pendingTag: Tag = { id: name, name, slug: "", pending: true };
+    setTagsById((current) => ({ ...current, [name]: pendingTag }));
+    if (!selectedTags.includes(name)) onChange([...selectedTags, name]);
+    setSearchQuery("");
   };
 
   const selectedTagObjects = useMemo(
@@ -229,6 +212,9 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
               className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs rounded-full"
             >
               {tag.name}
+              {tag.pending && (
+                <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400">Yeni</span>
+              )}
               <button
                 type="button"
                 onClick={() => handleToggle(tag.id)}
@@ -291,12 +277,11 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
                     <button
                       type="button"
                       onClick={handleCreateTag}
-                      disabled={isCreating}
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
                     >
                       <Plus size={14} className="shrink-0" />
                       <span className="truncate">
-                        {isCreating ? "Etiket oluşturuluyor..." : `“${searchQuery.trim()}” yeni etiket olarak ekle`}
+                        {`“${searchQuery.trim()}” yeni etiket olarak ekle`}
                       </span>
                     </button>
                   )}

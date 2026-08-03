@@ -70,16 +70,18 @@ public class TagService(AppDbContext db)
         => await db.Tags.FirstOrDefaultAsync(t => t.Id == input)
            ?? await db.Tags.FirstOrDefaultAsync(t => t.Name == input || t.Slug == input);
 
-    /// <summary>Returns the existing tag with the same slug, or creates and persists a new one.</summary>
-    public async Task<(Tag Tag, bool Created)> FindOrCreateAsync(string name)
+    /// <summary>Returns the existing tag with the same slug, or creates a new one.</summary>
+    public async Task<(Tag Tag, bool Created)> FindOrCreateAsync(string name, bool saveChanges = true)
     {
         var slug = SlugHelper.GenerateTagSlug(name);
-        var existing = await db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
+        var existing = db.Tags.Local.FirstOrDefault(t => t.Slug == slug)
+            ?? await db.Tags.FirstOrDefaultAsync(t => t.Slug == slug);
         if (existing != null) return (existing, false);
 
         var tag = new Tag { Name = name.Trim(), Slug = slug };
         db.Tags.Add(tag);
-        await db.SaveChangesAsync();
+        if (saveChanges)
+            await db.SaveChangesAsync();
         return (tag, true);
     }
 }

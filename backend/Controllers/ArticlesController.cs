@@ -140,7 +140,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         await articleService.AddVersionAsync(article.Id, article.Title, article.Content, userId, "Initial version");
 
         if (req.Tags?.Length > 0)
-            await articleService.AttachTagsAsync(article.Id, req.Tags, User.GetSource() == "api-key");
+            await articleService.AttachTagsAsync(article.Id, req.Tags,
+                User.GetSource() == "api-key" || RbacService.HasPermission(User, Permissions.TagsManage));
 
         await db.SaveChangesAsync();
 
@@ -254,7 +255,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         {
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
-            await articleService.AttachTagsAsync(id, req.Tags, User.GetSource() == "api-key");
+            await articleService.AttachTagsAsync(id, req.Tags,
+                User.GetSource() == "api-key" || RbacService.HasPermission(User, Permissions.TagsManage));
         }
 
         await db.SaveChangesAsync();

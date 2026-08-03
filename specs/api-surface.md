@@ -345,6 +345,8 @@ Returns the file as a binary stream with appropriate `Content-Type` and `Content
 
 ## Tags
 
+Article create/update requests may include a new tag name in their `tags` array. For users with `tags:manage` (and API-key article flows), the tag is created and linked atomically when the article is saved; merely entering it in the editor does not persist it.
+
 ### `GET /api/tags`
 **Auth**: Bearer (JWT or API Key)
 

@@ -152,7 +152,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
 
     /// <summary>
     /// Resolves each input as tag ID, name, or slug and links it to the article.
-    /// Missing tags are auto-created when allowCreate is set (API key flows). Caller saves.
+    /// Missing tags are staged when allowCreate is set. Caller saves article, tags and links atomically.
     /// </summary>
     public async Task AttachTagsAsync(string articleId, string[] tags, bool allowCreate)
     {
@@ -160,7 +160,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         {
             var tag = await tagService.ResolveAsync(tagInput);
             if (tag == null && allowCreate && !string.IsNullOrWhiteSpace(tagInput))
-                (tag, _) = await tagService.FindOrCreateAsync(tagInput);
+                (tag, _) = await tagService.FindOrCreateAsync(tagInput, saveChanges: false);
             if (tag != null)
                 db.ArticleTags.Add(new ArticleTag { ArticleId = articleId, TagId = tag.Id });
         }
