@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { useApi } from "../../hooks/useApi";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface Tag {
   id: string;
@@ -31,6 +33,7 @@ const queryKey = (query: string) => query.trim().toLocaleLowerCase("tr-TR");
 
 export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
   const { fetchWithAuth } = useApi();
+  const { user } = useAuth();
   const listboxId = useId();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -39,13 +42,12 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
   const cacheRef = useRef<Map<string, CachedTagPage>>(new Map());
   const [tagsById, setTagsById] = useState<Record<string, Tag>>({});
   const [resultIds, setResultIds] = useState<string[]>([]);
-  const [newTagName, setNewTagName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showInput, setShowInput] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const loadPage = useCallback(async (nextPage: number, query: string, replace: boolean) => {
     if (loadingRef.current && !replace) return;
@@ -169,30 +171,37 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
   };
 
   const handleCreateTag = async () => {
-    if (!newTagName.trim()) return;
+    const name = searchQuery.trim();
+    if (!name || name.length > 50 || isCreating) return;
 
     const duplicate = Object.values(tagsById).find(
-      (t) => t.name.toLocaleLowerCase("tr-TR") === newTagName.trim().toLocaleLowerCase("tr-TR")
+      (tag) => queryKey(tag.name) === queryKey(name)
     );
     if (duplicate) {
       if (!selectedTags.includes(duplicate.id)) onChange([...selectedTags, duplicate.id]);
-      setNewTagName("");
-      setShowInput(false);
+      setSearchQuery("");
       return;
     }
 
-    const res = await fetchWithAuth("/api/tags", {
-      method: "POST",
-      body: JSON.stringify({ name: newTagName.trim() }),
-    });
-    if (res.ok) {
+    setIsCreating(true);
+    try {
+      const res = await fetchWithAuth("/api/tags", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Etiket oluşturulamadı");
+        return;
+      }
+
       const tag = await res.json();
       cacheRef.current.clear();
       setTagsById((current) => ({ ...current, [tag.id]: tag }));
-      setResultIds((current) => current.includes(tag.id) ? current : [tag.id, ...current]);
       if (!selectedTags.includes(tag.id)) onChange([...selectedTags, tag.id]);
-      setNewTagName("");
-      setShowInput(false);
+      setSearchQuery("");
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -205,6 +214,10 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
     [resultIds, tagsById]
   );
   const hasMore = resultIds.length < total;
+  const normalizedSearch = queryKey(searchQuery);
+  const hasExactMatch = visibleTags.some((tag) => queryKey(tag.name) === normalizedSearch);
+  const canCreate = user?.role === "admin" || user?.role === "editor";
+  const showCreateAction = canCreate && normalizedSearch.length > 0 && searchQuery.trim().length <= 50 && !hasExactMatch && !isLoading;
 
   return (
     <div className="space-y-2">
@@ -252,6 +265,12 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
                     type="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && showCreateAction) {
+                        event.preventDefault();
+                        handleCreateTag();
+                      }
+                    }}
                     placeholder="Etiket ara..."
                     className="w-full rounded-md border border-zinc-300 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
                   />
@@ -268,6 +287,19 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
                     }
                   }}
                 >
+                  {showCreateAction && (
+                    <button
+                      type="button"
+                      onClick={handleCreateTag}
+                      disabled={isCreating}
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                    >
+                      <Plus size={14} className="shrink-0" />
+                      <span className="truncate">
+                        {isCreating ? "Etiket oluşturuluyor..." : `“${searchQuery.trim()}” yeni etiket olarak ekle`}
+                      </span>
+                    </button>
+                  )}
                   {visibleTags.length > 0 ? visibleTags.map((tag) => {
                     const selected = selectedTags.includes(tag.id);
                     return (
@@ -283,8 +315,11 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
                         {selected && <Check size={14} className="shrink-0 text-blue-600" />}
                       </button>
                     );
-                  }) : !isLoading && (
+                  }) : !isLoading && !showCreateAction && (
                     <p className="px-3 py-5 text-center text-xs text-zinc-500">Etiket bulunamadı.</p>
+                  )}
+                  {searchQuery.trim().length > 50 && (
+                    <p className="px-3 py-2 text-xs text-red-500">Etiket adı en fazla 50 karakter olabilir.</p>
                   )}
                   {isLoading && (
                     <p className="px-3 py-3 text-center text-xs text-zinc-500" role="status">Etiketler yükleniyor...</p>
@@ -293,36 +328,6 @@ export function TagSelector({ selectedTags, onChange }: TagSelectorProps) {
               </div>
             )}
           </div>
-
-        {showInput ? (
-          <div className="flex items-center gap-1">
-            <input
-              type="text"
-              value={newTagName}
-              onChange={(e) => setNewTagName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleCreateTag();
-                }
-              }}
-              placeholder="Yeni etiket..."
-              className="px-2 py-1 text-xs border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 w-32"
-              autoFocus
-            />
-            <button type="button" onClick={handleCreateTag} className="text-blue-600 hover:text-blue-700 text-xs font-medium">Ekle</button>
-            <button type="button" onClick={() => { setShowInput(false); setNewTagName(""); }} className="text-zinc-400 hover:text-zinc-600 text-xs">İptal</button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowInput(true)}
-            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-600"
-          >
-            <Plus size={12} />
-            Yeni etiket
-          </button>
-        )}
       </div>
     </div>
   );
