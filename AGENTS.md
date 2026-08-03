@@ -336,6 +336,7 @@ No known gaps at this time.
 - **View count in responses**: `GET /api/articles` list and `GET /api/articles/{idOrSlug}` detail both include `viewCount` field.
 - **Article detail response**: `GET /api/articles/{idOrSlug}` includes `content` (TipTap JSON for editor), `contentText` (extracted plain text for API consumers), and `attachments` array (id, fileName, contentType, sizeBytes, downloadUrl).
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
+- **Tag async listing**: GET `/api/tags` preserves its legacy array response without query parameters. Supplying `page`, `limit` (max 100), `q`, or repeatable `ids` returns `{ tags, total, page, totalPages }`; the article editor uses this for debounced server-side search and infinite-scroll loading.
 - **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup

@@ -26,6 +26,45 @@ public class TagService(AppDbContext db)
         return rows.Select(r => new TagWithCountDto(r.Id, r.Name, r.Slug, r.Count)).ToList();
     }
 
+    /// <summary>Searches and pages tags for asynchronous selectors.</summary>
+    public async Task<TagListResponse> SearchWithCountsAsync(
+        int page,
+        int limit,
+        string? query = null,
+        IReadOnlyCollection<string>? ids = null,
+        bool publishedOnly = false)
+    {
+        var tags = db.Tags.AsNoTracking().AsQueryable();
+
+        if (ids is { Count: > 0 })
+            tags = tags.Where(t => ids.Contains(t.Id));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var term = query.Trim().ToLower();
+            var slugTerm = SlugHelper.GenerateTagSlug(query.Trim());
+            tags = tags.Where(t => t.Name.ToLower().Contains(term) || t.Slug.Contains(slugTerm));
+        }
+
+        var total = await tags.CountAsync();
+        var rows = await tags
+            .OrderBy(t => t.Name)
+            .ThenBy(t => t.Id)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .Select(t => new
+            {
+                t.Id, t.Name, t.Slug,
+                Count = publishedOnly
+                    ? t.ArticleTags.Count(at => at.Article.Status == "published")
+                    : t.ArticleTags.Count
+            })
+            .ToListAsync();
+
+        var result = rows.Select(r => new TagWithCountDto(r.Id, r.Name, r.Slug, r.Count)).ToList();
+        return new TagListResponse(result, total, page, (int)Math.Ceiling(total / (double)limit));
+    }
+
     /// <summary>Resolves the input as a tag ID, name, or slug.</summary>
     public async Task<Tag?> ResolveAsync(string input)
         => await db.Tags.FirstOrDefaultAsync(t => t.Id == input)

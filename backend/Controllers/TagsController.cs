@@ -15,8 +15,29 @@ namespace KnowledgePortal.Api.Controllers;
 public class TagsController(AppDbContext db, TagService tagService) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List()
-        => Ok(await tagService.ListWithCountsAsync());
+    public async Task<IActionResult> List(
+        [FromQuery] int? page = null,
+        [FromQuery] int? limit = null,
+        [FromQuery(Name = "q")] string? query = null,
+        [FromQuery] string[]? ids = null)
+    {
+        // Preserve the original array response for existing consumers.
+        if (page is null && limit is null && query is null && (ids is null || ids.Length == 0))
+            return Ok(await tagService.ListWithCountsAsync());
+
+        var resolvedPage = page ?? 1;
+        var resolvedLimit = limit ?? 30;
+        if (resolvedPage < 1)
+            return BadRequest(new { error = "Page must be at least 1" });
+        if (resolvedLimit is < 1 or > 100)
+            return BadRequest(new { error = "Limit must be between 1 and 100" });
+
+        return Ok(await tagService.SearchWithCountsAsync(
+            resolvedPage,
+            resolvedLimit,
+            query,
+            ids?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToArray()));
+    }
 
     [HttpPost]
     [RequirePermission(Permissions.TagsManage)]

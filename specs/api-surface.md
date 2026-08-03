@@ -348,11 +348,22 @@ Returns the file as a binary stream with appropriate `Content-Type` and `Content
 ### `GET /api/tags`
 **Auth**: Bearer (JWT or API Key)
 
-**200 Response**:
+Without query parameters, the legacy response is an array:
 ```json
 [
   { "id": "...", "name": "getting started", "slug": "getting-started", "articleCount": 5 }
 ]
+```
+
+For asynchronous selectors, accepts `page` (default 1), `limit` (default 30, max 100), `q` (name/slug search), and repeatable `ids` (selected-tag lookup). Supplying any of these returns a paged response:
+
+```json
+{
+  "tags": [{ "id": "...", "name": "getting started", "slug": "getting-started", "articleCount": 5 }],
+  "total": 42,
+  "page": 1,
+  "totalPages": 2
+}
 ```
 
 ---

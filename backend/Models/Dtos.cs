@@ -98,6 +98,7 @@ public record ArticleDetailDto(
 public record CreateTagRequest(string Name);
 public record UpdateTagRequest(string Id, string Name);
 public record TagWithCountDto(string Id, string Name, string Slug, int ArticleCount);
+public record TagListResponse(List<TagWithCountDto> Tags, int Total, int Page, int TotalPages);
 
 // Lookups
 public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
