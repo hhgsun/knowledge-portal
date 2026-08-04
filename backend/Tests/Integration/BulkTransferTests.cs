@@ -95,6 +95,7 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/bulk/export?dateFrom=not-a-date")).StatusCode);
     }
 
+
     private static MultipartFormDataContent Form(string content, string name, bool dryRun = false)
     {
         var form = new MultipartFormDataContent();
@@ -105,4 +106,5 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
         form.Add(new StringContent("skip"), "conflictPolicy");
         return form;
     }
+
 }
