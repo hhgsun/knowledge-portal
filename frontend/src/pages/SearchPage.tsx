@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -33,6 +35,17 @@ export default function SearchPage() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexingPending, setIndexingPending] = useState(false);
+
+  const copyRagAnswer = async () => {
+    if (!ragResponse?.answer) return;
+
+    try {
+      await navigator.clipboard.writeText(ragResponse.answer);
+      toast.success("AI yanıtı kopyalandı");
+    } catch {
+      toast.error("Yanıt kopyalanamadı");
+    }
+  };
   const [warning, setWarning] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(-1);
@@ -379,9 +392,32 @@ export default function SearchPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <Bot size={16} className="text-blue-600" />
                   <span className="text-sm font-medium text-blue-700 dark:text-blue-300">AI Answer</span>
-                  {responseTime !== null && <span className="text-xs text-blue-400 ml-auto">{responseTime}ms</span>}
+                  <div className="ml-auto flex items-center gap-2">
+                    {responseTime !== null && <span className="text-xs text-blue-400">{responseTime}ms</span>}
+                    <button
+                      type="button"
+                      onClick={copyRagAnswer}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-300 dark:hover:bg-blue-900"
+                      aria-label="AI yanıtını kopyala"
+                      title="Yanıtı kopyala"
+                    >
+                      <Copy size={14} />
+                      Kopyala
+                    </button>
+                  </div>
                 </div>
-                <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">{ragResponse.answer}</div>
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ children, ...props }) => (
+                        <a {...props} target="_blank" rel="noopener noreferrer">{children}</a>
+                      ),
+                    }}
+                  >
+                    {ragResponse.answer}
+                  </ReactMarkdown>
+                </div>
               </div>
 
               {ragResponse.sources.length > 0 && (
