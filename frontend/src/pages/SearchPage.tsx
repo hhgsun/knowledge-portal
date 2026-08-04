@@ -35,6 +35,7 @@ export default function SearchPage() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexingPending, setIndexingPending] = useState(false);
+  const searchInFlightRef = useRef(false);
 
   const copyRagAnswer = async () => {
     if (!ragResponse?.answer) return;
@@ -150,7 +151,9 @@ export default function SearchPage() {
 
   const handleSearch = async (e?: React.FormEvent, pageArg = 1) => {
     e?.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || searchInFlightRef.current) return;
+
+    searchInFlightRef.current = true;
 
     addToHistory(query.trim());
     setShowHistory(false);
@@ -170,26 +173,30 @@ export default function SearchPage() {
     setIndexingPending(false);
     setWarning(null);
 
-    const res = await fetchWithAuth(
-      `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}&page=${pageArg}`
-    );
-    const data = await res.json();
+    try {
+      const res = await fetchWithAuth(
+        `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}&page=${pageArg}`
+      );
+      const data = await res.json();
 
-    if (data.tags) setActiveTags(data.tags);
-    if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
-    if (data.indexingPending) setIndexingPending(data.indexingPending);
-    if (data.warning) setWarning(data.warning);
+      if (data.tags) setActiveTags(data.tags);
+      if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
+      if (data.indexingPending) setIndexingPending(data.indexingPending);
+      if (data.warning) setWarning(data.warning);
 
-    if (searchType === "rag") {
-      setRagResponse({ answer: data.answer, sources: data.sources || [], query: data.query, type: "rag", responseTimeMs: data.responseTimeMs, indexingPending: data.indexingPending });
-    } else {
-      setResults(data.results || []);
-      setTotal(data.total ?? (data.results || []).length);
-      setPage(data.page ?? 1);
-      setTotalPages(data.totalPages ?? 1);
+      if (searchType === "rag") {
+        setRagResponse({ answer: data.answer, sources: data.sources || [], query: data.query, type: "rag", responseTimeMs: data.responseTimeMs, indexingPending: data.indexingPending });
+      } else {
+        setResults(data.results || []);
+        setTotal(data.total ?? (data.results || []).length);
+        setPage(data.page ?? 1);
+        setTotalPages(data.totalPages ?? 1);
+      }
+      setResponseTime(data.responseTimeMs || null);
+    } finally {
+      searchInFlightRef.current = false;
+      setLoading(false);
     }
-    setResponseTime(data.responseTimeMs || null);
-    setLoading(false);
   };
 
   const goToPage = (p: number) => {
@@ -265,10 +272,12 @@ export default function SearchPage() {
           />
           <button
             type="submit"
+            disabled={loading || !query.trim()}
             aria-label={searchType === "rag" ? "Ask AI" : "Search"}
-            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-busy={loading}
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600"
           >
-            {searchType === "rag" ? "Ask" : "Search"}
+            {loading ? "Bekleyin..." : searchType === "rag" ? "Ask" : "Search"}
           </button>
 
           {/* Search history dropdown */}
