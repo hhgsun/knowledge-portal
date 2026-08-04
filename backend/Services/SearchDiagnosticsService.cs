@@ -262,7 +262,7 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config, IS
             }
 
 #pragma warning disable EF1002 // validated int / allow-listed literal, see VectorSearchService
-            await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {Math.Max(1, efSearch)}", ct);
+            await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {Math.Clamp(efSearch, 1, 1000)}", ct);
             if (iterativeScan is "off" or "relaxed_order" or "strict_order")
                 await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.iterative_scan = '{iterativeScan}'", ct);
 #pragma warning restore EF1002

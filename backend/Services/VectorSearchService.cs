@@ -39,6 +39,7 @@ public sealed class VectorSearchService(
     IServiceScopeFactory scopeFactory,
     IConfiguration config) : IVectorSearchService
 {
+    private const int HnswEfSearchUpperBound = 1000;
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.5);
     // HNSW candidate-list size at query time. HNSW recall depends on ef_search being several times
     // the number of rows requested (rowLimit); when ef_search ≈ rowLimit recall degrades sharply at
@@ -232,12 +233,13 @@ public sealed class VectorSearchService(
     /// </summary>
     private async Task<List<T>> QueryWithEfSearchAsync<T>(AppDbContext db, int rowLimit, Func<Task<List<T>>> runQuery, CancellationToken ct)
     {
-        // ef_search = clamp(rowLimit * multiplier, floor, max). Guard the ceiling against a
-        // misconfigured max < floor so Math.Clamp never sees min > max. The final Max is not a
-        // preference: HNSW cannot return more rows than its candidate list holds, so an
-        // ef_search below rowLimit would silently truncate the window we just asked for.
-        var ceiling = Math.Max(_efSearch, _efSearchMax);
-        var efSearch = Math.Max(Math.Clamp(rowLimit * _efSearchMultiplier, _efSearch, ceiling), rowLimit);
+        // pgvector accepts hnsw.ef_search only in the range 1..1000. The SQL LIMIT may be larger
+        // (RAG defaults to 40 * 30 = 1200); iterative_scan can continue walking the graph beyond
+        // the initial ef_search candidate list, so do not force ef_search up to rowLimit.
+        var floor = Math.Clamp(_efSearch, 1, HnswEfSearchUpperBound);
+        var ceiling = Math.Clamp(Math.Max(_efSearch, _efSearchMax), floor, HnswEfSearchUpperBound);
+        var scaled = Math.Clamp((long)Math.Max(1, rowLimit) * Math.Max(1, _efSearchMultiplier), 1, HnswEfSearchUpperBound);
+        var efSearch = (int)Math.Clamp(scaled, floor, ceiling);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 #pragma warning disable EF1002
