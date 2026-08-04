@@ -24,6 +24,7 @@ import {
   Cpu,
   Star,
   ExternalLink,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState, useEffect } from "react";
@@ -60,6 +61,7 @@ const navigation: NavItem[] = [
 ];
 
 const adminNavigation: NavItem[] = [
+  { label: "Import / Export", href: "/settings/bulk-transfer", icon: <ArrowUpDown size={18} /> },
   { label: "Tags", href: "/tags", icon: <Tag size={18} /> },
   { label: "Lookups", href: "/settings/lookups", icon: <Settings2 size={18} /> },
   { label: "Featured Links", href: "/settings/featured-links", icon: <Star size={18} /> },

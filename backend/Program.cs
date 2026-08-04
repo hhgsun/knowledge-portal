@@ -194,6 +194,7 @@ builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<StatsService>();
+builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<McpToolExecutor>();
 
 var app = builder.Build();
