@@ -227,7 +227,7 @@ export default function SearchPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-4">Search Knowledge Base</h1>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-4">Bilgi Bankasında Ara</h1>
         <div className="flex gap-1 mb-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit" role="tablist" aria-label="Search type">
           <SearchTypeTab active={searchType === "hybrid"} onClick={() => setSearchType("hybrid")} icon={<Zap size={14} />} label="Hybrid" />
           <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
@@ -280,9 +280,9 @@ export default function SearchPage() {
             {loading ? "Bekleyin..." : searchType === "rag" ? "Ask" : "Search"}
           </button>
 
-          {/* Search history dropdown */}
+          {/* Arama geçmişi dropdown */}
           {showHistory && !showSuggestions && history.length > 0 && (
-            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Search history">
+            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Arama geçmişi">
               <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
                 <span className="text-xs text-zinc-400 flex items-center gap-1">
                   <Clock size={12} aria-hidden="true" />
@@ -292,7 +292,7 @@ export default function SearchPage() {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); clearHistory(); setShowHistory(false); }}
                   className="text-xs text-zinc-400 hover:text-red-500 flex items-center gap-1"
-                  aria-label="Clear all search history"
+                  aria-label="Tüm arama geçmişini temizle"
                 >
                   <Trash2 size={12} aria-hidden="true" />
                   Clear
@@ -325,7 +325,7 @@ export default function SearchPage() {
           )}
 
           {showSuggestions && (
-            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Autocomplete suggestions">
+            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Otomatik tamamlama önerileri">
               <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
                 {suggestionType === "tag" && "Etiket seç (#)"}
                 {suggestionType === "author" && "Yazar seç (@)"}
@@ -400,7 +400,7 @@ export default function SearchPage() {
               <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl">
                 <div className="flex items-center gap-2 mb-3">
                   <Bot size={16} className="text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">AI Answer</span>
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Yapay Zekâ Yanıtı</span>
                   <div className="ml-auto flex items-center gap-2">
                     {responseTime !== null && <span className="text-xs text-blue-400">{responseTime}ms</span>}
                     <button
@@ -469,8 +469,8 @@ export default function SearchPage() {
 
               {results.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
-                  <p className="text-zinc-500">No results found</p>
-                  <p className="text-sm text-zinc-400 mt-1">Try different keywords or use AI search mode</p>
+                  <p className="text-zinc-500">Sonuç bulunamadı</p>
+                  <p className="text-sm text-zinc-400 mt-1">Farklı anahtar kelimeler deneyin veya yapay zekâ arama modunu kullanın</p>
                 </div>
               ) : (
                 <div className="space-y-3">

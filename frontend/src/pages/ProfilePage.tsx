@@ -42,7 +42,7 @@ export default function ProfilePage() {
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      toast.error("Name is required");
+      toast.error("Ad zorunludur");
       return;
     }
     setSaving(true);
@@ -53,11 +53,11 @@ export default function ProfilePage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        toast.error(data.error || "Failed to update profile");
+        toast.error(data.error || "Güncelleme başarısız profile");
         return;
       }
       await refreshUser();
-      toast.success("Profile updated successfully");
+      toast.success("Profil başarıyla güncellendi");
     } finally {
       setSaving(false);
     }
@@ -66,15 +66,15 @@ export default function ProfilePage() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAzureUser && !currentPassword) {
-      toast.error("Current password is required");
+      toast.error("Mevcut parola zorunludur");
       return;
     }
     if (newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+      toast.error("Yeni parola en az 8 karakter olmalıdır");
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
+      toast.error("Parolalar eşleşmiyor");
       return;
     }
     setChangingPassword(true);
@@ -89,11 +89,11 @@ export default function ProfilePage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        toast.error(data.error || "Failed to change password");
+        toast.error(data.error || "Parola değiştirilemedi");
         return;
       }
       await refreshUser();
-      toast.success(isAzureUser ? "Password set successfully" : "Password changed successfully");
+      toast.success(isAzureUser ? "Parola başarıyla belirlendi" : "Parola başarıyla değiştirildi");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -110,7 +110,7 @@ export default function ProfilePage() {
             {user?.name ? user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'}
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Profile Settings</h1>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Profil Ayarları</h1>
             <p className="text-sm text-zinc-500">{user?.email}</p>
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function ProfilePage() {
               disabled={saving}
               className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? "Saving..." : "Değişiklikleri Kaydet"}
             </button>
           )}
         </form>
@@ -222,7 +222,7 @@ export default function ProfilePage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Minimum 8 characters"
+                placeholder="En az 8 karakter"
               />
             </div>
             <div>

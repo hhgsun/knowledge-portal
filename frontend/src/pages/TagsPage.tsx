@@ -83,7 +83,7 @@ export default function TagsPage() {
       loadTags();
     } else {
       const data = await res.json();
-      toast.error(data.error || "Failed to update tag");
+      toast.error(data.error || "Güncelleme başarısız tag");
     }
   };
 
@@ -97,7 +97,7 @@ export default function TagsPage() {
       loadTags();
     } else {
       const data = await res.json();
-      toast.error(data.error || "Failed to delete tag");
+      toast.error(data.error || "Silme başarısız tag");
     }
   };
 
@@ -152,7 +152,7 @@ export default function TagsPage() {
           <button
             onClick={() => { setShowCreate(false); setNewTagName(""); }}
             className="p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
-            title="Cancel"
+            title="İptal"
           >
             <X size={18} />
           </button>
@@ -167,7 +167,7 @@ export default function TagsPage() {
               <th className="text-left px-4 py-3 font-medium text-zinc-600 dark:text-zinc-400">Name</th>
               <th className="text-left px-4 py-3 font-medium text-zinc-600 dark:text-zinc-400">Slug</th>
               <th className="text-center px-4 py-3 font-medium text-zinc-600 dark:text-zinc-400">Articles</th>
-              <th className="text-right px-4 py-3 font-medium text-zinc-600 dark:text-zinc-400">Actions</th>
+              <th className="text-right px-4 py-3 font-medium text-zinc-600 dark:text-zinc-400">İşlemler</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -211,7 +211,7 @@ export default function TagsPage() {
                         <button
                           onClick={() => setEditingId(null)}
                           className="p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
-                          title="Cancel"
+                          title="İptal"
                         >
                           <X size={16} />
                         </button>

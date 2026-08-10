@@ -99,7 +99,7 @@ export default function RegisterPage() {
               required
               minLength={8}
               className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Minimum 8 characters"
+              placeholder="En az 8 karakter"
             />
           </div>
 

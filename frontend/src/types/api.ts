@@ -138,7 +138,7 @@ export interface ArticleVersionDetail {
   createdAt: string;
 }
 
-// ─── Related Articles ────────────────────────────────────────
+// ─── İlgili Makaleler ────────────────────────────────────────
 export interface RelatedArticle {
   id: string;
   title: string;

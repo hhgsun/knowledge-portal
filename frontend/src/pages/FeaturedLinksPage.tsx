@@ -32,7 +32,7 @@ export default function FeaturedLinksPage() {
   const [editColor, setEditColor] = useState("");
 
   const loadLinks = async () => {
-    const res = await fetchWithAuth("/api/featured-links?includeInactive=true");
+    const res = await fetchWithAuth("/api/featured-links?includeEtkin değil=true");
     if (res.ok) {
       setLinks(await res.json());
     }
@@ -73,7 +73,7 @@ export default function FeaturedLinksPage() {
       afterMutation();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to add");
+      toast.error(err.error || "Ekleme başarısız");
     }
   };
 
@@ -88,7 +88,7 @@ export default function FeaturedLinksPage() {
       return true;
     }
     const err = await res.json();
-    toast.error(err.error || "Failed to update");
+    toast.error(err.error || "Güncelleme başarısız");
     return false;
   };
 
@@ -118,7 +118,7 @@ export default function FeaturedLinksPage() {
       afterMutation();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to delete");
+      toast.error(err.error || "Silme başarısız");
     }
   };
 
@@ -271,7 +271,7 @@ export default function FeaturedLinksPage() {
                           {LINK_TYPE_LABELS[link.linkType]}
                         </span>
                         {external && <ExternalLink size={12} className="text-zinc-400 shrink-0" />}
-                        {!link.isActive && <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">Inactive</span>}
+                        {!link.isActive && <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">Etkin değil</span>}
                       </div>
                       <span className="text-xs text-zinc-400 truncate block">{href}</span>
                     </div>
@@ -346,7 +346,7 @@ export default function FeaturedLinksPage() {
                           onClick={() => setEditingId(null)}
                           className="px-3 py-1.5 text-xs bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded-lg"
                         >
-                          Cancel
+                          İptal
                         </button>
                       </div>
                     </div>

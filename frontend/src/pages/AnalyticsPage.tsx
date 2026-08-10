@@ -21,11 +21,11 @@ export default function AnalyticsPage() {
   }, [fetchWithAuth]);
 
   if (loading) return <AnalyticsSkeleton />;
-  if (!data) return <div className="text-center py-12 text-zinc-500">Failed to load analytics</div>;
+  if (!data) return <div className="text-center py-12 text-zinc-500">Analiz verileri yüklenemedi</div>;
 
   return (
     <div className="max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-6">Analytics Dashboard</h1>
+      <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-6">Analiz Paneli</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard icon={<BarChart3 size={20} />} label="Total Articles" value={data.overview.totalArticles.toString()} color="blue" />
@@ -41,7 +41,7 @@ export default function AnalyticsPage() {
             Top Searches (7 days)
           </h2>
           {data.topSearches.length === 0 ? (
-            <p className="text-sm text-zinc-500">No search data yet</p>
+            <p className="text-sm text-zinc-500">Henüz arama verisi yok</p>
           ) : (
             <div className="space-y-2">
               {data.topSearches.map((s, i) => (
@@ -60,7 +60,7 @@ export default function AnalyticsPage() {
             Content Gaps (no results)
           </h2>
           {data.failedSearches.length === 0 ? (
-            <p className="text-sm text-zinc-500">No failed searches — great coverage!</p>
+            <p className="text-sm text-zinc-500">Sonuçsuz arama yok — kapsam çok iyi!</p>
           ) : (
             <div className="space-y-2">
               {data.failedSearches.map((s, i) => (
@@ -79,7 +79,7 @@ export default function AnalyticsPage() {
             Most Viewed Articles (7 days)
           </h2>
           {data.topArticles.length === 0 ? (
-            <p className="text-sm text-zinc-500">No view data yet</p>
+            <p className="text-sm text-zinc-500">Henüz görüntülenme verisi yok</p>
           ) : (
             <div className="space-y-2">
               {data.topArticles.map((a, i) => (

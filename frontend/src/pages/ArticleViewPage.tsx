@@ -153,10 +153,10 @@ export default function ArticleViewPage() {
     const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "POST" });
     if (res.ok) {
       setArticle({ ...article, status: "published" });
-      toast.success("Article approved and published");
+      toast.success("Makale onaylandı ve yayımlandı");
     } else {
       const data = await res.json().catch(() => ({}));
-      toast.error(data.error || "Failed to approve article");
+      toast.error(data.error || "Makale onaylanamadı");
     }
     setActionLoading(false);
   };
@@ -167,10 +167,10 @@ export default function ArticleViewPage() {
     const res = await fetchWithAuth(`/api/articles/${article.id}/reject`, { method: "POST" });
     if (res.ok) {
       setArticle({ ...article, status: "draft" });
-      toast.success("Article rejected and returned to draft");
+      toast.success("Makale reddedildi ve taslağa döndürüldü");
     } else {
       const data = await res.json().catch(() => ({}));
-      toast.error(data.error || "Failed to reject article");
+      toast.error(data.error || "Makale reddedilemedi");
     }
     setActionLoading(false);
   };
@@ -197,7 +197,7 @@ export default function ArticleViewPage() {
   if (!article) {
     return (
       <div className="text-center py-12">
-        <p className="text-zinc-500">Article not found</p>
+        <p className="text-zinc-500">Makale bulunamadı</p>
         <Link to="/articles" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
           Back to articles
         </Link>
@@ -220,7 +220,7 @@ export default function ArticleViewPage() {
         <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Pending Approval</p>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Onay Bekliyor</p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">This article is waiting for editor or admin approval before publishing.</p>
             </div>
             {isApprover && (
@@ -326,7 +326,7 @@ export default function ArticleViewPage() {
         {article.content ? (
           <TiptapRenderer content={article.content as Record<string, unknown>} />
         ) : (
-          <p className="text-zinc-400 italic">No content yet.</p>
+          <p className="text-zinc-400 italic">Henüz içerik yok.</p>
         )}
       </div>
 
@@ -336,7 +336,7 @@ export default function ArticleViewPage() {
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800">
           <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5 mb-4">
             <FileText size={14} />
-            Related Articles
+            İlgili Makaleler
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {relatedArticles.map((ra) => (

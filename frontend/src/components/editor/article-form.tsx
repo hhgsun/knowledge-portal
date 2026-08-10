@@ -94,7 +94,7 @@ export function ArticleForm({
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Save size={16} />
-            {saving ? "Saving..." : mode === "create" ? "Save" : "Save Changes"}
+            {saving ? "Saving..." : mode === "create" ? "Save" : "Değişiklikleri Kaydet"}
           </button>
         </div>
       </div>
@@ -111,7 +111,7 @@ export function ArticleForm({
             type="text"
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="Article title..."
+            placeholder="Makale başlığı..."
             className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100"
           />
         </div>
@@ -121,7 +121,7 @@ export function ArticleForm({
             type="text"
             value={excerpt}
             onChange={(e) => onExcerptChange(e.target.value)}
-            placeholder="Brief description (optional)..."
+            placeholder="Kısa açıklama (isteğe bağlı)..."
             className="w-full text-sm bg-transparent border-none outline-none placeholder:text-zinc-400 text-zinc-600 dark:text-zinc-400"
           />
         </div>
@@ -133,14 +133,14 @@ export function ArticleForm({
             ))}
           </select>
           <select value={status} onChange={(e) => onStatusChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-            <option value="draft">Draft</option>
+            <option value="draft">Taslak</option>
             {isViewer ? (
-              <option value="pending">Pending Review</option>
+              <option value="pending">İnceleme Bekliyor</option>
             ) : (
               <>
-                <option value="pending">Pending Review</option>
-                <option value="published">Published</option>
-                {mode === "edit" && <option value="archived">Archived</option>}
+                <option value="pending">İnceleme Bekliyor</option>
+                <option value="published">Yayımlandı</option>
+                {mode === "edit" && <option value="archived">Arşivlendi</option>}
               </>
             )}
           </select>

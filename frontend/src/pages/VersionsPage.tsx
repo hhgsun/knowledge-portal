@@ -50,7 +50,7 @@ export default function VersionsPage() {
           toast.error("Failed to load versions");
         }
       } else {
-        toast.error("Article not found");
+        toast.error("Makale bulunamadı");
       }
       setLoading(false);
     }
@@ -114,7 +114,7 @@ export default function VersionsPage() {
   if (!article) {
     return (
       <div className="text-center py-12">
-        <p className="text-zinc-500">Article not found</p>
+        <p className="text-zinc-500">Makale bulunamadı</p>
       </div>
     );
   }
@@ -126,7 +126,7 @@ export default function VersionsPage() {
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Version History</h1>
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Sürüm Geçmişi</h1>
           <p className="text-sm text-zinc-500">{article.title}</p>
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function VersionsPage() {
               onChange={(e) => { setCompareA(e.target.value); setDiff(null); }}
               className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
             >
-              <option value="">Select version...</option>
+              <option value="">Sürüm seçin...</option>
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>v{v.version} — {v.changeSummary || v.title}</option>
               ))}
@@ -154,7 +154,7 @@ export default function VersionsPage() {
               onChange={(e) => { setCompareB(e.target.value); setDiff(null); }}
               className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
             >
-              <option value="">Select version...</option>
+              <option value="">Sürüm seçin...</option>
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>v{v.version} — {v.changeSummary || v.title}</option>
               ))}
@@ -182,7 +182,7 @@ export default function VersionsPage() {
                   </div>
                 ))}
                 {diff.added.length === 0 && diff.removed.length === 0 && (
-                  <p className="text-zinc-500 text-center py-2">No text differences found</p>
+                  <p className="text-zinc-500 text-center py-2">Metin farkı bulunamadı</p>
                 )}
               </div>
             </div>
@@ -192,8 +192,8 @@ export default function VersionsPage() {
 
       {versions.length === 0 ? (
         <div className="text-center py-8 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
-          <p className="text-zinc-500">No version history yet</p>
-          <p className="text-sm text-zinc-400 mt-1">Versions are created when an article is edited</p>
+          <p className="text-zinc-500">Henüz sürüm geçmişi yok</p>
+          <p className="text-sm text-zinc-400 mt-1">Makale düzenlendiğinde yeni sürümler oluşturulur</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -275,7 +275,7 @@ export default function VersionsPage() {
               {viewingVersion.content ? (
                 <TiptapRenderer content={viewingVersion.content} />
               ) : (
-                <p className="text-zinc-400 italic">No content in this version.</p>
+                <p className="text-zinc-400 italic">Bu sürümde içerik yok.</p>
               )}
             </div>
           </div>

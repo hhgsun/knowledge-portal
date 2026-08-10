@@ -114,7 +114,7 @@ export default function AdminUsersPage() {
       setTimeout(() => setSuccess(""), 3000);
     } else {
       const data = await res.json();
-      setError(data.error || "Failed to update user");
+      setError(data.error || "Güncelleme başarısız user");
     }
   };
 
@@ -128,7 +128,7 @@ export default function AdminUsersPage() {
       setTimeout(() => setSuccess(""), 3000);
     } else {
       const data = await res.json();
-      setError(data.error || "Failed to delete user");
+      setError(data.error || "Silme başarısız user");
     }
   };
 
@@ -150,7 +150,7 @@ export default function AdminUsersPage() {
         <div className="flex items-center gap-3">
           <Users size={24} className="text-zinc-400" />
           <div>
-            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">User Management</h1>
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Kullanıcı Yönetimi</h1>
             <p className="text-sm text-zinc-500">{pagination.total} users total</p>
           </div>
         </div>
@@ -177,7 +177,7 @@ export default function AdminUsersPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email..."
+            placeholder="Ad veya e-posta ile ara..."
             className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -186,13 +186,13 @@ export default function AdminUsersPage() {
       {showAddForm && (
         <div className="mb-6 p-5 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 rounded-xl">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-green-900 dark:text-green-100">Add New User</h3>
+            <h3 className="text-sm font-medium text-green-900 dark:text-green-100">Yeni Kullanıcı Ekle</h3>
             <button onClick={() => setShowAddForm(false)} className="text-green-500 hover:text-green-700"><X size={16} /></button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Name *</label>
-              <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Full name" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
+              <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Ad soyad" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Email *</label>
@@ -200,20 +200,20 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Password *</label>
-              <input type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} placeholder="Min 8 characters" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
+              <input type="password" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} placeholder="En az 8 karakter" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Role</label>
               <select value={addRole} onChange={(e) => setAddRole(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
-                <option value="admin">Admin</option>
+                <option value="viewer">Görüntüleyici</option>
+                <option value="editor">Editör</option>
+                <option value="admin">Yönetici</option>
               </select>
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={handleAddUser} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg">Create User</button>
-            <button onClick={() => setShowAddForm(false)} className="px-4 py-1.5 text-sm text-zinc-500 hover:text-zinc-700">Cancel</button>
+            <button onClick={handleAddUser} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg">Kullanıcı Oluştur</button>
+            <button onClick={() => setShowAddForm(false)} className="px-4 py-1.5 text-sm text-zinc-500 hover:text-zinc-700">İptal</button>
           </div>
         </div>
       )}
@@ -234,21 +234,21 @@ export default function AdminUsersPage() {
               <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
             <div>
-              <label className="text-xs text-zinc-500 mb-1 block">New Password (leave empty to keep current)</label>
+              <label className="text-xs text-zinc-500 mb-1 block">Yeni Parola (mevcut parolayı korumak için boş bırakın)</label>
               <input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="••••••••" className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Role</label>
               <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-                <option value="admin">Admin</option>
-                <option value="editor">Editor</option>
-                <option value="viewer">Viewer</option>
+                <option value="admin">Yönetici</option>
+                <option value="editor">Editör</option>
+                <option value="viewer">Görüntüleyici</option>
               </select>
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={handleEditSave} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">Save Changes</button>
-            <button onClick={() => setEditingUser(null)} className="px-4 py-1.5 text-sm text-zinc-500 hover:text-zinc-700">Cancel</button>
+            <button onClick={handleEditSave} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">Değişiklikleri Kaydet</button>
+            <button onClick={() => setEditingUser(null)} className="px-4 py-1.5 text-sm text-zinc-500 hover:text-zinc-700">İptal</button>
           </div>
         </div>
       )}
@@ -259,8 +259,8 @@ export default function AdminUsersPage() {
             <tr className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
               <th className="text-left px-4 py-3 font-medium text-zinc-500">User</th>
               <th className="text-left px-4 py-3 font-medium text-zinc-500">Role</th>
-              <th className="text-left px-4 py-3 font-medium text-zinc-500">Joined</th>
-              <th className="text-right px-4 py-3 font-medium text-zinc-500">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-zinc-500">Katılım</th>
+              <th className="text-right px-4 py-3 font-medium text-zinc-500">İşlemler</th>
             </tr>
           </thead>
           <tbody>
@@ -293,10 +293,10 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 text-zinc-500">{new Date(user.createdAt).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => handleEditStart(user)} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600" title="Edit user">
+                    <button onClick={() => handleEditStart(user)} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600" title="Kullanıcıyı düzenle">
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => handleDelete(user)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-zinc-400 hover:text-red-600" title="Delete user">
+                    <button onClick={() => handleDelete(user)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-zinc-400 hover:text-red-600" title="Kullanıcıyı sil">
                       <Trash2 size={14} />
                     </button>
                   </div>

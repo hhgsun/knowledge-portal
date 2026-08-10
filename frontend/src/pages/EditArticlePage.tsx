@@ -56,11 +56,11 @@ export default function EditArticlePage() {
         .then((res) => res.json())
         .then((data) => {
           if (data.error) {
-            setError("Article not found");
+            setError("Makale bulunamadı");
           } else {
             // Viewers can only edit their own articles
             if (user?.role === "viewer" && data.ownerId !== user?.id) {
-              toast.error("You do not have permission to edit this article");
+              toast.error("Bu makaleyi düzenleme yetkiniz yok");
               navigate(`/articles/${params.slug}`);
               return;
             }
@@ -122,7 +122,7 @@ export default function EditArticlePage() {
 
       if (res.ok) {
         const updated = await res.json();
-        toast.success("Article saved successfully");
+        toast.success("Makale başarıyla kaydedildi");
         navigate(`/articles/${updated.slug}`);
       } else {
         const data = await res.json();
@@ -142,7 +142,7 @@ export default function EditArticlePage() {
   if (!article) {
     return (
       <div className="text-center py-12">
-        <p className="text-zinc-500">{error || "Article not found"}</p>
+        <p className="text-zinc-500">{error || "Makale bulunamadı"}</p>
         <Link to="/articles" className="text-blue-600 text-sm mt-2 inline-block">
           Back to articles
         </Link>

@@ -32,7 +32,7 @@ export default function LookupsPage() {
 
   const handleAdd = async () => {
     if (!newValue.trim() || !newLabel.trim()) {
-      toast.error("Value and label are required");
+      toast.error("Değer ve etiket zorunludur");
       return;
     }
     const res = await fetchWithAuth("/api/lookups", {
@@ -40,7 +40,7 @@ export default function LookupsPage() {
       body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon }),
     });
     if (res.ok) {
-      toast.success("Lookup value added");
+      toast.success("Tanım değeri eklendi");
       setNewValue("");
       setNewLabel("");
       setNewColor("blue");
@@ -50,7 +50,7 @@ export default function LookupsPage() {
       loadLookups();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to add");
+      toast.error(err.error || "Ekleme başarısız");
     }
   };
 
@@ -65,7 +65,7 @@ export default function LookupsPage() {
       loadLookups();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to update");
+      toast.error(err.error || "Güncelleme başarısız");
     }
   };
 
@@ -78,7 +78,7 @@ export default function LookupsPage() {
       loadLookups();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to delete");
+      toast.error(err.error || "Silme başarısız");
     }
   };
 
@@ -90,8 +90,8 @@ export default function LookupsPage() {
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Lookup Values</h1>
-          <p className="text-sm text-zinc-500 mt-1">Manage article content types</p>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Tanım Değerleri</h1>
+          <p className="text-sm text-zinc-500 mt-1">Makale içerik türlerini yönetin</p>
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
@@ -191,7 +191,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
       onReload();
     } else {
       const err = await res.json();
-      toast.error(err.error || "Failed to update");
+      toast.error(err.error || "Güncelleme başarısız");
     }
   };
 
@@ -200,7 +200,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
       <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">{title}</h2>
       <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl">
         {items.length === 0 ? (
-          <p className="p-4 text-sm text-zinc-500">No values defined</p>
+          <p className="p-4 text-sm text-zinc-500">Tanımlı değer yok</p>
         ) : (
           items.map((item) => {
             const colorClasses = getColorClasses(item.color);
@@ -220,14 +220,14 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                     <div>
                       <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.label}</span>
                       <span className="text-xs text-zinc-400 ml-2">({item.value})</span>
-                      {!item.isActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Inactive</span>}
+                      {!item.isActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Etkin değil</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleEdit(item)}
                       className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
-                      title="Edit color & icon"
+                      title="Renk ve simgeyi düzenle"
                     >
                       <Palette size={16} />
                     </button>
@@ -269,7 +269,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                           onClick={() => setEditingId(null)}
                           className="px-3 py-1.5 text-xs bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded-lg"
                         >
-                          Cancel
+                          İptal
                         </button>
                       </div>
                     </div>

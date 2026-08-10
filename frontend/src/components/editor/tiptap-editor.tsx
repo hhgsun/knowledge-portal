@@ -72,7 +72,7 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!uploadRef.current) {
-      toast.error("Image upload not available");
+      toast.error("Görsel yükleme kullanılamıyor");
       return;
     }
     const url = await uploadRef.current(file);
@@ -276,7 +276,7 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
         <ToolbarButton
           onClick={() => {
             if (!deferredUpload && (!articleId || !uploadImage)) {
-              toast.error("Save the article first to upload images");
+              toast.error("Görsel yüklemek için önce makaleyi kaydedin");
               return;
             }
             imageInputRef.current?.click();
