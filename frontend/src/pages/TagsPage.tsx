@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import { Tag, Pencil, Trash2, Plus, X, Check } from "lucide-react";
+import { Tag, Pencil, Trash2, Plus, X, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import { TagsListSkeleton } from "../components/ui/skeleton";
 import type { TagWithCount } from "../types/api";
+
+interface TagListResponse {
+  tags: TagWithCount[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+const PAGE_SIZE = 20;
 
 export default function TagsPage() {
   const { fetchWithAuth } = useApi();
@@ -13,18 +22,32 @@ export default function TagsPage() {
   const [editName, setEditName] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   const loadTags = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetchWithAuth("/api/tags");
-      const data = await res.json();
-      setTags(Array.isArray(data) ? data : []);
+      const res = await fetchWithAuth(`/api/tags?page=${page}&limit=${PAGE_SIZE}`);
+      if (!res.ok) throw new Error("Failed to load tags");
+      const data = await res.json() as TagListResponse;
+
+      // A deletion can empty the last page. Move back to the new last page.
+      if (data.totalPages > 0 && page > data.totalPages) {
+        setPage(data.totalPages);
+        return;
+      }
+
+      setTags(data.tags);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
     } catch {
       toast.error("Failed to load tags");
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, page]);
 
   useEffect(() => {
     loadTags();
@@ -40,7 +63,8 @@ export default function TagsPage() {
       toast.success("Tag created");
       setNewTagName("");
       setShowCreate(false);
-      loadTags();
+      if (page === 1) loadTags();
+      else setPage(1);
     } else {
       const data = await res.json();
       toast.error(data.error || "Failed to create tag");
@@ -94,7 +118,7 @@ export default function TagsPage() {
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
             Tags
           </h1>
-          <span className="text-sm text-zinc-500">({tags.length})</span>
+          <span className="text-sm text-zinc-500">({total})</span>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -225,6 +249,32 @@ export default function TagsPage() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+          <span className="text-sm text-zinc-500">
+            {total} tags · Page {page} of {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <ChevronLeft size={14} />
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
