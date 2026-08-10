@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { ArticleListSkeleton } from "../components/ui/skeleton";
+import { TagSelector } from "../components/editor/tag-selector";
 import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
@@ -96,7 +97,7 @@ export default function ArticlesPage() {
     fetchWithAuth("/api/tags")
       .then((res) => res.json())
       .then((data) => { if (Array.isArray(data)) setAllTags(data); })
-      .catch(() => {});
+      .catch(() => { });
   }, [fetchWithAuth]);
 
   const syncSearchParams = useCallback((p: number, status: string[], ct: string[], tags: string[], mine: boolean, sort: string, df: string, dt: string) => {
@@ -223,13 +224,6 @@ export default function ArticlesPage() {
           onChange={(v) => { setPage(1); setContentTypeFilter(v); }}
         />
 
-        <MultiSelectDropdown
-          label="Tags"
-          options={allTags.map(t => ({ value: t.slug, label: t.name }))}
-          selected={tagFilter}
-          onChange={(v) => { setPage(1); setTagFilter(v); }}
-        />
-
         <div className="flex items-center gap-1">
           <Calendar size={14} className="text-zinc-400" />
           <input
@@ -248,6 +242,14 @@ export default function ArticlesPage() {
             placeholder="To"
           />
         </div>
+
+        <TagSelector
+          selectedTags={tagFilter}
+          onChange={(v) => { setPage(1); setTagFilter(v); }}
+          valueField="slug"
+          allowCreate={false}
+          hideSelectedTags={true}
+        />
 
         <button
           onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
@@ -276,7 +278,7 @@ export default function ArticlesPage() {
             className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors"
           >
             <X size={12} />
-            Clear All
+            Temizle
           </button>
         )}
       </div>

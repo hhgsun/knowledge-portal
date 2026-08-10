@@ -32,12 +32,16 @@ public class TagService(AppDbContext db)
         int limit,
         string? query = null,
         IReadOnlyCollection<string>? ids = null,
+        IReadOnlyCollection<string>? slugs = null,
         bool publishedOnly = false)
     {
         var tags = db.Tags.AsNoTracking().AsQueryable();
 
         if (ids is { Count: > 0 })
             tags = tags.Where(t => ids.Contains(t.Id));
+
+        if (slugs is { Count: > 0 })
+            tags = tags.Where(t => slugs.Contains(t.Slug));
 
         if (!string.IsNullOrWhiteSpace(query))
         {

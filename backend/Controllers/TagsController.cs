@@ -19,10 +19,11 @@ public class TagsController(AppDbContext db, TagService tagService) : Controller
         [FromQuery] int? page = null,
         [FromQuery] int? limit = null,
         [FromQuery(Name = "q")] string? query = null,
-        [FromQuery] string[]? ids = null)
+        [FromQuery] string[]? ids = null,
+        [FromQuery] string[]? slugs = null)
     {
         // Preserve the original array response for existing consumers.
-        if (page is null && limit is null && query is null && (ids is null || ids.Length == 0))
+        if (page is null && limit is null && query is null && (ids is null || ids.Length == 0) && (slugs is null || slugs.Length == 0))
             return Ok(await tagService.ListWithCountsAsync());
 
         var resolvedPage = page ?? 1;
@@ -36,7 +37,8 @@ public class TagsController(AppDbContext db, TagService tagService) : Controller
             resolvedPage,
             resolvedLimit,
             query,
-            ids?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToArray()));
+            ids?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToArray(),
+            slugs?.Where(slug => !string.IsNullOrWhiteSpace(slug)).Distinct().ToArray()));
     }
 
     [HttpPost]
