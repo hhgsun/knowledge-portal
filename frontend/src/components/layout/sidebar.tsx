@@ -25,6 +25,7 @@ import {
   Star,
   ExternalLink,
   ArrowUpDown,
+  Files,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useState, useEffect } from "react";
@@ -55,6 +56,7 @@ const navigation: NavItem[] = [
         href: "/articles/new",
         icon: <PlusCircle size={16} />,
       },
+      { label: "Bulk Knowledge Import", href: "/articles/import", icon: <Files size={16} /> },
     ],
   },
   { label: "Analytics", href: "/analytics", icon: <BarChart3 size={18} /> },

@@ -23,6 +23,7 @@ import FeaturedLinksPage from "./pages/FeaturedLinksPage";
 import LogsPage from "./pages/LogsPage";
 import SearchDiagnosticsPage from "./pages/SearchDiagnosticsPage";
 import BulkTransferPage from "./pages/BulkTransferPage";
+import KnowledgeImportPage from "./pages/KnowledgeImportPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/analytics" element={<RoleRoute roles={["admin", "editor"]}><AnalyticsPage /></RoleRoute>} />
           <Route path="/tags" element={<RoleRoute roles={["admin", "editor"]}><TagsPage /></RoleRoute>} />
           <Route path="/settings/bulk-transfer" element={<RoleRoute roles={["admin", "editor"]}><BulkTransferPage /></RoleRoute>} />
+          <Route path="/articles/import" element={<KnowledgeImportPage />} />
           <Route path="/admin/users" element={<RoleRoute roles={["admin"]}><AdminUsersPage /></RoleRoute>} />
           <Route path="/admin/keys" element={<RoleRoute roles={["admin"]}><AdminApiKeysPage /></RoleRoute>} />
           <Route path="/settings/keys" element={<Navigate to="/profile?tab=api-keys" replace />} />

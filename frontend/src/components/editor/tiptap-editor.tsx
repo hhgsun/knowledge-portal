@@ -6,6 +6,10 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
 import { useRef, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
@@ -94,6 +98,10 @@ export default function TiptapEditor({ content, onChange, articleId, uploadImage
       }),
       Highlight,
       AuthImage,
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: content || undefined,
     onUpdate: ({ editor }) => {
