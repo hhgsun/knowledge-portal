@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Audit direct and transitive packages during restore. High and critical
+         vulnerability findings must fail local builds and the CI test stage. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+</Project>
