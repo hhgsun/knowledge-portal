@@ -152,7 +152,8 @@ public sealed class VectorSearchService(
         var rows = await QueryWithEfSearchAsync(db, rowLimit, () => db.Database
             .SqlQueryRaw<PgvectorChunkRow>(
                 $$"""
-                SELECT r."ArticleId", r."ChunkIndex", r."Content", r."Distance"
+                SELECT r."ArticleId", r."ChunkIndex", r."Content", r."SourceType", r."AttachmentId",
+                    r."SourceName", r."SourceLocation", r."Distance"
                 FROM (
                     SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c."ArticleId" ORDER BY c."Distance") AS rn
                     FROM (
