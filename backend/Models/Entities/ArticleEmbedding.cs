@@ -7,6 +7,10 @@ public class ArticleEmbedding
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string ArticleId { get; set; } = null!;
     public int ChunkIndex { get; set; }
+    public string SourceType { get; set; } = "article";
+    public string? AttachmentId { get; set; }
+    public string? SourceName { get; set; }
+    public string? SourceLocation { get; set; }
     public Vector Embedding { get; set; } = null!;
     public string ModelName { get; set; } = null!;
     public string TextHash { get; set; } = null!;
@@ -19,4 +23,5 @@ public class ArticleEmbedding
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Article Article { get; set; } = null!;
+    public ArticleAttachment? Attachment { get; set; }
 }

@@ -173,8 +173,6 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddScoped<EmbeddingService>();
     builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
     builder.Services.AddScoped<RagService>();
-    builder.Services.AddSingleton<EmbeddingFailureTracker>();
-    builder.Services.AddHostedService<EmbeddingBackgroundService>();
 }
 
 // ─── OpenAPI / Swagger ───────────────────────────────────────
@@ -187,6 +185,7 @@ builder.Services.AddOpenApi();
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
 builder.Services.AddScoped<SearchDiagnosticsService>();
+builder.Services.AddHostedService<EmbeddingBackgroundService>();
 
 // ─── Domain Services ─────────────────────────────────────────
 builder.Services.AddScoped<ArticleService>();
@@ -194,6 +193,9 @@ builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<StatsService>();
+builder.Services.AddScoped<IndexJobQueue>();
+builder.Services.AddSingleton<ISearchReranker, LocalSearchReranker>();
+builder.Services.AddScoped<AttachmentStorageService>();
 builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<SourceImportService>();
 builder.Services.AddScoped<McpToolExecutor>();

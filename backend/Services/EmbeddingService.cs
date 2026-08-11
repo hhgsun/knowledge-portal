@@ -29,7 +29,8 @@ public class EmbeddingService(
     // scripts/hnsw_recall_benchmark.sql section 3). The cost is real, though — text past the cap
     // is not semantically searchable, only full-text searchable — so every truncation is logged.
     // Distinct from Ollama:RagMaxChunksPerArticle, which caps chunks per article at query time.
-    private readonly int _maxChunksPerArticle = config.GetValue("Ollama:MaxIndexChunksPerArticle", 100);
+    private readonly int _maxChunksPerSource = config.GetValue("Ollama:MaxIndexChunksPerSource", 100);
+    private readonly int _maxTotalChunksPerArticle = config.GetValue("Ollama:MaxTotalChunksPerArticle", 500);
 
     private const int ChunkWordLimit = 500;
     private const int ChunkOverlap = 50;
@@ -45,15 +46,17 @@ public class EmbeddingService(
         await db.Entry(article).ReloadAsync(ct);
         if (article.Status != "published") return false;
 
-        var attachmentText = await AttachmentHelper.GetAttachmentTextAsync(db, config, article.Id, ct);
-        var text = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, attachmentText);
-        if (string.IsNullOrWhiteSpace(text))
+        var sources = await BuildChunkSourcesAsync(article, ct);
+        var chunks = RoundRobin(sources, _maxTotalChunksPerArticle);
+        if (chunks.Count == 0)
         {
             logger.LogWarning("Article {ArticleId} has no extractable text, skipping embedding", article.Id);
             return false;
         }
 
-        var textHash = ContentExtractor.ComputeHash(text);
+        // Includes provenance so replacing/renaming an attachment invalidates the embedding set.
+        var textHash = ContentExtractor.ComputeHash(string.Join('|', chunks.Select(c =>
+            $"{c.SourceType}:{c.AttachmentId}:{c.SourceName}:{ContentExtractor.ComputeHash(c.Content)}")));
 
         // Check if already up-to-date (compare hash of first chunk)
         var existingChunks = await db.ArticleEmbeddings
@@ -68,18 +71,7 @@ public class EmbeddingService(
             return false;
         }
 
-        // Chunk the text, then cap how much of a very long document gets embedded
-        var chunks = ChunkText(text);
-        if (_maxChunksPerArticle > 0 && chunks.Count > _maxChunksPerArticle)
-        {
-            logger.LogWarning(
-                "Article {ArticleId} produced {Total} chunks; embedding only the first {Cap} " +
-                "(Ollama:MaxIndexChunksPerArticle). The remaining {Dropped} stay full-text searchable only",
-                article.Id, chunks.Count, _maxChunksPerArticle, chunks.Count - _maxChunksPerArticle);
-            chunks = chunks.Take(_maxChunksPerArticle).ToList();
-        }
-
-        var embedResults = await GenerateInBatchesAsync(chunks, ct);
+        var embedResults = await GenerateInBatchesAsync(chunks.Select(c => c.Content).ToList(), ct);
 
         // Guard: a model/column dimension mismatch would otherwise only surface as an opaque
         // pgvector INSERT error. Fail with an actionable message instead.
@@ -109,10 +101,14 @@ public class EmbeddingService(
             {
                 ArticleId = article.Id,
                 ChunkIndex = i,
+                SourceType = chunks[i].SourceType,
+                AttachmentId = chunks[i].AttachmentId,
+                SourceName = chunks[i].SourceName,
+                SourceLocation = chunks[i].SourceLocation,
                 Embedding = new Vector(vector),
                 ModelName = _modelName,
-                TextHash = i == 0 ? textHash : ContentExtractor.ComputeHash(chunks[i]),
-                Content = chunks[i],
+                TextHash = i == 0 ? textHash : ContentExtractor.ComputeHash(chunks[i].Content),
+                Content = chunks[i].Content,
                 Dimensions = vector.Length,
             });
         }
@@ -132,6 +128,75 @@ public class EmbeddingService(
         logger.LogInformation("Embedded article {ArticleId} ({Chunks} chunks, {Dimensions} dims, model={Model})",
             article.Id, chunks.Count, embedResults[0].Vector.Length, _modelName);
         return true;
+    }
+
+    private sealed record ChunkSeed(string Content, string SourceType, string? AttachmentId,
+        string? SourceName, string? SourceLocation);
+
+    private async Task<List<List<ChunkSeed>>> BuildChunkSourcesAsync(Article article, CancellationToken ct)
+    {
+        var result = new List<List<ChunkSeed>>();
+        var articleText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, "");
+        AddSource(result, ChunkText(articleText).Select((text, i) =>
+            new ChunkSeed(text, "article", null, article.Title, $"chunk:{i}")), article.Id, "article");
+
+        var attachments = await db.ArticleAttachments
+            .Where(a => a.ArticleId == article.Id).OrderBy(a => a.CreatedAt).ToListAsync(ct);
+        foreach (var attachment in attachments)
+        {
+            try
+            {
+                var path = AttachmentHelper.GetFilePath(config, article.Id, attachment.StoredFileName);
+                var text = AttachmentTextExtractor.ExtractText(path, Path.GetExtension(attachment.FileName));
+                attachment.ExtractionStatus = string.IsNullOrWhiteSpace(text) ? "no_text" : "completed";
+                attachment.ExtractionError = null;
+                attachment.ExtractedAt = DateTime.UtcNow;
+                if (!string.IsNullOrWhiteSpace(text))
+                    AddSource(result, ChunkText(text).Select((chunk, i) =>
+                        new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName, $"chunk:{i}")),
+                        article.Id, attachment.FileName);
+            }
+            catch (Exception ex)
+            {
+                attachment.ExtractionStatus = "failed";
+                attachment.ExtractionError = ex.Message[..Math.Min(2000, ex.Message.Length)];
+                attachment.ExtractedAt = DateTime.UtcNow;
+                logger.LogWarning(ex, "Attachment extraction failed: {AttachmentId}", attachment.Id);
+            }
+        }
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return result;
+    }
+
+    private void AddSource(List<List<ChunkSeed>> target, IEnumerable<ChunkSeed> chunks,
+        string articleId, string sourceName)
+    {
+        var all = chunks.ToList();
+        var selected = _maxChunksPerSource > 0 ? all.Take(_maxChunksPerSource).ToList() : all;
+        if (selected.Count > 0) target.Add(selected);
+        if (selected.Count < all.Count)
+            logger.LogWarning("Article {ArticleId} source {Source} truncated from {Total} to {Cap} semantic chunks",
+                articleId, sourceName, all.Count, selected.Count);
+    }
+
+    /// <summary>Fairly interleaves sources so one huge attachment cannot consume the whole cap.</summary>
+    private static List<ChunkSeed> RoundRobin(List<List<ChunkSeed>> sources, int cap)
+    {
+        var output = new List<ChunkSeed>();
+        var effectiveCap = cap <= 0 ? int.MaxValue : cap;
+        for (var i = 0; output.Count < effectiveCap; i++)
+        {
+            var added = false;
+            foreach (var source in sources)
+            {
+                if (i >= source.Count) continue;
+                output.Add(source[i]);
+                added = true;
+                if (output.Count >= effectiveCap) break;
+            }
+            if (!added) break;
+        }
+        return output;
     }
 
     /// <summary>

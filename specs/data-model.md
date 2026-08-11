@@ -268,6 +268,10 @@ erDiagram
 | StoredFileName | `string` | `stored_file_name` | Required | GUID-based |
 | ContentType | `string` | `content_type` | Required | — |
 | SizeBytes | `long` | `size_bytes` | Required | — |
+| Sha256 | `string` | `sha256` | Required, 64 chars | — |
+| ExtractionStatus | `string` | `extraction_status` | Required | `pending` |
+| ExtractionError | `string?` | `extraction_error` | Max 2000 | `null` |
+| ExtractedAt | `DateTime?` | `extracted_at` | — | `null` |
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
@@ -278,12 +282,19 @@ erDiagram
 | Id | `string` | `id` | PK | Truncated GUID |
 | ArticleId | `string` | `article_id` | FK → articles.id (Cascade) | — |
 | ChunkIndex | `int` | `chunk_index` | Required, Unique with ArticleId | 0 |
-| Embedding | `byte[]` | `embedding` | Required | — (serialized float[]) |
-| EmbeddingNorm | `double` | `embedding_norm` | Required | — (precomputed L2 norm) |
+| SourceType | `string` | `source_type` | `article` or `attachment` | `article` |
+| AttachmentId | `string?` | `attachment_id` | FK → article_attachments.id | `null` |
+| SourceName | `string?` | `source_name` | Max 500 | `null` |
+| SourceLocation | `string?` | `source_location` | Max 200 | `null` |
+| Embedding | `Vector` | `embedding` | Required, vector(1024) | — |
 | ModelName | `string` | `model_name` | Required | — |
 | TextHash | `string` | `text_hash` | Required | — (SHA256 hex) |
 | Dimensions | `int` | `dimensions` | Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+### IndexJob
+
+One durable, coalescing queue row per article. `Generation` increments on every edit; workers may complete only the generation they claimed. Status is `pending`, `processing`, `completed`, or `failed`; lease, retry, priority and error fields are persisted.
 
 ### LookupValue
 

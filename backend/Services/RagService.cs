@@ -15,6 +15,7 @@ public class RagService(
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
     private readonly int _candidateLimit = config.GetValue("Ollama:RagCandidateLimit", 40);
+    private readonly int _broadCandidateLimit = config.GetValue("Ollama:RagBroadCandidateLimit", 120);
     private readonly int _maxChunksPerArticle = config.GetValue("Ollama:RagMaxChunksPerArticle", 3);
     // Context word budget per LLM call (raised well above the old 3000 to use the model's window).
     private readonly int _maxContextWords = config.GetValue("Ollama:RagMaxContextWords", 8000);
@@ -83,7 +84,9 @@ public class RagService(
         // Retrieve a wide chunk-level candidate pool (multiple chunks per article) so long
         // documents aren't reduced to a single window. The filter goes into the retrieval query
         // so the pool isn't spent on articles that would be discarded straight afterwards.
-        var chunks = await vectorSearch.SearchChunksAsync(question, _candidateLimit, ct, _ragMinScore, _maxChunksPerArticle, filter);
+        var broad = IsBroadQuery(question);
+        var chunks = await vectorSearch.SearchChunksAsync(question,
+            broad ? _broadCandidateLimit : _candidateLimit, ct, _ragMinScore, _maxChunksPerArticle, filter);
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -113,7 +116,6 @@ public class RagService(
         if (usableChunks.Count == 0)
             return new RagResult("Sorunuzla yeterince ilgili bir makale bulunamadı. Soruyu farklı kelimelerle sormayı deneyin.", []);
 
-        var broad = IsBroadQuery(question);
         try
         {
             var result = broad
@@ -151,7 +153,7 @@ public class RagService(
             var (text, used) = TruncateWords(c.ChunkText, _maxContextWords - totalWords);
             if (used == 0) continue;
 
-            contextParts.Add(FormatSourceBlock(blockId++, articles[c.ArticleId].Title, text));
+            contextParts.Add(FormatSourceBlock(blockId++, SourceTitle(articles[c.ArticleId].Title, c), text));
             RecordScore(sourceScores, c.ArticleId, c.Score);
             totalWords += used;
         }
@@ -183,7 +185,7 @@ public class RagService(
                 var (text, used) = TruncateWords(c.ChunkText, _maxContextWords - totalWords);
                 if (used == 0) continue;
 
-                contextParts.Add(FormatSourceBlock(blockId++, articles[c.ArticleId].Title, text));
+                contextParts.Add(FormatSourceBlock(blockId++, SourceTitle(articles[c.ArticleId].Title, c), text));
                 RecordScore(sourceScores, c.ArticleId, c.Score);
                 totalWords += used;
             }
@@ -248,6 +250,11 @@ public class RagService(
         var safeText = SanitizeForPrompt(text);
         return $"<source id=\"{id}\" title=\"{safeTitle}\">\n{safeText}\n</source>";
     }
+
+    private static string SourceTitle(string articleTitle, VectorChunkResult chunk)
+        => chunk.SourceType == "attachment" && !string.IsNullOrWhiteSpace(chunk.SourceName)
+            ? $"{articleTitle} — {chunk.SourceName}"
+            : articleTitle;
 
     private static (string text, int used) TruncateWords(string text, int maxWords)
     {

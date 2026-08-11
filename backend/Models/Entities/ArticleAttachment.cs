@@ -8,6 +8,10 @@ public class ArticleAttachment
     public string StoredFileName { get; set; } = null!;
     public string ContentType { get; set; } = null!;
     public long SizeBytes { get; set; }
+    public string Sha256 { get; set; } = null!;
+    public string ExtractionStatus { get; set; } = "pending";
+    public string? ExtractionError { get; set; }
+    public DateTime? ExtractedAt { get; set; }
     public string UploadedById { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

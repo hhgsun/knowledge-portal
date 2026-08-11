@@ -14,7 +14,8 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles")]
 [Authorize]
-public class ArticlesController(AppDbContext db, IConfiguration config, ArticleService articleService) : ControllerBase
+public class ArticlesController(AppDbContext db, IConfiguration config, ArticleService articleService,
+    ILogger<ArticlesController> logger) : ControllerBase
 {
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
 
@@ -272,8 +273,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             }
         }
 
-        // Sync FTS index (handles published/unpublished state)
-        await articleService.SyncIndexAsync(article);
+        // Coalesced durable job handles FTS + semantic indexing (including title/excerpt/status).
+        await articleService.QueueReindexAsync(article);
 
         return Ok(new { article.Id, article.Slug, article.Title });
     }
@@ -290,16 +291,13 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         if (!RbacService.CanDeleteArticle(User, article.OwnerId == userId))
             return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
-        // Clean up attachment files from disk
-        var articleDir = AttachmentHelper.GetArticleDirectory(config, id);
-        if (Directory.Exists(articleDir))
-            Directory.Delete(articleDir, true);
-
         // Remove from FTS index
         await articleService.RemoveFromIndexAsync(id);
 
         db.Articles.Remove(article);
         await db.SaveChangesAsync();
+        try { AttachmentHelper.MoveArticleToTrash(config, id); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to move deleted article files {ArticleId} to trash", id); }
 
         return Ok(new { message = "Article deleted" });
     }

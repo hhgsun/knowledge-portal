@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<FeaturedLink> FeaturedLinks => Set<FeaturedLink>();
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
+    public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -161,6 +162,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.StoredFileName).IsRequired();
             e.Property(a => a.ContentType).IsRequired();
             e.Property(a => a.SizeBytes).IsRequired();
+            e.Property(a => a.Sha256).IsRequired().HasMaxLength(64);
+            e.Property(a => a.ExtractionStatus).IsRequired().HasMaxLength(20);
+            e.Property(a => a.ExtractionError).HasMaxLength(2000);
             e.Property(a => a.UploadedById).IsRequired();
             e.Property(a => a.CreatedAt).IsRequired();
             e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);
@@ -218,6 +222,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(ae => ae.Id);
             e.Property(ae => ae.ArticleId).IsRequired();
             e.Property(ae => ae.ChunkIndex).IsRequired().HasDefaultValue(0);
+            e.Property(ae => ae.SourceType).IsRequired().HasMaxLength(20);
+            e.Property(ae => ae.SourceName).HasMaxLength(500);
+            e.Property(ae => ae.SourceLocation).HasMaxLength(200);
             if (isInMemory)
                 e.Ignore(ae => ae.Embedding);
             else
@@ -229,6 +236,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(ae => ae.CreatedAt).IsRequired();
             e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();
             e.HasOne(ae => ae.Article).WithMany(a => a.ArticleEmbeddings).HasForeignKey(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(ae => ae.Attachment).WithMany().HasForeignKey(ae => ae.AttachmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── Durable search-index queue ───────────────────
+        modelBuilder.Entity<IndexJob>(e =>
+        {
+            e.ToTable("index_jobs");
+            e.HasKey(j => j.ArticleId); // coalesces repeated edits into one job
+            e.Property(j => j.Status).IsRequired().HasMaxLength(20);
+            e.Property(j => j.Generation).IsRequired();
+            e.Property(j => j.Priority).IsRequired();
+            e.Property(j => j.AttemptCount).IsRequired();
+            e.Property(j => j.AvailableAt).IsRequired();
+            e.Property(j => j.LockedBy).HasMaxLength(100);
+            e.Property(j => j.LastError).HasMaxLength(4000);
+            e.Property(j => j.CreatedAt).IsRequired();
+            e.Property(j => j.UpdatedAt).IsRequired();
+            e.HasIndex(j => new { j.Status, j.AvailableAt, j.Priority });
+            e.HasOne(j => j.Article).WithOne().HasForeignKey<IndexJob>(j => j.ArticleId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

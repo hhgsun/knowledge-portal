@@ -20,9 +20,7 @@ public class SearchController(
     AppDbContext db,
     IConfiguration config,
     ArticleService articleService,
-    IServiceScopeFactory scopeFactory,
-    IHostApplicationLifetime lifetime,
-    ILogger<SearchController> logger) : ControllerBase
+    ISearchReranker reranker) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -216,7 +214,7 @@ public class SearchController(
         {
             // Each leg over-fetches so RRF fuses a wide candidate pool and the final
             // Take(limit) is applied after merging + filtering
-            var candidateLimit = Math.Min(limit * 3, 50);
+            var candidateLimit = Math.Clamp(config.GetValue("Search:HybridCandidateLimit", 200), limit, 500);
 
             // Full-text leg (rank order + LIKE fallback handled by the service)
             var fulltextResults = (await articleService.SearchPublishedAsync(searchQuery, candidateLimit, filter))
@@ -245,8 +243,10 @@ public class SearchController(
 
             var hybridAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, allArticles.Select(a => a.Id).ToList()) : null;
             var hybridEnrichment = await articleService.GetEnrichmentAsync(allArticles.Select(a => a.Id));
-            var hybridResults = rrfScores.OrderByDescending(kv => kv.Value.Score).Take(limit)
-                .Select(kv => { var a = allArticles.FirstOrDefault(a => a.Id == kv.Key); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(kv.Value.Score, 4), kv.Value.MatchType); })
+            var reranked = reranker.Rerank(searchQuery, allArticles.Select(a => new RerankCandidate(
+                a.Id, a.Title, a.Excerpt, a.Content, rrfScores[a.Id].Score)).ToList());
+            var hybridResults = reranked.Take(limit)
+                .Select(hit => { var a = allArticles.FirstOrDefault(a => a.Id == hit.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(hit.Score, 4), rrfScores[hit.ArticleId].MatchType); })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
@@ -311,23 +311,9 @@ public class SearchController(
         var count = await db.Articles.WherePublished()
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null));
 
-        // The full-text rebuild re-reads and re-parses every article's attachments from disk, so
-        // it cannot be awaited inside the request once the corpus is large. It overwrites vectors
-        // in place, so search stays usable while it runs and an interrupted run leaves entries
-        // stale rather than missing.
-        var stopping = lifetime.ApplicationStopping;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var scope = scopeFactory.CreateScope();
-                await scope.ServiceProvider.GetRequiredService<ArticleService>().RebuildIndexAsync(stopping);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Full-text rebuild queued by reindex failed");
-            }
-        }, stopping);
+        // Durable jobs rebuild FTS and embeddings together; restart-safe and observable.
+        await HttpContext.RequestServices.GetRequiredService<IndexJobQueue>()
+            .BackfillDirtyArticlesAsync(HttpContext.RequestAborted);
 
         return Ok(new { message = "Reindex queued", articlesQueued = count });
     }
@@ -342,6 +328,12 @@ public class SearchController(
     public async Task<IActionResult> Diagnostics([FromServices] SearchDiagnosticsService diagnostics, CancellationToken ct)
         => Ok(await diagnostics.CollectAsync(ct));
 
+    [HttpGet("storage-status")]
+    [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
+    public async Task<IActionResult> StorageStatus([FromServices] AttachmentStorageService storage, CancellationToken ct)
+        => Ok(await storage.CollectHealthAsync(ct));
+
     [HttpGet("embedding-status")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]
@@ -349,23 +341,25 @@ public class SearchController(
     {
         var totalPublished = await db.Articles.CountAsync(a => a.Status == "published");
         var totalIndexed = await db.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt != null);
+        var failedJobs = await db.IndexJobs.Where(j => j.Status == "failed")
+            .OrderByDescending(j => j.AttemptCount).Take(20).ToListAsync();
 
         return Ok(new
         {
             totalPublished,
             totalIndexed,
-            pendingCount = totalPublished - totalIndexed,
+            pendingCount = await db.IndexJobs.CountAsync(j => j.Status == "pending" || j.Status == "processing"),
+            failedCount = await db.IndexJobs.CountAsync(j => j.Status == "failed"),
             ollamaEnabled = config.GetValue("Ollama:Enabled", false),
             modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3",
             configuredDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024),
-            failedArticles = HttpContext.RequestServices.GetService<EmbeddingFailureTracker>()?.Snapshot()
-                .Select(kv => new
+            failedArticles = failedJobs.Select(j => new
                 {
-                    articleId = kv.Key,
-                    failureCount = kv.Value.Count,
-                    nextRetryAt = kv.Value.NextAttemptUtc.ToString("o")
-                })
-                .ToList()
+                    articleId = j.ArticleId,
+                    failureCount = j.AttemptCount,
+                    nextRetryAt = j.AvailableAt.ToString("o"),
+                    error = j.LastError
+                }).ToList()
         });
     }
 

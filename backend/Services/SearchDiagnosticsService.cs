@@ -17,7 +17,7 @@ namespace KnowledgePortal.Api.Services;
 /// correct results, just by scanning everything), and the traffic figures say what users are
 /// actually experiencing. A green plan probe over a half-built index still serves bad results.
 /// </summary>
-public class SearchDiagnosticsService(AppDbContext db, IConfiguration config, IServiceProvider services)
+public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
 {
     private const string HnswIndexName = "ix_article_embeddings_embedding_hnsw";
     private const string FtsIndexName = "idx_articles_search_vector";
@@ -60,31 +60,16 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config, IS
     /// </summary>
     private async Task<IndexingHealthDto> CollectEmbeddingHealthAsync(int published, int indexed, CancellationToken ct)
     {
-        // Registered only when Ollama is enabled, so resolve it optionally.
-        var failures = services.GetService<EmbeddingFailureTracker>()?.Snapshot();
-        if (failures is not { Count: > 0 })
-            return new IndexingHealthDto(published, indexed, published - indexed, 0, []);
-
-        var worst = failures
-            .OrderByDescending(f => f.Value.Count)
+        var failureRows = await db.IndexJobs.AsNoTracking().Where(j => j.Status == "failed")
+            .OrderByDescending(j => j.AttemptCount)
             .Take(MaxListedFailures)
-            .ToList();
-
-        var ids = worst.Select(f => f.Key).ToList();
-        var titles = await db.Articles
-            .Where(a => ids.Contains(a.Id))
-            .Select(a => new { a.Id, a.Title })
-            .ToDictionaryAsync(a => a.Id, a => a.Title, ct);
-
-        var listed = worst
-            .Select(f => new FailingArticleDto(
-                f.Key,
-                titles.GetValueOrDefault(f.Key),
-                f.Value.Count,
-                f.Value.NextAttemptUtc.ToString("o")))
-            .ToArray();
-
-        return new IndexingHealthDto(published, indexed, published - indexed, failures.Count, listed);
+            .Select(j => new { j.ArticleId, j.Article.Title, j.AttemptCount, j.AvailableAt })
+            .ToArrayAsync(ct);
+        var failures = failureRows.Select(j => new FailingArticleDto(j.ArticleId, j.Title,
+            j.AttemptCount, j.AvailableAt.ToString("o"))).ToArray();
+        var failingCount = await db.IndexJobs.CountAsync(j => j.Status == "failed", ct);
+        var pendingCount = await db.IndexJobs.CountAsync(j => j.Status == "pending" || j.Status == "processing", ct);
+        return new IndexingHealthDto(published, indexed, pendingCount, failingCount, failures);
     }
 
     private async Task<FullTextHealthDto> CollectFullTextAsync(int published, CancellationToken ct)
@@ -212,7 +197,8 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config, IS
             config["Ollama:HnswIterativeScan"] ?? "relaxed_order", "Uygulama"));
         settings.Add(Setting("Ollama:VectorCandidateMultiplier", 30));
         settings.Add(Setting("Ollama:VectorCandidateMax", 2000));
-        settings.Add(Setting("Ollama:MaxIndexChunksPerArticle", 100));
+        settings.Add(Setting("Ollama:MaxIndexChunksPerSource", 100));
+        settings.Add(Setting("Ollama:MaxTotalChunksPerArticle", 500));
         settings.Add(Setting("Ollama:ChunkBatchSize", 16));
         settings.Add(new SearchSettingDto("Ollama:MinSimilarityScore",
             config.GetValue("Ollama:MinSimilarityScore", 0.5).ToString("0.##"), "Uygulama"));

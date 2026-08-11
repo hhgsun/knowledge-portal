@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace KnowledgePortal.Api.Helpers;
 
@@ -12,11 +13,70 @@ public static class AttachmentHelper
     public static string GetArticleDirectory(IConfiguration config, string articleId)
     {
         var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath, articleId));
+        var root = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), basePath));
+        var result = Path.GetFullPath(Path.Combine(root, Path.GetFileName(articleId)));
+        if (!result.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Attachment path escaped the configured storage root");
+        return result;
     }
 
     public static string GetFilePath(IConfiguration config, string articleId, string storedFileName)
-        => Path.Combine(GetArticleDirectory(config, articleId), storedFileName);
+        => Path.Combine(GetArticleDirectory(config, articleId), Path.GetFileName(storedFileName));
+
+    /// <summary>Writes on the destination volume, fsyncs, hashes, then atomically renames.</summary>
+    public static async Task<string> SaveAtomicAsync(IConfiguration config, string articleId,
+        string storedFileName, Stream source, CancellationToken ct = default)
+    {
+        var dir = GetArticleDirectory(config, articleId);
+        Directory.CreateDirectory(dir);
+        var destination = GetFilePath(config, articleId, storedFileName);
+        var temporary = Path.Combine(dir, $".{Path.GetFileName(storedFileName)}.{Guid.NewGuid():N}.upload");
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        try
+        {
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 128 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                var buffer = new byte[128 * 1024];
+                int read;
+                while ((read = await source.ReadAsync(buffer, ct)) > 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                    hash.AppendData(buffer, 0, read);
+                }
+                await output.FlushAsync(ct);
+            }
+            File.Move(temporary, destination, overwrite: false);
+            return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        }
+        catch
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+            throw;
+        }
+    }
+
+    public static void MoveToTrash(IConfiguration config, string articleId, string storedFileName)
+    {
+        var source = GetFilePath(config, articleId, storedFileName);
+        if (!File.Exists(source)) return;
+        var root = Path.GetDirectoryName(GetArticleDirectory(config, articleId))!;
+        var trash = Path.Combine(root, ".trash", Path.GetFileName(articleId));
+        Directory.CreateDirectory(trash);
+        File.Move(source, Path.Combine(trash,
+            $"{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}-{Path.GetFileName(storedFileName)}"));
+    }
+
+    public static void MoveArticleToTrash(IConfiguration config, string articleId)
+    {
+        var source = GetArticleDirectory(config, articleId);
+        if (!Directory.Exists(source)) return;
+        var root = Path.GetDirectoryName(source)!;
+        var trash = Path.Combine(root, ".trash");
+        Directory.CreateDirectory(trash);
+        Directory.Move(source, Path.Combine(trash,
+            $"{Path.GetFileName(articleId)}-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}"));
+    }
 
     public static string GetDownloadUrl(string attachmentId)
         => $"/api/attachments/{attachmentId}/download";

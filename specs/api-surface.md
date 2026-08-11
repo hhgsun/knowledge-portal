@@ -618,7 +618,7 @@ Returns list of all users for author autocomplete in search.
 **Auth**: Bearer (session only, rejects API key)
 **Permission**: `users:manage`
 
-Marks all published articles for re-embedding by clearing `IndexedAt` and deleting all existing embeddings. The background service will re-process them.
+Marks all published articles stale and upserts durable PostgreSQL `index_jobs`. Existing embeddings remain searchable until each article is atomically replaced; workers rebuild FTS and semantic data with persisted retry state.
 
 **200 Response**: `{ "message": "Reindex queued", "articlesQueued": 42 }`
 **503**: Ollama not enabled.
@@ -635,14 +635,20 @@ Marks all published articles for re-embedding by clearing `IndexedAt` and deleti
   "totalPublished": 42,
   "totalIndexed": 38,
   "pendingCount": 4,
+  "failedCount": 1,
   "ollamaEnabled": true,
   "modelName": "bge-m3",
   "configuredDimensions": 1024,
   "failedArticles": [
-    { "articleId": "...", "failureCount": 3, "nextRetryAt": "2026-07-17T12:02:00.000Z" }
+    { "articleId": "...", "failureCount": 10, "nextRetryAt": "2026-07-17T12:02:00.000Z", "error": "..." }
   ]
 }
 ```
+
+### `GET /api/search/storage-status`
+**Auth**: Bearer (session only) · **Permission**: `users:manage`
+
+Returns local `data/uploads` bytes/free space, extraction backlog/failures, and a bounded checksum/missing-file sample.
 
 ---
 

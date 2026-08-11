@@ -12,7 +12,8 @@ namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Authorize]
-public class AttachmentsController(AppDbContext db, IConfiguration config, ArticleService articleService) : ControllerBase
+public class AttachmentsController(AppDbContext db, IConfiguration config, ArticleService articleService,
+    ILogger<AttachmentsController> logger) : ControllerBase
 {
     private static readonly Dictionary<string, string[]> MimeMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -103,11 +104,10 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
 
         var filePath = Path.Combine(articleDir, storedFileName);
 
-        // Save file to disk
-        await using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
+        // Same-volume temporary write + atomic rename; checksum is persisted with metadata.
+        string sha256;
+        await using (var input = file.OpenReadStream())
+            sha256 = await AttachmentHelper.SaveAtomicAsync(config, articleId, storedFileName, input, HttpContext.RequestAborted);
 
         // Save metadata to DB
         var attachment = new ArticleAttachment
@@ -117,11 +117,17 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             StoredFileName = storedFileName,
             ContentType = file.ContentType,
             SizeBytes = file.Length,
+            Sha256 = sha256,
             UploadedById = userId
         };
 
         db.ArticleAttachments.Add(attachment);
-        await db.SaveChangesAsync();
+        try { await db.SaveChangesAsync(); }
+        catch
+        {
+            AttachmentHelper.MoveToTrash(config, articleId, storedFileName);
+            throw;
+        }
 
         // Attachment text is part of the search index
         await articleService.QueueReindexAsync(article);
@@ -151,11 +157,10 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
 
         // Delete file from disk
         var filePath = AttachmentHelper.GetFilePath(config, articleId, attachment.StoredFileName);
-        if (System.IO.File.Exists(filePath))
-            System.IO.File.Delete(filePath);
-
         db.ArticleAttachments.Remove(attachment);
         await db.SaveChangesAsync();
+        try { AttachmentHelper.MoveToTrash(config, articleId, attachment.StoredFileName); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to move deleted attachment {AttachmentId} to trash", attachmentId); }
 
         // Attachment text is part of the search index
         await articleService.QueueReindexAsync(article);

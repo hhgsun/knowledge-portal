@@ -9,7 +9,9 @@ namespace KnowledgePortal.Api.Services;
 public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex);
 
 /// <summary>A single matched chunk with its stored text — used by RAG to build prompt context.</summary>
-public record VectorChunkResult(string ArticleId, int ChunkIndex, double Score, string ChunkText);
+public record VectorChunkResult(string ArticleId, int ChunkIndex, double Score, string ChunkText,
+    string SourceType = "article", string? AttachmentId = null, string? SourceName = null,
+    string? SourceLocation = null);
 
 /// <summary>
 /// pgvector-backed semantic retrieval. Abstracted so RAG (and its tests) can depend on
@@ -154,7 +156,8 @@ public sealed class VectorSearchService(
                 FROM (
                     SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c."ArticleId" ORDER BY c."Distance") AS rn
                     FROM (
-                        SELECT e."ArticleId", e."ChunkIndex", e."Content", e."Embedding" <=> {0}::vector AS "Distance"
+                        SELECT e."ArticleId", e."ChunkIndex", e."Content", e."SourceType", e."AttachmentId",
+                            e."SourceName", e."SourceLocation", e."Embedding" <=> {0}::vector AS "Distance"
                         FROM article_embeddings e
                         {{scanWhere}}
                         ORDER BY e."Embedding" <=> {0}::vector
@@ -170,7 +173,8 @@ public sealed class VectorSearchService(
 #pragma warning restore EF1002
 
         return rows
-            .Select(r => new VectorChunkResult(r.ArticleId, r.ChunkIndex, 1.0 - r.Distance, r.Content ?? ""))
+            .Select(r => new VectorChunkResult(r.ArticleId, r.ChunkIndex, 1.0 - r.Distance, r.Content ?? "",
+                r.SourceType, r.AttachmentId, r.SourceName, r.SourceLocation))
             .ToList();
     }
 
@@ -266,6 +270,10 @@ public sealed class VectorSearchService(
         public string ArticleId { get; set; } = null!;
         public int ChunkIndex { get; set; }
         public string? Content { get; set; }
+        public string SourceType { get; set; } = "article";
+        public string? AttachmentId { get; set; }
+        public string? SourceName { get; set; }
+        public string? SourceLocation { get; set; }
         public double Distance { get; set; }
     }
 }

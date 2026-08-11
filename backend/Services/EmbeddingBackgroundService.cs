@@ -3,155 +3,133 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
+/// <summary>
+/// Consumes the durable PostgreSQL index queue with bounded parallelism. The historical class
+/// name is retained to avoid breaking test-host service removal and operational dashboards.
+/// </summary>
 public class EmbeddingBackgroundService(
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
-    EmbeddingFailureTracker failureTracker,
     PortalMetrics metrics,
     ILogger<EmbeddingBackgroundService> logger) : BackgroundService
 {
-    private readonly int _batchSize = config.GetValue("Ollama:BatchSize", 10);
-    private readonly int _pollingInterval = config.GetValue("Ollama:PollingIntervalSeconds", 5);
-    private readonly int _backoffSeconds = config.GetValue("Ollama:BackoffSeconds", 30);
-    // Orphan-embedding safety net: sweep how often (hours). <=0 disables it.
+    private readonly int _parallelism = Math.Max(1, config.GetValue("Indexing:WorkerCount", 4));
+    private readonly int _claimBatchSize = Math.Max(1, config.GetValue("Indexing:ClaimBatchSize", 20));
+    private readonly int _pollingInterval = Math.Max(1, config.GetValue("Indexing:PollingIntervalSeconds", 2));
+    private readonly int _leaseMinutes = Math.Max(1, config.GetValue("Indexing:LeaseMinutes", 15));
     private readonly int _orphanCleanupIntervalHours = config.GetValue("Ollama:OrphanCleanupIntervalHours", 24);
-    private DateTime _lastOrphanCleanupUtc = DateTime.MinValue; // MinValue → runs once shortly after startup
+    private DateTime _lastOrphanCleanupUtc = DateTime.MinValue;
+    private readonly string _workerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Embedding background service started (batch={Batch}, poll={Poll}s)",
-            _batchSize, _pollingInterval);
+        logger.LogInformation("Durable index worker started (parallelism={Parallelism}, batch={Batch})",
+            _parallelism, _claimBatchSize);
 
-        await InvalidateStaleModelsAsync(stoppingToken);
+        await InitializeAsync(stoppingToken);
+        using var gate = new SemaphoreSlim(_parallelism);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            await MaybeCleanupOrphansAsync(stoppingToken);
-
             try
             {
-                var processed = await ProcessBatchAsync(stoppingToken);
-                if (processed > 0) continue;
+                await MaybeCleanupOrphansAsync(stoppingToken);
+                List<IndexJobClaim> claims;
+                using (var scope = scopeFactory.CreateScope())
+                {
+                    var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
+                    claims = await queue.ClaimAsync(_workerId, _claimBatchSize,
+                        TimeSpan.FromMinutes(_leaseMinutes), stoppingToken);
+                }
+
+                if (claims.Count == 0)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(_pollingInterval), stoppingToken);
+                    continue;
+                }
+
+                var tasks = claims.Select(async claim =>
+                {
+                    await gate.WaitAsync(stoppingToken);
+                    try { await ProcessAsync(claim, stoppingToken); }
+                    finally { gate.Release(); }
+                });
+                await Task.WhenAll(tasks);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (HttpRequestException ex)
-            {
-                logger.LogWarning("Ollama unavailable: {Message}. Retrying in {Backoff}s", ex.Message, _backoffSeconds);
-                await SafeDelay(TimeSpan.FromSeconds(_backoffSeconds), stoppingToken);
-                continue;
-            }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Unexpected error in embedding background service");
-                await SafeDelay(TimeSpan.FromSeconds(_backoffSeconds), stoppingToken);
-                continue;
+                logger.LogError(ex, "Durable index worker loop failed");
+                await SafeDelay(TimeSpan.FromSeconds(_pollingInterval), stoppingToken);
             }
-
-            await SafeDelay(TimeSpan.FromSeconds(_pollingInterval), stoppingToken);
         }
-
-        logger.LogInformation("Embedding background service stopped");
     }
 
-    private async Task<int> ProcessBatchAsync(CancellationToken ct)
+    private async Task ProcessAsync(IndexJobClaim claim, CancellationToken ct)
     {
-        var nowUtc = DateTime.UtcNow;
-        List<(string Id, DateTime UpdatedAt)> staleArticles;
-        using (var listScope = scopeFactory.CreateScope())
-        {
-            var listDb = listScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // Over-fetch so articles waiting out a failure backoff don't starve the batch
-            var candidates = await listDb.Articles
-                .Where(a => a.Status == "published" && a.IndexedAt == null)
-                .OrderBy(a => a.UpdatedAt)
-                .Take(_batchSize * 3)
-                .Select(a => new { a.Id, a.UpdatedAt })
-                .ToListAsync(ct);
-            staleArticles = candidates
-                .Where(a => failureTracker.ShouldAttempt(a.Id, a.UpdatedAt, nowUtc))
-                .Take(_batchSize)
-                .Select(a => (a.Id, a.UpdatedAt))
-                .ToList();
-        }
-
-        if (staleArticles.Count == 0) return 0;
-
-        var processed = 0;
-        foreach (var (articleId, updatedAt) in staleArticles)
-        {
-            // One scope per article: a failed save can't poison change tracking for the rest of the batch
-            using var scope = scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
-
-            try
-            {
-                var article = await db.Articles
-                    .FirstOrDefaultAsync(a => a.Id == articleId && a.Status == "published" && a.IndexedAt == null, ct);
-                if (article == null) continue;
-
-                await embeddingService.EmbedArticleAsync(article, ct);
-                failureTracker.RecordSuccess(articleId);
-                processed++;
-            }
-            catch (HttpRequestException) { throw; }
-            catch (Exception ex)
-            {
-                var info = failureTracker.RecordFailure(articleId, updatedAt, DateTime.UtcNow);
-                metrics.EmbeddingFailures.Add(1);
-                logger.LogError(ex, "Failed to embed article {ArticleId} (failure #{Count}), next retry at {NextAttempt:o}",
-                    articleId, info.Count, info.NextAttemptUtc);
-            }
-        }
-
-        logger.LogInformation("Processed {Count}/{Total} articles for embedding", processed, staleArticles.Count);
-        return processed;
-    }
-
-    /// <summary>
-    /// Periodically deletes embeddings for articles that are no longer published (the residual
-    /// unpublish-during-embedding race the transactional guard can't fully close, plus any legacy
-    /// orphans). Gated to once per <see cref="_orphanCleanupIntervalHours"/>; failures are logged
-    /// and never disrupt the embedding loop.
-    /// </summary>
-    private async Task MaybeCleanupOrphansAsync(CancellationToken ct)
-    {
-        if (_orphanCleanupIntervalHours <= 0) return; // disabled
-        if (DateTime.UtcNow - _lastOrphanCleanupUtc < TimeSpan.FromHours(_orphanCleanupIntervalHours)) return;
-        _lastOrphanCleanupUtc = DateTime.UtcNow; // set before running so a failure won't tight-loop
-
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
         try
         {
-            using var scope = scopeFactory.CreateScope();
-            var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
-            var removed = await embeddingService.CleanupOrphanEmbeddingsAsync(ct);
-            if (removed > 0)
-                logger.LogInformation("Orphan embedding cleanup removed {Count} chunk(s)", removed);
+            var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == claim.ArticleId, ct);
+            if (article != null)
+            {
+                var fts = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
+                var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
+                await fts.SyncArticleAsync(article);
+                if (article.Status == "published" && embeddings != null)
+                    await embeddings.EmbedArticleAsync(article, ct);
+                else if (embeddings != null)
+                    await embeddings.RemoveEmbeddingAsync(article.Id, ct);
+            }
+            await queue.CompleteAsync(claim, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Orphan embedding cleanup failed");
+            metrics.EmbeddingFailures.Add(1);
+            logger.LogError(ex, "Index job failed for article {ArticleId}, generation {Generation}",
+                claim.ArticleId, claim.Generation);
+            await queue.FailAsync(claim, ex, CancellationToken.None);
         }
     }
 
-    private async Task InvalidateStaleModelsAsync(CancellationToken ct)
+    private async Task InitializeAsync(CancellationToken ct)
     {
         try
         {
             using var scope = scopeFactory.CreateScope();
-            var embeddingService = scope.ServiceProvider.GetRequiredService<EmbeddingService>();
-            await embeddingService.InvalidateStaleModelAsync(ct);
+            var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
+            if (embeddings != null) await embeddings.InvalidateStaleModelAsync(ct);
+            var queued = await scope.ServiceProvider.GetRequiredService<IndexJobQueue>()
+                .BackfillDirtyArticlesAsync(ct);
+            if (queued > 0) logger.LogInformation("Queued {Count} dirty articles for indexing", queued);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to check for stale model embeddings on startup");
+            logger.LogError(ex, "Index queue startup initialization failed");
         }
+    }
+
+    private async Task MaybeCleanupOrphansAsync(CancellationToken ct)
+    {
+        if (_orphanCleanupIntervalHours <= 0 ||
+            DateTime.UtcNow - _lastOrphanCleanupUtc < TimeSpan.FromHours(_orphanCleanupIntervalHours)) return;
+        _lastOrphanCleanupUtc = DateTime.UtcNow;
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
+            if (embeddings == null) return;
+            var removed = await embeddings.CleanupOrphanEmbeddingsAsync(ct);
+            if (removed > 0) logger.LogInformation("Removed {Count} orphan embedding chunks", removed);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Orphan embedding cleanup failed"); }
     }
 
     private static async Task SafeDelay(TimeSpan delay, CancellationToken ct)
     {
-        try { await Task.Delay(delay, ct); }
-        catch (OperationCanceledException) { }
+        try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { }
     }
 }

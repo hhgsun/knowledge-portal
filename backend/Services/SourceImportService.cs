@@ -117,8 +117,10 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         var stored = $"{Guid.NewGuid():N}"[..21] + ext;
         var dir = AttachmentHelper.GetArticleDirectory(config, article.Id);
         Directory.CreateDirectory(dir);
-        await using (var target = File.Create(Path.Combine(dir, stored))) await file.CopyToAsync(target, ct);
-        db.ArticleAttachments.Add(new ArticleAttachment { ArticleId = article.Id, FileName = Path.GetFileName(file.FileName), StoredFileName = stored, ContentType = file.ContentType, SizeBytes = file.Length, UploadedById = userId });
+        string sha256;
+        await using (var input = file.OpenReadStream())
+            sha256 = await AttachmentHelper.SaveAtomicAsync(config, article.Id, stored, input, ct);
+        db.ArticleAttachments.Add(new ArticleAttachment { ArticleId = article.Id, FileName = Path.GetFileName(file.FileName), StoredFileName = stored, ContentType = file.ContentType, SizeBytes = file.Length, Sha256 = sha256, UploadedById = userId });
         await db.SaveChangesAsync(ct);
     }
 

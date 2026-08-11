@@ -26,7 +26,7 @@ public record ArticleEnrichment(
 /// search-index maintenance, and response enrichment. Controllers and MCP tools
 /// call these instead of duplicating the logic.
 /// </summary>
-public class ArticleService(AppDbContext db, FullTextSearchService ftsService, TagService tagService)
+public class ArticleService(AppDbContext db, FullTextSearchService ftsService, TagService tagService, IndexJobQueue indexJobs)
 {
     public static IQueryable<Article> ApplyFilter(IQueryable<Article> query, ArticleFilter? filter)
     {
@@ -167,18 +167,14 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     }
 
     /// <summary>
-    /// Content of a published article changed: queue re-embedding (dirty flag) and sync the FTS index.
+    /// Content of an article changed: mark semantic state dirty and durably coalesce an index job.
     /// </summary>
     public async Task QueueReindexAsync(Article article)
     {
-        if (article.Status != "published") return;
-        article.IndexedAt = null;
+        if (article.Status == "published") article.IndexedAt = null;
         await db.SaveChangesAsync();
-        await ftsService.SyncArticleAsync(article);
+        await indexJobs.EnqueueAsync(article.Id);
     }
-
-    /// <summary>Syncs the FTS index with the article's current state (adds, updates, or removes).</summary>
-    public Task SyncIndexAsync(Article article) => ftsService.SyncArticleAsync(article);
 
     public Task RemoveFromIndexAsync(string articleId) => ftsService.RemoveArticleAsync(articleId);
 
