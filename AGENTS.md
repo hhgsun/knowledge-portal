@@ -15,7 +15,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Backend | ASP.NET Core (.NET 10), EF Core, PostgreSQL |
 | Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
-| Editor | TipTap (ProseMirror) |
+| Editor | Milkdown Crepe (ProseMirror); canonical CommonMark/GFM Markdown |
 | Tests | xUnit + WebApplicationFactory (backend only). **No Docker** — the entire suite runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. Postgres-only fidelity (snowball stemming, real pgvector ranking) is therefore not covered by tests. CI runs `dotnet test` as a gating stage in `azure-pipelines.yml` |
 | MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
 
@@ -45,7 +45,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 - **State**: React Context (`AuthContext`, `ThemeContext`) — no Redux/Zustand
 - **API calls**: `useApi` hook (`src/hooks/useApi.ts`) — auto-attaches JWT, auto-logout on 401
 - **Routing**: React Router v7, `ProtectedRoute` + `RoleRoute` wrappers in `App.tsx`
-- **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (TipTap)
+- **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (Milkdown Crepe)
 - **Types**: `src/types/api.ts` — shared TypeScript interfaces for all API responses
 - **Notifications**: `sonner` toast library — use `toast.success()` / `toast.error()` for user feedback
 - **Error Boundary**: `src/components/error-boundary.tsx` wraps the app
@@ -118,7 +118,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
    - Files are processed in order by filename
    - Article metadata is stored as JSON-compatible YAML front matter; the body is canonical Markdown for Milkdown
    - Each article's tags are assigned automatically
-   - Content is stored as JSON (ProseMirror doc format)
+   - Content is stored as canonical CommonMark/GFM Markdown (`contentMarkdown` in API payloads)
    - Slug is auto-generated from title (with collision detection)
    - Articles marked as "published" get `PublishedAt` and `LastReviewedAt` timestamps
 
@@ -244,7 +244,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `search.limit` | 1 | 50 | Default 20 |
 | `search.page` | 1 | — | Default 1. Applies to fulltext + tag-browse; semantic/hybrid are top-N only |
 | `search.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
-| `search.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text (extracted from TipTap JSON) in search results |
+| `search.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text (derived from canonical Markdown) in search results |
 | `search.includeAttachments` | — | — | Optional, boolean. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article in search results |
 | `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
@@ -292,7 +292,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 
 | User Profile Page | ✅ Implemented | Name/email update + password change via PUT /api/auth/profile |
 | Pagination UI | ✅ Implemented | Articles list + Admin Users have prev/next controls |
-| Article Attachments | ✅ Implemented | File upload/download/delete, TipTap image insert, max 20MB, extension whitelist |
+| Article Attachments | ✅ Implemented | File upload/download/delete, Milkdown image insert, max 20MB, extension whitelist |
 | System Logs | ✅ Implemented | Serilog: console + rolling daily JSON file (CompactJsonFormatter, same log_YYYYMMDD.log naming), retention `Logging:RetainedFileCountLimit` (default 30), min level via `Serilog:MinimumLevel` config. View/delete via admin UI, today's log protected |
 
 ## Known Frontend Gaps
@@ -320,7 +320,7 @@ No known gaps at this time.
 - **Search query semantics**: Multi-word queries are joined with AND (all terms must match, precision-first). When AND yields nothing, the query retries with OR (any term), then falls back to ILIKE on title/excerpt. tsquery meta-characters are stripped from tokens.
 - **Search pagination**: `GET /api/search` accepts `page` (default 1). Fulltext and tag-browse responses return the true post-filter `total` plus `page`/`totalPages` (filters are applied to the full ranked candidate set — capped at 1000 FTS candidates — before paging, so filtered searches don't under-return). FTS ordering is deterministic (`rank DESC, Id` tiebreaker) so pages never overlap on rank ties. Semantic/hybrid remain top-N (`page`/`totalPages` fixed at 1, `total` = returned count).
 - **Search snippet**: Non-RAG search results include a `snippet` field — a ~240-char match-context window from the article body around the earliest query-term occurrence (accent/case-folded matching mirroring the FTS index, stem-prefix tolerant). `null` when no term occurs in the body (e.g. title-only match) — clients fall back to `excerpt`. Frontend highlights query terms in the snippet.
-- **Plain-text extraction scope**: `ContentExtractor` walks only `text` values and `content` children of TipTap JSON — node `attrs`/`marks` (link URLs, image paths, styling) are excluded from read-time calculation, search indexes, embeddings, and `contentText`/`includeContent` output.
+- **Plain-text extraction scope**: `ContentExtractor` strips Markdown syntax while retaining readable headings, table cells, code, image alt text, and link labels. Link/image URLs and formatting syntax are excluded from read-time calculation, search indexes, embeddings, and `contentText`/`includeContent` output.
 - **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
 - **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes article content as extracted plain text in results), `includeAttachments` (boolean — includes attachment metadata array per article), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
@@ -336,7 +336,7 @@ No known gaps at this time.
 - **Wilson Score**: Lower bound of Wilson score confidence interval (95%, z=1.96). Returned in article list and votes endpoint.
 - **Comments independent of votes**: Users can leave comments without voting. Multiple comments per user allowed. Own comments can be deleted; admins can delete any.
 - **View count in responses**: `GET /api/articles` list and `GET /api/articles/{idOrSlug}` detail both include `viewCount` field.
-- **Article detail response**: `GET /api/articles/{idOrSlug}` includes `content` (TipTap JSON for editor), `contentText` (extracted plain text for API consumers), and `attachments` array (id, fileName, contentType, sizeBytes, downloadUrl).
+- **Article detail response**: `GET /api/articles/{idOrSlug}` includes `contentMarkdown` (canonical CommonMark/GFM for Milkdown), `contentText` (derived plain text for API consumers), and `attachments` array (id, fileName, contentType, sizeBytes, downloadUrl).
 - **Tag upsert**: POST `/api/tags` returns 200 with existing tag if slug matches, 201 for newly created tag
 - **Tag async listing**: GET `/api/tags` preserves its legacy array response without query parameters. Supplying `page`, `limit` (max 100), `q`, or repeatable `ids` returns `{ tags, total, page, totalPages }`; the article editor uses this for debounced server-side search and infinite-scroll loading.
 - **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
@@ -347,7 +347,7 @@ No known gaps at this time.
 - **Attachment upload**: Files remain at `data/uploads/{articleId}/{storedFileName}`. Uploads are written to a same-volume temporary file, flushed, SHA-256 hashed, then atomically renamed. Metadata records checksum and extraction status. Deletes move files/directories to `data/uploads/.trash` for recoverability. `/api/search/storage-status` samples checksums and reports missing files, extraction failures, bytes, and free disk.
 - **Attachment deferred upload**: Frontend uses deferred upload pattern — files are queued locally and only uploaded when the article is saved. New files show "Kaydedilince yüklenecek" badge with green background.
 - **Attachment deferred delete**: In edit mode, deleting a file marks it with strikethrough + "Kaydedilince silinecek" badge. Undo is available. Actual API DELETE happens on save.
-- **Image deferred upload**: Images pasted/dropped into TipTap editor are stored as blob URLs temporarily. On save, blob URLs are replaced with real `/api/attachments/{id}/download` URLs after upload.
+- **Image deferred upload**: Images pasted/dropped into Milkdown are represented by temporary blob URLs in Markdown. On save, blob URLs are replaced with real `/api/attachments/{id}/download` URLs after upload.
 - **Attachment cascade**: Article deletion removes attachment DB records by cascade and moves the article directory to recoverable local trash.
 - **Attachment indexing**: Extracted text remains in PostgreSQL FTS and is embedded as separate attachment chunks carrying attachment id/name/location provenance. Extraction status/failure is persisted. Source chunks are round-robin interleaved so one long file cannot monopolize the total semantic cap. Adding/removing attachments durably queues re-indexing.
 - **Attachment download**: Served via controller (auth required), not static file middleware. `PhysicalFile()` streams the file with correct Content-Type and Content-Disposition.

@@ -155,13 +155,13 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     }
 
     /// <summary>Recomputes the weighted tsvector (title=A, excerpt=B, content+attachments=C) for one article.</summary>
-    private async Task UpdateSearchVectorAsync(string articleId, string title, string? excerpt, string? contentJson, CancellationToken ct = default)
+    private async Task UpdateSearchVectorAsync(string articleId, string title, string? excerpt, string? contentMarkdown, CancellationToken ct = default)
     {
         var attachmentText = await AttachmentHelper.GetAttachmentTextAsync(db, config, articleId, ct);
         // Weight C carries only body + attachment text — title/excerpt already live in A/B;
         // repeating them here would inflate their effective weight
         var contentText = string.Join(". ",
-            new[] { ContentExtractor.ExtractPlainText(contentJson), attachmentText }
+            new[] { ContentExtractor.ExtractPlainText(contentMarkdown), attachmentText }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
         await db.Database.ExecuteSqlRawAsync(
             $$"""

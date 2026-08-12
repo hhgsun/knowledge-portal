@@ -11,7 +11,7 @@ React SPA powering the Knowledge Portal user interface.
 | Vite | 8.x |
 | React Router | v7 |
 | Tailwind CSS | v4 |
-| Editor | TipTap (ProseMirror) |
+| Editor | Milkdown Crepe (ProseMirror, CommonMark/GFM) |
 | Icons | lucide-react |
 | Notifications | sonner |
 
@@ -38,7 +38,7 @@ src/
 │   └── useApi.ts        # Fetch wrapper (auto-JWT, auto-logout on 401)
 ├── components/
 │   ├── layout/          # AppShell, Sidebar, Header
-│   ├── editor/          # TipTap editor components
+│   ├── editor/          # Milkdown editor and shared article form
 │   ├── error-boundary.tsx
 │   └── toast-provider.tsx
 ├── pages/               # 13 flat page components

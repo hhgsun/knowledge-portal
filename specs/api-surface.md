@@ -226,7 +226,7 @@ Behavior:
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `title` | string | Yes | — |
-| `content` | object | No | TipTap JSON document |
+| `contentMarkdown` | string | No | Canonical CommonMark/GFM Markdown edited with Milkdown |
 | `excerpt` | string | No | — |
 | `status` | string | No | Default: `"draft"` |
 | `contentType` | string | No | Default: `"reference"` |
@@ -243,7 +243,7 @@ Behavior:
 Accepts both article ID and slug for lookup.
 
 **Side effects**: Records an `ArticleView` entry (deduplicated: same user+article within 15 minutes counts as 1 view).
-**200 Response**: Full article object with deserialized `content` (TipTap JSON).
+**200 Response**: Full article object with canonical `contentMarkdown`, derived `contentText`, and attachment metadata.
 **404**: Article not found.
 
 ---
@@ -255,7 +255,7 @@ Accepts both article ID and slug for lookup.
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `title` | string | No | Slug regenerated if title changes |
-| `content` | object | No | TipTap JSON |
+| `contentMarkdown` | string | No | Canonical CommonMark/GFM Markdown |
 | `excerpt` | string | No | — |
 | `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
 | `contentType` | string | No | — |
@@ -427,7 +427,7 @@ Ordered by version number descending.
 ### `GET /api/articles/{articleId}/versions/{versionId}`
 **Auth**: Bearer
 
-**200 Response**: Version object with deserialized `content` (TipTap JSON).
+**200 Response**: Version object with its canonical `contentMarkdown` snapshot.
 
 ---
 
@@ -536,7 +536,7 @@ Ordered by version number descending.
 | `limit` | int | 20 | Max results per page (1–50) |
 | `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
-| `includeContent` | bool | false | Optional. When true → includes article content as plain text (extracted from TipTap JSON) in search results |
+| `includeContent` | bool | false | Optional. When true → includes article content as plain text derived from Markdown in search results |
 | `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article |
 | `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
 | `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |

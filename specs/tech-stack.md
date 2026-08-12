@@ -22,7 +22,7 @@
 | Routing | React Router | 7.15 | v7, package: `react-router-dom` with `<Outlet>` pattern |
 | Bundler | Vite | 8.0 | Dev server on port 5173, proxy `/api` → 5174 |
 | CSS | Tailwind CSS | 4.3 | Utility-first, `@theme inline`, v4 Vite plugin |
-| Rich-text editor | TipTap (ProseMirror) | 3.23 | JSON document model |
+| Rich-text editor | Milkdown Crepe (ProseMirror) | 7.22 | CommonMark/GFM Markdown document model |
 
 ## Key Libraries
 
@@ -52,9 +52,8 @@
 |---------|---------|---------|
 | `react`, `react-dom` | 19.2.6 | UI framework |
 | `react-router` | 7.15.1 | Client-side routing |
-| `@tiptap/react`, `@tiptap/starter-kit` | 3.23.6 | Rich-text editor core |
-| TipTap extensions | 3.23.x | code-block-lowlight, heading, highlight, image, link, placeholder, table (row/cell/header), task-list, task-item, text-align, underline |
-| `lowlight` | 3.3.0 | Syntax highlighting in code blocks |
+| `@milkdown/crepe` | 7.22.0 | Batteries-included Milkdown editor built on ProseMirror; emits canonical Markdown |
+| `react-markdown`, `remark-gfm` | 10.1.0, 4.0.1 | Safe read-only rendering of stored CommonMark/GFM content |
 | `lucide-react` | 1.16.0 | Icon library (sole icon source) |
 | `@azure/msal-browser` | 5.15.0 | MSAL.js v5 browser library for Azure AD auth (redirect-bridge popup pattern) |
 | `@azure/msal-react` | 5.5.0 | React hooks wrapper for MSAL.js v5 |

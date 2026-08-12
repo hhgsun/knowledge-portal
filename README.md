@@ -12,7 +12,7 @@ Enterprise knowledge management system with WYSIWYG editing, RBAC, content versi
 | **Backend** | ASP.NET Core Web API (.NET 10), EF Core, PostgreSQL + pgvector |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4 |
 | **Auth** | JWT Bearer + API Key (kp_ prefix) |
-| **Editor** | TipTap (ProseMirror) |
+| **Editor** | Milkdown Crepe (ProseMirror, CommonMark/GFM) |
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ Frontend starts at `http://localhost:5173`
 
 ## Key Features
 
-- WYSIWYG editor (TipTap) with headings, code blocks, tables, task lists
+- Markdown-first WYSIWYG editor (Milkdown Crepe) with headings, code blocks, tables, task lists
 - RBAC: Admin / Editor / Viewer with 12 granular permissions
 - Article versioning with diff comparison
 - Full-text search with `@tag` syntax

@@ -43,7 +43,7 @@ erDiagram
         string id PK
         string title
         string slug UK
-        string content "nullable, TipTap JSON"
+        string content "nullable, canonical CommonMark/GFM Markdown"
         string excerpt "nullable"
         string status "default: draft"
         string owner_id FK
@@ -62,7 +62,7 @@ erDiagram
         string id PK
         string article_id FK "Cascade"
         string title
-        string content "nullable, TipTap JSON"
+        string content "nullable, canonical Markdown snapshot"
         string changed_by FK
         string change_summary "nullable"
         int version
@@ -163,7 +163,7 @@ erDiagram
 | Id | `string` | `id` | PK, 21 chars | Truncated GUID |
 | Title | `string` | `title` | Required | — |
 | Slug | `string` | `slug` | Required, Unique index | Auto-generated from title |
-| Content | `string?` | `content` | — | `null` (serialized TipTap JSON) |
+| Content | `string?` | `content` | — | `null` (canonical CommonMark/GFM Markdown; exposed as `contentMarkdown`) |
 | Excerpt | `string?` | `excerpt` | — | `null` |
 | Status | `string` | `status` | Required | `"draft"` |
 | OwnerId | `string` | `owner_id` | FK → users.id | — |

@@ -11,7 +11,7 @@
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  React 19 SPA (port 5173)                                    │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────────┐  │  │
-│  │  │AuthContext│ │ useApi() │ │ React Rtr7 │ │ TipTap Editor│  │  │
+│  │  │AuthContext│ │ useApi() │ │ React Rtr7 │ │ Milkdown    │  │  │
 │  │  └────┬─────┘ └────┬─────┘ └──────┬─────┘ └──────────────┘  │  │
 │  └───────┼─────────────┼──────────────┼─────────────────────────┘  │
 │          │  JWT Bearer  │  /api/*      │                            │
@@ -165,15 +165,14 @@ Auth pages (`/login`, `/register`) render without the sidebar/header shell.
 
 ## Content Model
 
-Articles store content as **TipTap JSON** (ProseMirror document model). The JSON is:
-- Stored as a text column in the `articles.content` and `article_versions.content` fields
-- Serialized/deserialized via `System.Text.Json` on the backend
-- Rendered client-side by a custom `TiptapRenderer` component (not the editor itself)
-- Editable via the `TiptapEditor` component with a formatting toolbar
+Articles store **canonical CommonMark/GFM Markdown**. The content is:
+- Stored verbatim in the `articles.content` and `article_versions.content` text columns
+- Exposed as `contentMarkdown` in API request and response payloads
+- Edited by `MilkdownEditor`, using Milkdown Crepe's ProseMirror-based WYSIWYG experience
+- Rendered read-only with `react-markdown` and `remark-gfm`
+- Converted to derived plain text by `ContentExtractor` for read time, search, embeddings, and `contentText`
 
-Supported node types: paragraph, heading (1–3), bulletList, orderedList, listItem, taskList, taskItem, blockquote, codeBlock, horizontalRule, hardBreak, image, table (row/cell/header).
-
-Supported marks: bold, italic, strikethrough, code, link, highlight.
+GFM features include headings, lists and task lists, blockquotes, fenced code, links, images, and tables.
 
 ## Key Design Decisions
 

@@ -23,7 +23,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 
 | Step | Command | Expected Outcome |
 |------|---------|-----------------|
-| 1 | `cd frontend && npm install` | Dependencies resolve (React 19, TipTap, etc.) |
+| 1 | `cd frontend && npm install` | Dependencies resolve (React 19, Milkdown Crepe, etc.) |
 | 2 | `cd frontend && npm run dev` | Vite dev server starts on `http://localhost:5173` |
 | 3 | `cd frontend && npm run build` | TypeScript compilation + Vite build succeeds |
 
@@ -147,7 +147,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 1 | Navigate to `http://localhost:5173` | Redirected to `/login` |
 | 2 | Log in with admin credentials | Dashboard loads with stat cards |
 | 3 | Navigate to Articles | Article list renders |
-| 4 | Click "New Article" | Editor page loads with TipTap toolbar |
+| 4 | Click "New Article" | Milkdown Crepe editor loads with its formatting UI |
 | 5 | Type content, select tags, save | Redirected to article view |
 | 6 | Navigate to Search | Search input with type tabs visible |
 | 7 | Navigate to Analytics | Stats, top searches, content gaps render |

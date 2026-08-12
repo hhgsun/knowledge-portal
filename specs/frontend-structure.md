@@ -36,8 +36,7 @@ frontend/
 │   │   └── header.tsx         # Top bar: search, notifications, profile, logout
 │   └── editor/
 │       ├── article-form.tsx   # Shared article form (title, metadata, editor, attachments slot)
-│       ├── tiptap-editor.tsx  # Rich-text editor (TipTap) with formatting toolbar + image upload
-│       ├── tiptap-renderer.tsx # TipTap JSON → React element renderer
+│       ├── milkdown-editor.tsx # Milkdown Crepe editor; Markdown updates + deferred image upload
 │       └── tag-selector.tsx   # Tag picker with inline tag creation
 ├── attachments/
 │   ├── attachment-list.tsx    # File list with deferred upload/delete, download UI
@@ -47,9 +46,9 @@ frontend/
     ├── RegisterPage.tsx       # Registration form → POST /api/auth/register
     ├── HomePage.tsx           # Dashboard stats + recent articles + top searches
     ├── ArticlesPage.tsx       # Article list with status badges
-    ├── NewArticlePage.tsx     # Create article form with TipTap editor
+    ├── NewArticlePage.tsx     # Create article form with Milkdown editor
     ├── EditArticlePage.tsx    # Edit article form with versioning + change summary
-    ├── ArticleViewPage.tsx    # Article reader with TipTap renderer + feedback
+    ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
     ├── SearchPage.tsx         # Multi-mode search (fulltext/semantic/hybrid/RAG) + tag autocomplete
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
@@ -94,10 +93,10 @@ graph TD
     EditArticlePage --> ArticleForm
     EditArticlePage --> useArticleImages
 
-    ArticleForm --> TiptapEditor
+    ArticleForm --> MilkdownEditor
     ArticleForm --> TagSelector
     ArticleViewPage --> useApi
-    ArticleViewPage --> TiptapRenderer
+    ArticleViewPage --> ReactMarkdown
     VersionsPage --> useApi
     SearchPage --> useApi
     AnalyticsPage --> useApi
@@ -206,23 +205,19 @@ The hook:
 
 ## Editor Components
 
-### TiptapEditor
+### MilkdownEditor
 
 Rich-text editing component used on NewArticlePage and EditArticlePage.
 
-**Props**: `{ content: Record<string, unknown> | null, onChange: (json) => void }`
+**Props**: `{ contentMarkdown: string, onChange: (markdown: string) => void, uploadImage?, deleteImage? }`
 
-**Toolbar actions**: Bold, Italic, Strikethrough, Code, Highlight, H1, H2, H3, Bullet List, Ordered List, Task List, Quote, Horizontal Rule, Code Block, Undo, Redo
+Crepe supplies the formatting, block, link, table, code, and image editing UI. Latex and AI features are disabled.
 
-**Output**: TipTap JSON document emitted on every change via `onUpdate`.
+**Output**: Canonical CommonMark/GFM string emitted through Milkdown's `markdownUpdated` listener.
 
-### TiptapRenderer
+### Read-only Markdown rendering
 
-Read-only renderer that converts TipTap JSON to React elements. Used on ArticleViewPage.
-
-**Supported nodes**: paragraph, heading (1–3), bulletList, orderedList, listItem, taskList, taskItem, blockquote, codeBlock, horizontalRule, hardBreak, image, table/tableRow/tableCell/tableHeader
-
-**Supported marks**: bold, italic, strikethrough, code, link (`target="_blank"`, `rel="noopener noreferrer"`), highlight
+ArticleViewPage and VersionsPage render canonical Markdown with `react-markdown` and `remark-gfm`; the editor is not mounted for read-only views.
 
 ### TagSelector
 

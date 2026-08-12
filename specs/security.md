@@ -151,7 +151,7 @@ Each client gets its own window. Returns `429 Too Many Requests` when exceeded.
 - `UseForwardedHeaders` (first middleware) honors `X-Forwarded-For`/`X-Forwarded-Proto` from proxies listed in `ForwardedHeaders:KnownProxies`/`KnownNetworks` config.
 - HSTS (365 days) is emitted in non-Development environments on https requests.
 - API responses carry `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
-- The SPA (nginx) adds the same headers plus a CSP (`default-src 'self'`; `style-src 'unsafe-inline'` for TipTap; MSAL endpoints allowed in `connect-src`/`frame-src`).
+- The SPA (nginx) adds the same headers plus a CSP (`default-src 'self'`; `style-src 'unsafe-inline'` for Milkdown/Crepe; MSAL endpoints allowed in `connect-src`/`frame-src`).
 
 ## Known Security Gaps
 
@@ -211,5 +211,5 @@ All critical issues have been resolved:
 | Audit logging | ✗ | No structured security event logging |
 | Account lockout | ✗ | No failed-login tracking or lockout |
 | Token revocation | ✗ | No JWT blacklist or refresh token rotation |
-| Input sanitization | Partial | TipTap JSON accepted without schema validation |
+| Input sanitization | Partial | Canonical Markdown is accepted as text; read views render through `react-markdown` rather than injecting raw HTML |
 | Test coverage | ✗ | No security tests |

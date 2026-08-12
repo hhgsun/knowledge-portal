@@ -40,7 +40,7 @@ Knowledge Portal, klasik bir istemci-sunucu mimarisi kullanır: React tabanlı S
 Temel varlıklar ve ilişkileri:
 
 - **User:** Kullanıcılar — rol (admin/editor/viewer), yerel şifre ve/veya Azure Object ID.
-- **Article:** Makaleler — Milkdown JSON içerik, durum, içerik türü, slug, okuma süresi.
+- **Article:** Makaleler — Milkdown tarafından düzenlenen Markdown içerik, durum, içerik türü, slug, okuma süresi.
 - **ArticleVersion:** İçerik değişikliklerinde otomatik oluşturulan versiyonlar.
 - **Tag / ArticleTag:** Çoktan-çoğa etiket ilişkisi.
 - **Attachment:** Makale ekleri — fiziksel dosyalar data/uploads/{articleId}/ altında tutulur.
@@ -52,7 +52,7 @@ Temel varlıklar ve ilişkileri:
 
 ## Önemli Tasarım Kararları
 
-- **İçerik formatı olarak Milkdown JSON:** HTML yerine yapılandırılmış JSON saklanır. Arama indeksi için düz metin bu JSON'dan çıkarılır.
+- **İçerik formatı olarak Markdown:** Milkdown editörünün ürettiği CommonMark/GFM metni kanonik olarak saklanır. Arama indeksi için biçim işaretleri ayıklanarak düz metin türetilir.
 - **SQLite tercihi:** Sıfır kurulum maliyeti ve FTS5 desteği. Yüksek eşzamanlılık gereken büyük kurulumlarda PostgreSQL'e geçiş önerilir.
 - **Opsiyonel AI katmanı:** Ollama kapalıyken sistem tamamen çalışır durumda kalır — semantic/hybrid/RAG aramalar devre dışı kalır, fulltext her zaman çalışır.
 - **Deferred upload:** Dosya ekleri makale kaydedilene kadar sunucuya gönderilmez; silmeler de kaydetme anında uygulanır. Bu, yarım kalmış düzenlemelerin artık dosya bırakmasını önler.

@@ -17,9 +17,9 @@ public static class ContentExtractor
         return wordCount == 0 ? null : Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
     }
 
-    public static string ExtractSearchableText(string title, string? excerpt, string? contentJson)
+    public static string ExtractSearchableText(string title, string? excerpt, string? contentMarkdown)
     {
-        return ExtractSearchableText(title, excerpt, contentJson, null);
+        return ExtractSearchableText(title, excerpt, contentMarkdown, null);
     }
 
     public static string ExtractSearchableText(string title, string? excerpt, string? markdown, string? attachmentText)

@@ -35,7 +35,7 @@ Her makale dört durumdan birinde bulunabilir. Durum geçişleri kullanıcı rol
 Yeni makale oluştururken aşağıdaki alanlar kullanılabilir:
 
 - **title (zorunlu):** 1-300 karakter. Slug otomatik oluşturulur.
-- **content:** Milkdown JSON formatında zengin içerik.
+- **contentMarkdown:** Milkdown tarafından düzenlenen CommonMark/GFM Markdown içerik.
 - **excerpt:** İsteğe bağlı kısa özet.
 - **contentType:** İçerik türü (reference, how-to, adr, runbook, faq, policy, onboarding).
 - **tags:** Etiket dizisi — ID, isim veya slug kabul eder.
