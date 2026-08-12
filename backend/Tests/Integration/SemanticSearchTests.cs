@@ -19,22 +19,13 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         _client = factory.CreateClient();
     }
 
-    private static object TipTapDoc(string text) => new
-    {
-        type = "doc",
-        content = new[]
-        {
-            new { type = "paragraph", content = new[] { new { type = "text", text } } }
-        }
-    };
-
     private async Task<string> CreatePublishedArticleAsync(string title, string? bodyText = null, string[]? tags = null)
     {
         var response = await _client.PostAsJsonAsync("/api/articles", new
         {
             title,
             status = "published",
-            content = bodyText == null ? null : TipTapDoc(bodyText),
+            contentMarkdown = bodyText,
             tags
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);

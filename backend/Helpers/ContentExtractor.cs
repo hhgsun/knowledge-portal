@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace KnowledgePortal.Api.Helpers;
 
@@ -8,21 +8,13 @@ public static class ContentExtractor
 {
     /// <summary>
     /// Estimates read time based on ~200 words per minute.
-    /// Extracts text from TipTap JSON content.
+    /// Markdown is canonical. Formatting is removed only for derived search/read-time text.
     /// </summary>
-    public static int? CalculateReadTime(string? contentJson)
+    public static int? CalculateReadTime(string? markdown)
     {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
-        {
-            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
-            var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            return Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
-        }
-        catch
-        {
-            return null;
-        }
+        if (string.IsNullOrWhiteSpace(markdown)) return null;
+        var wordCount = (ExtractPlainText(markdown) ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        return wordCount == 0 ? null : Math.Max(1, (int)Math.Ceiling(wordCount / 200.0));
     }
 
     public static string ExtractSearchableText(string title, string? excerpt, string? contentJson)
@@ -30,7 +22,7 @@ public static class ContentExtractor
         return ExtractSearchableText(title, excerpt, contentJson, null);
     }
 
-    public static string ExtractSearchableText(string title, string? excerpt, string? contentJson, string? attachmentText)
+    public static string ExtractSearchableText(string title, string? excerpt, string? markdown, string? attachmentText)
     {
         var sb = new StringBuilder();
         sb.Append(title);
@@ -41,20 +33,13 @@ public static class ContentExtractor
             sb.Append(excerpt);
         }
 
-        if (!string.IsNullOrWhiteSpace(contentJson))
+        if (!string.IsNullOrWhiteSpace(markdown))
         {
-            try
+            var text = ExtractPlainText(markdown);
+            if (!string.IsNullOrWhiteSpace(text))
             {
-                var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    sb.Append(". ");
-                    sb.Append(text.Trim());
-                }
-            }
-            catch
-            {
-                // Malformed JSON — skip content extraction
+                sb.Append(". ");
+                sb.Append(text);
             }
         }
 
@@ -68,47 +53,20 @@ public static class ContentExtractor
     }
 
     /// <summary>
-    /// Extracts plain text from TipTap JSON content.
-    /// Returns null when the content is empty, whitespace-only, or malformed.
+    /// Extracts readable text while retaining headings, table cells, code and link labels.
     /// </summary>
-    public static string? ExtractPlainText(string? contentJson)
+    public static string? ExtractPlainText(string? markdown)
     {
-        if (string.IsNullOrWhiteSpace(contentJson)) return null;
-        try
-        {
-            var text = ExtractTextFromJson(JsonDocument.Parse(contentJson).RootElement);
-            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public static string ExtractTextFromJson(JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String:
-                return element.GetString() ?? "";
-            case JsonValueKind.Object:
-                // Only "text" values and "content" children carry human-readable text in a
-                // TipTap document. Recursing into other properties (attrs, marks) would leak
-                // link URLs, image paths, and style metadata into the search index.
-                var sb = new StringBuilder();
-                if (element.TryGetProperty("text", out var textProp))
-                    sb.Append(textProp.GetString() ?? "").Append(' ');
-                if (element.TryGetProperty("content", out var contentProp))
-                    sb.Append(ExtractTextFromJson(contentProp));
-                return sb.ToString();
-            case JsonValueKind.Array:
-                var arrSb = new StringBuilder();
-                foreach (var item in element.EnumerateArray())
-                    arrSb.Append(ExtractTextFromJson(item)).Append(' ');
-                return arrSb.ToString();
-            default:
-                return "";
-        }
+        if (string.IsNullOrWhiteSpace(markdown)) return null;
+        var text = markdown.Replace("\r", "");
+        text = Regex.Replace(text, "<!--[\\s\\S]*?-->", " ");
+        text = Regex.Replace(text, "!\\[([^]]*)\\]\\([^)]*\\)", "$1");
+        text = Regex.Replace(text, "\\[([^]]+)\\]\\([^)]*\\)", "$1");
+        text = Regex.Replace(text, "^\\s{0,3}(#{1,6}|>|[-+*]|\\d+[.)])\\s+", "", RegexOptions.Multiline);
+        text = Regex.Replace(text, "[`*_~]", "");
+        text = Regex.Replace(text, "[ \\t]+", " ");
+        text = Regex.Replace(text, "\\n{3,}", "\n\n").Trim();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     public static string ComputeHash(string text)

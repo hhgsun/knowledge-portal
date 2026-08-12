@@ -13,7 +13,7 @@ export default function NewArticlePage() {
   const { user } = useAuth();
   const isViewer = user?.role === "viewer";
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState<Record<string, unknown> | null>(null);
+  const [contentMarkdown, setContentMarkdown] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
   const [status, setStatus] = useState("draft");
@@ -38,7 +38,7 @@ export default function NewArticlePage() {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
-          content,
+          contentMarkdown,
           excerpt: excerpt.trim() || undefined,
           contentType,
           status,
@@ -50,13 +50,13 @@ export default function NewArticlePage() {
         const article = await res.json();
 
         // Upload pending images and update content if needed
-        const finalContent = await uploadPendingImages(article.id, content || {});
-        if (finalContent !== content) {
+        const finalContent = await uploadPendingImages(article.id, contentMarkdown);
+        if (finalContent !== contentMarkdown) {
           await fetchWithAuth(`/api/articles/${article.id}`, {
             method: "PUT",
             body: JSON.stringify({
               title: title.trim(),
-              content: finalContent,
+              contentMarkdown: finalContent,
               excerpt: excerpt.trim() || undefined,
               contentType,
               status,
@@ -86,8 +86,8 @@ export default function NewArticlePage() {
       mode="create"
       title={title}
       onTitleChange={setTitle}
-      content={content}
-      onContentChange={setContent}
+      contentMarkdown={contentMarkdown}
+      onContentMarkdownChange={setContentMarkdown}
       excerpt={excerpt}
       onExcerptChange={setExcerpt}
       contentType={contentType}

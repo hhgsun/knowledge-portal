@@ -17,7 +17,7 @@ export default function EditArticlePage() {
   const isViewer = user?.role === "viewer";
   const [article, setArticle] = useState<Article | null>(null);
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState<Record<string, unknown> | null>(null);
+  const [contentMarkdown, setContentMarkdown] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
   const [status, setStatus] = useState("draft");
@@ -66,7 +66,7 @@ export default function EditArticlePage() {
             }
             setArticle(data);
             setTitle(data.title);
-            setContent(data.content);
+            setContentMarkdown(data.contentMarkdown || "");
             setExcerpt(data.excerpt || "");
             setContentType(data.contentType);
             setStatus(data.status);
@@ -93,7 +93,7 @@ export default function EditArticlePage() {
 
     try {
       // Upload pending images first, replace blob URLs with real URLs
-      const finalContent = await uploadPendingImages(article.id, content || {});
+      const finalContent = await uploadPendingImages(article.id, contentMarkdown);
 
       // Delete attachments marked for removal
       for (const attachmentId of deletedAttachmentIds) {
@@ -111,7 +111,7 @@ export default function EditArticlePage() {
         method: "PUT",
         body: JSON.stringify({
           title: title.trim(),
-          content: finalContent,
+          contentMarkdown: finalContent,
           excerpt: excerpt.trim() || undefined,
           contentType,
           status,
@@ -155,8 +155,8 @@ export default function EditArticlePage() {
       mode="edit"
       title={title}
       onTitleChange={setTitle}
-      content={content}
-      onContentChange={setContent}
+      contentMarkdown={contentMarkdown}
+      onContentMarkdownChange={setContentMarkdown}
       excerpt={excerpt}
       onExcerptChange={setExcerpt}
       contentType={contentType}

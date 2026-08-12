@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Clock, User, GitCompare, Eye, RotateCcw, X } from "lucide-react";
-import { TiptapRenderer } from "../components/editor/tiptap-renderer";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import { VersionsListSkeleton } from "../components/ui/skeleton";
@@ -19,7 +20,7 @@ interface VersionDetail {
   title: string;
   changeSummary: string | null;
   changedBy: string;
-  content: Record<string, unknown> | null;
+  contentMarkdown: string | null;
   createdAt: string;
 }
 
@@ -71,8 +72,8 @@ export default function VersionsPage() {
     if (resA.ok && resB.ok) {
       const dataA = await resA.json();
       const dataB = await resB.json();
-      const textA = extractText(dataA.content);
-      const textB = extractText(dataB.content);
+      const textA = dataA.contentMarkdown || "";
+      const textB = dataB.contentMarkdown || "";
       setDiff(computeSimpleDiff(textA, textB));
     }
   };
@@ -272,8 +273,8 @@ export default function VersionsPage() {
               </div>
             </div>
             <div className="p-4 overflow-y-auto prose dark:prose-invert max-w-none">
-              {viewingVersion.content ? (
-                <TiptapRenderer content={viewingVersion.content} />
+              {viewingVersion.contentMarkdown ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{viewingVersion.contentMarkdown}</ReactMarkdown>
               ) : (
                 <p className="text-zinc-400 italic">Bu sürümde içerik yok.</p>
               )}
@@ -283,22 +284,6 @@ export default function VersionsPage() {
       )}
     </div>
   );
-}
-
-function extractText(content: Record<string, unknown> | null): string {
-  if (!content) return "";
-  const nodes = (content.content || []) as { type?: string; text?: string; content?: unknown[] }[];
-  return extractNodesText(nodes);
-}
-
-function extractNodesText(nodes: { type?: string; text?: string; content?: unknown[] }[]): string {
-  return nodes
-    .map((n) => {
-      if (n.text) return n.text;
-      if (n.content) return extractNodesText(n.content as { type?: string; text?: string; content?: unknown[] }[]);
-      return "";
-    })
-    .join("\n");
 }
 
 function computeSimpleDiff(textA: string, textB: string): { added: string[]; removed: string[] } {

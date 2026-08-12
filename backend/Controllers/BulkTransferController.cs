@@ -46,7 +46,7 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
                 new { name = "status", required = false, description = "Article lifecycle status; defaults to draft." },
                 new { name = "contentType", required = false, description = "An active content type value." },
                 new { name = "tags", required = false, description = "JSON array in JSONL; pipe-separated values in CSV." },
-                new { name = "content", required = false, description = "TipTap JSON; CSV also accepts plain text." }
+                new { name = "contentMarkdown", required = false, description = "Canonical CommonMark/GFM Markdown." }
             }
         });
     }

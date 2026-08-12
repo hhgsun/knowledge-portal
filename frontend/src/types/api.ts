@@ -100,7 +100,7 @@ export interface Article {
   id: string;
   title: string;
   slug: string;
-  content: unknown | null;
+  contentMarkdown: string | null;
   contentText: string | null;
   excerpt: string | null;
   status: ArticleStatus;
@@ -134,7 +134,7 @@ export interface ArticleVersionDetail {
   title: string;
   changeSummary: string | null;
   changedBy: string;
-  content: unknown | null;
+  contentMarkdown: string | null;
   createdAt: string;
 }
 

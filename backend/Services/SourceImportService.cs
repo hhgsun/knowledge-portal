@@ -37,7 +37,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 var text = await reader.ReadToEndAsync(ct);
                 content = extension switch
                 {
-                    ".md" or ".markdown" => MarkdownToDoc(text),
+                    ".md" or ".markdown" => text,
                     ".csv" => DelimitedToDoc(text, ','),
                     ".tsv" => DelimitedToDoc(text, '\t'),
                     ".json" or ".yaml" or ".yml" => Doc(CodeBlock(text, extension.TrimStart('.'))),
@@ -47,12 +47,12 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             else
                 return Preview(index, file.FileName, title, Doc(), false, "attachment", "This file cannot be converted; it will be kept as an attachment.");
 
-            var json = JsonSerializer.SerializeToElement(content, JsonOptions);
-            var plain = ContentExtractor.ExtractPlainText(json.GetRawText());
+            var markdown = content is string rawMarkdown ? rawMarkdown : ToMarkdown(JsonSerializer.SerializeToElement(content, JsonOptions));
+            var plain = ContentExtractor.ExtractPlainText(markdown);
             if (string.IsNullOrWhiteSpace(plain))
                 return Preview(index, file.FileName, title, Doc(), false, "attachment", "No usable text was found; the original will be kept as an attachment.");
             var excerpt = plain.Length <= 240 ? plain : plain[..240].TrimEnd() + "…";
-            return new(index, file.FileName, title, excerpt, json, true, true, "content-and-attachment", null);
+            return new(index, file.FileName, title, excerpt, markdown, true, true, "content-and-attachment", null);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or JsonException)
         {
@@ -79,15 +79,15 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 var status = draft.Status ?? "draft";
                 if (status is not ("draft" or "pending" or "published" or "archived")) throw new InvalidDataException("Invalid status");
                 if (user.GetRole() == "viewer" && status is not ("draft" or "pending")) status = "draft";
-                var contentJson = draft.Content.ValueKind == JsonValueKind.Undefined ? JsonSerializer.Serialize(Doc()) : draft.Content.GetRawText();
+                var contentMarkdown = draft.ContentMarkdown?.Trim() ?? "";
                 var article = new Article
                 {
-                    Title = title, Slug = await db.GenerateUniqueArticleSlugAsync(title), Content = contentJson,
+                    Title = title, Slug = await db.GenerateUniqueArticleSlugAsync(title), Content = contentMarkdown,
                     Excerpt = draft.Excerpt?.Trim(), Status = status, ContentType = contentType,
                     OwnerId = user.GetUserId(), CreatedViaApiKeyId = user.GetApiKeyId(),
                     PublishedAt = status == "published" ? DateTime.UtcNow : null,
                     LastReviewedAt = status == "published" ? DateTime.UtcNow : null,
-                    ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentJson)
+                    ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown)
                 };
                 db.Articles.Add(article);
                 await articleService.AddVersionAsync(article.Id, article.Title, article.Content, user.GetUserId(), "Source import");
@@ -187,5 +187,24 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
     private static object Cell(string text, bool header) => new { type = header ? "tableHeader" : "tableCell", content = new[] { Paragraph(text) } };
     private static object CodeBlock(string text, string language) => new { type = "codeBlock", attrs = new { language }, content = new[] { new { type = "text", text } } };
     private static SourceImportPreview Preview(int i, string file, string title, object content, bool parsed, string mode, string warning)
-        => new(i, file, title, null, JsonSerializer.SerializeToElement(content, JsonOptions), parsed, true, mode, warning);
+        => new(i, file, title, null, ToMarkdown(JsonSerializer.SerializeToElement(content, JsonOptions)), parsed, true, mode, warning);
+
+    private static string ToMarkdown(JsonElement node)
+    {
+        if (node.ValueKind == JsonValueKind.Array) return string.Join("\n", node.EnumerateArray().Select(ToMarkdown));
+        if (node.ValueKind != JsonValueKind.Object) return node.ValueKind == JsonValueKind.String ? node.GetString() ?? "" : "";
+        var type = node.TryGetProperty("type", out var t) ? t.GetString() : null;
+        var children = node.TryGetProperty("content", out var c) ? ToMarkdown(c) : node.TryGetProperty("text", out var x) ? x.GetString() ?? "" : "";
+        return type switch
+        {
+            "doc" => children.Trim(),
+            "heading" => new string('#', node.TryGetProperty("attrs", out var a) && a.TryGetProperty("level", out var l) ? l.GetInt32() : 2) + " " + children + "\n",
+            "paragraph" => children + "\n",
+            "blockquote" => string.Join("\n", children.Split('\n').Where(s => s.Length > 0).Select(s => "> " + s)) + "\n",
+            "codeBlock" => "```\n" + children + "\n```\n",
+            "tableCell" or "tableHeader" => children + " | ",
+            "table" or "tableRow" => children + "\n",
+            _ => children
+        };
+    }
 }

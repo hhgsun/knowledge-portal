@@ -5,7 +5,7 @@ public class Article
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string Title { get; set; } = null!;
     public string Slug { get; set; } = null!;
-    public string? Content { get; set; } // JSON string (TipTap)
+    public string? Content { get; set; } // Canonical CommonMark/GFM Markdown
     public string? Excerpt { get; set; }
     public string Status { get; set; } = "draft";
     public string OwnerId { get; set; } = null!;

@@ -5,14 +5,9 @@ namespace KnowledgePortal.Api.Tests.Unit;
 public class ContentExtractorTests
 {
     [Fact]
-    public void ExtractPlainText_ReturnsTextNodes()
+    public void ExtractPlainText_ReturnsMarkdownText()
     {
-        const string json = """
-            {"type":"doc","content":[
-                {"type":"paragraph","content":[{"type":"text","text":"Birinci paragraf."}]},
-                {"type":"paragraph","content":[{"type":"text","text":"İkinci paragraf."}]}
-            ]}
-            """;
+        const string json = "# Başlık\n\nBirinci paragraf.\n\nİkinci paragraf.";
 
         var text = ContentExtractor.ExtractPlainText(json);
 
@@ -22,19 +17,11 @@ public class ContentExtractorTests
     }
 
     [Fact]
-    public void ExtractPlainText_IgnoresNodeAttributes()
+    public void ExtractPlainText_IgnoresMarkdownDestinationsAndFormatting()
     {
         // Link href, image src, and style attrs are metadata — they must not leak
         // into the searchable text (they cause false-positive matches)
-        const string json = """
-            {"type":"doc","content":[
-                {"type":"paragraph","content":[
-                    {"type":"text","text":"tıklanabilir bağlantı","marks":[{"type":"link","attrs":{"href":"https://gizli-sunucu.example/yol"}}]}
-                ]},
-                {"type":"image","attrs":{"src":"/api/attachments/abc123/download","alt":"diyagram"}},
-                {"type":"paragraph","attrs":{"textAlign":"center"},"content":[{"type":"text","text":"ortalanmış metin"}]}
-            ]}
-            """;
+        const string json = "[tıklanabilir bağlantı](https://gizli-sunucu.example/yol)\n\n![diyagram](/api/attachments/abc123/download)\n\n**ortalanmış metin**";
 
         var text = ContentExtractor.ExtractPlainText(json);
 
@@ -43,7 +30,6 @@ public class ContentExtractorTests
         Assert.Contains("ortalanmış metin", text);
         Assert.DoesNotContain("gizli-sunucu", text);
         Assert.DoesNotContain("attachments", text);
-        Assert.DoesNotContain("center", text);
     }
 }
 

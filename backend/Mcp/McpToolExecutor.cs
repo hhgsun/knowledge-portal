@@ -59,7 +59,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "get_article",
-                    Description = "Get full details of a specific published article by its ID or URL slug. Returns title, contentText (plain text), content (TipTap JSON), owner, tags, attachments, and metadata — the same shape as the REST article detail endpoint.",
+                    Description = "Get full details of a specific published article by its ID or URL slug. Returns title, canonical contentMarkdown, normalized contentText, owner, tags, attachments, and metadata — the same shape as the REST article detail endpoint.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>

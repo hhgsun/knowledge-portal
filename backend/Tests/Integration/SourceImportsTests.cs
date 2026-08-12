@@ -12,7 +12,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
     public SourceImportsTests(TestWebApplicationFactory factory) => client = factory.CreateClient();
 
     [Fact]
-    public async Task Analyze_TextFile_ReturnsEditableTipTapDraft()
+    public async Task Analyze_TextFile_ReturnsEditableMarkdownDraft()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
         using var body = FileBody("Kurulum\n\nİkinci paragraf", "kurulum.txt");
@@ -22,8 +22,8 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         var draft = json.GetProperty("drafts")[0];
         Assert.True(draft.GetProperty("parsed").GetBoolean());
         Assert.True(draft.GetProperty("keepOriginal").GetBoolean());
-        Assert.Equal("doc", draft.GetProperty("content").GetProperty("type").GetString());
-        Assert.Equal(2, draft.GetProperty("content").GetProperty("content").GetArrayLength());
+        Assert.Contains("Kurulum", draft.GetProperty("contentMarkdown").GetString());
+        Assert.Contains("İkinci paragraf", draft.GetProperty("contentMarkdown").GetString());
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         using var body = FileBody("Kaynak metin", "source.txt");
         body.Add(new StringContent(JsonSerializer.Serialize(new
         {
-            drafts = new[] { new { sourceIndex = 0, title = $"Imported source {Guid.NewGuid():N}", content = new { type = "doc", content = new[] { new { type = "paragraph", content = new[] { new { type = "text", text = "Kaynak metin" } } } } }, contentType = "reference", status = "draft", tags = Array.Empty<string>(), keepOriginal = true } }
+            drafts = new[] { new { sourceIndex = 0, title = $"Imported source {Guid.NewGuid():N}", contentMarkdown = "Kaynak metin", contentType = "reference", status = "draft", tags = Array.Empty<string>(), keepOriginal = true } }
         })), "manifest");
         var response = await client.PostAsync("/api/source-imports/commit", body);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

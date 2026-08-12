@@ -51,7 +51,7 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
         {
             version.Id, version.Version, version.Title, version.ChangeSummary,
             version.ChangedBy,
-            Content = version.Content != null ? JsonSerializer.Deserialize<object>(version.Content) : null,
+            ContentMarkdown = version.Content,
             CreatedAt = version.CreatedAt.ToString("o")
         });
     }

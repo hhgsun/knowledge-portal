@@ -7,10 +7,10 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
 
-const TiptapEditor = lazy(() => import("../components/editor/tiptap-editor"));
+const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
 
 type Draft = {
-  sourceIndex: number; fileName: string; title: string; excerpt?: string; content: Record<string, unknown>;
+  sourceIndex: number; fileName: string; title: string; excerpt?: string; contentMarkdown: string;
   parsed: boolean; keepOriginal: boolean; processingMode: string; warning?: string;
   contentType: string; status: string; tags: string[];
 };
@@ -56,7 +56,7 @@ export default function KnowledgeImportPage() {
     setBusy(true); setError("");
     try {
       const body = new FormData(); files.forEach(file => body.append("files", file));
-      body.append("manifest", JSON.stringify({ drafts: drafts.map(({ sourceIndex, title, content, excerpt, contentType, status, tags, keepOriginal }) => ({ sourceIndex, title: title.trim(), content, excerpt: excerpt?.trim() || undefined, contentType, status, tags, keepOriginal })) }));
+      body.append("manifest", JSON.stringify({ drafts: drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType, status, tags, keepOriginal }) => ({ sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined, contentType, status, tags, keepOriginal })) }));
       const response = await fetchWithAuth("/api/source-imports/commit", { method: "POST", body, noRetry: true });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Import failed");
@@ -97,7 +97,7 @@ export default function KnowledgeImportPage() {
         <input value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value })} placeholder="Kısa açıklama (isteğe bağlı)..." className="w-full text-sm bg-transparent border-none outline-none placeholder:text-zinc-400 text-zinc-600 dark:text-zinc-400"/>
         <div className="flex flex-wrap gap-3 pb-4 border-b border-zinc-200 dark:border-zinc-800"><select value={current.contentType} onChange={event => update({ contentType: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">{contentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</select><select value={current.status} onChange={event => update({ status: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"><option value="draft">Taslak</option><option value="pending">İnceleme Bekliyor</option>{!isViewer && <option value="published">Yayımlandı</option>}</select></div>
         <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800"><label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags</label><TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/></div>
-        {current.parsed && <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse"/>}><TiptapEditor content={current.content} onChange={content => update({ content })}/></Suspense>}
+        {current.parsed && <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense>}
         <label className="flex items-center gap-2 p-3 border border-zinc-200 dark:border-zinc-800 rounded-lg"><input type="checkbox" checked={current.keepOriginal} onChange={event => update({ keepOriginal: event.target.checked })}/><Paperclip size={17}/><span className="text-sm">Keep original <strong>{current.fileName}</strong> as an attachment</span></label>
       </section>}
     </div>

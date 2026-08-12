@@ -5,7 +5,7 @@ namespace KnowledgePortal.Api.Models;
 // Articles
 public record CreateArticleRequest(
     string Title,
-    object? Content = null,
+    string? ContentMarkdown = null,
     string? Excerpt = null,
     string? Status = null,
     string? ContentType = null,
@@ -13,7 +13,7 @@ public record CreateArticleRequest(
 
 public record UpdateArticleRequest(
     string? Title = null,
-    object? Content = null,
+    string? ContentMarkdown = null,
     string? Excerpt = null,
     string? Status = null,
     string? ContentType = null,
@@ -65,19 +65,19 @@ public record ArticleSummaryDto(
     double WilsonScore,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Score,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MatchType,
-    string? Content,
+    string? ContentMarkdown,
     List<object>? Attachments,
     // Match-context window from the article body (search results only; null → clients show Excerpt)
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Snippet = null);
 
 // Full article detail shared by GET /api/articles/{idOrSlug} and the MCP get_article tool.
-// Content is the raw TipTap document; ContentText is the extracted plain text.
+// Markdown is the canonical source; ContentText is its normalized searchable text.
 public record ArticleDetailDto(
     string Id,
     string Title,
     string Slug,
     string? Excerpt,
-    object? Content,
+    string? ContentMarkdown,
     string? ContentText,
     string Status,
     string ContentType,

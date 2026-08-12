@@ -19,15 +19,6 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
 
     public static byte[] CreateJsonLinesTemplate()
     {
-        var content = new
-        {
-            type = "doc",
-            content = new object[]
-            {
-                new { type = "heading", attrs = new { level = 2 }, content = new[] { new { type = "text", text = "Kurulum adımları" } } },
-                new { type = "paragraph", content = new[] { new { type = "text", text = "VPN istemcisini kurun ve kurumsal hesabınızla giriş yapın." } } }
-            }
-        };
         var row = new
         {
             externalId = "example-howto-001",
@@ -35,7 +26,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
             excerpt = "Windows için şirket VPN kurulumu.",
             status = "draft",
             contentType = "how-to",
-            content,
+            contentMarkdown = "## Kurulum adımları\n\nVPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.",
             tags = new[] { "vpn", "network" }
         };
         return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(row, JsonOptions) + Environment.NewLine);
@@ -43,7 +34,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
 
     public static byte[] CreateCsvTemplate()
     {
-        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,content\r\n");
+        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,contentMarkdown\r\n");
         output.AppendJoin(',', Csv("example-howto-001"), Csv("VPN Kurulum Rehberi"),
             Csv("Windows için şirket VPN kurulumu."), Csv("draft"), Csv("how-to"),
             Csv("vpn|network"), Csv("VPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.")).Append("\r\n");
@@ -112,9 +103,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                 continue;
             }
 
-            var content = item.Content is { } element && element.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
-                ? element.GetRawText()
-                : null;
+            var content = item.ContentMarkdown?.Trim();
             var status = item.Status ?? "draft";
 
             if (existing != null && conflictPolicy == "update")
@@ -177,7 +166,6 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         var output = new StringBuilder();
         foreach (var article in articles)
         {
-            object? content = article.Content == null ? null : JsonSerializer.Deserialize<JsonElement>(article.Content);
             output.AppendLine(JsonSerializer.Serialize(new
             {
                 externalId = article.Id,
@@ -185,7 +173,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                 article.Excerpt,
                 article.Status,
                 article.ContentType,
-                content,
+                contentMarkdown = article.Content,
                 tags = article.ArticleTags.Select(x => x.Tag.Slug).ToArray()
             }, JsonOptions));
         }
@@ -196,7 +184,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
     {
         var articles = await query.Include(a => a.ArticleTags).ThenInclude(x => x.Tag)
             .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
-        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,content\r\n");
+        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,contentMarkdown\r\n");
         foreach (var a in articles)
             output.AppendJoin(',', Csv(a.Id), Csv(a.Title), Csv(a.Excerpt), Csv(a.Status), Csv(a.ContentType),
                 Csv(string.Join('|', a.ArticleTags.Select(x => x.Tag.Slug))), Csv(a.Content)).Append("\r\n");
@@ -245,13 +233,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         var result = new List<BulkImportItem>();
         foreach (var row in rows.Skip(1).Where(r => r.Any(x => !string.IsNullOrWhiteSpace(x))))
         {
-            JsonElement? content = null;
-            var raw = Get(row, "content");
-            if (raw != null)
-            {
-                try { content = JsonSerializer.Deserialize<JsonElement>(raw); }
-                catch (JsonException) { content = JsonSerializer.SerializeToElement(new { type = "doc", content = new[] { new { type = "paragraph", content = new[] { new { type = "text", text = raw } } } } }); }
-            }
+            var content = Get(row, "contentMarkdown");
             result.Add(new(Get(row, "externalId"), Get(row, "title") ?? "", Get(row, "excerpt"), Get(row, "status"),
                 Get(row, "contentType"), content, Get(row, "tags")?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
             if (result.Count > MaxRecords) throw new InvalidDataException($"A single import may contain at most {MaxRecords} records");

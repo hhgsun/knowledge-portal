@@ -4,14 +4,14 @@ import { Save, ArrowLeft, Send } from "lucide-react";
 import { TagSelector } from "./tag-selector";
 import { useLookups } from "../../hooks/useLookups";
 
-const TiptapEditor = lazy(() => import("./tiptap-editor"));
+const MilkdownEditor = lazy(() => import("./milkdown-editor"));
 
 export interface ArticleFormProps {
   mode: "create" | "edit";
   title: string;
   onTitleChange: (v: string) => void;
-  content: Record<string, unknown> | null;
-  onContentChange: (v: Record<string, unknown>) => void;
+  contentMarkdown: string;
+  onContentMarkdownChange: (v: string) => void;
   excerpt: string;
   onExcerptChange: (v: string) => void;
   contentType: string;
@@ -41,8 +41,8 @@ export function ArticleForm({
   mode,
   title,
   onTitleChange,
-  content,
-  onContentChange,
+  contentMarkdown,
+  onContentMarkdownChange,
   excerpt,
   onExcerptChange,
   contentType,
@@ -164,13 +164,12 @@ export function ArticleForm({
         )}
 
         <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <TiptapEditor
-            content={content}
-            onChange={(json) => onContentChange(json)}
+          <MilkdownEditor
+            contentMarkdown={contentMarkdown}
+            onChange={onContentMarkdownChange}
             articleId={articleId}
             uploadImage={uploadImage}
             deleteImage={deleteImage}
-            deferredUpload={true}
           />
         </Suspense>
 

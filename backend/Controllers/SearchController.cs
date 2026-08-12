@@ -393,7 +393,7 @@ public class SearchController(
         var plainText = includeContent || snippetTokens.Length > 0 ? ContentExtractor.ExtractPlainText(content) : null;
         return ArticleService.BuildSummary(
             id, title, slug, excerpt, contentType, updatedAt, enrichment,
-            includeContent ? plainText : null,
+            includeContent ? content : null,
             attachmentMap?.GetValueOrDefault(id),
             score, matchType,
             SearchSnippetHelper.Build(plainText, snippetTokens));

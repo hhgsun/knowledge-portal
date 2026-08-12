@@ -5,7 +5,7 @@ public class ArticleVersion
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..21];
     public string ArticleId { get; set; } = null!;
     public string Title { get; set; } = null!;
-    public string? Content { get; set; } // JSON string
+    public string? Content { get; set; } // Canonical Markdown snapshot
     public string ChangedBy { get; set; } = null!;
     public string? ChangeSummary { get; set; }
     public int Version { get; set; }

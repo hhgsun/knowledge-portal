@@ -243,7 +243,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
 
         return new ArticleDetailDto(
             article.Id, article.Title, article.Slug, article.Excerpt,
-            article.Content != null ? JsonSerializer.Deserialize<object>(article.Content) : null,
+            article.Content,
             ContentExtractor.ExtractPlainText(article.Content),
             article.Status, article.ContentType,
             article.OwnerId, article.Owner?.Name, article.Owner?.Slug, apiKeyName,
@@ -265,7 +265,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         return articles.Select(a => BuildSummary(
                 a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt.ToString("o"),
                 enrichment.GetValueOrDefault(a.Id),
-                includeContent ? ContentExtractor.ExtractPlainText(a.Content) : null,
+                includeContent ? a.Content : null,
                 attachmentMap?.GetValueOrDefault(a.Id)))
             .ToList();
     }
@@ -330,7 +330,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         var articles = rows.Select(r => BuildSummary(
                 r.Id, r.Title, r.Slug, r.Excerpt, r.ContentType, r.UpdatedAt,
                 enrichment.GetValueOrDefault(r.Id),
-                includeContent ? ContentExtractor.ExtractPlainText(r.Content) : null,
+                includeContent ? r.Content : null,
                 attachmentMap?.GetValueOrDefault(r.Id)))
             .ToList();
 

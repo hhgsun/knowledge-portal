@@ -84,7 +84,7 @@ export default function BulkTransferPage() {
       <p className="text-sm text-zinc-500 mt-1">Export articles from one Knowledge Portal and import them into another.</p></div>
 
     <section className="p-5 border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl space-y-4">
-      <div className="flex items-start gap-3"><Info size={20} className="text-blue-600 mt-0.5 shrink-0" /><div><h2 className="font-semibold">Transfer format</h2><p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">JSONL is recommended because it preserves TipTap content. CSV is intended for compatibility and spreadsheet inspection.</p></div></div>
+      <div className="flex items-start gap-3"><Info size={20} className="text-blue-600 mt-0.5 shrink-0" /><div><h2 className="font-semibold">Transfer format</h2><p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">JSONL and CSV use the canonical <code>contentMarkdown</code> field, so bulk transfers preserve Markdown exactly.</p></div></div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => downloadTemplate("jsonl")} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-medium"><FileJson size={17} className="text-blue-600" /> Download JSONL template</button>
         <button onClick={() => downloadTemplate("csv")} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-medium"><FileSpreadsheet size={17} className="text-green-600" /> Download CSV template</button>

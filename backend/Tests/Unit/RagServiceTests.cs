@@ -48,15 +48,6 @@ public class RagServiceTests
 
     // ─── Harness ───────────────────────────────────────────────────────
 
-    private static object TipTapDoc(string text) => new
-    {
-        type = "doc",
-        content = new[]
-        {
-            new { type = "paragraph", content = new[] { new { type = "text", text } } }
-        }
-    };
-
     private sealed record Harness(RagService Rag, FakeChatClient Chat);
 
     private static Harness BuildRag(List<VectorSearchResult> vectorResults, Action<AppDbContext> seed)
@@ -88,7 +79,7 @@ public class RagServiceTests
         Slug = title.ToLowerInvariant().Replace(' ', '-') + "-" + id,
         Status = status,
         OwnerId = "owner-1",
-        Content = bodyText == null ? null : JsonSerializer.Serialize(TipTapDoc(bodyText))
+        Content = bodyText
     };
 
     private static string UserMessage(FakeChatClient chat) =>

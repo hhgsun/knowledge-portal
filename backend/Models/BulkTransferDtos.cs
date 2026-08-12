@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace KnowledgePortal.Api.Models;
 
 public record BulkImportItem(
@@ -8,7 +6,7 @@ public record BulkImportItem(
     string? Excerpt,
     string? Status,
     string? ContentType,
-    JsonElement? Content,
+    string? ContentMarkdown,
     string[]? Tags);
 
 public record BulkImportError(int Row, string? Title, string Error);

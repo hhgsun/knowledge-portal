@@ -110,18 +110,19 @@ public static class DbInitializer
             var contentType = root.GetProperty("contentType").GetString() ?? "reference";
             var excerpt = root.TryGetProperty("excerpt", out var exc) ? exc.GetString() : null;
             var status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "published" : "published";
-            var contentJson = root.GetProperty("content").GetRawText();
+            // Direct Markdown cut-over: legacy structured seed documents are intentionally not imported.
+            var contentMarkdown = root.TryGetProperty("contentMarkdown", out var md) ? md.GetString() : null;
 
             var article = new Article
             {
                 Title = title,
                 Slug = slug,
-                Content = contentJson,
+                Content = contentMarkdown,
                 Excerpt = excerpt,
                 ContentType = contentType,
                 Status = status,
                 OwnerId = admin.Id,
-                ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentJson),
+                ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown),
                 PublishedAt = status == "published" ? DateTime.UtcNow : null,
                 LastReviewedAt = status == "published" ? DateTime.UtcNow : null,
             };

@@ -211,21 +211,7 @@ public class SearchTests : IClassFixture<TestWebApplicationFactory>
         {
             title = "Snippet Deneme Dokümanı",
             excerpt = "Bu özette aranan kelime yok",
-            content = new
-            {
-                type = "doc",
-                content = new object[]
-                {
-                    new
-                    {
-                        type = "paragraph",
-                        content = new object[]
-                        {
-                            new { type = "text", text = $"{filler} uzaktankumanda cihazının eşleştirme adımları {filler}" }
-                        }
-                    }
-                }
-            },
+            contentMarkdown = $"{filler} uzaktankumanda cihazının eşleştirme adımları {filler}",
             status = "published"
         });
 

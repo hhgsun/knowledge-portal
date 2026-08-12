@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace KnowledgePortal.Api.Models;
 
 public record SourceImportPreview(
@@ -7,7 +5,7 @@ public record SourceImportPreview(
     string FileName,
     string Title,
     string? Excerpt,
-    JsonElement Content,
+    string ContentMarkdown,
     bool Parsed,
     bool KeepOriginal,
     string ProcessingMode,
@@ -16,7 +14,7 @@ public record SourceImportPreview(
 public record SourceImportDraft(
     int SourceIndex,
     string Title,
-    JsonElement Content,
+    string ContentMarkdown,
     string? Excerpt,
     string? ContentType,
     string? Status,

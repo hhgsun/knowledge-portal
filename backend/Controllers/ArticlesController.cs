@@ -125,7 +125,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         {
             Title = req.Title.Trim(),
             Slug = slug,
-            Content = req.Content != null ? JsonSerializer.Serialize(req.Content) : null,
+            Content = req.ContentMarkdown?.Trim(),
             Excerpt = req.Excerpt?.Trim(),
             Status = articleStatus,
             OwnerId = userId,
@@ -133,7 +133,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
-            ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.Content != null ? JsonSerializer.Serialize(req.Content) : null),
+            ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.ContentMarkdown),
         };
 
         db.Articles.Add(article);
@@ -202,9 +202,9 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         var contentChanged = false;
         if (req.Title != null) { article.Title = req.Title.Trim(); }
-        if (req.Content != null)
+        if (req.ContentMarkdown != null)
         {
-            article.Content = JsonSerializer.Serialize(req.Content);
+            article.Content = req.ContentMarkdown.Trim();
             article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
             contentChanged = true;
         }

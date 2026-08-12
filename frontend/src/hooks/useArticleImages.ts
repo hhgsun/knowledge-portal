@@ -24,9 +24,9 @@ export function useArticleImages() {
   }, []);
 
   const uploadPendingImages = useCallback(
-    async (articleId: string, contentJson: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    async (articleId: string, markdown: string): Promise<string> => {
       const pending = pendingUploadsRef.current;
-      if (pending.size === 0) return contentJson;
+      if (pending.size === 0) return markdown;
 
       const urlMap = new Map<string, string>();
 
@@ -53,13 +53,13 @@ export function useArticleImages() {
       pending.clear();
 
       if (urlMap.size > 0) {
-        let jsonStr = JSON.stringify(contentJson);
+        let result = markdown;
         for (const [blobUrl, realUrl] of urlMap) {
-          jsonStr = jsonStr.split(blobUrl).join(realUrl);
+          result = result.split(blobUrl).join(realUrl);
         }
-        return JSON.parse(jsonStr);
+        return result;
       }
-      return contentJson;
+      return markdown;
     },
     [fetchWithAuth]
   );

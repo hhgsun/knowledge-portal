@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
-import { TiptapRenderer } from "../components/editor/tiptap-renderer";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
@@ -323,8 +324,8 @@ export default function ArticleViewPage() {
       </div>
 
       <div className="prose dark:prose-invert max-w-none border-t border-zinc-200 dark:border-zinc-800 pt-6">
-        {article.content ? (
-          <TiptapRenderer content={article.content as Record<string, unknown>} />
+        {article.contentMarkdown ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.contentMarkdown}</ReactMarkdown>
         ) : (
           <p className="text-zinc-400 italic">Henüz içerik yok.</p>
         )}
