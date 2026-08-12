@@ -43,6 +43,87 @@
   color-scheme: dark;
 }
 
+/* Crepe has its own editorial typography (serif, light headings). Override it
+   so authored content looks the same while editing and after publication. */
+.article-editor-typography .milkdown {
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-code: var(--font-mono);
+}
+
+.article-editor-typography .milkdown .ProseMirror {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.article-editor-typography .milkdown .ProseMirror h1,
+.article-editor-typography .milkdown .ProseMirror h2,
+.article-editor-typography .milkdown .ProseMirror h3,
+.article-editor-typography .milkdown .ProseMirror h4,
+.article-editor-typography .milkdown .ProseMirror h5,
+.article-editor-typography .milkdown .ProseMirror h6 {
+  font-family: var(--font-sans);
+  margin-top: 1.25em;
+  margin-bottom: 0.4em;
+  padding: 0;
+}
+
+.article-editor-typography .milkdown .ProseMirror h1 {
+  font-size: 2.25em;
+  font-weight: 800;
+  line-height: 1.1111;
+}
+
+.article-editor-typography .milkdown .ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.3333;
+}
+
+.article-editor-typography .milkdown .ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.article-editor-typography .milkdown .ProseMirror h4,
+.article-editor-typography .milkdown .ProseMirror h5,
+.article-editor-typography .milkdown .ProseMirror h6 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.article-editor-typography .milkdown .ProseMirror p {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+  padding: 0;
+  line-height: 1.75;
+}
+
+.article-editor-typography .milkdown .ProseMirror ul,
+.article-editor-typography .milkdown .ProseMirror ol {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+.article-editor-typography .milkdown .ProseMirror li {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
+.article-editor-typography .milkdown .ProseMirror blockquote,
+.article-editor-typography .milkdown .ProseMirror pre {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.article-editor-typography .milkdown .ProseMirror hr {
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

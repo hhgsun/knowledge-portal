@@ -77,7 +77,7 @@ export default function MilkdownEditor({ contentMarkdown, onChange, uploadImage,
     };
   }, [token]);
 
-  return <div className="milkdown-shell min-h-[28rem] overflow-hidden rounded-xl border border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"><div ref={rootRef} /></div>;
+  return <div className="milkdown-shell article-editor-typography min-h-[28rem] overflow-hidden rounded-xl border border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"><div ref={rootRef} /></div>;
 }
 
 function extractImageUrls(markdown: string): Set<string> {
