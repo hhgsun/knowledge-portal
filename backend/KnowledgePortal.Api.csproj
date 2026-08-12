@@ -35,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Update="SeedData\articles\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="SeedData\articles\*.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

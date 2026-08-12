@@ -97,57 +97,78 @@ public static class DbInitializer
         var admin = await db.Users.FirstAsync(u => u.Email == "admin@finagotech.com.tr");
         var allTags = await db.Tags.ToListAsync();
 
-        var files = Directory.GetFiles(seedPath, "*.json").OrderBy(f => f);
+        var files = Directory.GetFiles(seedPath, "*.md").OrderBy(f => f);
 
         foreach (var file in files)
         {
-            var json = await File.ReadAllTextAsync(file);
-            var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
+            var source = await File.ReadAllTextAsync(file);
+            var (metadata, contentMarkdown) = ParseMarkdownSeed(source, file);
 
-            var title = root.GetProperty("title").GetString()!;
+            var title = metadata.Title;
             var slug = await db.GenerateUniqueArticleSlugAsync(title);
-            var contentType = root.GetProperty("contentType").GetString() ?? "reference";
-            var excerpt = root.TryGetProperty("excerpt", out var exc) ? exc.GetString() : null;
-            var status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "published" : "published";
-            // Direct Markdown cut-over: legacy structured seed documents are intentionally not imported.
-            var contentMarkdown = root.TryGetProperty("contentMarkdown", out var md) ? md.GetString() : null;
 
             var article = new Article
             {
                 Title = title,
                 Slug = slug,
                 Content = contentMarkdown,
-                Excerpt = excerpt,
-                ContentType = contentType,
-                Status = status,
+                Excerpt = metadata.Excerpt,
+                ContentType = metadata.ContentType,
+                Status = metadata.Status,
                 OwnerId = admin.Id,
                 ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown),
-                PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                LastReviewedAt = status == "published" ? DateTime.UtcNow : null,
+                PublishedAt = metadata.Status == "published" ? DateTime.UtcNow : null,
+                LastReviewedAt = metadata.Status == "published" ? DateTime.UtcNow : null,
             };
 
             db.Articles.Add(article);
             await db.SaveChangesAsync();
 
             // Assign tags
-            if (root.TryGetProperty("tags", out var tagsEl))
+            foreach (var tagSlug in metadata.Tags)
             {
-                foreach (var tagEl in tagsEl.EnumerateArray())
+                var tag = allTags.FirstOrDefault(t => t.Slug == tagSlug);
+                if (tag != null)
                 {
-                    var tagSlug = tagEl.GetString();
-                    var tag = allTags.FirstOrDefault(t => t.Slug == tagSlug);
-                    if (tag != null)
+                    db.ArticleTags.Add(new ArticleTag
                     {
-                        db.ArticleTags.Add(new ArticleTag
-                        {
-                            ArticleId = article.Id,
-                            TagId = tag.Id
-                        });
-                    }
+                        ArticleId = article.Id,
+                        TagId = tag.Id
+                    });
                 }
-                await db.SaveChangesAsync();
             }
+            await db.SaveChangesAsync();
         }
+    }
+
+    internal static (SeedArticleMetadata Metadata, string Markdown) ParseMarkdownSeed(string source, string fileName)
+    {
+        var normalized = source.Replace("\r\n", "\n");
+        if (!normalized.StartsWith("---\n", StringComparison.Ordinal))
+            throw new InvalidDataException($"Seed article '{fileName}' is missing JSON front matter.");
+
+        var end = normalized.IndexOf("\n---\n", 4, StringComparison.Ordinal);
+        if (end < 0)
+            throw new InvalidDataException($"Seed article '{fileName}' has unterminated JSON front matter.");
+
+        var metadataJson = normalized[4..end];
+        var metadata = JsonSerializer.Deserialize<SeedArticleMetadata>(metadataJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new InvalidDataException($"Seed article '{fileName}' has invalid metadata.");
+
+        if (string.IsNullOrWhiteSpace(metadata.Title))
+            throw new InvalidDataException($"Seed article '{fileName}' is missing a title.");
+
+        var markdown = normalized[(end + 5)..].Trim();
+        return (metadata, markdown);
+    }
+
+    internal sealed class SeedArticleMetadata
+    {
+        public string Title { get; init; } = "";
+        public string ContentType { get; init; } = "reference";
+        public string[] Tags { get; init; } = [];
+        public string? Excerpt { get; init; }
+        public string Status { get; init; } = "published";
     }
 }

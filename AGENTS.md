@@ -114,8 +114,9 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 1. **Admin user** created if missing (email: `admin@finagotech.com.tr`, password: `1q2w3E*/`, role: admin)
 2. **Default tags** added (project-knowledge-portal, getting-started, tutorial, etc.)
 3. **Content types** added (reference, how-to, adr, runbook, faq, policy, onboarding)
-4. **Articles** loaded from `backend/SeedData/articles/*.json` if Articles table is empty
+4. **Articles** loaded from `backend/SeedData/articles/*.md` if Articles table is empty
    - Files are processed in order by filename
+   - Article metadata is stored as JSON-compatible YAML front matter; the body is canonical Markdown for Milkdown
    - Each article's tags are assigned automatically
    - Content is stored as JSON (ProseMirror doc format)
    - Slug is auto-generated from title (with collision detection)
