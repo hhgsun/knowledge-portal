@@ -218,37 +218,6 @@ export default function ArticleViewPage() {
         <span className="text-sm text-zinc-700 dark:text-zinc-300">{article.title}</span>
       </div> */}
 
-      {article.status === "published" && (
-        <div className={`mb-6 p-4 rounded-xl border ${article.approvedAt ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800" : "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"}`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">{article.approvedAt ? "Onaylı içerik" : "Henüz onaylanmamış içerik"}</p>
-              <p className="text-xs text-zinc-500 mt-0.5">{article.approvedAt ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından doğrulandı.` : "İçerik yayımdadır; onay, ek bir güvenilirlik göstergesidir."}</p>
-            </div>
-            {isApprover && (
-              <div className="flex items-center gap-2">
-                {!article.approvedAt && <button
-                  onClick={handleApprove}
-                  disabled={actionLoading}
-                  className="flex items-center gap-1 px-2 py-1 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-                >
-                  <CheckCircle size={14} />
-                  Onayla
-                </button>}
-                {article.approvedAt && <button
-                  onClick={handleReject}
-                  disabled={actionLoading}
-                  className="flex items-center gap-1 px-2 py-1 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-                >
-                  <XCircle size={14} />
-                  Onayı kaldır
-                </button>}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="mb-6">
         <div className="flex items-start justify-between">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mr-1">{article.title}</h1>
@@ -282,8 +251,30 @@ export default function ArticleViewPage() {
           </div>
         </div>
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
-        <div className="flex items-center gap-4 mt-4 text-sm text-zinc-500">
+        <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-zinc-500">
           <ContentTypeBadge contentType={article.contentType} size="md" clickable />
+          {article.status === "published" && (
+            <span
+              title={article.approvedAt ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından doğrulandı` : "Yayımlanmış fakat henüz doğrulanmamış içerik"}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${article.approvedAt
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                }`}
+            >
+              {article.approvedAt ? <CheckCircle size={12} /> : <Clock size={12} />}
+              {article.approvedAt ? "Onaylı" : "Onaylanmamış"}
+            </span>
+          )}
+          {article.status === "published" && isApprover && (
+            <button
+              onClick={article.approvedAt ? handleReject : handleApprove}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              {article.approvedAt ? <XCircle size={12} /> : <CheckCircle size={12} />}
+              {article.approvedAt ? "Onayı kaldır" : "Onayla"}
+            </button>
+          )}
           {article.status !== "published" && (
             <span className={`text-xs px-2 py-0.5 rounded-full ${article.status === "draft" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" :
               article.status === "archived" ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : ""
