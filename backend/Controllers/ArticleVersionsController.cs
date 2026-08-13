@@ -79,6 +79,8 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
         article.Content = version.Content;
         article.UpdatedAt = DateTime.UtcNow;
         article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(version.Content);
+        article.ApprovedById = null;
+        article.ApprovedAt = null;
 
         // Create a new version recording the restore
         var newVersion = await articleService.AddVersionAsync(

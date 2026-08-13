@@ -9,6 +9,8 @@ public class LookupValue
     public string? Color { get; set; }            // Tailwind color key e.g. "blue", "green", "red"
     public string? Icon { get; set; }             // Lucide icon name e.g. "book-open", "code", "lightbulb"
     public int SortOrder { get; set; }
+    /// <summary>0-100 governance authority configured independently for each dynamic content type.</summary>
+    public int AuthorityWeight { get; set; } = 50;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

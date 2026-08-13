@@ -14,6 +14,7 @@ export interface LookupValue {
   color?: string;
   icon?: string;
   sortOrder: number;
+  authorityWeight: number;
   isActive: boolean;
 }
 

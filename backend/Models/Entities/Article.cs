@@ -14,12 +14,15 @@ public class Article
     public int? ReadTimeMinutes { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime? LastReviewedAt { get; set; }
+    public string? ApprovedById { get; set; }
+    public DateTime? ApprovedAt { get; set; }
     public int ReviewIntervalDays { get; set; } = 90;
     public DateTime? IndexedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public User Owner { get; set; } = null!;
+    public User? ApprovedBy { get; set; }
     public ApiKey? CreatedViaApiKey { get; set; }
     public ICollection<ArticleVersion> Versions { get; set; } = [];
     public ICollection<ArticleTag> ArticleTags { get; set; } = [];

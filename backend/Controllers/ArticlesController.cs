@@ -110,6 +110,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
+        if (req.ReviewIntervalDays is < 1 or > 3650)
+            return BadRequest(new { error = "reviewIntervalDays must be between 1 and 3650" });
 
         var slug = await db.GenerateUniqueArticleSlugAsync(req.Title);
 
@@ -134,6 +136,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
             ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.ContentMarkdown),
+            ReviewIntervalDays = req.ReviewIntervalDays ?? 90,
         };
 
         db.Articles.Add(article);
@@ -199,6 +202,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         if (req.Status != null && !ValidStatuses.Contains(req.Status))
             return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
+        if (req.ReviewIntervalDays is < 1 or > 3650)
+            return BadRequest(new { error = "reviewIntervalDays must be between 1 and 3650" });
 
         var contentChanged = false;
         if (req.Title != null) { article.Title = req.Title.Trim(); }
@@ -207,9 +212,14 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             article.Content = req.ContentMarkdown.Trim();
             article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
             contentChanged = true;
+            // A previous approval covered the old content. Direct edits remain publishable,
+            // but governance must show that the new revision has no recorded approval.
+            article.ApprovedById = null;
+            article.ApprovedAt = null;
         }
         if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
         if (req.ContentType != null) article.ContentType = req.ContentType;
+        if (req.ReviewIntervalDays.HasValue) article.ReviewIntervalDays = req.ReviewIntervalDays.Value;
         if (req.Status != null)
         {
             // Publishing requires articles:publish permission
@@ -315,6 +325,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         article.Status = "published";
         article.PublishedAt = DateTime.UtcNow;
         article.LastReviewedAt = DateTime.UtcNow;
+        article.ApprovedById = User.GetUserId();
+        article.ApprovedAt = DateTime.UtcNow;
         article.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 

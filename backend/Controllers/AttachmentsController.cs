@@ -122,6 +122,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         };
 
         db.ArticleAttachments.Add(attachment);
+        article.ApprovedById = null;
+        article.ApprovedAt = null;
         try { await db.SaveChangesAsync(); }
         catch
         {
@@ -158,6 +160,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         // Delete file from disk
         var filePath = AttachmentHelper.GetFilePath(config, articleId, attachment.StoredFileName);
         db.ArticleAttachments.Remove(attachment);
+        article.ApprovedById = null;
+        article.ApprovedAt = null;
         await db.SaveChangesAsync();
         try { AttachmentHelper.MoveToTrash(config, articleId, attachment.StoredFileName); }
         catch (Exception ex) { logger.LogError(ex, "Failed to move deleted attachment {AttachmentId} to trash", attachmentId); }

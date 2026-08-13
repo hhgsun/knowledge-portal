@@ -24,7 +24,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         var results = await query
             .OrderBy(l => l.Category)
             .ThenBy(l => l.SortOrder)
-            .Select(l => new { l.Id, l.Category, l.Value, l.Label, l.Color, l.Icon, l.SortOrder, l.IsActive })
+            .Select(l => new { l.Id, l.Category, l.Value, l.Label, l.Color, l.Icon, l.SortOrder, l.AuthorityWeight, l.IsActive })
             .ToListAsync();
 
         return Ok(results);
@@ -45,6 +45,9 @@ public class LookupsController(AppDbContext db) : ControllerBase
         if (exists)
             return Conflict(new { error = "A lookup with this category and value already exists" });
 
+        if (req.AuthorityWeight is < 0 or > 100)
+            return BadRequest(new { error = "authorityWeight must be between 0 and 100" });
+
         var maxOrder = await db.LookupValues
             .Where(l => l.Category == req.Category)
             .MaxAsync(l => (int?)l.SortOrder) ?? 0;
@@ -57,13 +60,14 @@ public class LookupsController(AppDbContext db) : ControllerBase
             Color = req.Color?.Trim(),
             Icon = req.Icon?.Trim(),
             SortOrder = req.SortOrder ?? (maxOrder + 1),
+            AuthorityWeight = req.AuthorityWeight ?? 50,
             IsActive = true
         };
 
         db.LookupValues.Add(lookup);
         await db.SaveChangesAsync();
 
-        return Created($"/api/lookups/{lookup.Id}", new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder });
+        return Created($"/api/lookups/{lookup.Id}", new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder, lookup.AuthorityWeight });
     }
 
     [HttpPut]
@@ -81,11 +85,14 @@ public class LookupsController(AppDbContext db) : ControllerBase
         if (req.Color != null) lookup.Color = req.Color.Trim();
         if (req.Icon != null) lookup.Icon = req.Icon.Trim();
         if (req.SortOrder.HasValue) lookup.SortOrder = req.SortOrder.Value;
+        if (req.AuthorityWeight is < 0 or > 100)
+            return BadRequest(new { error = "authorityWeight must be between 0 and 100" });
+        if (req.AuthorityWeight.HasValue) lookup.AuthorityWeight = req.AuthorityWeight.Value;
         if (req.IsActive.HasValue) lookup.IsActive = req.IsActive.Value;
 
         await db.SaveChangesAsync();
 
-        return Ok(new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder, lookup.IsActive });
+        return Ok(new { lookup.Id, lookup.Category, lookup.Value, lookup.Label, lookup.Color, lookup.Icon, lookup.SortOrder, lookup.AuthorityWeight, lookup.IsActive });
     }
 
     [HttpDelete]

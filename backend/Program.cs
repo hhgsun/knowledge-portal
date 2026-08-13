@@ -199,6 +199,7 @@ builder.Services.AddScoped<AttachmentStorageService>();
 builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<SourceImportService>();
 builder.Services.AddScoped<McpToolExecutor>();
+builder.Services.AddScoped<ContentGovernanceService>();
 
 var app = builder.Build();
 

@@ -87,6 +87,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             // lookup an index scan instead of a seq scan over all articles at 750k+ rows.
             e.HasIndex(a => new { a.Status, a.IndexedAt });
             e.HasOne(a => a.Owner).WithMany(u => u.Articles).HasForeignKey(a => a.OwnerId);
+            e.HasOne(a => a.ApprovedBy).WithMany().HasForeignKey(a => a.ApprovedById).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(a => a.CreatedViaApiKey).WithMany().HasForeignKey(a => a.CreatedViaApiKeyId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -180,6 +181,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(l => l.Value).IsRequired();
             e.Property(l => l.Label).IsRequired();
             e.Property(l => l.SortOrder).HasDefaultValue(0);
+            e.Property(l => l.AuthorityWeight).HasDefaultValue(50);
             e.Property(l => l.IsActive).HasDefaultValue(true);
             e.Property(l => l.CreatedAt).IsRequired();
             e.HasIndex(l => new { l.Category, l.Value }).IsUnique();

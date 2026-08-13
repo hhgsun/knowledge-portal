@@ -140,6 +140,8 @@ Tüm araçlar sonuç şemasını `outputSchema` ile ilan eder ve makine tarafın
 
 Arama sonuçlarında ayrıca `evidenceAvailable` ve `evidence[]` alanları bulunur. Kanıt kaydı makale ID/slug'ını, canonical API URL'ini, kaynak türünü, varsa eşleşen pasajı, güncellenme zamanını, eşleşme türünü ve skoru içerir. Yalnızca başlıkta eşleşme varsa sahte pasaj üretilmez; `evidenceAvailable` false olur.
 
+Karar desteği için her sonuçta `governance` bilgisi bulunur. İçerik türleri dinamik olduğundan otorite değeri içerik türü adına göre kodlanmaz; Tanım Değerleri ekranındaki 0-100 `authorityWeight` ayarından alınır. Onay akışından geçen içeriklerde onaylayan ve zaman kaydedilir. Doğrudan yayınlanan veya içe aktarılan içerik gizlenmez ve onaylanmış varsayılmaz; `approvalState: not_recorded` uyarısıyla sunulur. İnceleme süresi, güncellik ve onay bilgisi birlikte bir reliability score üretir; arama yanıtındaki `decisionSupport` alanı dikkat gerektiren sonuçları özetler.
+
 Hata durumunda:
 
 ```json

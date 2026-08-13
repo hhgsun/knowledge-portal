@@ -19,6 +19,7 @@ export default function LookupsPage() {
   const [newLabel, setNewLabel] = useState("");
   const [newColor, setNewColor] = useState("blue");
   const [newIcon, setNewIcon] = useState("file-text");
+  const [newAuthorityWeight, setNewAuthorityWeight] = useState(50);
 
   const loadLookups = async () => {
     const res = await fetchWithAuth("/api/lookups");
@@ -37,7 +38,7 @@ export default function LookupsPage() {
     }
     const res = await fetchWithAuth("/api/lookups", {
       method: "POST",
-      body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon }),
+      body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon, authorityWeight: newAuthorityWeight }),
     });
     if (res.ok) {
       toast.success("Tanım değeri eklendi");
@@ -45,6 +46,7 @@ export default function LookupsPage() {
       setNewLabel("");
       setNewColor("blue");
       setNewIcon("file-text");
+      setNewAuthorityWeight(50);
       setShowAdd(false);
       invalidateCache();
       loadLookups();
@@ -143,6 +145,10 @@ export default function LookupsPage() {
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
               <IconPicker value={newIcon} onChange={setNewIcon} />
             </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
+              <input type="number" min={0} max={100} value={newAuthorityWeight} onChange={(e) => setNewAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
+            </div>
             <button
               onClick={handleAdd}
               className="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg"
@@ -172,17 +178,19 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editColor, setEditColor] = useState("");
   const [editIcon, setEditIcon] = useState("");
+  const [editAuthorityWeight, setEditAuthorityWeight] = useState(50);
 
   const handleEdit = (item: LookupValue) => {
     setEditingId(item.id);
     setEditColor(item.color || "blue");
     setEditIcon(item.icon || "file-text");
+    setEditAuthorityWeight(item.authorityWeight);
   };
 
   const handleSaveEdit = async (item: LookupValue) => {
     const res = await fetchWithAuth("/api/lookups", {
       method: "PUT",
-      body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon }),
+      body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon, authorityWeight: editAuthorityWeight }),
     });
     if (res.ok) {
       toast.success("Updated");
@@ -220,6 +228,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                     <div>
                       <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.label}</span>
                       <span className="text-xs text-zinc-400 ml-2">({item.value})</span>
+                      <span className="text-xs text-zinc-400 ml-2">Authority: {item.authorityWeight}</span>
                       {!item.isActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Etkin değil</span>}
                     </div>
                   </div>
@@ -257,6 +266,10 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
                         <IconPicker value={editIcon} onChange={setEditIcon} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
+                        <input type="number" min={0} max={100} value={editAuthorityWeight} onChange={(e) => setEditAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
                       </div>
                       <div className="flex gap-2 ml-auto">
                         <button

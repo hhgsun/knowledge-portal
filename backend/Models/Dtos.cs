@@ -9,7 +9,8 @@ public record CreateArticleRequest(
     string? Excerpt = null,
     string? Status = null,
     string? ContentType = null,
-    string[]? Tags = null);
+    string[]? Tags = null,
+    int? ReviewIntervalDays = null);
 
 public record UpdateArticleRequest(
     string? Title = null,
@@ -18,7 +19,8 @@ public record UpdateArticleRequest(
     string? Status = null,
     string? ContentType = null,
     string? ChangeSummary = null,
-    string[]? Tags = null);
+    string[]? Tags = null,
+    int? ReviewIntervalDays = null);
 
 // Auth
 public record LoginRequest(string Email, string Password);
@@ -101,8 +103,8 @@ public record TagWithCountDto(string Id, string Name, string Slug, int ArticleCo
 public record TagListResponse(List<TagWithCountDto> Tags, int Total, int Page, int TotalPages);
 
 // Lookups
-public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null);
-public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null);
+public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null, int? AuthorityWeight = null);
+public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null, int? AuthorityWeight = null);
 
 // Featured links (sidebar)
 public record CreateFeaturedLinkRequest(string Label, string LinkType, string Target, string? Icon = null, string? Color = null, int? SortOrder = null);

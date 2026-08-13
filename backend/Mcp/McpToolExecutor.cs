@@ -25,12 +25,13 @@ public class McpToolExecutor
     private readonly IConfiguration _config;
     private readonly IServiceProvider _services;
     private readonly ISearchReranker _reranker;
+    private readonly ContentGovernanceService _governance;
     private readonly ILogger<McpToolExecutor> _logger;
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
 
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
-        IConfiguration config, IServiceProvider services, ISearchReranker reranker,
+        IConfiguration config, IServiceProvider services, ISearchReranker reranker, ContentGovernanceService governance,
         ILogger<McpToolExecutor> logger)
     {
         _db = db;
@@ -39,6 +40,7 @@ public class McpToolExecutor
         _config = config;
         _services = services;
         _reranker = reranker;
+        _governance = governance;
         _logger = logger;
     }
 
@@ -315,7 +317,10 @@ public class McpToolExecutor
             return ErrorResult("Article not found or not published");
 
         var detail = await _articleService.BuildDetailAsync(article);
-        return TextResult(JsonSerializer.Serialize(detail, _jsonOptions));
+        var node = JsonSerializer.SerializeToNode(detail, _jsonOptions)!.AsObject();
+        var governance = await _governance.BuildAsync([article]);
+        node["governance"] = JsonSerializer.SerializeToNode(governance[article.Id], _jsonOptions);
+        return StructuredResult(node);
     }
 
     private async Task<McpToolCallResult> ListArticlesAsync(JsonElement? args)
@@ -436,6 +441,7 @@ public class McpToolExecutor
         var json = JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject();
         json["responseTimeMs"] = stopwatch.ElapsedMilliseconds;
         json["searchQueryId"] = record.Id;
+        await AddGovernanceAsync(json, ct);
         AddEvidence(json);
         return StructuredResult(json);
     }
@@ -503,6 +509,38 @@ public class McpToolExecutor
                 }
             };
         }
+    }
+
+    private async Task AddGovernanceAsync(JsonObject payload, CancellationToken ct)
+    {
+        if (payload["results"] is not JsonArray results) return;
+        var ids = results.OfType<JsonObject>()
+            .Select(r => r["id"]?.GetValue<string>()).Where(id => id != null).Cast<string>().ToList();
+        var articles = await _db.Articles.Where(a => ids.Contains(a.Id)).ToListAsync(ct);
+        var governance = await _governance.BuildAsync(articles, ct);
+
+        foreach (var result in results.OfType<JsonObject>())
+        {
+            var id = result["id"]?.GetValue<string>();
+            if (id != null && governance.TryGetValue(id, out var item))
+                result["governance"] = JsonSerializer.SerializeToNode(item, _jsonOptions);
+        }
+
+        var values = governance.Values.ToList();
+        payload["decisionSupport"] = new JsonObject
+        {
+            ["highAuthorityCount"] = values.Count(v => v.AuthorityLevel == "high"),
+            ["approvalNotRecordedCount"] = values.Count(v => v.ApprovalState == "not_recorded"),
+            ["overdueReviewCount"] = values.Count(v => v.ReviewState == "overdue"),
+            ["averageReliabilityScore"] = values.Count == 0 ? null : Math.Round(values.Average(v => v.ReliabilityScore), 1),
+            ["requiresCaution"] = values.Any(v => v.ApprovalState == "not_recorded" || v.ReviewState is "overdue" or "not_recorded"),
+            ["conflictAssessment"] = "not_evaluated",
+            ["recommendedArticleIds"] = new JsonArray(governance
+                .OrderByDescending(item => item.Value.ReliabilityScore)
+                .Select(item => (JsonNode?)JsonValue.Create(item.Key)).ToArray()),
+            ["warnings"] = new JsonArray(values.SelectMany(v => v.Warnings).Distinct()
+                .Select(warning => (JsonNode?)JsonValue.Create(warning)).ToArray())
+        };
     }
 
     private static JsonObject ObjectOutputSchema(params string[] required) => new()

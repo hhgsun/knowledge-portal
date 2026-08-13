@@ -411,6 +411,68 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_SearchArticles_ReportsDynamicGovernanceAndOptionalApproval()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var lookupResponse = await _client.PostAsJsonAsync("/api/lookups", new
+        {
+            category = "content_type", value = "mcp-governance-type", label = "MCP Governance Type",
+            authorityWeight = 92
+        });
+        Assert.Equal(HttpStatusCode.Created, lookupResponse.StatusCode);
+
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Doğrudan Yayınlanan Gqva", status = "published",
+            contentType = "mcp-governance-type", reviewIntervalDays = 30
+        });
+        var pendingResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Onaylanan Gqva", status = "pending",
+            contentType = "mcp-governance-type", reviewIntervalDays = 30
+        });
+        var pending = await pendingResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var approve = await _client.PostAsync($"/api/articles/{pending.GetProperty("id").GetString()}/approve", null);
+        Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
+
+        var result = await RpcResultAsync(ToolCall("search_articles", new { query = "gqva" }));
+        var structured = result.GetProperty("structuredContent");
+        var articles = structured.GetProperty("results").EnumerateArray().ToList();
+        var direct = articles.First(a => a.GetProperty("title").GetString() == "MCP Doğrudan Yayınlanan Gqva");
+        var approved = articles.First(a => a.GetProperty("title").GetString() == "MCP Onaylanan Gqva");
+
+        Assert.Equal("not_recorded", direct.GetProperty("governance").GetProperty("approvalState").GetString());
+        Assert.Equal("approved", approved.GetProperty("governance").GetProperty("approvalState").GetString());
+        Assert.Equal(92, approved.GetProperty("governance").GetProperty("authorityWeight").GetInt32());
+        Assert.Equal("MCP Governance Type", approved.GetProperty("governance").GetProperty("contentTypeLabel").GetString());
+        Assert.True(approved.GetProperty("governance").GetProperty("reliabilityScore").GetInt32()
+            > direct.GetProperty("governance").GetProperty("reliabilityScore").GetInt32());
+        Assert.True(structured.GetProperty("decisionSupport").GetProperty("requiresCaution").GetBoolean());
+        Assert.Equal(1, structured.GetProperty("decisionSupport").GetProperty("approvalNotRecordedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task ApprovedArticle_ContentEditInvalidatesRecordedApproval()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var createdResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Onay Geçersizleştirme Hqza", status = "pending"
+        });
+        var created = await createdResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetString();
+        await _client.PostAsync($"/api/articles/{id}/approve", null);
+        await _client.PutAsJsonAsync($"/api/articles/{id}", new { contentMarkdown = "Yeni revizyon hqza" });
+
+        var result = await RpcResultAsync(ToolCall("get_article", new { id_or_slug = id }));
+        var governance = result.GetProperty("structuredContent").GetProperty("governance");
+
+        Assert.Equal("not_recorded", governance.GetProperty("approvalState").GetString());
+        Assert.Contains(governance.GetProperty("warnings").EnumerateArray(),
+            warning => warning.GetString()!.Contains("No approval record", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Mcp_SearchArticles_Pagination_ReturnsTrueTotals()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);

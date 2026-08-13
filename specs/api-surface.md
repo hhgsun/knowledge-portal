@@ -78,6 +78,8 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 
 Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. RAG sources similarly include their canonical URL and source type.
 
+MCP search hits also include `governance`: optional approval state (`approved` or `not_recorded`), approver/time when recorded, review state (`current`, `due_soon`, `overdue`, `not_recorded`), next review date, dynamic content-type label/authority weight, reliability score, and warnings. Content-type authority is configured as `authorityWeight` (0-100, default 50) on each dynamic `content_type` lookup; no content-type names are hard-coded. Directly published/imported content remains available and is truthfully marked `not_recorded`. Search responses aggregate caution indicators and reliability-ordered `recommendedArticleIds` in `decisionSupport`. Semantic contradiction detection is deliberately not claimed: `conflictAssessment` is `not_evaluated` until a dedicated contradiction evaluator exists.
+
 **Client configuration example (Claude Desktop)**:
 ```json
 {
