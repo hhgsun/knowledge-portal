@@ -92,6 +92,11 @@ public class McpController : ControllerBase
             && id.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.Null))
             return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid request id");
 
+        // MCP operations are requests, not fire-and-forget notifications. Do not execute a
+        // tool when its result cannot be correlated by the client.
+        if (!request.HasId && request.Method != "notifications/initialized")
+            return StatusCode(StatusCodes.Status202Accepted);
+
         // Route to handler based on method
         var result = request.Method switch
         {
@@ -157,6 +162,8 @@ public class McpController : ControllerBase
             return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, "Missing params");
 
         var paramsEl = request.Params.Value;
+        if (paramsEl.ValueKind != JsonValueKind.Object)
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, "Params must be an object");
 
         // Extract tool name
         if (!paramsEl.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String)

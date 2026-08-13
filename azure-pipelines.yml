@@ -28,7 +28,7 @@ stages:
     displayName: 'Run Backend Tests'
     jobs:
       - job: BackendTests
-        displayName: 'Backend Tests (xUnit + Testcontainers)'
+        displayName: 'Backend Tests (xUnit + EF InMemory)'
         pool:
           vmImage: 'ubuntu-latest'
         steps:
@@ -40,6 +40,9 @@ stages:
 
           - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --logger trx --results-directory $(Agent.TempDirectory)/testresults
             displayName: 'dotnet test'
+
+          - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --no-build --filter "Gate=McpConformance|Gate=McpSchema|Gate=GoldenRetrieval|Gate=DataIsolation|Gate=McpSecurity|Gate=McpConcurrency" --logger "trx;LogFileName=mcp-quality-gates.trx" --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'MCP quality gates'
 
           - task: PublishTestResults@2
             displayName: 'Publish test results'
