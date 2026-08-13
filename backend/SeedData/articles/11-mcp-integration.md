@@ -154,6 +154,8 @@ MCP içeriği güvenilmeyen kaynak verisi olarak işler. Sonuçlardaki `security
 
 Her araç çağrısı `X-Trace-Id` döndürür ve yapılandırılmış audit kaydı oluşturur. Audit kaydı araç, sonuç, kimlik kaynağı, süre ve çıktı boyutunu içerir; sorgu, içerik veya credential değerlerini kaydetmez. Argümanlar yalnızca alan adı, tür ve uzunluk/adet olarak özetlenir. Operasyon metrikleri `/metrics` üzerinden tool, outcome ve auth source boyutlarıyla yayınlanır.
 
+Dayanıklılık katmanı araç türüne göre timeout, AI işlemleri için eşzamanlılık sınırı ve Ollama circuit breaker uygular. Büyük istekler 413 ile, büyük tool sonuçları `output_too_large` ile reddedilir. Geçici hatalar `retryable` ve `retryAfterSeconds` alanlarını içerir; istemci yalnızca bu alanlara göre kontrollü retry yapmalıdır. İstemci bağlantıyı kapatırsa çalışma iptal edilir ve audit sonucu `cancelled` olur.
+
 Hata durumunda:
 
 ```json

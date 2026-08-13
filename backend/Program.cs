@@ -201,6 +201,7 @@ builder.Services.AddScoped<SourceImportService>();
 builder.Services.AddScoped<McpToolExecutor>();
 builder.Services.AddScoped<ContentGovernanceService>();
 builder.Services.AddScoped<McpAuditService>();
+builder.Services.AddSingleton<McpResilienceService>();
 
 var app = builder.Build();
 

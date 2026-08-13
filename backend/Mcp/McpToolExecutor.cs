@@ -231,6 +231,10 @@ public class McpToolExecutor
                 _ => ErrorResult($"Unknown tool: {toolName}")
             };
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             // Full detail server-side only — exception messages can leak internals

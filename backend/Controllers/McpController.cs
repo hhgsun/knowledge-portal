@@ -27,8 +27,10 @@ namespace KnowledgePortal.Api.Controllers;
 [EnableRateLimiting("mcp")]
 public class McpController : ControllerBase
 {
+    private const long MaxRequestBytes = 262_144;
     private readonly McpToolExecutor _toolExecutor;
     private readonly McpAuditService _audit;
+    private readonly McpResilienceService _resilience;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -36,15 +38,20 @@ public class McpController : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public McpController(McpToolExecutor toolExecutor, McpAuditService audit)
+    public McpController(McpToolExecutor toolExecutor, McpAuditService audit, McpResilienceService resilience)
     {
         _toolExecutor = toolExecutor;
         _audit = audit;
+        _resilience = resilience;
     }
 
     [HttpPost]
+    [RequestSizeLimit(262_144)]
     public async Task<IActionResult> HandleRequest()
     {
+        if (Request.ContentLength > MaxRequestBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge);
+
         if (!IsJsonContentType(Request.ContentType))
             return StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
@@ -166,11 +173,19 @@ public class McpController : ControllerBase
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments, User, HttpContext.RequestAborted);
+            var result = await _resilience.ExecuteAsync(toolName, arguments,
+                token => _toolExecutor.ExecuteToolAsync(toolName, arguments, User, token),
+                HttpContext.RequestAborted);
             stopwatch.Stop();
             _audit.Complete(audit, result, stopwatch.ElapsedMilliseconds);
             Response.Headers["X-Trace-Id"] = audit.TraceId;
             return JsonRpcSuccessResponse(request.Id, result);
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            _audit.Cancelled(audit, stopwatch.ElapsedMilliseconds);
+            throw;
         }
         catch (Exception ex)
         {

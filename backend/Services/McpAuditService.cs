@@ -61,6 +61,16 @@ public sealed class McpAuditService(ILogger<McpAuditService> logger, PortalMetri
             audit.Client, audit.ProtocolVersion, audit.ArgumentSummary, elapsedMs);
     }
 
+    public void Cancelled(McpAuditContext audit, long elapsedMs)
+    {
+        var tags = new TagList { { "mcp.tool", audit.ToolName }, { "mcp.outcome", "cancelled" }, { "auth.source", audit.AuthSource } };
+        metrics.McpToolCalls.Add(1, tags);
+        metrics.McpToolDuration.Record(elapsedMs, tags);
+        logger.LogInformation(
+            "MCP audit traceId={TraceId} tool={ToolName} outcome=cancelled authSource={AuthSource} userId={UserId} apiKeyId={ApiKeyId} durationMs={DurationMs}",
+            audit.TraceId, audit.ToolName, audit.AuthSource, audit.UserId, audit.ApiKeyId, elapsedMs);
+    }
+
     internal static string SummarizeArguments(JsonElement? arguments)
     {
         if (arguments is not { ValueKind: JsonValueKind.Object }) return "none";

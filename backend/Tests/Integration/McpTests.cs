@@ -169,6 +169,22 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_RejectsOversizedRequestBody()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var oversized = new string('x', 300_000);
+        using var content = JsonContent.Create(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call",
+            @params = new { name = "search_articles", arguments = new { query = oversized } }
+        });
+
+        var response = await _client.PostAsync("/mcp", content);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Mcp_RejectsUnsupportedAcceptType()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);

@@ -89,6 +89,8 @@ MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, ex
 
 Every `tools/call` response includes `X-Trace-Id`. A structured audit event records trace ID, tool, outcome, auth source, user/API-key identifiers, bounded client user-agent, protocol version, duration, serialized output size, and a privacy-preserving argument shape. Raw argument values, queries, article content, credentials, and reversible hashes are never written to the MCP audit event. Prometheus exports `kp_mcp_tool_calls`, `kp_mcp_tool_errors`, `kp_mcp_tool_duration_ms`, and `kp_mcp_tool_output_bytes`, tagged by bounded tool/outcome/auth dimensions.
 
+MCP resilience limits are configurable under `Mcp`: request body 256 KiB, output default 1 MiB, tool/mode-specific execution budgets, bounded AI concurrency (default 2), and an instance-local Ollama circuit breaker (3 transient failures, 30-second break by default). Resilience failures use structured tool errors with stable codes (`tool_timeout`, `server_busy`, `circuit_open`, `output_too_large`), `retryable`, optional `retryAfterSeconds`, and details. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local; distributed concurrency/rate limiting requires a gateway or shared store when horizontally scaled.
+
 **Client configuration example (Claude Desktop)**:
 ```json
 {
