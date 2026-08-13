@@ -92,6 +92,26 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("2025-03-26", result.GetProperty("protocolVersion").GetString());
     }
 
+    [Theory]
+    [InlineData("2025-11-25")]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-03-26")]
+    [InlineData("2024-11-05")]
+    public async Task Mcp_Initialize_NegotiatesEverySupportedVersion(string protocolVersion)
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "initialize",
+            @params = new { protocolVersion }
+        });
+
+        Assert.Equal(protocolVersion, result.GetProperty("protocolVersion").GetString());
+    }
+
     [Fact]
     public async Task Mcp_Initialize_UnsupportedVersion_FallsBackToDefault()
     {
@@ -104,7 +124,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             method = "initialize",
             @params = new { protocolVersion = "1999-01-01" }
         });
-        Assert.Equal("2024-11-05", result.GetProperty("protocolVersion").GetString());
+        Assert.Equal("2025-11-25", result.GetProperty("protocolVersion").GetString());
     }
 
     [Fact]
@@ -129,14 +149,83 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Mcp_Get_PlainRequest_ReturnsTransportDescriptor()
+    public async Task Mcp_Get_PlainRequest_Returns405ForStatelessTransport()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
         var response = await _client.GetAsync("/mcp");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_RejectsUnsupportedContentType()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var content = new StringContent("{}", Encoding.UTF8, "text/plain");
+
+        var response = await _client.PostAsync("/mcp", content);
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_RejectsUnsupportedAcceptType()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
+        };
+        request.Headers.Accept.ParseAdd("image/png");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_RejectsUnsupportedProtocolHeader()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
+        };
+        request.Headers.Add("MCP-Protocol-Version", "1999-01-01");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mcp_AcceptsSupportedProtocolHeader()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
+        };
+        request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+
+        var response = await _client.SendAsync(request);
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("/mcp", body.GetProperty("endpoint").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_RejectsCrossOriginBrowserRequest()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
+        };
+        request.Headers.Add("Origin", "https://attacker.example");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     // ─── Error paths ───────────────────────────────────────────────────
@@ -149,6 +238,50 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         var response = await RpcAsync(new { jsonrpc = "2.0", id = 1, method = "does/not/exist" });
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(-32601, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_UnknownNotification_Returns202WithoutBody()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "2.0", method = "does/not/exist" });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(0, response.Content.Headers.ContentLength ?? 0);
+    }
+
+    [Fact]
+    public async Task Mcp_InvalidJsonRpcVersion_ReturnsInvalidRequest()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "1.0", id = 1, method = "ping" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(-32600, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_InvalidIdType_ReturnsInvalidRequest()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new { jsonrpc = "2.0", id = new { bad = true }, method = "ping" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(-32600, body.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_RejectsJsonRpcBatch()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(new[] { new { jsonrpc = "2.0", id = 1, method = "ping" } });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(-32600, body.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]

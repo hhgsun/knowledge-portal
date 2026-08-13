@@ -18,7 +18,7 @@ Knowledge Portal, Model Context Protocol (MCP) desteği sunar. Bu sayede Claude 
 
 MCP araçlarına REST API üzerinden erişim sağlanır. Endpoint: `POST /mcp`
 
-Protokol versiyonu: 2024-11-05 (JSON-RPC 2.0 spec-compliant)
+Varsayılan protokol versiyonu: 2025-11-25. Desteklenen sürümler: 2025-11-25, 2025-06-18, 2025-03-26 ve 2024-11-05 (JSON-RPC 2.0 uyumlu).
 
 ## Kimlik Doğrulama
 
@@ -68,6 +68,8 @@ MCP istemcileri aşağıdaki sırayla sunucu ile iletişim kurar:
 2. `notifications/initialized` — İstemci hazır olduğunu bildirir
 3. `tools/list` — Kullanılabilir araçları ve parametrelerini keşfeder
 4. `tools/call` — Bir aracı çalıştırır ve sonuç alır
+
+HTTP POST istekleri `Content-Type: application/json` kullanmalıdır. İlk `initialize` çağrısından sonraki isteklerde istemci, müzakere edilen sürümü `MCP-Protocol-Version` başlığında gönderebilir. Sunucu stateless çalışır; SSE ve server-initiated mesaj sunmadığı için `GET /mcp` çağrısı `405 Method Not Allowed` döner.
 
 ## Kullanılabilir Araçlar (Tools)
 

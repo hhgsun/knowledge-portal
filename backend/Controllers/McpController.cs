@@ -42,19 +42,45 @@ public class McpController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> HandleRequest()
     {
+        if (!IsJsonContentType(Request.ContentType))
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType);
+
+        if (!AcceptsSupportedResponseType())
+            return StatusCode(StatusCodes.Status406NotAcceptable);
+
+        if (!IsAllowedOrigin())
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        if (Request.Headers.TryGetValue("MCP-Protocol-Version", out var headerVersion)
+            && !McpConstants.SupportedProtocolVersions.Contains(headerVersion.ToString()))
+        {
+            return BadRequest(new { error = "Unsupported MCP-Protocol-Version" });
+        }
+
         JsonRpcRequest? request;
         try
         {
-            request = await JsonSerializer.DeserializeAsync<JsonRpcRequest>(
-                Request.Body, _jsonOptions);
+            using var document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: HttpContext.RequestAborted);
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+                return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "JSON-RPC batch requests are not supported by MCP");
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid JSON-RPC request");
+
+            request = document.RootElement.Deserialize<JsonRpcRequest>(_jsonOptions);
+            if (request != null)
+                request.HasId = document.RootElement.TryGetProperty("id", out _);
         }
         catch (JsonException)
         {
             return JsonRpcErrorResponse(null, JsonRpcErrorCodes.ParseError, "Invalid JSON");
         }
 
-        if (request == null || string.IsNullOrEmpty(request.Method))
+        if (request == null || request.Jsonrpc != "2.0" || string.IsNullOrWhiteSpace(request.Method))
             return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid request: missing method");
+
+        if (request.HasId && request.Id is { } id
+            && id.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.Null))
+            return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid request id");
 
         // Route to handler based on method
         var result = request.Method switch
@@ -67,37 +93,22 @@ public class McpController : ControllerBase
             _ => JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.MethodNotFound, $"Method not found: {request.Method}")
         };
 
-        return result;
+        // JSON-RPC notifications never receive a JSON-RPC response, including unknown methods.
+        return request.HasId ? result : StatusCode(StatusCodes.Status202Accepted);
     }
 
     /// <summary>
-    /// SSE endpoint for MCP clients that prefer Server-Sent Events transport.
-    /// Returns the POST endpoint URL for tool calls.
+    /// Streamable HTTP GET endpoint. This stateless server has no server-initiated
+    /// messages, so the transport requires 405 instead of a discovery document.
     /// </summary>
     [HttpGet]
     public IActionResult GetSseEndpoint()
     {
-        // Streamable HTTP spec: a GET expecting an SSE stream must get 405 when the
-        // server doesn't offer one (we're stateless, no server-initiated messages)
-        if (Request.Headers.Accept.ToString().Contains("text/event-stream", StringComparison.OrdinalIgnoreCase))
-        {
-            Response.Headers.Allow = "POST";
-            return StatusCode(StatusCodes.Status405MethodNotAllowed);
-        }
+        if (!IsAllowedOrigin())
+            return StatusCode(StatusCodes.Status403Forbidden);
 
-        // For clients that probe GET /mcp to discover transport
-        // Return endpoint info as JSON (not SSE stream, since we're stateless)
-        return Ok(new
-        {
-            message = "Knowledge Portal MCP Server",
-            transport = "http",
-            endpoint = "/mcp",
-            method = "POST",
-            authentication = new[] { "X-API-Key: kp_xxx", "Authorization: Bearer <token>" },
-            protocolVersion = McpConstants.ProtocolVersion,
-            serverName = McpConstants.ServerName,
-            serverVersion = McpConstants.ServerVersion
-        });
+        Response.Headers.Allow = "POST";
+        return StatusCode(StatusCodes.Status405MethodNotAllowed);
     }
 
     // ─── Method Handlers ───────────────────────────────────────────────
@@ -177,5 +188,33 @@ public class McpController : ControllerBase
             Error = new JsonRpcError { Code = code, Message = message }
         };
         return new JsonResult(response, _jsonOptions) { StatusCode = 200 }; // JSON-RPC errors are still HTTP 200
+    }
+
+    private static bool IsJsonContentType(string? contentType)
+        => !string.IsNullOrWhiteSpace(contentType)
+           && contentType.Split(';', 2)[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase);
+
+    private bool AcceptsSupportedResponseType()
+    {
+        var accept = Request.GetTypedHeaders().Accept;
+        return accept == null || accept.Count == 0 || accept.Any(value =>
+            value.MediaType.Value?.Equals("*/*", StringComparison.OrdinalIgnoreCase) == true
+            || value.MediaType.Value?.Equals("application/json", StringComparison.OrdinalIgnoreCase) == true
+            || value.MediaType.Value?.Equals("text/event-stream", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private bool IsAllowedOrigin()
+    {
+        var originValue = Request.Headers.Origin.ToString();
+        if (string.IsNullOrWhiteSpace(originValue))
+            return true; // Non-browser MCP clients normally omit Origin.
+
+        if (!Uri.TryCreate(originValue, UriKind.Absolute, out var origin))
+            return false;
+
+        var requestPort = Request.Host.Port ?? (Request.IsHttps ? 443 : 80);
+        return string.Equals(origin.Scheme, Request.Scheme, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(origin.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+               && origin.Port == requestPort;
     }
 }

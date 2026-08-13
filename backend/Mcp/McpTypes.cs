@@ -7,7 +7,7 @@ namespace KnowledgePortal.Api.Mcp;
 
 public static class McpConstants
 {
-    public const string ProtocolVersion = "2024-11-05";
+    public const string ProtocolVersion = "2025-11-25";
     public const string ServerName = "knowledge-portal";
     public const string ServerVersion = "2.0.0";
 
@@ -16,7 +16,8 @@ public static class McpConstants
     /// requested version when it is in this list, otherwise falls back to
     /// <see cref="ProtocolVersion"/> (per MCP version negotiation).
     /// </summary>
-    public static readonly string[] SupportedProtocolVersions = ["2025-03-26", "2024-11-05"];
+    public static readonly string[] SupportedProtocolVersions =
+        ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 }
 
 // ─── JSON-RPC 2.0 Request/Response ─────────────────────────────────────
@@ -34,6 +35,10 @@ public class JsonRpcRequest
 
     [JsonPropertyName("params")]
     public JsonElement? Params { get; set; }
+
+    /// <summary>Distinguishes a notification (no id member) from a request whose id is null.</summary>
+    [JsonIgnore]
+    public bool HasId { get; set; }
 }
 
 public class JsonRpcResponse

@@ -59,7 +59,9 @@ Prometheus text exposition: ASP.NET Core request metrics + `kp_pending_embedding
 ### `POST /mcp`
 **Auth**: X-API-Key or Bearer token (required)  
 **Transport**: Streamable HTTP (stateless, JSON-RPC 2.0)  
-**Protocol Version**: negotiated — supported: 2025-03-26, 2024-11-05 (default; `initialize` echoes the client's version when supported)
+**Protocol Version**: negotiated — supported: 2025-11-25 (default), 2025-06-18, 2025-03-26, 2024-11-05. `initialize` echoes a supported client version and otherwise returns the default.
+
+POST requests require `Content-Type: application/json`. `MCP-Protocol-Version`, when supplied, must contain a supported version. Browser-originated requests are accepted only from the MCP endpoint's own host. JSON-RPC notifications return `202 Accepted` with no body; MCP JSON-RPC batch payloads are rejected.
 
 Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude Desktop, Cursor, VS Code Copilot) can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
 
@@ -89,7 +91,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 ### `GET /mcp`
 **Auth**: X-API-Key or Bearer token (required)
 
-Returns server transport info for MCP client discovery. With `Accept: text/event-stream` returns `405 Method Not Allowed` (no SSE stream — stateless server).
+Returns `405 Method Not Allowed` with `Allow: POST`. This server is stateless and does not offer an SSE stream or server-initiated messages.
 
 ---
 

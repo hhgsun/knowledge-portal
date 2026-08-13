@@ -355,11 +355,11 @@ No known gaps at this time.
 
 ## MCP Server Behaviors
 
-- **MCP protocol version**: negotiated — supported: 2025-03-26, 2024-11-05 (default). `initialize` echoes the client's requested version when supported, otherwise answers with the default (JSON-RPC 2.0 spec-compliant)
+- **MCP protocol version**: negotiated — supported: 2025-11-25 (default), 2025-06-18, 2025-03-26, 2024-11-05. `initialize` echoes the client's requested version when supported, otherwise answers with the default (JSON-RPC 2.0 spec-compliant)
 - **Server info**: name=`knowledge-portal`, version=`2.0.0`
 - **Supported methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
 - **Server discovery**: POST `/mcp` with `method: "initialize"` returns server capabilities, protocol version, and implementation info
-- **Transport discovery**: GET `/mcp` returns transport info (endpoint URL, auth methods, protocol version). GET with `Accept: text/event-stream` returns **405** (no SSE stream — stateless server, per Streamable HTTP spec)
+- **Streamable HTTP transport**: POST `/mcp` requires JSON, validates supported response media types and an optional `MCP-Protocol-Version`, rejects cross-origin browser requests and MCP batch payloads, and returns 202/no body for JSON-RPC notifications. GET `/mcp` always returns **405** with `Allow: POST` because the server is stateless and provides no SSE/server-initiated messages.
 - **Notifications**: `notifications/initialized` returns **202 Accepted** with empty body (Streamable HTTP spec for response-less messages)
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
 - **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns MCP content array
