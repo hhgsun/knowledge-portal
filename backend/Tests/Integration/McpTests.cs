@@ -392,6 +392,24 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_ToolCall_ReturnsTraceIdAndExportsToolMetrics()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await RpcAsync(ToolCall("list_tags", new { }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.TryGetValues("X-Trace-Id", out var values));
+        Assert.False(string.IsNullOrWhiteSpace(values.Single()));
+
+        var metrics = await _client.GetStringAsync("/metrics");
+        Assert.Contains("kp_mcp_tool_calls", metrics);
+        Assert.Contains("kp_mcp_tool_duration_ms", metrics);
+        Assert.Contains("kp_mcp_tool_output_bytes", metrics);
+        Assert.Contains("list_tags", metrics);
+    }
+
+    [Fact]
     public async Task Mcp_SearchArticles_ReturnsVerifiableEvidence()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);

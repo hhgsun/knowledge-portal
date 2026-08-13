@@ -152,6 +152,8 @@ Karar desteği için her sonuçta `governance` bilgisi bulunur. İçerik türler
 
 MCP içeriği güvenilmeyen kaynak verisi olarak işler. Sonuçlardaki `securityAssessment`, talimat geçersiz kılma, sistem prompt'u isteme, credential gönderme, komut/araç çalıştırma ve rol değiştirme sinyallerini açıklar. Yaygın API key, bearer token, JWT ve secret biçimleri `[REDACTED_SECRET]` ile maskelenir. `allowAutomaticExecution` her zaman false'dur; makale içindeki URL, komut veya araç talimatları otomatik çalıştırılmamalıdır.
 
+Her araç çağrısı `X-Trace-Id` döndürür ve yapılandırılmış audit kaydı oluşturur. Audit kaydı araç, sonuç, kimlik kaynağı, süre ve çıktı boyutunu içerir; sorgu, içerik veya credential değerlerini kaydetmez. Argümanlar yalnızca alan adı, tür ve uzunluk/adet olarak özetlenir. Operasyon metrikleri `/metrics` üzerinden tool, outcome ve auth source boyutlarıyla yayınlanır.
+
 Hata durumunda:
 
 ```json

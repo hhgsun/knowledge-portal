@@ -200,6 +200,7 @@ builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<SourceImportService>();
 builder.Services.AddScoped<McpToolExecutor>();
 builder.Services.AddScoped<ContentGovernanceService>();
+builder.Services.AddScoped<McpAuditService>();
 
 var app = builder.Build();
 

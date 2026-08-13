@@ -87,6 +87,8 @@ MCP search hits also include `governance`: optional approval state (`approved` o
 
 MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, explainable `signals`, `secretsRedacted`, `treatAsUntrustedData`, `allowAutomaticExecution=false`). Common portal keys, bearer tokens, JWTs, AWS access-key IDs, and assigned secret/token/password values are replaced with `[REDACTED_SECRET]` throughout structured and compatibility-text output. Injection signals are flagged, not silently deleted. RAG source blocks redact secrets, mark risky chunks as `SECURITY-RISK`, neutralize source delimiters, and explicitly forbid following source instructions, tool execution, URL visits, or credential disclosure.
 
+Every `tools/call` response includes `X-Trace-Id`. A structured audit event records trace ID, tool, outcome, auth source, user/API-key identifiers, bounded client user-agent, protocol version, duration, serialized output size, and a privacy-preserving argument shape. Raw argument values, queries, article content, credentials, and reversible hashes are never written to the MCP audit event. Prometheus exports `kp_mcp_tool_calls`, `kp_mcp_tool_errors`, `kp_mcp_tool_duration_ms`, and `kp_mcp_tool_output_bytes`, tagged by bounded tool/outcome/auth dimensions.
+
 **Client configuration example (Claude Desktop)**:
 ```json
 {

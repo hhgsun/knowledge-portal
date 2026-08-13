@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Mcp;
 using KnowledgePortal.Api.Services;
@@ -27,6 +28,7 @@ namespace KnowledgePortal.Api.Controllers;
 public class McpController : ControllerBase
 {
     private readonly McpToolExecutor _toolExecutor;
+    private readonly McpAuditService _audit;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -34,9 +36,10 @@ public class McpController : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public McpController(McpToolExecutor toolExecutor)
+    public McpController(McpToolExecutor toolExecutor, McpAuditService audit)
     {
         _toolExecutor = toolExecutor;
+        _audit = audit;
     }
 
     [HttpPost]
@@ -159,8 +162,22 @@ public class McpController : ControllerBase
             ? argsEl
             : null;
 
-        var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments, User, HttpContext.RequestAborted);
-        return JsonRpcSuccessResponse(request.Id, result);
+        var audit = _audit.Begin(HttpContext, toolName, arguments);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments, User, HttpContext.RequestAborted);
+            stopwatch.Stop();
+            _audit.Complete(audit, result, stopwatch.ElapsedMilliseconds);
+            Response.Headers["X-Trace-Id"] = audit.TraceId;
+            return JsonRpcSuccessResponse(request.Id, result);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _audit.Failed(audit, ex, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
     }
 
     private IActionResult HandlePing(JsonRpcRequest request)
