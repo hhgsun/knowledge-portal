@@ -402,6 +402,7 @@ public class McpToolExecutor
 
         var detail = await _articleService.BuildDetailAsync(article);
         var node = JsonSerializer.SerializeToNode(detail, _jsonOptions)!.AsObject();
+        AddSecurityAssessment(node);
         var governance = await _governance.BuildAsync([article]);
         node["governance"] = JsonSerializer.SerializeToNode(governance[article.Id], _jsonOptions);
         return StructuredResult(node);
@@ -550,6 +551,7 @@ public class McpToolExecutor
         {
             var detail = await _articleService.BuildDetailAsync(article);
             var node = JsonSerializer.SerializeToNode(detail, _jsonOptions)!.AsObject();
+            AddSecurityAssessment(node);
             node["governance"] = JsonSerializer.SerializeToNode(governance[article.Id], _jsonOptions);
             node["canonicalUrl"] = $"/api/articles/{article.Slug}";
             sources.Add(node);
@@ -673,9 +675,9 @@ public class McpToolExecutor
         JsonNode? structured = null;
         try { structured = JsonNode.Parse(text); }
         catch (JsonException) { /* Plain text is retained for non-JSON results. */ }
+        if (structured != null) return StructuredResult(structured);
         return new McpToolCallResult
         {
-            StructuredContent = structured,
             Content = new List<McpContent>
             {
                 new() { Type = "text", Text = text }
@@ -685,6 +687,7 @@ public class McpToolExecutor
 
     private static McpToolCallResult StructuredResult(JsonNode value)
     {
+        RedactNodeSecrets(value);
         var text = value.ToJsonString(_jsonOptions);
         return new McpToolCallResult
         {
@@ -708,6 +711,7 @@ public class McpToolExecutor
         foreach (var node in results)
         {
             if (node is not JsonObject result) continue;
+            AddSecurityAssessment(result);
             var snippet = result["snippet"]?.GetValue<string>();
             var excerpt = result["excerpt"]?.GetValue<string>();
             var passage = !string.IsNullOrWhiteSpace(snippet) ? snippet : excerpt;
@@ -727,6 +731,37 @@ public class McpToolExecutor
                     ["score"] = result["score"]?.DeepClone()
                 }
             };
+        }
+    }
+
+    private static void AddSecurityAssessment(JsonObject article)
+    {
+        var text = string.Join('\n', new[] { "title", "excerpt", "snippet", "contentMarkdown", "contentText" }
+            .Select(name => article[name]?.GetValue<string>()).Where(value => !string.IsNullOrWhiteSpace(value)));
+        article["securityAssessment"] = JsonSerializer.SerializeToNode(ContentSecurityService.Assess(text), _jsonOptions);
+    }
+
+    private static void RedactNodeSecrets(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var property in obj.ToList())
+            {
+                if (property.Value is JsonValue value && value.TryGetValue<string>(out var text))
+                    obj[property.Key] = ContentSecurityService.RedactSecrets(text);
+                else if (property.Value != null)
+                    RedactNodeSecrets(property.Value);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            for (var i = 0; i < array.Count; i++)
+            {
+                if (array[i] is JsonValue value && value.TryGetValue<string>(out var text))
+                    array[i] = ContentSecurityService.RedactSecrets(text);
+                else if (array[i] != null)
+                    RedactNodeSecrets(array[i]!);
+            }
         }
     }
 

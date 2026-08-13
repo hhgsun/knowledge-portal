@@ -150,6 +150,8 @@ Arama sonuçlarında ayrıca `evidenceAvailable` ve `evidence[]` alanları bulun
 
 Karar desteği için her sonuçta `governance` bilgisi bulunur. İçerik türleri dinamik olduğundan otorite değeri içerik türü adına göre kodlanmaz; Tanım Değerleri ekranındaki 0-100 `authorityWeight` ayarından alınır. Onay akışından geçen içeriklerde onaylayan ve zaman kaydedilir. Doğrudan yayınlanan veya içe aktarılan içerik gizlenmez ve onaylanmış varsayılmaz; `approvalState: not_recorded` uyarısıyla sunulur. İnceleme süresi, güncellik ve onay bilgisi birlikte bir reliability score üretir; arama yanıtındaki `decisionSupport` alanı dikkat gerektiren sonuçları özetler.
 
+MCP içeriği güvenilmeyen kaynak verisi olarak işler. Sonuçlardaki `securityAssessment`, talimat geçersiz kılma, sistem prompt'u isteme, credential gönderme, komut/araç çalıştırma ve rol değiştirme sinyallerini açıklar. Yaygın API key, bearer token, JWT ve secret biçimleri `[REDACTED_SECRET]` ile maskelenir. `allowAutomaticExecution` her zaman false'dur; makale içindeki URL, komut veya araç talimatları otomatik çalıştırılmamalıdır.
+
 Hata durumunda:
 
 ```json

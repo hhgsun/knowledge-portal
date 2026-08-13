@@ -85,6 +85,8 @@ Search results include `evidenceAvailable` and an `evidence[]` provenance array.
 
 MCP search hits also include `governance`: optional approval state (`approved` or `not_recorded`), approver/time when recorded, review state (`current`, `due_soon`, `overdue`, `not_recorded`), next review date, dynamic content-type label/authority weight, reliability score, and warnings. Content-type authority is configured as `authorityWeight` (0-100, default 50) on each dynamic `content_type` lookup; no content-type names are hard-coded. Directly published/imported content remains available and is truthfully marked `not_recorded`. Search responses aggregate caution indicators and reliability-ordered `recommendedArticleIds` in `decisionSupport`. Semantic contradiction detection is deliberately not claimed: `conflictAssessment` is `not_evaluated` until a dedicated contradiction evaluator exists.
 
+MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, explainable `signals`, `secretsRedacted`, `treatAsUntrustedData`, `allowAutomaticExecution=false`). Common portal keys, bearer tokens, JWTs, AWS access-key IDs, and assigned secret/token/password values are replaced with `[REDACTED_SECRET]` throughout structured and compatibility-text output. Injection signals are flagged, not silently deleted. RAG source blocks redact secrets, mark risky chunks as `SECURITY-RISK`, neutralize source delimiters, and explicitly forbid following source instructions, tool execution, URL visits, or credential disclosure.
+
 **Client configuration example (Claude Desktop)**:
 ```json
 {
