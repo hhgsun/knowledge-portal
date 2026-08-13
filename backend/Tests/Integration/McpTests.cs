@@ -349,6 +349,11 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("list_articles", toolNames);
         Assert.Contains("list_tags", toolNames);
         Assert.Contains("get_portal_info", toolNames);
+        Assert.Contains("get_project_context", toolNames);
+        Assert.Contains("get_integration_guidance", toolNames);
+        Assert.Contains("find_authoritative_content", toolNames);
+        Assert.Contains("compare_sources", toolNames);
+        Assert.Contains("get_recent_changes", toolNames);
 
         var search = result.GetProperty("tools").EnumerateArray()
             .First(t => t.GetProperty("name").GetString() == "search_articles");
@@ -696,5 +701,106 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             after.GetProperty("totalTags").GetInt32());
         Assert.True(after.GetProperty("totalAuthors").GetInt32() >= 1);
         Assert.True(after.GetProperty("totalArticles").GetInt32() >= 1);
+    }
+
+    [Fact]
+    public async Task Mcp_GetProjectContext_ReturnsTaggedGovernedBriefing()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Proje Bağlamı Zkpc", contentMarkdown = "Projenin mimari bağlamı",
+            status = "published", tags = new[] { "proje-zkpc" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("get_project_context",
+            new { project_tag = "proje-zkpc" }));
+        var structured = result.GetProperty("structuredContent");
+
+        Assert.Equal("project_context", structured.GetProperty("taskContext").GetProperty("task").GetString());
+        Assert.Contains(structured.GetProperty("results").EnumerateArray(),
+            article => article.GetProperty("title").GetString() == "MCP Proje Bağlamı Zkpc");
+        Assert.True(structured.TryGetProperty("decisionSupport", out _));
+    }
+
+    [Fact]
+    public async Task Mcp_GetIntegrationGuidance_UsesHybridEvidenceFlow()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Entegrasyon Kılavuzu Xkig",
+            contentMarkdown = "API anahtarını X-API-Key başlığında gönderin xkig.",
+            status = "published", tags = new[] { "proje-xkig" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("get_integration_guidance", new
+        {
+            integration_query = "API anahtarı xkig", project_tag = "proje-xkig"
+        }));
+        var structured = result.GetProperty("structuredContent");
+        var article = structured.GetProperty("results").EnumerateArray()
+            .First(a => a.GetProperty("title").GetString() == "MCP Entegrasyon Kılavuzu Xkig");
+
+        Assert.Equal("integration_guidance", structured.GetProperty("taskContext").GetProperty("task").GetString());
+        Assert.True(article.GetProperty("evidenceAvailable").GetBoolean());
+        Assert.True(article.TryGetProperty("governance", out _));
+    }
+
+    [Fact]
+    public async Task Mcp_CompareSources_ReturnsCanonicalContentAndHonestAssessment()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var firstResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Karşılaştırma Bir Akcs", contentMarkdown = "Birinci yaklaşım", status = "published"
+        });
+        var secondResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Karşılaştırma İki Akcs", contentMarkdown = "İkinci yaklaşım", status = "published"
+        });
+        var first = await firstResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var second = await secondResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        var result = await RpcResultAsync(ToolCall("compare_sources", new
+        {
+            article_ids = $"{first.GetProperty("id").GetString()},{second.GetProperty("id").GetString()}"
+        }));
+        var structured = result.GetProperty("structuredContent");
+
+        Assert.Equal(2, structured.GetProperty("sources").GetArrayLength());
+        Assert.All(structured.GetProperty("sources").EnumerateArray(), source =>
+        {
+            Assert.True(source.TryGetProperty("contentMarkdown", out _));
+            Assert.True(source.TryGetProperty("governance", out _));
+            Assert.StartsWith("/api/articles/", source.GetProperty("canonicalUrl").GetString());
+        });
+        Assert.Equal("not_evaluated", structured.GetProperty("comparison").GetProperty("conflictAssessment").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_GetRecentChanges_CanScopeByProjectTag()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Yakın Değişiklik Rchg", status = "published", tags = new[] { "proje-rchg" }
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Başka Proje Rchg", status = "published", tags = new[] { "baska-rchg" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("get_recent_changes", new
+        {
+            project_tag = "proje-rchg", days = 7
+        }));
+        var structured = result.GetProperty("structuredContent");
+        var titles = structured.GetProperty("results").EnumerateArray()
+            .Select(article => article.GetProperty("title").GetString()).ToList();
+
+        Assert.Contains("MCP Yakın Değişiklik Rchg", titles);
+        Assert.DoesNotContain("MCP Başka Proje Rchg", titles);
+        Assert.Equal("recent_changes", structured.GetProperty("taskContext").GetProperty("task").GetString());
     }
 }

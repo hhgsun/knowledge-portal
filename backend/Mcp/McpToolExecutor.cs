@@ -125,6 +125,85 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>()
                     },
                     OutputSchema = ObjectOutputSchema("totalArticles", "totalAuthors", "totalTags", "contentTypes", "recentArticles")
+                },
+                new()
+                {
+                    Name = "get_project_context",
+                    Description = "Build a project briefing from articles tagged with the supplied project tag. Returns current published context, governance, evidence, and decision-support warnings.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["project_tag"] = new() { Type = "string", Description = "Project tag slug" },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum context articles (1-50)", Default = 20 },
+                            ["include_content"] = new() { Type = "boolean", Description = "Include canonical article content", Default = true },
+                            ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
+                        },
+                        Required = ["project_tag"]
+                    },
+                    OutputSchema = SearchOutputSchema()
+                },
+                new()
+                {
+                    Name = "get_integration_guidance",
+                    Description = "Find implementation guidance for an integration task, optionally scoped to a project. Uses hybrid retrieval and returns full evidence/governance metadata.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["integration_query"] = new() { Type = "string", Description = "Integration goal or question" },
+                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10 },
+                            ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
+                        },
+                        Required = ["integration_query"]
+                    },
+                    OutputSchema = SearchOutputSchema()
+                },
+                new()
+                {
+                    Name = "find_authoritative_content",
+                    Description = "Find sources for a decision and rank their IDs by dynamic authority, approval, and review freshness without replacing relevance ranking.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["query"] = new() { Type = "string", Description = "Decision topic" },
+                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10 }
+                        },
+                        Required = ["query"]
+                    },
+                    OutputSchema = SearchOutputSchema()
+                },
+                new()
+                {
+                    Name = "compare_sources",
+                    Description = "Compare 2-10 published articles side by side with canonical content, provenance and governance. Does not claim semantic contradiction detection.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["article_ids"] = new() { Type = "string", Description = "Comma-separated article IDs or slugs (2-10)" }
+                        },
+                        Required = ["article_ids"]
+                    },
+                    OutputSchema = ObjectOutputSchema("sources", "comparison")
+                },
+                new()
+                {
+                    Name = "get_recent_changes",
+                    Description = "Get recently updated published knowledge, optionally scoped to a project tag, with governance and evidence metadata.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["days"] = new() { Type = "integer", Description = "Lookback window (1-3650 days)", Default = 30 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum articles (1-50)", Default = 20 }
+                        }
+                    },
+                    OutputSchema = ObjectOutputSchema("results", "since", "total")
                 }
             }
         };
@@ -144,6 +223,11 @@ public class McpToolExecutor
                 "list_articles" => await ListArticlesAsync(arguments),
                 "list_tags" => await ListTagsAsync(),
                 "get_portal_info" => await GetPortalInfoAsync(),
+                "get_project_context" => await GetProjectContextAsync(arguments, principal, ct),
+                "get_integration_guidance" => await GetIntegrationGuidanceAsync(arguments, principal, ct),
+                "find_authoritative_content" => await FindAuthoritativeContentAsync(arguments, principal, ct),
+                "compare_sources" => await CompareSourcesAsync(arguments, ct),
+                "get_recent_changes" => await GetRecentChangesAsync(arguments, principal, ct),
                 _ => ErrorResult($"Unknown tool: {toolName}")
             };
         }
@@ -385,6 +469,133 @@ public class McpToolExecutor
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
     }
 
+    private async Task<McpToolCallResult> GetProjectContextAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
+    {
+        var projectTag = GetString(args, "project_tag")?.Trim();
+        if (string.IsNullOrWhiteSpace(projectTag)) return ErrorResult("Parameter 'project_tag' is required");
+
+        var searchArgs = JsonSerializer.SerializeToElement(new
+        {
+            query = $"#{projectTag}",
+            type = "fulltext",
+            limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50),
+            include_content = GetBool(args, "include_content", true),
+            include_attachments = GetBool(args, "include_attachments", true)
+        });
+        var result = await SearchArticlesAsync(searchArgs, principal, ct);
+        return DecorateTaskResult(result, "project_context", new JsonObject { ["projectTag"] = projectTag });
+    }
+
+    private async Task<McpToolCallResult> GetIntegrationGuidanceAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
+    {
+        var integrationQuery = GetString(args, "integration_query")?.Trim();
+        if (string.IsNullOrWhiteSpace(integrationQuery)) return ErrorResult("Parameter 'integration_query' is required");
+        var projectTag = GetString(args, "project_tag")?.Trim();
+
+        var searchArgs = JsonSerializer.SerializeToElement(new
+        {
+            query = string.IsNullOrWhiteSpace(projectTag) ? integrationQuery : $"{integrationQuery} #{projectTag}",
+            type = "hybrid",
+            limit = Math.Clamp(GetInt(args, "limit", 10), 1, 50),
+            include_content = true,
+            include_attachments = GetBool(args, "include_attachments", true)
+        });
+        var result = await SearchArticlesAsync(searchArgs, principal, ct);
+        return DecorateTaskResult(result, "integration_guidance", new JsonObject
+        {
+            ["integrationQuery"] = integrationQuery,
+            ["projectTag"] = projectTag
+        });
+    }
+
+    private async Task<McpToolCallResult> FindAuthoritativeContentAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
+    {
+        var query = GetString(args, "query")?.Trim();
+        if (string.IsNullOrWhiteSpace(query)) return ErrorResult("Parameter 'query' is required");
+        var projectTag = GetString(args, "project_tag")?.Trim();
+
+        var searchArgs = JsonSerializer.SerializeToElement(new
+        {
+            query = string.IsNullOrWhiteSpace(projectTag) ? query : $"{query} #{projectTag}",
+            type = "hybrid",
+            limit = Math.Clamp(GetInt(args, "limit", 10), 1, 50),
+            include_content = true,
+            include_attachments = false
+        });
+        var result = await SearchArticlesAsync(searchArgs, principal, ct);
+        return DecorateTaskResult(result, "authoritative_content", new JsonObject
+        {
+            ["decisionTopic"] = query,
+            ["projectTag"] = projectTag,
+            ["rankingNote"] = "Use decisionSupport.recommendedArticleIds for governance order; results retain retrieval relevance order."
+        });
+    }
+
+    private async Task<McpToolCallResult> CompareSourcesAsync(JsonElement? args, CancellationToken ct)
+    {
+        var references = SplitCsv(GetString(args, "article_ids"));
+        if (references.Count is < 2 or > 10)
+            return ErrorResult("Parameter 'article_ids' must contain 2-10 comma-separated IDs or slugs");
+
+        var articles = await _db.Articles.WherePublished()
+            .Where(a => references.Contains(a.Id) || references.Contains(a.Slug))
+            .ToListAsync(ct);
+        if (articles.Count != references.Distinct().Count())
+            return ErrorResult("One or more articles were not found or are not published");
+
+        articles = references.Select(reference => articles.First(a => a.Id == reference || a.Slug == reference)).ToList();
+        var governance = await _governance.BuildAsync(articles, ct);
+        var sources = new JsonArray();
+        foreach (var article in articles)
+        {
+            var detail = await _articleService.BuildDetailAsync(article);
+            var node = JsonSerializer.SerializeToNode(detail, _jsonOptions)!.AsObject();
+            node["governance"] = JsonSerializer.SerializeToNode(governance[article.Id], _jsonOptions);
+            node["canonicalUrl"] = $"/api/articles/{article.Slug}";
+            sources.Add(node);
+        }
+
+        var ordered = governance.OrderByDescending(item => item.Value.ReliabilityScore).ToList();
+        return StructuredResult(new JsonObject
+        {
+            ["sources"] = sources,
+            ["comparison"] = new JsonObject
+            {
+                ["recommendedArticleIds"] = new JsonArray(ordered.Select(item => (JsonNode?)JsonValue.Create(item.Key)).ToArray()),
+                ["highestReliabilityScore"] = ordered[0].Value.ReliabilityScore,
+                ["requiresCaution"] = ordered.Any(item => item.Value.Warnings.Length > 0),
+                ["conflictAssessment"] = "not_evaluated",
+                ["note"] = "Sources are compared by recorded governance metadata; their claims were not semantically adjudicated."
+            }
+        });
+    }
+
+    private async Task<McpToolCallResult> GetRecentChangesAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
+    {
+        var days = Math.Clamp(GetInt(args, "days", 30), 1, 3650);
+        var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
+        var projectTag = GetString(args, "project_tag")?.Trim();
+        var since = DateTime.UtcNow.AddDays(-days);
+        var filter = new ArticleFilter(TagSlugs: string.IsNullOrWhiteSpace(projectTag) ? null : [projectTag]);
+        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter)
+            .Where(a => a.UpdatedAt >= since).OrderByDescending(a => a.UpdatedAt);
+        var total = await query.CountAsync(ct);
+        var articles = await query.Take(limit).ToListAsync(ct);
+        var results = await BuildSearchResultsAsync(articles, false, false, []);
+        var sw = Stopwatch.StartNew();
+        var result = await SearchResultAsync(new
+        {
+            results,
+            query = string.IsNullOrWhiteSpace(projectTag) ? $"recent:{days}d" : $"recent:{days}d #{projectTag}",
+            type = "recent_changes",
+            since = since.ToString("o"),
+            total,
+            page = 1,
+            totalPages = total == 0 ? 0 : 1
+        }, $"recent changes {days} days {projectTag}".Trim(), total, "recent_changes", sw, principal, ct);
+        return DecorateTaskResult(result, "recent_changes", new JsonObject { ["projectTag"] = projectTag, ["days"] = days });
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────
 
     private async Task<List<ArticleSummaryDto>> BuildSearchResultsAsync(
@@ -480,6 +691,14 @@ public class McpToolExecutor
             StructuredContent = value,
             Content = [new McpContent { Type = "text", Text = text }]
         };
+    }
+
+    private static McpToolCallResult DecorateTaskResult(McpToolCallResult result, string task, JsonObject metadata)
+    {
+        if (result.IsError || result.StructuredContent is not JsonObject payload) return result;
+        metadata["task"] = task;
+        payload["taskContext"] = metadata;
+        return StructuredResult(payload);
     }
 
     private static void AddEvidence(JsonObject payload)

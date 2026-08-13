@@ -73,7 +73,15 @@ HTTP POST istekleri `Content-Type: application/json` kullanmalıdır. İlk `init
 
 ## Kullanılabilir Araçlar (Tools)
 
-MCP sunucusu 5 araç sunar. Tüm araçlar yalnızca yayınlanmış (published) makaleleri döndürür.
+MCP sunucusu genel veri erişim araçlarına ek olarak görev odaklı araçlar sunar. Tüm araçlar yalnızca yayınlanmış (published) makaleleri döndürür.
+
+Görev odaklı araçlar:
+
+- `get_project_context` — proje etiketiyle yönetişim bilgili proje özeti
+- `get_integration_guidance` — entegrasyon hedefi için hybrid kaynak bulma
+- `find_authoritative_content` — karar konusu için güvenilirlik sıralamalı kaynaklar
+- `compare_sources` — 2-10 kaynağı canonical içerik ve governance ile yan yana karşılaştırma
+- `get_recent_changes` — isteğe bağlı proje kapsamıyla yakın dönem değişiklikleri
 
 ### search_articles
 

@@ -73,6 +73,11 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 - `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort — sort validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
 - `get_portal_info` — Portal statistics (counts, content type distribution, recent articles)
+- `get_project_context` — Build a governed project briefing from a project tag
+- `get_integration_guidance` — Hybrid retrieval for an integration goal, optionally project-scoped
+- `find_authoritative_content` — Find decision sources and expose governance-recommended source ordering
+- `compare_sources` — Compare 2-10 published sources with canonical content and governance; contradiction status remains explicit
+- `get_recent_changes` — Recently updated published knowledge, optionally scoped to a project tag
 
 **Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true`.
 
