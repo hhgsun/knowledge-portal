@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, FileCheck2, FileJson, FileSpreadsheet, Info, Upload } from "lucide-react";
+import { Download, FileCheck2, FileJson, FileSpreadsheet, FileText, Info, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useApi } from "../hooks/useApi";
 
@@ -21,7 +21,7 @@ export default function BulkTransferPage() {
   const [policy, setPolicy] = useState("skip");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [format, setFormat] = useState("jsonl");
+  const [format, setFormat] = useState("markdown");
   const [status, setStatus] = useState("");
   const [contentType, setContentType] = useState("");
   const [authorId, setAuthorId] = useState("");
@@ -48,14 +48,14 @@ export default function BulkTransferPage() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadTemplate = async (templateFormat: "jsonl" | "csv") => {
+  const downloadTemplate = async (templateFormat: "md" | "jsonl" | "csv") => {
     const response = await fetchWithAuth(`/api/bulk/templates/${templateFormat}`);
     if (!response.ok) { toast.error("Template download failed"); return; }
     await downloadResponse(response, `article-import-template.${templateFormat}`);
   };
 
   const runImport = async (dryRun: boolean) => {
-    if (!file) { toast.error("Select a Knowledge Portal JSONL or CSV export"); return; }
+    if (!file) { toast.error("Select a Markdown file, Markdown ZIP archive, JSONL or CSV export"); return; }
     const body = new FormData(); body.append("file", file); body.append("dryRun", String(dryRun)); body.append("conflictPolicy", policy);
     setBusy(true);
     try {
@@ -84,8 +84,9 @@ export default function BulkTransferPage() {
       <p className="text-sm text-zinc-500 mt-1">Export articles from one Knowledge Portal and import them into another.</p></div>
 
     <section className="p-5 border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl space-y-4">
-      <div className="flex items-start gap-3"><Info size={20} className="text-blue-600 mt-0.5 shrink-0" /><div><h2 className="font-semibold">Transfer format</h2><p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">JSONL and CSV use the canonical <code>contentMarkdown</code> field, so bulk transfers preserve Markdown exactly.</p></div></div>
+      <div className="flex items-start gap-3"><Info size={20} className="text-blue-600 mt-0.5 shrink-0" /><div><h2 className="font-semibold">Markdown transfer format</h2><p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Each article is a canonical CommonMark/GFM <code>.md</code> file. Article metadata is kept as JSON-compatible front matter; multi-article exports are packaged as ZIP.</p></div></div>
       <div className="flex flex-wrap gap-2">
+        <button onClick={() => downloadTemplate("md")} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-medium"><FileText size={17} className="text-violet-600" /> Download Markdown template</button>
         <button onClick={() => downloadTemplate("jsonl")} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-medium"><FileJson size={17} className="text-blue-600" /> Download JSONL template</button>
         <button onClick={() => downloadTemplate("csv")} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-medium"><FileSpreadsheet size={17} className="text-green-600" /> Download CSV template</button>
       </div>
@@ -96,8 +97,8 @@ export default function BulkTransferPage() {
 
     <section className="p-5 border border-zinc-200 dark:border-zinc-800 rounded-xl space-y-4">
       <div className="flex items-center gap-2"><Upload size={19} /><h2 className="font-semibold">Import from Knowledge Portal</h2></div>
-      <p className="text-sm text-zinc-500">Select a JSONL or CSV file previously exported from a Knowledge Portal. Attachments are not included in this transfer version.</p>
-      <input type="file" accept=".jsonl,.ndjson,.csv" onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); }} className="block w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700" />
+      <p className="text-sm text-zinc-500">Select one Markdown file or a ZIP archive containing multiple Markdown articles. Legacy JSONL and CSV files remain supported. Attachments are not included.</p>
+      <input type="file" accept=".md,.markdown,.zip,.jsonl,.ndjson,.csv" onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); }} className="block w-full text-sm file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700" />
       <Select label="When a matching article exists" value={policy} onChange={setPolicy}><option value="skip">Skip existing</option><option value="update">Update existing</option><option value="duplicate">Create a copy</option></Select>
       <p className="text-xs text-zinc-500">Maximum {schema?.maxRecords.toLocaleString() ?? "5,000"} articles and {schema?.maxFileSizeMb ?? 100} MB per import. Validate before importing.</p>
       <div className="flex gap-2"><button disabled={busy || !file} onClick={() => runImport(true)} className="flex items-center gap-2 px-4 py-2 text-sm border rounded-lg disabled:opacity-50"><FileCheck2 size={16} /> Validate export</button><button disabled={busy || !file} onClick={() => runImport(false)} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg disabled:opacity-50"><Upload size={16} /> Import portal data</button></div>
@@ -108,7 +109,7 @@ export default function BulkTransferPage() {
       <div className="flex items-center gap-2"><Download size={19} /><h2 className="font-semibold">Export for another Knowledge Portal</h2></div>
       <p className="text-sm text-zinc-500">Create a filtered transfer file that can be validated and imported by another Knowledge Portal.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Select label="Format" value={format} onChange={setFormat}><option value="jsonl">JSONL (recommended)</option><option value="csv">CSV</option></Select>
+        <Select label="Format" value={format} onChange={setFormat}><option value="markdown">Markdown ZIP (recommended)</option><option value="jsonl">JSONL (legacy)</option><option value="csv">CSV (legacy)</option></Select>
         <Select label="Status" value={status} onChange={setStatus}><option value="">All statuses</option>{(schema?.statuses ?? []).map((value) => <option key={value}>{value}</option>)}</Select>
         <Select label="Content type" value={contentType} onChange={setContentType}><option value="">All content types</option>{(schema?.contentTypes ?? []).map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</Select>
         <Select label="Author" value={authorId} onChange={setAuthorId} disabled={mine}><option value="">All authors</option>{authors.map((author) => <option key={author.id} value={author.id}>{author.name}</option>)}</Select>

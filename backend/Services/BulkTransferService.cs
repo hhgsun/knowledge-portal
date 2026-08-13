@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using KnowledgePortal.Api.Auth;
@@ -41,6 +42,15 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         return Encoding.UTF8.GetBytes(output.ToString());
     }
 
+    public static byte[] CreateMarkdownTemplate()
+    {
+        var item = new BulkImportItem("example-howto-001", "VPN Kurulum Rehberi",
+            "Windows için şirket VPN kurulumu.", "draft", "how-to",
+            "## Kurulum adımları\n\nVPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.",
+            ["vpn", "network"]);
+        return Encoding.UTF8.GetBytes(SerializeMarkdown(item));
+    }
+
     public async Task<List<BulkImportItem>> ReadAsync(Stream stream, string fileName, CancellationToken ct)
     {
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
@@ -48,7 +58,9 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         {
             ".jsonl" or ".ndjson" => await ReadJsonLinesAsync(stream, ct),
             ".csv" => await ReadCsvAsync(stream, ct),
-            _ => throw new InvalidDataException("Only .jsonl, .ndjson and .csv files are supported")
+            ".md" or ".markdown" => [await ReadMarkdownAsync(stream, fileName, ct)],
+            ".zip" => await ReadMarkdownArchiveAsync(stream, ct),
+            _ => throw new InvalidDataException("Only .md, .markdown, .zip, .jsonl, .ndjson and .csv files are supported")
         };
     }
 
@@ -191,6 +203,31 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         return Encoding.UTF8.GetBytes(output.ToString());
     }
 
+    public async Task<byte[]> ExportMarkdownArchiveAsync(IQueryable<Article> query, CancellationToken ct)
+    {
+        var articles = await query.Include(a => a.ArticleTags).ThenInclude(x => x.Tag)
+            .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var article in articles)
+            {
+                var baseName = string.IsNullOrWhiteSpace(article.Slug) ? SlugHelper.GenerateSlug(article.Title) : article.Slug;
+                if (string.IsNullOrWhiteSpace(baseName)) baseName = article.Id;
+                var name = $"{baseName}.md";
+                for (var suffix = 2; !usedNames.Add(name); suffix++) name = $"{baseName}-{suffix}.md";
+                var entry = archive.CreateEntry(name, CompressionLevel.Fastest);
+                await using var entryStream = entry.Open();
+                await using var writer = new StreamWriter(entryStream, new UTF8Encoding(false));
+                await writer.WriteAsync(SerializeMarkdown(new BulkImportItem(article.Id, article.Title, article.Excerpt,
+                    article.Status, article.ContentType, article.Content,
+                    article.ArticleTags.Select(x => x.Tag.Slug).ToArray())));
+            }
+        }
+        return output.ToArray();
+    }
+
     private static string? Validate(BulkImportItem item, HashSet<string> contentTypes, string role)
     {
         if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Trim().Length > 300) return "Title is required (1-300 chars)";
@@ -239,6 +276,76 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
             if (result.Count > MaxRecords) throw new InvalidDataException($"A single import may contain at most {MaxRecords} records");
         }
         return result;
+    }
+
+    private static async Task<BulkImportItem> ReadMarkdownAsync(Stream stream, string fileName, CancellationToken ct)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, true, leaveOpen: true);
+        var source = await reader.ReadToEndAsync(ct);
+        return ParseMarkdown(source, fileName);
+    }
+
+    private static async Task<List<BulkImportItem>> ReadMarkdownArchiveAsync(Stream stream, CancellationToken ct)
+    {
+        var result = new List<BulkImportItem>();
+        long expandedBytes = 0;
+        try
+        {
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            foreach (var entry in archive.Entries.Where(e =>
+                         e.FullName.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+                         e.FullName.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (string.IsNullOrEmpty(entry.Name)) continue;
+                expandedBytes += entry.Length;
+                if (expandedBytes > MaxFileSizeMb * 1024L * 1024L)
+                    throw new InvalidDataException($"Expanded Markdown content may not exceed {MaxFileSizeMb} MB");
+                await using var entryStream = entry.Open();
+                result.Add(await ReadMarkdownAsync(entryStream, entry.FullName, ct));
+                if (result.Count > MaxRecords)
+                    throw new InvalidDataException($"A single import may contain at most {MaxRecords} records");
+            }
+        }
+        catch (InvalidDataException) { throw; }
+        catch (Exception ex) when (ex is IOException or NotSupportedException)
+        {
+            throw new InvalidDataException("The ZIP archive is invalid", ex);
+        }
+        if (result.Count == 0) throw new InvalidDataException("The ZIP archive contains no Markdown files");
+        return result;
+    }
+
+    private static BulkImportItem ParseMarkdown(string source, string fileName)
+    {
+        var normalized = source.Replace("\r\n", "\n").TrimStart('\uFEFF');
+        if (!normalized.StartsWith("---\n", StringComparison.Ordinal))
+            throw new InvalidDataException($"Markdown file '{fileName}' is missing JSON-compatible front matter");
+        var end = normalized.IndexOf("\n---\n", 4, StringComparison.Ordinal);
+        if (end < 0) throw new InvalidDataException($"Markdown file '{fileName}' has unterminated front matter");
+        try
+        {
+            var metadata = JsonSerializer.Deserialize<BulkImportItem>(normalized[4..end], JsonOptions)
+                ?? throw new JsonException();
+            return metadata with { ContentMarkdown = normalized[(end + 5)..].Trim() };
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"Markdown file '{fileName}' has invalid front matter: {ex.Message}", ex);
+        }
+    }
+
+    private static string SerializeMarkdown(BulkImportItem item)
+    {
+        var metadata = new
+        {
+            externalId = item.ExternalId,
+            item.Title,
+            item.Excerpt,
+            status = item.Status ?? "draft",
+            contentType = item.ContentType ?? "reference",
+            tags = item.Tags ?? []
+        };
+        return $"---\n{JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })}\n---\n\n{item.ContentMarkdown?.Trim() ?? ""}\n";
     }
 
     private static List<List<string>> ParseCsv(string text)

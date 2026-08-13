@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.IO.Compression;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -40,6 +41,41 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ImportMarkdown_ThenExportArchive_PreservesCanonicalContent()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Markdown Article {Guid.NewGuid():N}";
+        var markdown = $$"""
+            ---
+            {
+              "title": "{{title}}",
+              "status": "draft",
+              "contentType": "reference",
+              "tags": ["tutorial"]
+            }
+            ---
+
+            ## Kurulum
+
+            - Birinci adım
+            - İkinci adım
+            """;
+        using var form = Form(markdown, "article.md");
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/bulk/import", form)).StatusCode);
+
+        var response = await client.GetAsync("/api/bulk/export?format=markdown&mine=true&status=draft");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/zip", response.Content.Headers.ContentType?.MediaType);
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        var exported = archive.Entries.Single(e => e.Name.EndsWith(".md") && ReadEntry(e).Contains(title));
+        var source = ReadEntry(exported);
+        Assert.Contains("\"title\": \"" + title + "\"", source);
+        Assert.Contains("## Kurulum", source);
+        Assert.Contains("- İkinci adım", source);
+    }
+
+    [Fact]
     public async Task Import_InvalidExtension_Returns400()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
@@ -50,6 +86,7 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
     [Theory]
     [InlineData("jsonl", "article-import-template.jsonl")]
     [InlineData("csv", "article-import-template.csv")]
+    [InlineData("md", "article-import-template.md")]
     public async Task DownloadTemplate_ReturnsAttachment(string format, string fileName)
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
@@ -105,6 +142,12 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
         form.Add(new StringContent(dryRun.ToString()), "dryRun");
         form.Add(new StringContent("skip"), "conflictPolicy");
         return form;
+    }
+
+    private static string ReadEntry(ZipArchiveEntry entry)
+    {
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+        return reader.ReadToEnd();
     }
 
 }

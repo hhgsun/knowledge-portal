@@ -19,7 +19,9 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
             return File(BulkTransferService.CreateJsonLinesTemplate(), "application/x-ndjson", "article-import-template.jsonl");
         if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
             return File(BulkTransferService.CreateCsvTemplate(), "text/csv; charset=utf-8", "article-import-template.csv");
-        return BadRequest(new { error = "format must be jsonl or csv" });
+        if (format.Equals("md", StringComparison.OrdinalIgnoreCase))
+            return File(BulkTransferService.CreateMarkdownTemplate(), "text/markdown; charset=utf-8", "article-import-template.md");
+        return BadRequest(new { error = "format must be md, jsonl or csv" });
     }
 
     [HttpGet("import-schema")]
@@ -38,6 +40,7 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
             contentTypes,
             conflictPolicies = new[] { "skip", "update", "duplicate" },
             attachmentsIncluded = false,
+            formats = new[] { "md", "zip", "jsonl", "csv" },
             fields = new object[]
             {
                 new { name = "title", required = true, description = "Article title, 1–300 characters." },
@@ -96,8 +99,10 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
         if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
             return File(await service.ExportCsvAsync(query, ct), "text/csv; charset=utf-8", $"knowledge-portal-{stamp}.csv");
+        if (format.Equals("markdown", StringComparison.OrdinalIgnoreCase) || format.Equals("md", StringComparison.OrdinalIgnoreCase) || format.Equals("zip", StringComparison.OrdinalIgnoreCase))
+            return File(await service.ExportMarkdownArchiveAsync(query, ct), "application/zip", $"knowledge-portal-{stamp}.zip");
         if (!format.Equals("jsonl", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { error = "format must be jsonl or csv" });
+            return BadRequest(new { error = "format must be markdown, jsonl or csv" });
         return File(await service.ExportJsonLinesAsync(query, ct), "application/x-ndjson", $"knowledge-portal-{stamp}.jsonl");
     }
 }
