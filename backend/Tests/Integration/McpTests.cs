@@ -356,6 +356,11 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("fulltext", properties.GetProperty("type").GetProperty("default").GetString());
         Assert.True(properties.TryGetProperty("include_attachments", out _));
         Assert.True(properties.TryGetProperty("only_own_content", out _));
+        Assert.True(search.TryGetProperty("outputSchema", out var outputSchema));
+        Assert.Equal("object", outputSchema.GetProperty("type").GetString());
+
+        Assert.All(result.GetProperty("tools").EnumerateArray(),
+            tool => Assert.True(tool.TryGetProperty("outputSchema", out _), tool.GetProperty("name").GetString()));
     }
 
     [Fact]
@@ -373,6 +378,36 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         if (result.TryGetProperty("isError", out var isError))
             Assert.False(isError.GetBoolean());
         Assert.Contains("MCP Arama Testi Makalesi", ToolText(result));
+        Assert.True(result.TryGetProperty("structuredContent", out var structured));
+        Assert.Equal("MCP Arama Testi Makalesi",
+            structured.GetProperty("results").EnumerateArray().First().GetProperty("title").GetString());
+        Assert.Equal(
+            JsonSerializer.Deserialize<JsonElement>(ToolText(result)).GetRawText(),
+            structured.GetRawText());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_ReturnsVerifiableEvidence()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Kanıt Makalesi Jqev",
+            contentMarkdown = "Kurumsal API anahtarları secret manager içinde saklanmalıdır.",
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles", new { query = "secret manager jqev" }));
+        var article = result.GetProperty("structuredContent").GetProperty("results").EnumerateArray()
+            .First(item => item.GetProperty("title").GetString() == "MCP Kanıt Makalesi Jqev");
+        var evidence = article.GetProperty("evidence").EnumerateArray().Single();
+
+        Assert.True(article.GetProperty("evidenceAvailable").GetBoolean());
+        Assert.Contains("secret manager", evidence.GetProperty("passage").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(article.GetProperty("id").GetString(), evidence.GetProperty("articleId").GetString());
+        Assert.Equal("article", evidence.GetProperty("sourceType").GetString());
+        Assert.StartsWith("/api/articles/", evidence.GetProperty("canonicalUrl").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(evidence.GetProperty("updatedAt").GetString()));
     }
 
     [Fact]
@@ -550,6 +585,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
 
         Assert.Equal("Mcp Detay Makalesi Ppqr", payload.GetProperty("title").GetString());
+        Assert.Equal("Mcp Detay Makalesi Ppqr",
+            result.GetProperty("structuredContent").GetProperty("title").GetString());
     }
 
     [Fact]

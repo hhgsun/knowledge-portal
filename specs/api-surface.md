@@ -74,7 +74,9 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 - `list_tags` — List all available tags with article counts
 - `get_portal_info` — Portal statistics (counts, content type distribution, recent articles)
 
-**Tool result format**: `{ "content": [{ "type": "text", "text": "..." }] }` (with optional `isError: true`)
+**Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true`.
+
+Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. RAG sources similarly include their canonical URL and source type.
 
 **Client configuration example (Claude Desktop)**:
 ```json

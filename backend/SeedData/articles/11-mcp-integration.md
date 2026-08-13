@@ -121,7 +121,7 @@ Portal istatistiklerini döner: toplam makale sayısı, yazar sayısı, etiket s
 
 ## Yanıt Formatı
 
-Tüm araç yanıtları MCP spec'e uygun content dizisi formatındadır:
+Tüm araçlar sonuç şemasını `outputSchema` ile ilan eder ve makine tarafından doğrudan okunabilen sonucu `structuredContent` alanında döndürür. Eski istemcilerle uyumluluk için aynı JSON `content` dizisinde de bulunur:
 
 ```json
 {
@@ -137,6 +137,8 @@ Tüm araç yanıtları MCP spec'e uygun content dizisi formatındadır:
   }
 }
 ```
+
+Arama sonuçlarında ayrıca `evidenceAvailable` ve `evidence[]` alanları bulunur. Kanıt kaydı makale ID/slug'ını, canonical API URL'ini, kaynak türünü, varsa eşleşen pasajı, güncellenme zamanını, eşleşme türünü ve skoru içerir. Yalnızca başlıkta eşleşme varsa sahte pasaj üretilmez; `evidenceAvailable` false olur.
 
 Hata durumunda:
 

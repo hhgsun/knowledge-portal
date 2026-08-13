@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace KnowledgePortal.Api.Mcp;
 
@@ -122,6 +123,9 @@ public class McpToolDefinition
 
     [JsonPropertyName("inputSchema")]
     public McpInputSchema InputSchema { get; set; } = new();
+
+    [JsonPropertyName("outputSchema")]
+    public JsonObject? OutputSchema { get; set; }
 }
 
 public class McpInputSchema
@@ -159,6 +163,10 @@ public class McpToolCallResult
 {
     [JsonPropertyName("content")]
     public List<McpContent> Content { get; set; } = new();
+
+    [JsonPropertyName("structuredContent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonNode? StructuredContent { get; set; }
 
     [JsonPropertyName("isError")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

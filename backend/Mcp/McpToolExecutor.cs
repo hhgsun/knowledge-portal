@@ -70,7 +70,8 @@ public class McpToolExecutor
                             ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict results to articles created by that key", Default = false }
                         },
                         Required = new List<string> { "query" }
-                    }
+                    },
+                    OutputSchema = SearchOutputSchema()
                 },
                 new()
                 {
@@ -83,7 +84,8 @@ public class McpToolExecutor
                             ["id_or_slug"] = new() { Type = "string", Description = "Article ID or URL slug" }
                         },
                         Required = new List<string> { "id_or_slug" }
-                    }
+                    },
+                    OutputSchema = ObjectOutputSchema("id", "title", "slug", "updatedAt")
                 },
                 new()
                 {
@@ -99,7 +101,8 @@ public class McpToolExecutor
                             ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated" },
                             ["sort"] = new() { Type = "string", Description = "Sort order", Enum = new List<string> { "newest", "oldest", "most_viewed" }, Default = "newest" }
                         }
-                    }
+                    },
+                    OutputSchema = ObjectOutputSchema("articles", "total", "page", "limit", "totalPages")
                 },
                 new()
                 {
@@ -108,7 +111,8 @@ public class McpToolExecutor
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>()
-                    }
+                    },
+                    OutputSchema = ObjectOutputSchema("tags", "total")
                 },
                 new()
                 {
@@ -117,7 +121,8 @@ public class McpToolExecutor
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>()
-                    }
+                    },
+                    OutputSchema = ObjectOutputSchema("totalArticles", "totalAuthors", "totalTags", "contentTypes", "recentArticles")
                 }
             }
         };
@@ -232,7 +237,17 @@ public class McpToolExecutor
             try
             {
                 var rag = await ragService.AskAsync(searchQuery, filter, ct);
-                return await SearchResultAsync(new { answer = rag.Answer, sources = rag.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }), query, type, indexingPending }, query, rag.Sources.Count, type, sw, principal, ct);
+                return await SearchResultAsync(new
+                {
+                    answer = rag.Answer,
+                    sources = rag.Sources.Select(s => new
+                    {
+                        s.ArticleId, s.Title, s.Slug, s.Score,
+                        canonicalUrl = $"/api/articles/{s.Slug}",
+                        sourceType = "article"
+                    }),
+                    query, type, indexingPending
+                }, query, rag.Sources.Count, type, sw, principal, ct);
             }
             catch (Exception ex)
             {
@@ -421,7 +436,8 @@ public class McpToolExecutor
         var json = JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject();
         json["responseTimeMs"] = stopwatch.ElapsedMilliseconds;
         json["searchQueryId"] = record.Id;
-        return TextResult(json.ToJsonString(_jsonOptions));
+        AddEvidence(json);
+        return StructuredResult(json);
     }
 
     private static List<string> SplitCsv(string? value) =>
@@ -437,14 +453,119 @@ public class McpToolExecutor
 
     private static McpToolCallResult TextResult(string text)
     {
+        JsonNode? structured = null;
+        try { structured = JsonNode.Parse(text); }
+        catch (JsonException) { /* Plain text is retained for non-JSON results. */ }
         return new McpToolCallResult
         {
+            StructuredContent = structured,
             Content = new List<McpContent>
             {
                 new() { Type = "text", Text = text }
             }
         };
     }
+
+    private static McpToolCallResult StructuredResult(JsonNode value)
+    {
+        var text = value.ToJsonString(_jsonOptions);
+        return new McpToolCallResult
+        {
+            StructuredContent = value,
+            Content = [new McpContent { Type = "text", Text = text }]
+        };
+    }
+
+    private static void AddEvidence(JsonObject payload)
+    {
+        if (payload["results"] is not JsonArray results) return;
+
+        foreach (var node in results)
+        {
+            if (node is not JsonObject result) continue;
+            var snippet = result["snippet"]?.GetValue<string>();
+            var excerpt = result["excerpt"]?.GetValue<string>();
+            var passage = !string.IsNullOrWhiteSpace(snippet) ? snippet : excerpt;
+            var slug = result["slug"]?.GetValue<string>();
+            result["evidenceAvailable"] = !string.IsNullOrWhiteSpace(passage);
+            result["evidence"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["articleId"] = result["id"]?.DeepClone(),
+                    ["articleSlug"] = slug,
+                    ["canonicalUrl"] = string.IsNullOrWhiteSpace(slug) ? null : $"/api/articles/{slug}",
+                    ["sourceType"] = "article",
+                    ["passage"] = passage,
+                    ["updatedAt"] = result["updatedAt"]?.DeepClone(),
+                    ["matchType"] = result["matchType"]?.DeepClone(),
+                    ["score"] = result["score"]?.DeepClone()
+                }
+            };
+        }
+    }
+
+    private static JsonObject ObjectOutputSchema(params string[] required) => new()
+    {
+        ["type"] = "object",
+        ["additionalProperties"] = true,
+        ["required"] = new JsonArray(required.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray()),
+        ["properties"] = new JsonObject(required.ToDictionary(
+            name => name,
+            name => (JsonNode?)new JsonObject { ["description"] = $"Tool result field '{name}'" }))
+    };
+
+    private static JsonObject SearchOutputSchema() => new()
+    {
+        ["type"] = "object",
+        ["additionalProperties"] = true,
+        ["properties"] = new JsonObject
+        {
+            ["results"] = new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["additionalProperties"] = true,
+                    ["required"] = new JsonArray("id", "title", "slug", "updatedAt", "evidenceAvailable", "evidence"),
+                    ["properties"] = new JsonObject
+                    {
+                        ["id"] = new JsonObject { ["type"] = "string" },
+                        ["title"] = new JsonObject { ["type"] = "string" },
+                        ["slug"] = new JsonObject { ["type"] = "string" },
+                        ["updatedAt"] = new JsonObject { ["type"] = "string" },
+                        ["evidenceAvailable"] = new JsonObject { ["type"] = "boolean" },
+                        ["evidence"] = new JsonObject
+                        {
+                            ["type"] = "array",
+                            ["items"] = new JsonObject
+                            {
+                                ["type"] = "object",
+                                ["required"] = new JsonArray("articleId", "articleSlug", "canonicalUrl", "sourceType"),
+                                ["properties"] = new JsonObject
+                                {
+                                    ["articleId"] = new JsonObject { ["type"] = "string" },
+                                    ["articleSlug"] = new JsonObject { ["type"] = "string" },
+                                    ["canonicalUrl"] = new JsonObject { ["type"] = "string" },
+                                    ["sourceType"] = new JsonObject { ["type"] = "string" },
+                                    ["passage"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                                    ["updatedAt"] = new JsonObject { ["type"] = "string" },
+                                    ["matchType"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                                    ["score"] = new JsonObject { ["type"] = new JsonArray("number", "null") }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            ["answer"] = new JsonObject { ["type"] = "string" },
+            ["sources"] = new JsonObject { ["type"] = "array" },
+            ["query"] = new JsonObject { ["type"] = "string" },
+            ["type"] = new JsonObject { ["type"] = "string" }
+        },
+        ["required"] = new JsonArray("query", "type")
+    };
 
     private static McpToolCallResult ErrorResult(string message)
     {
