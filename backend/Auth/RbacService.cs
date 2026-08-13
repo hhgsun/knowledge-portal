@@ -22,7 +22,7 @@ public static class RbacService
         ],
         ["viewer"] =
         [
-            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn,
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn, Permissions.ArticlesPublish,
             Permissions.ApiKeysManage
         ]
     };

@@ -136,7 +136,7 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Viewer_CanOnlyCreateDraft()
+    public async Task Viewer_CanPublishWithoutApproval()
     {
         var token = await RegisterAndGetToken($"viewer-test-{Guid.NewGuid():N}@example.com");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -151,10 +151,11 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var id = body.GetProperty("id").GetString();
 
-        // Get the article to verify status is draft (not published)
+        // Publishing and approval are independent: viewers may publish directly.
         var getResponse = await _client.GetAsync($"/api/articles/{id}");
         var article = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("draft", article.GetProperty("status").GetString());
+        Assert.Equal("published", article.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("approvedAt").ValueKind);
     }
 
     [Fact]

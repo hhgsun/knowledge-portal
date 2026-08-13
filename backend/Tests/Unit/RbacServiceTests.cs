@@ -18,7 +18,7 @@ public class RbacServiceTests
     [InlineData("admin", Permissions.ApiKeysManageAny, true)]
     [InlineData("viewer", Permissions.ArticlesCreate, true)]
     [InlineData("viewer", Permissions.ArticlesEditOwn, true)]
-    [InlineData("viewer", Permissions.ArticlesPublish, false)]
+    [InlineData("viewer", Permissions.ArticlesPublish, true)]
     [InlineData("viewer", Permissions.TagsManage, false)]
     [InlineData("viewer", Permissions.UsersManage, false)]
     [InlineData("viewer", Permissions.AnalyticsView, false)]

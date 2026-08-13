@@ -17,7 +17,7 @@ namespace KnowledgePortal.Api.Controllers;
 public class ArticlesController(AppDbContext db, IConfiguration config, ArticleService articleService,
     ILogger<ArticlesController> logger) : ControllerBase
 {
-    private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
+    private static readonly HashSet<string> ValidStatuses = ["draft", "published", "archived"];
 
     private async Task<HashSet<string>> GetValidContentTypesAsync()
         => (await db.LookupValues.Where(l => l.Category == "content_type" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
@@ -116,12 +116,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         var slug = await db.GenerateUniqueArticleSlugAsync(req.Title);
 
         var userId = User.GetUserId();
-        var role = User.GetRole();
-
-        // Viewers can only create as draft or pending
         var articleStatus = req.Status ?? "draft";
-        if (role == "viewer" && articleStatus != "draft" && articleStatus != "pending")
-            articleStatus = "draft";
 
         var article = new Article
         {
@@ -134,7 +129,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             ContentType = req.ContentType ?? "reference",
             CreatedViaApiKeyId = User.GetApiKeyId(),
             PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
-            LastReviewedAt = articleStatus == "published" ? DateTime.UtcNow : null,
+            LastReviewedAt = null,
             ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.ContentMarkdown),
             ReviewIntervalDays = req.ReviewIntervalDays ?? 90,
         };
@@ -206,27 +201,35 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             return BadRequest(new { error = "reviewIntervalDays must be between 1 and 3650" });
 
         var contentChanged = false;
-        if (req.Title != null) { article.Title = req.Title.Trim(); }
+        var approvalInvalidated = false;
+        if (req.Title != null)
+        {
+            var title = req.Title.Trim();
+            approvalInvalidated |= title != article.Title;
+            article.Title = title;
+        }
         if (req.ContentMarkdown != null)
         {
-            article.Content = req.ContentMarkdown.Trim();
+            var content = req.ContentMarkdown.Trim();
+            contentChanged = content != article.Content;
+            article.Content = content;
             article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
-            contentChanged = true;
-            // A previous approval covered the old content. Direct edits remain publishable,
-            // but governance must show that the new revision has no recorded approval.
+            approvalInvalidated |= contentChanged;
+        }
+        if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
+        if (req.ContentType != null)
+        {
+            approvalInvalidated |= req.ContentType != article.ContentType;
+            article.ContentType = req.ContentType;
+        }
+        if (approvalInvalidated)
+        {
             article.ApprovedById = null;
             article.ApprovedAt = null;
         }
-        if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
-        if (req.ContentType != null) article.ContentType = req.ContentType;
         if (req.ReviewIntervalDays.HasValue) article.ReviewIntervalDays = req.ReviewIntervalDays.Value;
         if (req.Status != null)
         {
-            // Publishing requires articles:publish permission
-            if (req.Status == "published" && article.Status != "published"
-                && !RbacService.HasPermission(User, Permissions.ArticlesPublish))
-                return StatusCode(403, new { error = "You do not have permission to publish articles" });
-
             // Archiving requires articles:archive permission
             if (req.Status == "archived" && article.Status != "archived"
                 && !RbacService.HasPermission(User, Permissions.ArticlesArchive))
@@ -237,9 +240,6 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
                 article.PublishedAt = DateTime.UtcNow;
                 article.IndexedAt = null; // Dirty flag: newly published → queue for embedding
             }
-            if (req.Status == "published")
-                article.LastReviewedAt = DateTime.UtcNow;
-
             // Unpublishing: remove embeddings
             if (req.Status != "published" && article.Status == "published")
             {
@@ -264,6 +264,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         if (req.Tags != null)
         {
+            article.ApprovedById = null;
+            article.ApprovedAt = null;
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
             await articleService.AttachTagsAsync(id, req.Tags,
@@ -319,38 +321,35 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         var article = await db.Articles.FindAsync(id);
         if (article == null) return NotFound(new { error = "Article not found" });
 
-        if (article.Status != "pending")
-            return BadRequest(new { error = "Only pending articles can be approved" });
+        if (article.Status != "published")
+            return BadRequest(new { error = "Only published articles can be approved" });
 
-        article.Status = "published";
-        article.PublishedAt = DateTime.UtcNow;
         article.LastReviewedAt = DateTime.UtcNow;
         article.ApprovedById = User.GetUserId();
         article.ApprovedAt = DateTime.UtcNow;
         article.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        // Approved → queue for embedding + sync FTS index
-        await articleService.QueueReindexAsync(article);
-
-        return Ok(new { message = "Article approved and published", article.Id, article.Slug });
+        return Ok(new { message = "Article approved", article.Id, article.Slug, approvedAt = article.ApprovedAt });
     }
 
-    [HttpPost("{id}/reject")]
+    [HttpDelete("{id}/approve")]
+    [HttpPost("{id}/reject")] // Backwards-compatible alias
     [RequirePermission(Permissions.ArticlesApprove)]
-    public async Task<IActionResult> Reject(string id)
+    public async Task<IActionResult> RemoveApproval(string id)
     {
         var article = await db.Articles.FindAsync(id);
         if (article == null) return NotFound(new { error = "Article not found" });
 
-        if (article.Status != "pending")
-            return BadRequest(new { error = "Only pending articles can be rejected" });
+        if (article.ApprovedAt == null || article.ApprovedById == null)
+            return BadRequest(new { error = "Article is not approved" });
 
-        article.Status = "draft";
+        article.ApprovedById = null;
+        article.ApprovedAt = null;
         article.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return Ok(new { message = "Article rejected and returned to draft", article.Id, article.Slug });
+        return Ok(new { message = "Article approval removed", article.Id, article.Slug });
     }
 
     [HttpGet("{id}/related")]

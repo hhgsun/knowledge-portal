@@ -149,7 +149,7 @@ Search types: `fulltext` (default), `semantic`, `hybrid`, `rag`. Prefix query wi
 | `analytics:view` | ✓ | ✓ | — |
 | `api_keys:manage` | ✓ | — | — |
 
-> **Note**: Viewers can create articles but their status is restricted to `draft` or `pending` only. Viewers can only edit/delete their own articles.
+> **Note**: Viewers can create and directly publish articles, and can edit/delete their own articles. Approval is an optional editor/admin trust signal, not a publication gate.
 
 ## Database
 

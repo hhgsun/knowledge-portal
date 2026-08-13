@@ -168,7 +168,6 @@ export default function EditArticlePage() {
       saving={saving}
       error={error}
       onSave={handleSave}
-      onSubmitForReview={() => { setStatus("pending"); handleSave(); }}
       isViewer={isViewer}
       backLink={`/articles/${article.slug}`}
       articleId={article.id}

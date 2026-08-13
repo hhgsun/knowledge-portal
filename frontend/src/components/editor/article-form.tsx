@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Save, ArrowLeft, Send } from "lucide-react";
+import { Save, ArrowLeft } from "lucide-react";
 import { TagSelector } from "./tag-selector";
 import { useLookups } from "../../hooks/useLookups";
 
@@ -23,7 +23,6 @@ export interface ArticleFormProps {
   saving: boolean;
   error: string;
   onSave: () => void;
-  onSubmitForReview?: () => void;
   isViewer: boolean;
   backLink: string;
   // Editor props
@@ -54,7 +53,6 @@ export function ArticleForm({
   saving,
   error,
   onSave,
-  onSubmitForReview,
   isViewer,
   backLink,
   articleId,
@@ -78,16 +76,6 @@ export function ArticleForm({
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          {isViewer && onSubmitForReview && (
-            <button
-              onClick={onSubmitForReview}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <Send size={16} />
-              {saving ? "Submitting..." : "Submit for Review"}
-            </button>
-          )}
           <button
             onClick={onSave}
             disabled={saving}
@@ -134,15 +122,8 @@ export function ArticleForm({
           </select>
           <select value={status} onChange={(e) => onStatusChange(e.target.value)} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
             <option value="draft">Taslak</option>
-            {isViewer ? (
-              <option value="pending">İnceleme Bekliyor</option>
-            ) : (
-              <>
-                <option value="pending">İnceleme Bekliyor</option>
-                <option value="published">Yayımlandı</option>
-                {mode === "edit" && <option value="archived">Arşivlendi</option>}
-              </>
-            )}
+            <option value="published">Yayımlandı</option>
+            {!isViewer && mode === "edit" && <option value="archived">Arşivlendi</option>}
           </select>
         </div>
 

@@ -99,7 +99,6 @@ export default function NewArticlePage() {
       saving={saving}
       error={error}
       onSave={handleSave}
-      onSubmitForReview={() => { setStatus("pending"); handleSave(); }}
       isViewer={isViewer}
       backLink="/articles"
       uploadImage={uploadImage}

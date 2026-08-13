@@ -77,8 +77,8 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 var contentType = draft.ContentType ?? "reference";
                 if (!validTypes.Contains(contentType)) throw new InvalidDataException($"Invalid content type: {contentType}");
                 var status = draft.Status ?? "draft";
-                if (status is not ("draft" or "pending" or "published" or "archived")) throw new InvalidDataException("Invalid status");
-                if (user.GetRole() == "viewer" && status is not ("draft" or "pending")) status = "draft";
+                if (status is not ("draft" or "published" or "archived")) throw new InvalidDataException("Invalid status");
+                if (user.GetRole() == "viewer" && status == "archived") status = "draft";
                 var contentMarkdown = draft.ContentMarkdown?.Trim() ?? "";
                 var article = new Article
                 {
@@ -86,7 +86,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                     Excerpt = draft.Excerpt?.Trim(), Status = status, ContentType = contentType,
                     OwnerId = user.GetUserId(), CreatedViaApiKeyId = user.GetApiKeyId(),
                     PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                    LastReviewedAt = status == "published" ? DateTime.UtcNow : null,
+                    LastReviewedAt = null,
                     ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown)
                 };
                 db.Articles.Add(article);

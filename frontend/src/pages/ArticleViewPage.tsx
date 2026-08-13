@@ -153,8 +153,9 @@ export default function ArticleViewPage() {
     setActionLoading(true);
     const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "POST" });
     if (res.ok) {
-      setArticle({ ...article, status: "published" });
-      toast.success("Makale onaylandı ve yayımlandı");
+      const data = await res.json();
+      setArticle({ ...article, approvedAt: data.approvedAt, approvedBy: user?.name ?? null });
+      toast.success("Makale onaylandı");
     } else {
       const data = await res.json().catch(() => ({}));
       toast.error(data.error || "Makale onaylanamadı");
@@ -165,10 +166,10 @@ export default function ArticleViewPage() {
   const handleReject = async () => {
     if (!article) return;
     setActionLoading(true);
-    const res = await fetchWithAuth(`/api/articles/${article.id}/reject`, { method: "POST" });
+    const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "DELETE" });
     if (res.ok) {
-      setArticle({ ...article, status: "draft" });
-      toast.success("Makale reddedildi ve taslağa döndürüldü");
+      setArticle({ ...article, approvedAt: null, approvedBy: null });
+      toast.success("Makale onayı kaldırıldı");
     } else {
       const data = await res.json().catch(() => ({}));
       toast.error(data.error || "Makale reddedilemedi");
@@ -217,31 +218,31 @@ export default function ArticleViewPage() {
         <span className="text-sm text-zinc-700 dark:text-zinc-300">{article.title}</span>
       </div> */}
 
-      {article.status === "pending" && (
-        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl">
+      {article.status === "published" && (
+        <div className={`mb-6 p-4 rounded-xl border ${article.approvedAt ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800" : "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"}`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Onay Bekliyor</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">This article is waiting for editor or admin approval before publishing.</p>
+              <p className="text-sm font-medium">{article.approvedAt ? "Onaylı içerik" : "Henüz onaylanmamış içerik"}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">{article.approvedAt ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından doğrulandı.` : "İçerik yayımdadır; onay, ek bir güvenilirlik göstergesidir."}</p>
             </div>
             {isApprover && (
               <div className="flex items-center gap-2">
-                <button
+                {!article.approvedAt && <button
                   onClick={handleApprove}
                   disabled={actionLoading}
                   className="flex items-center gap-1 px-2 py-1 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
                 >
                   <CheckCircle size={14} />
-                  Approve
-                </button>
-                <button
+                  Onayla
+                </button>}
+                {article.approvedAt && <button
                   onClick={handleReject}
                   disabled={actionLoading}
                   className="flex items-center gap-1 px-2 py-1 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
                 >
                   <XCircle size={14} />
-                  Reject
-                </button>
+                  Onayı kaldır
+                </button>}
               </div>
             )}
           </div>
@@ -285,8 +286,7 @@ export default function ArticleViewPage() {
           <ContentTypeBadge contentType={article.contentType} size="md" clickable />
           {article.status !== "published" && (
             <span className={`text-xs px-2 py-0.5 rounded-full ${article.status === "draft" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" :
-              article.status === "pending" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" :
-                article.status === "archived" ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : ""
+              article.status === "archived" ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : ""
               }`}>
               {article.status}
             </span>

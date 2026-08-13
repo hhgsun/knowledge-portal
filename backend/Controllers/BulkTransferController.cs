@@ -36,7 +36,7 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
         {
             maxRecords = BulkTransferService.MaxRecords,
             maxFileSizeMb = BulkTransferService.MaxFileSizeMb,
-            statuses = new[] { "draft", "pending", "published", "archived" },
+            statuses = new[] { "draft", "published", "archived" },
             contentTypes,
             conflictPolicies = new[] { "skip", "update", "duplicate" },
             attachmentsIncluded = false,

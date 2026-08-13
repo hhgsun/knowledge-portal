@@ -494,7 +494,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         });
         var pendingResponse = await _client.PostAsJsonAsync("/api/articles", new
         {
-            title = "MCP Onaylanan Gqva", status = "pending",
+            title = "MCP Onaylanan Gqva", status = "published",
             contentType = "mcp-governance-type", reviewIntervalDays = 30
         });
         var pending = await pendingResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -523,7 +523,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         var createdResponse = await _client.PostAsJsonAsync("/api/articles", new
         {
-            title = "MCP Onay Geçersizleştirme Hqza", status = "pending"
+            title = "MCP Onay Geçersizleştirme Hqza", status = "published"
         });
         var created = await createdResponse.Content.ReadFromJsonAsync<JsonElement>();
         var id = created.GetProperty("id").GetString();

@@ -242,6 +242,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             : null;
         var viewCount = await db.ArticleViews.CountAsync(v => v.ArticleId == article.Id);
         var attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, [article.Id]);
+        var approvedBy = article.ApprovedById == null ? null
+            : await db.Users.Where(u => u.Id == article.ApprovedById).Select(u => u.Name).FirstOrDefaultAsync();
 
         return new ArticleDetailDto(
             article.Id, article.Title, article.Slug, article.Excerpt,
@@ -252,6 +254,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             article.ReadTimeMinutes,
             article.CreatedAt.ToString("o"), article.UpdatedAt.ToString("o"),
             article.PublishedAt?.ToString("o"), article.LastReviewedAt?.ToString("o"),
+            article.ApprovedAt?.ToString("o"), approvedBy,
             article.ArticleTags.Select(at => (object)new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
             viewCount,
             attachmentMap.GetValueOrDefault(article.Id) ?? []);

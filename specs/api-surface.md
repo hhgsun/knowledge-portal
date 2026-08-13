@@ -298,23 +298,25 @@ Accepts both article ID and slug for lookup.
 **Auth**: Bearer (JWT or API Key)
 **Permission**: `articles:approve`
 
-Approves a pending article and sets its status to `published`.
+Adds an approval trust signal to an already-published article without changing its publication status.
 
-**Guards**: Article must be in `pending` status.
-**200 Response**: `{ "message": "Article approved and published", "id": "...", "slug": "..." }`
-**400**: Article is not in pending status.
+**Guards**: Article must be in `published` status.
+**200 Response**: `{ "message": "Article approved", "id": "...", "slug": "...", "approvedAt": "..." }`
+**400**: Article is not published.
 
 ---
 
-### `POST /api/articles/{id}/reject`
+### `DELETE /api/articles/{id}/approve`
 **Auth**: Bearer (JWT or API Key)
 **Permission**: `articles:approve`
 
-Rejects a pending article and returns it to `draft` status.
+Removes the recorded approval without unpublishing the article.
 
-**Guards**: Article must be in `pending` status.
+**Guards**: Article must currently have a recorded approval.
 **200 Response**: `{ "message": "Article rejected and returned to draft", "id": "...", "slug": "..." }`
-**400**: Article is not in pending status.
+**400**: Article is not approved.
+
+`POST /api/articles/{id}/reject` remains as a backwards-compatible alias.
 
 ---
 

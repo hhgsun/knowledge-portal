@@ -15,7 +15,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
 {
     public const int MaxRecords = 5_000;
     public const int MaxFileSizeMb = 100;
-    private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "archived"];
+    private static readonly HashSet<string> ValidStatuses = ["draft", "published", "archived"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static byte[] CreateJsonLinesTemplate()
@@ -156,7 +156,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                     CreatedViaApiKeyId = user.GetApiKeyId(),
                     ReadTimeMinutes = ContentExtractor.CalculateReadTime(content),
                     PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                    LastReviewedAt = status == "published" ? DateTime.UtcNow : null
+                    LastReviewedAt = null
                 };
                 db.Articles.Add(article);
                 await articleService.AddVersionAsync(article.Id, article.Title, content, userId, "Bulk import");
@@ -233,8 +233,6 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Trim().Length > 300) return "Title is required (1-300 chars)";
         var status = item.Status ?? "draft";
         if (!ValidStatuses.Contains(status)) return $"Invalid status '{status}'";
-        if (role == "viewer" && status is not ("draft" or "pending")) return "Viewers may only import draft or pending articles";
-        if (status == "published" && role is not ("admin" or "editor")) return "Publishing permission is required";
         if (status == "archived" && role is not ("admin" or "editor")) return "Archive permission is required";
         if (item.ContentType != null && !contentTypes.Contains(item.ContentType)) return $"Invalid contentType '{item.ContentType}'";
         return null;

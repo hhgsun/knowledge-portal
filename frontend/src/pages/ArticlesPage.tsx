@@ -167,7 +167,6 @@ export default function ArticlesPage() {
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
-    pending: "bg-amber-100 text-amber-700",
     published: "bg-green-100 text-green-700",
     archived: "bg-red-100 text-red-700",
   };
@@ -208,7 +207,6 @@ export default function ArticlesPage() {
             label="Status"
             options={[
               { value: "draft", label: "Draft" },
-              { value: "pending", label: "Pending" },
               { value: "published", label: "Published" },
               { value: "archived", label: "Archived" },
             ]}

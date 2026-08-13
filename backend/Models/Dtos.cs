@@ -92,6 +92,8 @@ public record ArticleDetailDto(
     string UpdatedAt,
     string? PublishedAt,
     string? LastReviewedAt,
+    string? ApprovedAt,
+    string? ApprovedBy,
     List<object>? Tags,
     int ViewCount,
     List<object>? Attachments);

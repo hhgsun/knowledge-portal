@@ -175,7 +175,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` + `articles:publish` (for status→published) + `articles:archive` (for status→archived) | ✗ |
 | `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✓ |
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
-| `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ |
+| `/api/articles/{id}/approve` | DELETE | ✓ | `articles:approve` | ✗ |
+| `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ (legacy alias for removing approval) |
 | `/api/articles/{id}/versions` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/versions/{versionId}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}/versions/{versionId}/restore` | POST | ✓ | `articles:edit_own` / `articles:edit_any` | ✗ |
@@ -237,7 +238,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `user.name` | 1 | — | Required |
 | `article.title` | 1 | 300 | Required |
 | `article.excerpt` | — | — | Optional, trimmed |
-| `article.status` | — | — | Enum: draft, pending, published, archived |
+| `article.status` | — | — | Enum: draft, published, archived. All roles may publish; approval is independent. |
 | `article.contentType` | — | — | DB-driven via `lookup_values` table (category: content_type) |
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
@@ -304,7 +305,8 @@ No known gaps at this time.
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
 - **Version creation**: Triggered when `content` field changes (not title-only or metadata-only edits)
 - **Version restore**: POST `/api/articles/{id}/versions/{versionId}/restore` copies version content/title back to article, creates a new version with "Restored to version N" summary, recalculates read time
-- **LastReviewedAt**: Automatically set to UTC now when article status becomes `published` (via direct update or approve action)
+- **Publication and approval**: All roles may publish without review. Approval is an optional trust signal on already-published content and records `ApprovedById`/`ApprovedAt`; removing approval never unpublishes the content.
+- **LastReviewedAt**: Set to UTC when an authorized editor/admin approves an article; direct publication does not imply review.
 - **Read time calculation**: Auto-calculated from content text (~200 words/min), updated on create and content change
 - **Viewer article visibility**: Viewers see published articles + their own (any status)
 - **Azure AD login**: Frontend uses MSAL.js v5 redirect-bridge popup flow → popup opens → Azure AD auth → popup calls `broadcastResponseToMainFrame()` via BroadcastChannel → parent receives auth code → PKCE exchange → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. Popup callback page: `/auth-popup-callback.html` (Vite multi-page entry). If user has active Azure session, login page auto-attempts silent login.
@@ -332,7 +334,7 @@ No known gaps at this time.
 - **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
 - **MCP search parity**: `search_articles` exposes the same fulltext/semantic/hybrid/rag modes, inline and explicit author/tag/content-type filters, API-key `onlyOwnContent` scoping, content/attachment inclusion, indexing state, fallback warnings, search recording, and result shapes as `GET /api/search`. Its default remains `fulltext` for REST and backwards compatibility.
 - **MCP structured/provenance results**: Every tool declares `outputSchema` and returns JSON in `structuredContent`, duplicating the serialized JSON in `content[].text` for older clients. Search hits add `evidenceAvailable` plus provenance-bearing `evidence[]` (article ID/slug, canonical API URL, source type, matched passage when one exists, updated timestamp, match type, score); title-only matches never fabricate passages. RAG sources include canonical URL and source type.
-- **Content governance for MCP decisions**: Every dynamic `content_type` lookup has configurable `authorityWeight` (0-100, default 50); no content-type value is hard-coded into authority ranking. Approvals are nullable provenance (`ApprovedById`/`ApprovedAt`): the pending→approve action records them, while direct/imported publication is valid but reported as `not_recorded`; changing article content clears prior approval. Per-article `ReviewIntervalDays` is configurable (1-3650). MCP search/detail derives review state, next review, authority level, reliability score and warnings, with aggregate `decisionSupport` caution counts on search responses.
+- **Content governance for MCP decisions**: Every dynamic `content_type` lookup has configurable `authorityWeight` (0-100, default 50); no content-type value is hard-coded into authority ranking. Approvals are nullable provenance (`ApprovedById`/`ApprovedAt`): approval applies only to an already-published article, while direct/imported publication is valid but reported as `not_recorded`; material changes clear prior approval. Per-article `ReviewIntervalDays` is configurable (1-3650). MCP search/detail derives review state, next review, authority level, reliability score and warnings, with aggregate `decisionSupport` caution counts on search responses.
 - **Task-oriented MCP tools**: In addition to primitive search/get/list tools, MCP exposes `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, and `get_recent_changes`. These are read-only orchestration layers over the same search/filter/evidence/governance services, not duplicated retrieval implementations. Source comparison explicitly reports `conflictAssessment: not_evaluated`; it never invents contradiction analysis.
 - **MCP content security**: Article/search/compare output is scanned for explainable prompt-injection signals and carries `securityAssessment`; source data is always marked untrusted and `allowAutomaticExecution=false`. Common portal keys, bearer tokens, JWTs, AWS access-key IDs and assigned secrets are redacted from both `structuredContent` and compatibility text. RAG also redacts secrets, marks risky chunks, neutralizes source delimiters, and instructs the model never to follow source commands, visit source-requested URLs, invoke tools, change role, or disclose credentials. Detection flags content rather than deleting/blocking it and is a defense-in-depth layer, not a proof of safety.
 - **MCP observability/audit**: Every `tools/call` returns `X-Trace-Id`, emits a structured Serilog audit event (trace, bounded client/protocol identity, tool/outcome, auth source, user/API-key IDs, duration, output bytes), and records Prometheus counters/histograms. Audit argument summaries contain field names plus types/string lengths/array counts only—never raw values, queries, content, credentials, or reversible hashes. Metric labels are bounded to tool/outcome/auth source to avoid cardinality and PII leaks.
@@ -468,7 +470,7 @@ These entity fields exist in the database but are not yet used in business logic
 
 ### CONVENTIONS
 - DB column names are snake_case; C# properties are PascalCase
-- Viewers CAN create articles (status limited to draft/pending on create; publish/archive blocked by permission on update)
+- Viewers CAN create and publish articles; archiving remains restricted to editor/admin.
 - Password minimum length is 8 characters everywhere
 - All IDs are 21-character truncated GUIDs (hex, lowercase)
 - Timestamps are ISO 8601 UTC in API responses

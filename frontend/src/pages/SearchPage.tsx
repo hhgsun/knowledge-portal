@@ -495,8 +495,7 @@ export default function SearchPage() {
                             <ContentTypeBadge contentType={result.contentType} clickable />
                             {result.status && result.status !== "published" && (
                               <span className={`text-xs px-2 py-0.5 rounded-full ${result.status === "draft" ? "bg-zinc-100 text-zinc-600" :
-                                  result.status === "pending" ? "bg-amber-100 text-amber-700" :
-                                    result.status === "archived" ? "bg-red-100 text-red-700" : ""
+                                  result.status === "archived" ? "bg-red-100 text-red-700" : ""
                                 }`}>
                                 {result.status}
                               </span>

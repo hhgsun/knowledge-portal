@@ -1,7 +1,7 @@
 // Shared API response types — Single Source of Truth for frontend TypeScript
 
 // ─── Enums ───────────────────────────────────────────────────
-export type ArticleStatus = "draft" | "pending" | "published" | "archived";
+export type ArticleStatus = "draft" | "published" | "archived";
 export type ContentType = string;
 export type UserRole = "admin" | "editor" | "viewer";
 
@@ -111,6 +111,8 @@ export interface Article {
   readTimeMinutes: number | null;
   publishedAt: string | null;
   lastReviewedAt: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
   updatedAt: string;
   tags: Tag[];
   apiKeyName: string | null;
