@@ -22,6 +22,9 @@ public sealed class PortalMetrics
     public Counter<long> McpToolErrors { get; }
     public Histogram<double> McpToolDuration { get; }
     public Histogram<long> McpToolOutputBytes { get; }
+    public Counter<long> UsageRequests { get; }
+    public Histogram<double> UsageDuration { get; }
+    public Counter<long> UsageTrackingFailures { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory)
     {
@@ -32,6 +35,9 @@ public sealed class PortalMetrics
         McpToolErrors = _meter.CreateCounter<long>("kp_mcp_tool_errors", description: "Failed MCP tool calls by tool");
         McpToolDuration = _meter.CreateHistogram<double>("kp_mcp_tool_duration_ms", unit: "ms", description: "MCP tool execution duration");
         McpToolOutputBytes = _meter.CreateHistogram<long>("kp_mcp_tool_output_bytes", unit: "By", description: "Serialized MCP tool result size");
+        UsageRequests = _meter.CreateCounter<long>("kp_usage_requests", description: "Authenticated usage by channel and outcome");
+        UsageDuration = _meter.CreateHistogram<double>("kp_usage_request_duration_ms", unit: "ms", description: "Authenticated request duration by channel and outcome");
+        UsageTrackingFailures = _meter.CreateCounter<long>("kp_usage_tracking_failures", description: "Usage events that could not be persisted");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",

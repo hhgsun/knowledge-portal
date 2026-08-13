@@ -242,6 +242,16 @@ export interface AnalyticsResponse {
   topSearches: { query: string; count: number }[];
   failedSearches: { query: string; count: number }[];
   topArticles: { articleId: string; title: string; slug: string; views: number }[];
+  usage: {
+    periodDays: number;
+    totalRequests: number;
+    errors: number;
+    errorRate: number;
+    averageDurationMs: number;
+    users: { userId: string; name: string; email: string; requests: number; errors: number; averageDurationMs: number; lastUsedAt: string }[];
+    integrations: { apiKeyId: string; name: string; ownerName: string; requests: number; mcpCalls: number; errors: number; averageDurationMs: number; lastUsedAt: string }[];
+    operations: { operation: string; channel: string; requests: number; errors: number; averageDurationMs: number }[];
+  };
 }
 
 // ─── API Keys ────────────────────────────────────────────────

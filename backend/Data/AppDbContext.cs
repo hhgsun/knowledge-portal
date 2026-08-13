@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FeaturedLink> FeaturedLinks => Set<FeaturedLink>();
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
     public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
+    public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -239,6 +240,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();
             e.HasOne(ae => ae.Article).WithMany(a => a.ArticleEmbeddings).HasForeignKey(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(ae => ae.Attachment).WithMany().HasForeignKey(ae => ae.AttachmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UsageEvent>(e =>
+        {
+            e.ToTable("usage_events");
+            e.HasKey(u => u.Id);
+            e.Property(u => u.OccurredAt).IsRequired();
+            e.Property(u => u.AuthSource).IsRequired().HasMaxLength(20);
+            e.Property(u => u.Channel).IsRequired().HasMaxLength(20);
+            e.Property(u => u.Operation).IsRequired().HasMaxLength(200);
+            e.Property(u => u.HttpMethod).IsRequired().HasMaxLength(10);
+            e.Property(u => u.Outcome).IsRequired().HasMaxLength(20);
+            e.HasIndex(u => u.OccurredAt);
+            e.HasIndex(u => new { u.UserId, u.OccurredAt });
+            e.HasIndex(u => new { u.ApiKeyId, u.OccurredAt });
+            e.HasIndex(u => new { u.Operation, u.OccurredAt });
+            e.HasOne(u => u.User).WithMany().HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(u => u.ApiKey).WithMany().HasForeignKey(u => u.ApiKeyId).OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── Durable search-index queue ───────────────────

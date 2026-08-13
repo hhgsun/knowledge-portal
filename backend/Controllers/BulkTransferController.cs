@@ -87,13 +87,15 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
         if (!string.IsNullOrWhiteSpace(tag)) query = query.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tag));
         if (!string.IsNullOrWhiteSpace(dateFrom))
         {
-            if (!DateTime.TryParse(dateFrom, out var from)) return BadRequest(new { error = "dateFrom must be a valid date" });
-            query = query.Where(a => a.UpdatedAt >= from.ToUniversalTime());
+            if (!DateOnly.TryParse(dateFrom, out var from)) return BadRequest(new { error = "dateFrom must be a valid date" });
+            var fromUtc = DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            query = query.Where(a => a.UpdatedAt >= fromUtc);
         }
         if (!string.IsNullOrWhiteSpace(dateTo))
         {
-            if (!DateTime.TryParse(dateTo, out var to)) return BadRequest(new { error = "dateTo must be a valid date" });
-            query = query.Where(a => a.UpdatedAt < to.ToUniversalTime().AddDays(1));
+            if (!DateOnly.TryParse(dateTo, out var to)) return BadRequest(new { error = "dateTo must be a valid date" });
+            var toExclusiveUtc = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            query = query.Where(a => a.UpdatedAt < toExclusiveUtc);
         }
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Mcp;
+using KnowledgePortal.Api.Middleware;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -21,6 +22,7 @@ public sealed class McpAuditService(ILogger<McpAuditService> logger, PortalMetri
 {
     public McpAuditContext Begin(HttpContext http, string toolName, JsonElement? arguments)
     {
+        http.Items[UsageTrackingMiddleware.OperationItem] = $"mcp.{toolName}";
         var traceId = Activity.Current?.TraceId.ToString() ?? http.TraceIdentifier;
         return new McpAuditContext(
             traceId,

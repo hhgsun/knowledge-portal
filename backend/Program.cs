@@ -237,6 +237,7 @@ app.UseCors();
 app.UseMiddleware<ApiKeyMiddleware>();
 
 app.UseAuthentication();
+app.UseMiddleware<UsageTrackingMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 
