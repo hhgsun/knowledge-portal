@@ -349,6 +349,13 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("list_articles", toolNames);
         Assert.Contains("list_tags", toolNames);
         Assert.Contains("get_portal_info", toolNames);
+
+        var search = result.GetProperty("tools").EnumerateArray()
+            .First(t => t.GetProperty("name").GetString() == "search_articles");
+        var properties = search.GetProperty("inputSchema").GetProperty("properties");
+        Assert.Equal("fulltext", properties.GetProperty("type").GetProperty("default").GetString());
+        Assert.True(properties.TryGetProperty("include_attachments", out _));
+        Assert.True(properties.TryGetProperty("only_own_content", out _));
     }
 
     [Fact]
@@ -386,7 +393,126 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(3, payload.GetProperty("total").GetInt32());
         Assert.Equal(2, payload.GetProperty("totalPages").GetInt32());
         Assert.Equal(2, payload.GetProperty("page").GetInt32());
-        Assert.Equal(1, payload.GetProperty("articles").GetArrayLength());
+        Assert.Equal(1, payload.GetProperty("results").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_SemanticMatchesRestBehavior()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Semantik Kubernetes Zqmx",
+            contentMarkdown = "Kubernetes deployment işlemleri",
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "kubernetes deployment zqmx", type = "semantic" }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.Equal("semantic", payload.GetProperty("type").GetString());
+        Assert.Contains(payload.GetProperty("results").EnumerateArray(),
+            item => item.GetProperty("title").GetString() == "MCP Semantik Kubernetes Zqmx");
+        Assert.True(payload.TryGetProperty("indexingPending", out _));
+        Assert.True(payload.TryGetProperty("searchQueryId", out _));
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_HybridReturnsMatchType()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Hibrit Arama Vqpx",
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "hibrit arama vqpx", type = "hybrid" }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+        var article = payload.GetProperty("results").EnumerateArray()
+            .First(item => item.GetProperty("title").GetString() == "MCP Hibrit Arama Vqpx");
+
+        Assert.Contains(article.GetProperty("matchType").GetString(), new[] { "fulltext", "semantic", "both" });
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_RagReturnsAnswerAndSources()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP VPN Rehberi Yqnx",
+            contentMarkdown = "VPN kurulum yqnx adımları",
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "vpn kurulum yqnx", type = "rag" }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.Equal("FAKE-ANSWER", payload.GetProperty("answer").GetString());
+        Assert.Contains(payload.GetProperty("sources").EnumerateArray(),
+            source => source.GetProperty("title").GetString() == "MCP VPN Rehberi Yqnx");
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_ParsesInlineFiltersAndIncludesContent()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Inline Filtre Wqtx",
+            contentMarkdown = "benzersiz içerik wqtx",
+            contentType = "how-to",
+            tags = new[] { "mcp-inline-tag" },
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "wqtx #mcp-inline-tag ##how-to", include_content = true }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+        var article = payload.GetProperty("results").EnumerateArray()
+            .First(item => item.GetProperty("title").GetString() == "MCP Inline Filtre Wqtx");
+
+        Assert.Contains("benzersiz içerik", article.GetProperty("contentMarkdown").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_UnknownAuthorDoesNotWidenResults()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new { title = "MCP Yazar Filtresi Uqrx", status = "published" });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "uqrx @var-olmayan-yazar" }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+
+        Assert.Equal(0, payload.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_OnlyOwnContentScopesApiKeyCaller()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new { title = "MCP Başkasının Qksp İçeriği", status = "published" });
+        var keyResponse = await _client.PostAsJsonAsync("/api/keys", new { name = "mcp-own-content-key" });
+        var keyBody = await keyResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        using var keyClient = _factory.CreateClient();
+        keyClient.DefaultRequestHeaders.Add("X-API-Key", keyBody.GetProperty("key").GetString());
+        var create = await keyClient.PostAsJsonAsync("/api/articles", new { title = "MCP Kendi Qksp İçeriği", status = "published" });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        var response = await keyClient.PostAsJsonAsync("/mcp", ToolCall("search_articles",
+            new { query = "qksp", only_own_content = true }));
+        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(envelope.GetProperty("result")));
+        var titles = payload.GetProperty("results").EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
+
+        Assert.Contains("MCP Kendi Qksp İçeriği", titles);
+        Assert.DoesNotContain("MCP Başkasının Qksp İçeriği", titles);
     }
 
     [Fact]

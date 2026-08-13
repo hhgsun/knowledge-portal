@@ -1,7 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
+using System.Diagnostics;
+using System.Security.Claims;
+using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Models;
+using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,16 +22,23 @@ public class McpToolExecutor
     private readonly AppDbContext _db;
     private readonly ArticleService _articleService;
     private readonly TagService _tagService;
+    private readonly IConfiguration _config;
+    private readonly IServiceProvider _services;
+    private readonly ISearchReranker _reranker;
     private readonly ILogger<McpToolExecutor> _logger;
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
 
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
+        IConfiguration config, IServiceProvider services, ISearchReranker reranker,
         ILogger<McpToolExecutor> logger)
     {
         _db = db;
         _articleService = articleService;
         _tagService = tagService;
+        _config = config;
+        _services = services;
+        _reranker = reranker;
         _logger = logger;
     }
 
@@ -40,18 +53,21 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "search_articles",
-                    Description = "Search published articles in Knowledge Portal using full-text search. Returns matching article summaries (title, excerpt, ownerName, tags, viewCount, …) and optionally full content as plain text.",
+                    Description = "Search published Knowledge Portal articles using full-text, semantic, hybrid, or RAG search. Supports the same filters and response behavior as GET /api/search.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["query"] = new() { Type = "string", Description = "Search query text" },
+                            ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid", "rag" }, Default = "fulltext" },
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20 },
                             ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated (AND logic)" },
                             ["authors"] = new() { Type = "string", Description = "Filter by author slugs, comma-separated (OR logic)" },
                             ["content_type"] = new() { Type = "string", Description = "Filter by content type, comma-separated (OR logic)" },
-                            ["include_content"] = new() { Type = "boolean", Description = "Include full article content as plain text in results", Default = false }
+                            ["include_content"] = new() { Type = "boolean", Description = "Include full article content as plain text in results", Default = false },
+                            ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata in results", Default = false },
+                            ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict results to articles created by that key", Default = false }
                         },
                         Required = new List<string> { "query" }
                     }
@@ -109,13 +125,14 @@ public class McpToolExecutor
 
     // ─── Tool Dispatcher ───────────────────────────────────────────────
 
-    public async Task<McpToolCallResult> ExecuteToolAsync(string toolName, JsonElement? arguments)
+    public async Task<McpToolCallResult> ExecuteToolAsync(string toolName, JsonElement? arguments,
+        ClaimsPrincipal? principal = null, CancellationToken ct = default)
     {
         try
         {
             return toolName switch
             {
-                "search_articles" => await SearchArticlesAsync(arguments),
+                "search_articles" => await SearchArticlesAsync(arguments, principal, ct),
                 "get_article" => await GetArticleAsync(arguments),
                 "list_articles" => await ListArticlesAsync(arguments),
                 "list_tags" => await ListTagsAsync(),
@@ -133,47 +150,142 @@ public class McpToolExecutor
 
     // ─── Tool Implementations ──────────────────────────────────────────
 
-    private async Task<McpToolCallResult> SearchArticlesAsync(JsonElement? args)
+    private async Task<McpToolCallResult> SearchArticlesAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
     {
         var query = GetString(args, "query");
         if (string.IsNullOrWhiteSpace(query))
             return ErrorResult("Parameter 'query' is required");
 
+        var type = (GetString(args, "type") ?? "fulltext").ToLowerInvariant();
+        if (type is not ("fulltext" or "semantic" or "hybrid" or "rag"))
+            return ErrorResult("Parameter 'type' must be one of: fulltext, semantic, hybrid, rag");
+
         var page = Math.Max(1, GetInt(args, "page", 1));
         var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
-        var tags = GetString(args, "tags");
-        var authors = GetString(args, "authors");
-        var contentType = GetString(args, "content_type");
         var includeContent = GetBool(args, "include_content");
+        var includeAttachments = GetBool(args, "include_attachments");
+        var onlyOwnContent = GetBool(args, "only_own_content");
+        var sw = Stopwatch.StartNew();
 
-        // Author filter (OR logic) — tag (AND) and content type filters go through ArticleFilter
-        List<string>? authorIds = null;
-        if (!string.IsNullOrWhiteSpace(authors))
+        // Same inline syntax as REST: ##content-type, #tag, @author.
+        var tagSlugs = SplitCsv(GetString(args, "tags"));
+        var authorSlugs = SplitCsv(GetString(args, "authors"));
+        var contentTypes = SplitCsv(GetString(args, "content_type"));
+        var remainingWords = new List<string>();
+        foreach (var word in query.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
-            var resolved = await _db.ResolveAuthorIdsAsync(authors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-            if (resolved.Count > 0)
-                authorIds = resolved;
+            if (word.StartsWith("##") && word.Length > 2) contentTypes.Add(word[2..]);
+            else if (word.StartsWith('#') && word.Length > 1) tagSlugs.Add(word[1..]);
+            else if (word.StartsWith('@') && word.Length > 1) authorSlugs.Add(word[1..]);
+            else remainingWords.Add(word);
+        }
+        tagSlugs = tagSlugs.Distinct().ToList();
+        authorSlugs = authorSlugs.Distinct().ToList();
+        contentTypes = contentTypes.Distinct().ToList();
+        var searchQuery = string.Join(' ', remainingWords).Trim();
+
+        var authorIds = authorSlugs.Count > 0
+            ? await _db.ResolveAuthorIdsAsync(authorSlugs)
+            : null;
+
+        // Match REST semantics: an entirely unknown tag set is a definite miss. An unknown
+        // author must also remain a restrictive filter instead of widening to every author.
+        List<string>? resolvedTags = null;
+        if (tagSlugs.Count > 0)
+        {
+            resolvedTags = await _db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync(ct);
+            if (resolvedTags.Count == 0)
+                return await SearchResultAsync(new { results = Array.Empty<object>(), query, type = "tag", tags = tagSlugs, total = 0, page = 1, totalPages = 0 }, query, 0, "tag", sw, principal, ct);
         }
 
+        var apiKeyId = onlyOwnContent ? principal?.FindFirst("apiKeyId")?.Value : null;
+
         var filter = new ArticleFilter(
-            OwnerIds: authorIds,
-            ContentTypes: string.IsNullOrWhiteSpace(contentType) ? null : contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            OwnerIds: authorSlugs.Count > 0 ? authorIds : null,
+            ContentTypes: contentTypes.Count > 0 ? contentTypes : null,
+            ApiKeyId: apiKeyId,
+            TagSlugs: resolvedTags);
+        var snippetTokens = searchQuery.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
-        // Same paged pipeline as GET /api/search — true post-filter total, real pagination
-        var pageResult = await _articleService.SearchPublishedPagedAsync(query, page, limit, filter);
-        var summaries = await _articleService.BuildSummariesAsync(pageResult.Articles, includeContent);
-
-        var result = new
+        if (tagSlugs.Count > 0 && string.IsNullOrWhiteSpace(searchQuery))
         {
-            articles = summaries,
-            total = pageResult.Total,
-            page,
-            limit,
-            totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit),
-            query
-        };
-        return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
+            var tagQuery = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter);
+            var total = await tagQuery.CountAsync(ct);
+            var articles = await tagQuery.OrderByDescending(a => a.UpdatedAt).Skip((page - 1) * limit).Take(limit).ToListAsync(ct);
+            var results = await BuildSearchResultsAsync(articles, includeContent, includeAttachments, snippetTokens);
+            return await SearchResultAsync(new { results, query, type = "tag", tags = tagSlugs, total, page, totalPages = (int)Math.Ceiling(total / (double)limit) }, query, total, "tag", sw, principal, ct);
+        }
+
+        var indexingPending = await _db.Articles.AnyAsync(a => a.Status == "published" && a.IndexedAt == null, ct);
+        var ollamaEnabled = _config.GetValue("Ollama:Enabled", false);
+        var vectorSearch = ollamaEnabled ? _services.GetService<IVectorSearchService>() : null;
+
+        if (type == "rag")
+        {
+            if (!ollamaEnabled || vectorSearch == null)
+                return TextResult(JsonSerializer.Serialize(new { answer = "AI arama şu anda kullanılamıyor. Ollama servisi aktif değil.", sources = Array.Empty<object>(), query, type, indexingPending }, _jsonOptions));
+
+            var ragService = _services.GetService<RagService>();
+            if (ragService == null)
+                return TextResult(JsonSerializer.Serialize(new { answer = "RAG servisi kullanılamıyor.", sources = Array.Empty<object>(), query, type, indexingPending }, _jsonOptions));
+
+            try
+            {
+                var rag = await ragService.AskAsync(searchQuery, filter, ct);
+                return await SearchResultAsync(new { answer = rag.Answer, sources = rag.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }), query, type, indexingPending }, query, rag.Sources.Count, type, sw, principal, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MCP RAG search failed");
+                return TextResult(JsonSerializer.Serialize(new { answer = "AI yanıtı oluşturulurken bir hata oluştu.", sources = Array.Empty<object>(), query, type, indexingPending, warning = "RAG search failed" }, _jsonOptions));
+            }
+        }
+
+        if (type == "semantic")
+        {
+            if (!ollamaEnabled || vectorSearch == null)
+                return TextResult(JsonSerializer.Serialize(new { results = Array.Empty<object>(), query, type, total = 0, page = 1, totalPages = 1, indexingPending, warning = "Semantic search unavailable — Ollama disabled" }, _jsonOptions));
+            try
+            {
+                var hits = await vectorSearch.SearchAsync(searchQuery, limit, ct, filter: filter);
+                var ids = hits.Select(h => h.ArticleId).ToList();
+                var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
+                var byId = articles.ToDictionary(a => a.Id);
+                var results = await BuildSearchResultsAsync(hits.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList(), includeContent, includeAttachments, snippetTokens, hits.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)));
+                return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending }, query, results.Count, type, sw, principal, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MCP semantic search failed");
+                return TextResult(JsonSerializer.Serialize(new { results = Array.Empty<object>(), query, type, total = 0, page = 1, totalPages = 1, indexingPending, warning = "Semantic search failed" }, _jsonOptions));
+            }
+        }
+
+        if (type == "hybrid")
+        {
+            var candidateLimit = Math.Clamp(_config.GetValue("Search:HybridCandidateLimit", 200), limit, 500);
+            var fulltextIds = (await _articleService.SearchPublishedAsync(searchQuery, candidateLimit, filter)).Select(a => a.Id).ToList();
+            List<VectorSearchResult>? semanticHits = null;
+            if (ollamaEnabled && vectorSearch != null)
+            {
+                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit, ct, filter: filter); }
+                catch (Exception ex) { _logger.LogWarning(ex, "MCP hybrid semantic leg failed"); }
+            }
+            var scores = RrfHelper.Merge(fulltextIds, semanticHits?.Select(h => h.ArticleId).ToList());
+            var ids = scores.Keys.ToList();
+            var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
+            var reranked = _reranker.Rerank(searchQuery, articles.Select(a => new RerankCandidate(a.Id, a.Title, a.Excerpt, a.Content, scores[a.Id].Score)).ToList()).Take(limit).ToList();
+            var byId = articles.ToDictionary(a => a.Id);
+            var ordered = reranked.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList();
+            var results = await BuildSearchResultsAsync(ordered, includeContent, includeAttachments, snippetTokens,
+                reranked.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)), scores.ToDictionary(s => s.Key, s => s.Value.MatchType));
+            var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : null;
+            return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, warning }, query, results.Count, type, sw, principal, ct);
+        }
+
+        var pageResult = await _articleService.SearchPublishedPagedAsync(searchQuery, page, limit, filter);
+        var fulltextResults = await BuildSearchResultsAsync(pageResult.Articles, includeContent, includeAttachments, snippetTokens);
+        return await SearchResultAsync(new { results = fulltextResults, query, type, total = pageResult.Total, page, totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit), indexingPending }, query, pageResult.Total, type, sw, principal, ct);
     }
 
     private async Task<McpToolCallResult> GetArticleAsync(JsonElement? args)
@@ -254,6 +366,68 @@ public class McpToolExecutor
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────
+
+    private async Task<List<ArticleSummaryDto>> BuildSearchResultsAsync(
+        IReadOnlyList<Article> articles,
+        bool includeContent,
+        bool includeAttachments,
+        string[] snippetTokens,
+        IReadOnlyDictionary<string, double>? scores = null,
+        IReadOnlyDictionary<string, string>? matchTypes = null)
+    {
+        var ids = articles.Select(a => a.Id).ToList();
+        var enrichment = await _articleService.GetEnrichmentAsync(ids);
+        var attachments = includeAttachments
+            ? await AttachmentHelper.GetAttachmentMapAsync(_db, ids)
+            : null;
+
+        return articles.Select(article =>
+        {
+            var plainText = includeContent || snippetTokens.Length > 0
+                ? ContentExtractor.ExtractPlainText(article.Content)
+                : null;
+            return ArticleService.BuildSummary(
+                article.Id, article.Title, article.Slug, article.Excerpt, article.ContentType,
+                article.UpdatedAt.ToString("o"), enrichment.GetValueOrDefault(article.Id),
+                includeContent ? article.Content : null,
+                attachments?.GetValueOrDefault(article.Id),
+                scores?.GetValueOrDefault(article.Id),
+                matchTypes?.GetValueOrDefault(article.Id),
+                SearchSnippetHelper.Build(plainText, snippetTokens));
+        }).ToList();
+    }
+
+    private async Task<McpToolCallResult> SearchResultAsync(
+        object payload,
+        string query,
+        int resultCount,
+        string searchType,
+        Stopwatch stopwatch,
+        ClaimsPrincipal? principal,
+        CancellationToken ct)
+    {
+        stopwatch.Stop();
+        var record = new SearchQuery
+        {
+            Query = query.Trim(),
+            UserId = principal?.Identity?.IsAuthenticated == true ? principal.GetUserId() : null,
+            ResultsCount = resultCount,
+            SearchType = searchType,
+            ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+        };
+        _db.SearchQueries.Add(record);
+        await _db.SaveChangesAsync(ct);
+
+        var json = JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject();
+        json["responseTimeMs"] = stopwatch.ElapsedMilliseconds;
+        json["searchQueryId"] = record.Id;
+        return TextResult(json.ToJsonString(_jsonOptions));
+    }
+
+    private static List<string> SplitCsv(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

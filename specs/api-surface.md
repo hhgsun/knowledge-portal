@@ -68,7 +68,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude 
 **Supported Methods**: `initialize`, `notifications/initialized` (returns 202 Accepted, empty body), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Full-text search across published articles (params: query*, page, limit, tags, authors, content_type, include_content). Paged: returns true post-filter `total`, `page`, `limit`, `totalPages`
+- `search_articles` — Portal-equivalent search across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid|rag`, default `fulltext`), `page`, `limit`, `tags`, `authors`, `content_type`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and `##content-type` inline syntax. Full-text/tag searches are paged; semantic/hybrid/RAG use the same top-N/fallback behavior as `GET /api/search`.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort — sort validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts

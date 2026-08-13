@@ -31,7 +31,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     public static IQueryable<Article> ApplyFilter(IQueryable<Article> query, ArticleFilter? filter)
     {
         if (filter == null) return query;
-        if (filter.OwnerIds is { Count: > 0 })
+        // A non-null empty list means the caller requested author filtering but none of
+        // the supplied slugs resolved. It must match nothing, not silently remove the filter.
+        if (filter.OwnerIds is not null)
             query = query.WhereOwnedByAny(filter.OwnerIds);
         if (filter.ContentTypes is { Count: > 0 })
             query = query.WhereContentTypeIn(filter.ContentTypes);

@@ -32,7 +32,8 @@ public static class ArticleFilterSql
         if (filter == null) return "";
         var sb = new StringBuilder();
 
-        if (filter.OwnerIds is { Count: > 0 })
+        // Preserve an explicitly empty author set as a no-match filter.
+        if (filter.OwnerIds is not null)
             sb.Append($""" AND {alias}."OwnerId" = ANY({Placeholder(args, filter.OwnerIds.ToArray())})""");
         if (filter.ContentTypes is { Count: > 0 })
             sb.Append($""" AND {alias}."ContentType" = ANY({Placeholder(args, filter.ContentTypes.ToArray())})""");

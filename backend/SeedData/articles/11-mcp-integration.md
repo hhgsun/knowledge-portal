@@ -77,16 +77,19 @@ MCP sunucusu 5 araç sunar. Tüm araçlar yalnızca yayınlanmış (published) m
 
 ### search_articles
 
-Knowledge Portal'da full-text arama yapar. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket bilgilerini döner.
+Knowledge Portal'ın REST aramasıyla aynı full-text, semantic, hybrid ve RAG akışlarını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. `@yazar`, `#etiket` ve `##içerik-türü` inline filtreleri desteklenir.
 
 Parametreler:
 
 - `query` (string, zorunlu) — Arama metni
+- `type` (string) — `fulltext`, `semantic`, `hybrid` veya `rag` (varsayılan `fulltext`)
 - `limit` (integer) — Maksimum sonuç sayısı (1-50, varsayılan 20)
 - `tags` (string) — Etiket slug'larına göre filtrele, virgülle ayrılmış (AND mantığı)
 - `authors` (string) — Yazar slug'larına göre filtrele, virgülle ayrılmış (OR mantığı)
 - `content_type` (string) — İçerik türüne göre filtrele, virgülle ayrılmış (OR mantığı)
 - `include_content` (boolean) — Makale içeriğini düz metin olarak sonuçlara dahil et (varsayılan false)
+- `include_attachments` (boolean) — Ek dosya metadatasını sonuçlara dahil et (varsayılan false)
+- `only_own_content` (boolean) — API key ile çağrıldığında yalnızca o anahtarla oluşturulan içerikleri döndürür
 
 ### get_article
 

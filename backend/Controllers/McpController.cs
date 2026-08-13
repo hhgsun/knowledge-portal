@@ -159,7 +159,7 @@ public class McpController : ControllerBase
             ? argsEl
             : null;
 
-        var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments);
+        var result = await _toolExecutor.ExecuteToolAsync(toolName, arguments, User, HttpContext.RequestAborted);
         return JsonRpcSuccessResponse(request.Id, result);
     }
 
