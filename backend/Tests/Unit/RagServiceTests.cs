@@ -232,7 +232,7 @@ public class RagServiceTests
         await h.Rag.AskAsync("delimiter");
 
         var prompt = UserMessage(h.Chat);
-        Assert.Contains("<source id=\"1\" title=\"Delimiter Kontrol\">", prompt);
+        Assert.Contains("<source id=\"S1\" title=\"Delimiter Kontrol\">", prompt);
     }
 
     [Fact]

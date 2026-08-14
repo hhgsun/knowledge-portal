@@ -336,6 +336,11 @@ public class McpToolExecutor
                         canonicalUrl = $"/api/articles/{s.Slug}",
                         sourceType = "article"
                     }),
+                    claims = rag.Claims,
+                    evidence = rag.Evidence.Select(e => new { e.SourceId, e.ArticleId, e.Title, e.Slug,
+                        canonicalUrl = $"/api/articles/{e.Slug}", e.SourceType, e.AttachmentId, e.SourceName,
+                        e.SourceLocation, e.Passage, e.Score }),
+                    rag.CitationCoverage, rag.GroundingStatus, rag.InsufficientContext, rag.Warnings,
                     query, type, indexingPending
                 }, query, rag.Sources.Count, type, sw, principal, ct);
             }
@@ -857,6 +862,12 @@ public class McpToolExecutor
             },
             ["answer"] = new JsonObject { ["type"] = "string" },
             ["sources"] = new JsonObject { ["type"] = "array" },
+            ["claims"] = new JsonObject { ["type"] = "array" },
+            ["evidence"] = new JsonObject { ["type"] = "array" },
+            ["citationCoverage"] = new JsonObject { ["type"] = "number" },
+            ["groundingStatus"] = new JsonObject { ["type"] = "string" },
+            ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
+            ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
             ["query"] = new JsonObject { ["type"] = "string" },
             ["type"] = new JsonObject { ["type"] = "string" }
         },

@@ -162,7 +162,10 @@ public class SearchController(
                 var ragResult = await ragService.AskAsync(searchQuery, filter);
                 sw.Stop();
                 var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
-                return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
+                return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),
+                    claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
+                    ragResult.GroundingStatus, ragResult.InsufficientContext, ragResult.Warnings,
+                    query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
             }
             catch (Exception ex)
             {

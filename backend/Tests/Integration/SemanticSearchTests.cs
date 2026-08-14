@@ -85,6 +85,10 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
             .Select(s => s.GetProperty("title").GetString())
             .ToList();
         Assert.Contains("Vpn Kurulum Rehberi Klmx", sourceTitles);
+        Assert.True(body.TryGetProperty("claims", out _));
+        Assert.True(body.TryGetProperty("evidence", out _));
+        Assert.True(body.TryGetProperty("citationCoverage", out _));
+        Assert.Equal("unverified", body.GetProperty("groundingStatus").GetString());
     }
 
     [Fact]

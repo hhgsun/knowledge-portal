@@ -216,6 +216,12 @@ export interface RagResponse {
   type: "rag";
   responseTimeMs: number;
   indexingPending?: boolean;
+  claims?: { text: string; sourceIds: string[] }[];
+  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number }[];
+  citationCoverage?: number;
+  groundingStatus?: "citations_verified" | "partially_verified" | "failed" | "unverified" | "insufficient_context";
+  insufficientContext?: boolean;
+  warnings?: string[];
 }
 
 // ─── Dashboard ───────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
@@ -185,7 +185,7 @@ export default function SearchPage() {
       if (data.warning) setWarning(data.warning);
 
       if (searchType === "rag") {
-        setRagResponse({ answer: data.answer, sources: data.sources || [], query: data.query, type: "rag", responseTimeMs: data.responseTimeMs, indexingPending: data.indexingPending });
+        setRagResponse({ ...data, sources: data.sources || [], type: "rag" });
       } else {
         setResults(data.results || []);
         setTotal(data.total ?? (data.results || []).length);
@@ -428,6 +428,23 @@ export default function SearchPage() {
                   </ReactMarkdown>
                 </div>
               </div>
+
+              {ragResponse.groundingStatus && (
+                <div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                  ragResponse.groundingStatus === "citations_verified" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300" :
+                  ragResponse.groundingStatus === "insufficient_context" ? "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300" :
+                  "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300") }>
+                  <ShieldCheck size={14}/><span>Grounding: {ragResponse.groundingStatus.replaceAll("_", " ")}</span>
+                  <span className="ml-auto">Citation coverage: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
+                </div>
+              )}
+
+              {ragResponse.evidence && ragResponse.evidence.length > 0 && (
+                <details className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
+                  <summary className="cursor-pointer text-sm font-medium">Doğrulanabilir kanıtlar ({ragResponse.evidence.length})</summary>
+                  <div className="mt-3 space-y-3">{ragResponse.evidence.map(e => <div key={e.sourceId} className="text-xs border-l-2 border-blue-400 pl-3"><div className="font-medium"><span className="text-blue-600">{e.sourceId}</span> · {e.title}{e.sourceName ? ` — ${e.sourceName}` : ""}</div><p className="mt-1 text-zinc-500 whitespace-pre-wrap">{e.passage}</p></div>)}</div>
+                </details>
+              )}
 
               {ragResponse.sources.length > 0 && (
                 <div>
