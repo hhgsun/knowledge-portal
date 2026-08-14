@@ -24,6 +24,7 @@ import LogsPage from "./pages/LogsPage";
 import SearchDiagnosticsPage from "./pages/SearchDiagnosticsPage";
 import BulkTransferPage from "./pages/BulkTransferPage";
 import KnowledgeImportPage from "./pages/KnowledgeImportPage";
+import RagEvaluationsPage from "./pages/RagEvaluationsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/settings/featured-links" element={<RoleRoute roles={["admin"]}><FeaturedLinksPage /></RoleRoute>} />
           <Route path="/settings/logs" element={<RoleRoute roles={["admin"]}><LogsPage /></RoleRoute>} />
           <Route path="/settings/search" element={<RoleRoute roles={["admin"]}><SearchDiagnosticsPage /></RoleRoute>} />
+          <Route path="/settings/rag-evaluations" element={<RoleRoute roles={["admin"]}><RagEvaluationsPage /></RoleRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

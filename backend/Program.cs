@@ -198,6 +198,8 @@ builder.Services.AddSingleton<ISearchReranker, LocalSearchReranker>();
 builder.Services.AddScoped<AttachmentStorageService>();
 builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<SourceImportService>();
+builder.Services.AddScoped<RagEvaluationService>();
+builder.Services.AddHostedService<RagEvaluationWorker>();
 builder.Services.AddScoped<McpToolExecutor>();
 builder.Services.AddScoped<ContentGovernanceService>();
 builder.Services.AddScoped<McpAuditService>();

@@ -207,6 +207,11 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/admin/users` | POST | ✓ | `users:manage` | ✓ |
 | `/api/admin/users` | PUT | ✓ | `users:manage` | ✓ |
 | `/api/admin/users?id={id}` | DELETE | ✓ | `users:manage` | ✓ |
+| `/api/admin/rag-evaluations/datasets` | GET/POST | ✓ | `users:manage` | ✓ |
+| `/api/admin/rag-evaluations/datasets/{id}` | GET/PUT/DELETE | ✓ | `users:manage` | ✓ |
+| `/api/admin/rag-evaluations/datasets/{id}/runs` | POST | ✓ | `users:manage` | ✓ |
+| `/api/admin/rag-evaluations/runs` | GET | ✓ | `users:manage` | ✓ |
+| `/api/admin/rag-evaluations/runs/{runId}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/keys` | GET | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys/{id}/rotate` | POST | ✓ | `api_keys:manage` | ✓ |
@@ -274,6 +279,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
 | Search (RAG) | ✅ Implemented | Configured Ollama chat model (default qwen2.5vl:7b), top-3 matched-chunk context (configurable via `Ollama:RagSourceLimit`, attachments included), source citations, search filters applied, prompt-injection-hardened `<source>` context blocks |
+| RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, durable background runs, Recall/MRR/NDCG/fact/citation/refusal/safety/latency metrics, run history at `/settings/rag-evaluations` |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |
 | Admin Users | ✅ Implemented | Session-only, self-protection |

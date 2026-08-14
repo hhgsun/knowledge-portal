@@ -51,6 +51,7 @@ stages:
               testResultsFormat: 'VSTest'
               testResultsFiles: '$(Agent.TempDirectory)/testresults/**/*.trx'
 
+
   - stage: Build
     displayName: 'Build & Push Images'
     dependsOn: Test

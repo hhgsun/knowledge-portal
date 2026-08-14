@@ -21,6 +21,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
     public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
+    public DbSet<RagEvaluationDataset> RagEvaluationDatasets => Set<RagEvaluationDataset>();
+    public DbSet<RagEvaluationRun> RagEvaluationRuns => Set<RagEvaluationRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -277,6 +279,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(j => new { j.Status, j.AvailableAt, j.Priority });
             e.HasOne(j => j.Article).WithOne().HasForeignKey<IndexJob>(j => j.ArticleId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RagEvaluationDataset>(e =>
+        {
+            e.ToTable("rag_evaluation_datasets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            e.Property(x => x.Version).IsRequired().HasMaxLength(30);
+            e.Property(x => x.CasesJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.ThresholdsJson).IsRequired().HasColumnType("jsonb");
+            e.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<RagEvaluationRun>(e =>
+        {
+            e.ToTable("rag_evaluation_runs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.Property(x => x.MetricsJson).HasColumnType("jsonb");
+            e.Property(x => x.ResultsJson).HasColumnType("jsonb");
+            e.Property(x => x.Error).HasMaxLength(4000);
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasOne(x => x.Dataset).WithMany(x => x.Runs).HasForeignKey(x => x.DatasetId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.RequestedBy).WithMany().HasForeignKey(x => x.RequestedById).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
