@@ -29,7 +29,9 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
             BEGIN
                 IF NOT EXISTS (
                     SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'articles' AND column_name = 'search_vector'
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'articles'
+                      AND column_name = 'search_vector'
                 ) THEN
                     ALTER TABLE articles ADD COLUMN search_vector tsvector;
                 END IF;

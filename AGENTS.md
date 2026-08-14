@@ -16,7 +16,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | Milkdown Crepe (ProseMirror); canonical CommonMark/GFM Markdown |
-| Tests | xUnit + WebApplicationFactory (backend only). **No Docker** — the entire suite runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. Postgres-only fidelity (snowball stemming, real pgvector ranking) is therefore not covered by tests. CI runs `dotnet test` as a gating stage in `azure-pipelines.yml` |
+| Tests | xUnit + WebApplicationFactory (backend only). The default suite is **Docker-free** and runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. A separate opt-in `backend/Tests.Postgres` suite uses `RAG_FIDELITY_CONNECTION_STRING` against real PostgreSQL/pgvector to gate migrations, cosine ranking/filtering, Turkish stemming, and HNSW/GIN query plans. CI runs both gates; the fidelity gate skips when its secret connection is not configured. |
 | MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
 
 ## Conventions
@@ -131,6 +131,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Run backend | `cd backend && dotnet run` |
 | Run frontend | `cd frontend && npm run dev` |
 | Run backend tests | `cd backend/Tests && dotnet test` |
+| Run PostgreSQL RAG fidelity tests | Set `RAG_FIDELITY_CONNECTION_STRING`, then `dotnet test backend/Tests.Postgres/KnowledgePortal.Api.PostgresTests.csproj --configuration Release` |
 | Apply migrations | `cd backend && dotnet ef database update` |
 | New migration | `cd backend && dotnet ef migrations add <Name>` |
 | Build frontend | `cd frontend && npm run build` |

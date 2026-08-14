@@ -44,6 +44,16 @@ stages:
           - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --no-build --filter "Gate=McpConformance|Gate=McpSchema|Gate=GoldenRetrieval|Gate=DataIsolation|Gate=McpSecurity|Gate=McpConcurrency" --logger "trx;LogFileName=mcp-quality-gates.trx" --results-directory $(Agent.TempDirectory)/testresults
             displayName: 'MCP quality gates'
 
+          - script: |
+              if [ -z "$RAG_FIDELITY_CONNECTION_STRING" ]; then
+                echo "RAG_FIDELITY_CONNECTION_STRING is not configured; PostgreSQL fidelity tests are opt-in."
+                exit 0
+              fi
+              dotnet test backend/Tests.Postgres/KnowledgePortal.Api.PostgresTests.csproj --configuration Release --logger "trx;LogFileName=postgres-rag-fidelity.trx" --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'PostgreSQL/pgvector RAG fidelity gates'
+            env:
+              RAG_FIDELITY_CONNECTION_STRING: $(RAG_FIDELITY_CONNECTION_STRING)
+
           - task: PublishTestResults@2
             displayName: 'Publish test results'
             condition: always()
