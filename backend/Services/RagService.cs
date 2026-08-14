@@ -6,7 +6,7 @@ namespace KnowledgePortal.Api.Services;
 
 public class RagService(
     IChatClient chatClient,
-    IVectorSearchService vectorSearch,
+    IRagRetriever retriever,
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
     ILogger<RagService> logger)
@@ -88,8 +88,9 @@ public class RagService(
         // documents aren't reduced to a single window. The filter goes into the retrieval query
         // so the pool isn't spent on articles that would be discarded straight afterwards.
         var broad = IsBroadQuery(question);
-        var chunks = await vectorSearch.SearchChunksAsync(question,
-            broad ? _broadCandidateLimit : _candidateLimit, ct, _ragMinScore, _maxChunksPerArticle, filter);
+        var retrieved = await retriever.RetrieveAsync(question,
+            broad ? _broadCandidateLimit : _candidateLimit, _ragMinScore, _maxChunksPerArticle, filter, ct);
+        var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

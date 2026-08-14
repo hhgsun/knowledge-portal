@@ -278,7 +278,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
-| Search (RAG) | ✅ Implemented | Configured Ollama chat model (default qwen2.5vl:7b), top-3 matched-chunk context (configurable via `Ollama:RagSourceLimit`, attachments included), source citations, search filters applied, prompt-injection-hardened `<source>` context blocks |
+| Search (RAG) | ✅ Implemented | Hybrid lexical+semantic candidate retrieval with weighted RRF, deterministic chunk reranking, near-duplicate suppression and fair article interleaving; configurable narrow/broad context, attachments, citations, filters, prompt-injection-hardened `<source>` blocks, and single-leg fallback |
 | RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, durable background runs, Recall/MRR/NDCG/fact/citation/refusal/safety/latency metrics, run history at `/settings/rag-evaluations` |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |

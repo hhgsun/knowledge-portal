@@ -1,0 +1,137 @@
+using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
+using Microsoft.EntityFrameworkCore;
+
+namespace KnowledgePortal.Api.Services;
+
+public record RagRetrievalChunk(VectorChunkResult Chunk, double Score, string MatchType);
+
+public interface IRagRetriever
+{
+    Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+        int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default);
+}
+
+public record RagChunkCandidate(VectorChunkResult Chunk, string Title, string? Excerpt,
+    double RetrievalScore, string MatchType);
+
+public interface IRagChunkReranker
+{
+    IReadOnlyList<RagRetrievalChunk> Rerank(string query, IReadOnlyList<RagChunkCandidate> candidates);
+}
+
+/// <summary>Local, deterministic second-stage chunk reranker. The contract can be replaced by a
+/// cross-encoder without changing RAG orchestration.</summary>
+public sealed class LocalRagChunkReranker : IRagChunkReranker
+{
+    public IReadOnlyList<RagRetrievalChunk> Rerank(string query, IReadOnlyList<RagChunkCandidate> candidates)
+    {
+        if (candidates.Count == 0) return [];
+        var tokens = Fold(query).Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct().ToArray();
+        var maxRetrieval = Math.Max(candidates.Max(x => x.RetrievalScore), double.Epsilon);
+        return candidates.Select(x =>
+        {
+            var title = Fold(x.Title); var body = Fold(x.Chunk.ChunkText); var source = Fold(x.Chunk.SourceName ?? "");
+            var haystack = $"{title} {source} {Fold(x.Excerpt ?? "")} {body}";
+            var coverage = tokens.Length == 0 ? 0 : tokens.Count(haystack.Contains) / (double)tokens.Length;
+            var titleCoverage = tokens.Length == 0 ? 0 : tokens.Count(t => title.Contains(t) || source.Contains(t)) / (double)tokens.Length;
+            var phrase = query.Length > 1 && haystack.Contains(Fold(query), StringComparison.Ordinal) ? 1d : 0d;
+            var score = .50 * (x.RetrievalScore / maxRetrieval) + .25 * coverage + .20 * titleCoverage + .05 * phrase;
+            return new RagRetrievalChunk(x.Chunk, score, x.MatchType);
+        }).OrderByDescending(x => x.Score).ThenBy(x => x.Chunk.ArticleId).ThenBy(x => x.Chunk.ChunkIndex).ToList();
+    }
+    private static string Fold(string value) => SlugHelper.Transliterate(value).ToLowerInvariant();
+}
+
+/// <summary>Hybrid RAG retrieval: lexical and vector candidate generation, article-level RRF,
+/// chunk reranking, near-duplicate suppression and fair per-article interleaving.</summary>
+public sealed class HybridRagRetriever(
+    IVectorSearchService vectors,
+    FullTextSearchService fullText,
+    AppDbContext db,
+    IRagChunkReranker reranker,
+    IConfiguration config,
+    ILogger<HybridRagRetriever> logger) : IRagRetriever
+{
+    private readonly int _rrfK = Math.Max(1, config.GetValue("Ollama:RagRrfK", 60));
+    private readonly double _lexicalWeight = Math.Clamp(config.GetValue("Ollama:RagLexicalWeight", .4), 0, 1);
+    private readonly double _semanticWeight = Math.Clamp(config.GetValue("Ollama:RagSemanticWeight", .6), 0, 1);
+    private readonly double _duplicateThreshold = Math.Clamp(config.GetValue("Ollama:RagDuplicateThreshold", .88), .5, 1);
+
+    public async Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+        int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default)
+    {
+        List<VectorChunkResult> semantic;
+        try { semantic = await vectors.SearchChunksAsync(query, limit, ct, minSemanticScore, maxPerArticle, filter); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { logger.LogWarning(ex, "Semantic RAG retrieval failed; continuing with lexical candidates"); semantic = []; }
+
+        List<string> lexicalIds;
+        try
+        {
+            lexicalIds = db.Database.IsRelational()
+                ? (await fullText.SearchPagedAsync(query, filter, 1, limit, ct)).ArticleIds
+                : (await fullText.SearchInMemoryAsync(query, limit)).Select(x => x.ArticleId).ToList();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { logger.LogWarning(ex, "Lexical RAG retrieval failed; continuing with semantic candidates"); lexicalIds = []; }
+
+        var semanticArticleIds = semantic.Select(x => x.ArticleId).Distinct().ToList();
+        var fusion = RrfHelper.Merge(lexicalIds, semanticArticleIds, _rrfK, _lexicalWeight, _semanticWeight);
+        var candidateIds = fusion.Keys.ToList();
+        if (candidateIds.Count == 0) return [];
+
+        var allowed = await ArticleService.ApplyFilter(db.Articles.WherePublished().Where(x => candidateIds.Contains(x.Id)), filter)
+            .Select(x => new { x.Id, x.Title, x.Excerpt, x.Content }).ToListAsync(ct);
+        var metadata = allowed.ToDictionary(x => x.Id);
+
+        var chunks = semantic.Where(x => metadata.ContainsKey(x.ArticleId)).ToList();
+        var semanticKeys = chunks.Select(Key).ToHashSet();
+        foreach (var articleId in lexicalIds.Where(metadata.ContainsKey))
+        {
+            if (chunks.Any(x => x.ArticleId == articleId)) continue;
+            var a = metadata[articleId];
+            var text = ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
+            var synthetic = new VectorChunkResult(articleId, -1, 0, text, "article");
+            if (semanticKeys.Add(Key(synthetic))) chunks.Add(synthetic);
+        }
+
+        var candidates = chunks.Select(chunk =>
+        {
+            var fused = fusion[chunk.ArticleId];
+            var retrieval = fused.Score + Math.Max(0, chunk.Score) * _semanticWeight;
+            var a = metadata[chunk.ArticleId];
+            return new RagChunkCandidate(chunk, a.Title, a.Excerpt, retrieval, fused.MatchType);
+        }).ToList();
+
+        var ranked = reranker.Rerank(query, candidates);
+        var deduped = SuppressNearDuplicates(ranked);
+        return InterleaveByArticle(deduped, limit, maxPerArticle);
+    }
+
+    private List<RagRetrievalChunk> SuppressNearDuplicates(IReadOnlyList<RagRetrievalChunk> ranked)
+    {
+        var kept = new List<(RagRetrievalChunk Item, HashSet<string> Tokens)>();
+        foreach (var item in ranked)
+        {
+            var tokens = Tokens(item.Chunk.ChunkText);
+            if (kept.Any(x => x.Item.Chunk.ArticleId == item.Chunk.ArticleId && Jaccard(tokens, x.Tokens) >= _duplicateThreshold)) continue;
+            kept.Add((item, tokens));
+        }
+        return kept.Select(x => x.Item).ToList();
+    }
+
+    internal static List<RagRetrievalChunk> InterleaveByArticle(List<RagRetrievalChunk> ranked, int limit, int maxPerArticle)
+    {
+        var groups = ranked.GroupBy(x => x.Chunk.ArticleId).Select(g => g.Take(Math.Max(1, maxPerArticle)).ToList()).ToList();
+        var result = new List<RagRetrievalChunk>();
+        for (var depth = 0; result.Count < limit && groups.Any(g => g.Count > depth); depth++)
+            foreach (var group in groups)
+                if (group.Count > depth && result.Count < limit) result.Add(group[depth]);
+        return result;
+    }
+
+    private static string Key(VectorChunkResult x) => $"{x.ArticleId}:{x.SourceType}:{x.AttachmentId}:{x.ChunkIndex}";
+    private static HashSet<string> Tokens(string text) => SlugHelper.Transliterate(text).ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+    private static double Jaccard(HashSet<string> a, HashSet<string> b) => a.Count == 0 && b.Count == 0 ? 1 : a.Intersect(b).Count() / (double)a.Union(b).Count();
+}

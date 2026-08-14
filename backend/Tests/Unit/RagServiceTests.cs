@@ -46,6 +46,14 @@ public class RagServiceTests
         }
     }
 
+    private sealed class FakeRagRetriever(FakeVectorSearch vectors) : IRagRetriever
+    {
+        public async Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+            int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default) =>
+            (await vectors.SearchChunksAsync(query, limit, ct, minSemanticScore, maxPerArticle, filter))
+                .Select(x => new RagRetrievalChunk(x, x.Score, "semantic")).ToList();
+    }
+
     // ─── Harness ───────────────────────────────────────────────────────
 
     private sealed record Harness(RagService Rag, FakeChatClient Chat);
@@ -64,7 +72,7 @@ public class RagServiceTests
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         var rag = new RagService(
             chat,
-            new FakeVectorSearch(scopeFactory, vectorResults),
+            new FakeRagRetriever(new FakeVectorSearch(scopeFactory, vectorResults)),
             scopeFactory,
             new ConfigurationBuilder().Build(),
             NullLogger<RagService>.Instance);

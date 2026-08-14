@@ -173,6 +173,8 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddScoped<EmbeddingService>();
     builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
     builder.Services.AddScoped<RagService>();
+    builder.Services.AddScoped<IRagRetriever, HybridRagRetriever>();
+    builder.Services.AddSingleton<IRagChunkReranker, LocalRagChunkReranker>();
 }
 
 // ─── OpenAPI / Swagger ───────────────────────────────────────
