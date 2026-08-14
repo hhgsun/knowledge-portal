@@ -75,6 +75,7 @@ public class RagServiceTests
             new FakeRagRetriever(new FakeVectorSearch(scopeFactory, vectorResults)),
             scopeFactory,
             new ConfigurationBuilder().Build(),
+            new RagResilienceService(new ConfigurationBuilder().Build(), NullLogger<RagResilienceService>.Instance),
             NullLogger<RagService>.Instance);
 
         return new Harness(rag, chat);

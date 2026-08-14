@@ -206,6 +206,7 @@ builder.Services.AddScoped<McpToolExecutor>();
 builder.Services.AddScoped<ContentGovernanceService>();
 builder.Services.AddScoped<McpAuditService>();
 builder.Services.AddSingleton<McpResilienceService>();
+builder.Services.AddSingleton<RagResilienceService>();
 
 var app = builder.Build();
 

@@ -340,7 +340,7 @@ public class McpToolExecutor
                     evidence = rag.Evidence.Select(e => new { e.SourceId, e.ArticleId, e.Title, e.Slug,
                         canonicalUrl = $"/api/articles/{e.Slug}", e.SourceType, e.AttachmentId, e.SourceName,
                         e.SourceLocation, e.Passage, e.Score }),
-                    rag.CitationCoverage, rag.GroundingStatus, rag.InsufficientContext, rag.Warnings,
+                    rag.CitationCoverage, rag.GroundingStatus, rag.InsufficientContext, rag.PartialResult, rag.Warnings,
                     query, type, indexingPending
                 }, query, rag.Sources.Count, type, sw, principal, ct);
             }
@@ -867,6 +867,7 @@ public class McpToolExecutor
             ["citationCoverage"] = new JsonObject { ["type"] = "number" },
             ["groundingStatus"] = new JsonObject { ["type"] = "string" },
             ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
+            ["partialResult"] = new JsonObject { ["type"] = "boolean" },
             ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
             ["query"] = new JsonObject { ["type"] = "string" },
             ["type"] = new JsonObject { ["type"] = "string" }

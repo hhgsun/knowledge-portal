@@ -9,6 +9,7 @@ public class RagService(
     IRagRetriever retriever,
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
+    RagResilienceService resilience,
     ILogger<RagService> logger)
 {
     // Distinct source articles for the fast (narrow) single-pass answer.
@@ -81,18 +82,23 @@ public class RagService(
 
     public record RagResult(string Answer, List<RagSource> Sources, List<RagClaim> Claims,
         List<RagEvidence> Evidence, double CitationCoverage, string GroundingStatus,
-        bool InsufficientContext, List<string> Warnings);
+        bool InsufficientContext, bool PartialResult, List<string> Warnings);
     public record RagSource(string ArticleId, string Title, string Slug, double Score);
     private record ArticleMeta(string Id, string Title, string Slug);
 
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null, CancellationToken ct = default)
     {
+        await using var capacity = await resilience.EnterAsync(ct);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(TimeSpan.FromSeconds(resilience.RequestBudgetSeconds));
+        ct = budget.Token;
         // Retrieve a wide chunk-level candidate pool (multiple chunks per article) so long
         // documents aren't reduced to a single window. The filter goes into the retrieval query
         // so the pool isn't spent on articles that would be discarded straight afterwards.
         var broad = IsBroadQuery(question);
-        var retrieved = await retriever.RetrieveAsync(question,
-            broad ? _broadCandidateLimit : _candidateLimit, _ragMinScore, _maxChunksPerArticle, filter, ct);
+        var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
+            token => retriever.RetrieveAsync(question, broad ? _broadCandidateLimit : _candidateLimit,
+                _ragMinScore, _maxChunksPerArticle, filter, token), ct);
         var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
 
         using var scope = scopeFactory.CreateScope();
@@ -137,7 +143,7 @@ public class RagService(
             logger.LogError(ex, "Failed to generate RAG answer for query '{Query}'", question);
             return new RagResult("AI yanıtı oluşturulurken bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
                 BuildSources(BestScores(usableChunks), articles), [], BuildEvidence(usableChunks, articles), 0,
-                "unverified", false, ["Answer generation failed."]);
+                "unverified", false, false, ["Answer generation failed."]);
         }
     }
 
@@ -171,7 +177,8 @@ public class RagService(
         if (contextParts.Count == 0)
             return EmptyResult(RefuseInsufficient);
 
-        var raw = await CompleteAsync(SystemPrompt, BuildContextMessage(question, contextParts), ct);
+        var raw = await CompleteAsync("generation", resilience.GenerationTimeoutSeconds,
+            SystemPrompt, BuildContextMessage(question, contextParts), ct);
         return BuildValidatedResult(raw, selected, sourceScores, articles, evidenceIds);
     }
 
@@ -181,40 +188,52 @@ public class RagService(
         Dictionary<string, ArticleMeta> articles, CancellationToken ct)
     {
         var sourceScores = new Dictionary<string, double>();
-        var partials = new List<string>();
         var evidenceIds = EvidenceIds(chunks);
-
-        foreach (var batch in Batch(chunks, Math.Max(1, _batchChunks)))
+        var batches = Batch(chunks, Math.Max(1, _batchChunks)).Select((items, index) => (items, index)).ToList();
+        using var gate = new SemaphoreSlim(resilience.MapParallelism);
+        var tasks = batches.Select(async batch =>
         {
-            var contextParts = new List<string>();
-            var totalWords = 0;
-
-            foreach (var c in batch)
+            await gate.WaitAsync(ct);
+            try
             {
-                if (totalWords >= _maxContextWords) break;
-                var (text, used) = TruncateWords(c.ChunkText, _maxContextWords - totalWords);
-                if (used == 0) continue;
-
-                contextParts.Add(FormatSourceBlock(evidenceIds[ChunkKey(c)], SourceTitle(articles[c.ArticleId].Title, c), text));
-                RecordScore(sourceScores, c.ArticleId, c.Score);
-                totalWords += used;
+                var context = new List<string>(); var usedChunks = new List<VectorChunkResult>(); var words = 0;
+                foreach (var c in batch.items)
+                {
+                    if (words >= _maxContextWords) break;
+                    var (text, used) = TruncateWords(c.ChunkText, _maxContextWords - words); if (used == 0) continue;
+                    context.Add(FormatSourceBlock(evidenceIds[ChunkKey(c)], SourceTitle(articles[c.ArticleId].Title, c), text));
+                    usedChunks.Add(c); words += used;
+                }
+                if (context.Count == 0) return (batch.index, Partial: (string?)null, Chunks: usedChunks, Error: (string?)null);
+                var partial = await CompleteAsync($"map-{batch.index + 1}", resilience.GenerationTimeoutSeconds,
+                    MapSystemPrompt, BuildContextMessage(question, context), ct);
+                return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (string?)null);
             }
-
-            if (contextParts.Count == 0) continue;
-
-            var partial = await CompleteAsync(MapSystemPrompt, BuildContextMessage(question, contextParts), ct);
-            if (!string.IsNullOrWhiteSpace(partial))
-                partials.Add(partial);
-        }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { logger.LogWarning(ex, "RAG map batch {Batch} failed", batch.index + 1); return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: ex.Message); }
+            finally { gate.Release(); }
+        }).ToList();
+        var mapped = (await Task.WhenAll(tasks)).OrderBy(x => x.index).ToList();
+        var partials = mapped.Where(x => !string.IsNullOrWhiteSpace(x.Partial)).Select(x => x.Partial!).ToList();
+        var failures = mapped.Where(x => x.Error != null).ToList();
+        foreach (var c in mapped.Where(x => x.Partial != null).SelectMany(x => x.Chunks)) RecordScore(sourceScores, c.ArticleId, c.Score);
 
         if (partials.Count == 0)
             return EmptyResult(RefuseInsufficient);
 
-        var finalAnswer = partials.Count == 1
-            ? partials[0]
-            : await CompleteAsync(ReduceSystemPrompt, BuildReduceMessage(question, partials), ct);
-
-        return BuildValidatedResult(finalAnswer, chunks, sourceScores, articles, evidenceIds);
+        var finalAnswer = partials[0];
+        var reduceFailed = false;
+        if (partials.Count > 1)
+        {
+            try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds, ReduceSystemPrompt, BuildReduceMessage(question, partials), ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { logger.LogWarning(ex, "RAG reduce failed; returning first successful partial"); reduceFailed = true; }
+        }
+        var extraWarnings = failures.Select(x => $"Map batch {x.index + 1} failed.").ToList();
+        if (reduceFailed) extraWarnings.Add("Reduce stage failed; response contains a partial map result.");
+        var consultedChunks = mapped.Where(x => x.Partial != null).SelectMany(x => x.Chunks).ToList();
+        return BuildValidatedResult(finalAnswer, consultedChunks, sourceScores, articles, evidenceIds,
+            failures.Count > 0 || reduceFailed, extraWarnings);
     }
 
     private bool IsBroadQuery(string question)
@@ -223,15 +242,18 @@ public class RagService(
         return _broadKeywords.Any(k => q.Contains(k, StringComparison.Ordinal));
     }
 
-    private async Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct)
+    private Task<string> CompleteAsync(string stage, int timeoutSeconds, string systemPrompt, string userMessage, CancellationToken ct)
     {
         var messages = new List<ChatMessage>
         {
             new(ChatRole.System, systemPrompt),
             new(ChatRole.User, userMessage)
         };
-        var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct);
-        return response.Text ?? "Yanıt oluşturulamadı.";
+        return resilience.ExecuteAsync(stage, timeoutSeconds, resilience.AiRetryCount, true, async token =>
+        {
+            var response = await chatClient.GetResponseAsync(messages, cancellationToken: token);
+            return response.Text ?? "Yanıt oluşturulamadı.";
+        }, ct);
     }
 
     private static string BuildContextMessage(string question, List<string> contextParts) => $"""
@@ -305,16 +327,17 @@ public class RagService(
 
     private static RagResult BuildValidatedResult(string raw, List<VectorChunkResult> chunks,
         Dictionary<string, double> scores, Dictionary<string, ArticleMeta> articles,
-        Dictionary<string, string> evidenceIds)
+        Dictionary<string, string> evidenceIds, bool partialResult = false, List<string>? extraWarnings = null)
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
         var validated = RagCitationValidator.Validate(raw, evidence);
+        var warnings = validated.Warnings.Concat(extraWarnings ?? []).Distinct().ToList();
         return new RagResult(validated.Answer, BuildSources(scores, articles), validated.Claims, evidence,
-            validated.CitationCoverage, validated.GroundingStatus, validated.InsufficientContext, validated.Warnings);
+            validated.CitationCoverage, validated.GroundingStatus, validated.InsufficientContext, partialResult, warnings);
     }
 
     private static RagResult EmptyResult(string answer) =>
-        new(answer, [], [], [], 1, "insufficient_context", true, []);
+        new(answer, [], [], [], 1, "insufficient_context", true, false, []);
 
     private static Dictionary<string, string> EvidenceIds(IEnumerable<VectorChunkResult> chunks) =>
         chunks.Select(ChunkKey).Distinct().Select((key, i) => (key, id: $"S{i + 1}"))

@@ -164,13 +164,28 @@ public class SearchController(
                 var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),
                     claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
-                    ragResult.GroundingStatus, ragResult.InsufficientContext, ragResult.Warnings,
+                    ragResult.GroundingStatus, ragResult.InsufficientContext, ragResult.PartialResult, ragResult.Warnings,
                     query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
+            }
+            catch (RagBusyException)
+            {
+                Response.Headers.RetryAfter = "5";
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "RAG capacity is full. Please retry shortly." });
+            }
+            catch (RagCircuitOpenException)
+            {
+                Response.Headers.RetryAfter = "30";
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "RAG generation is temporarily unavailable." });
+            }
+            catch (RagStageTimeoutException)
+            {
+                return StatusCode(StatusCodes.Status504GatewayTimeout, new { error = "RAG request exceeded its processing deadline." });
             }
             catch (Exception ex)
             {
                 sw.Stop();
-                return Ok(new { answer = "AI yanıtı oluşturulurken bir hata oluştu: " + ex.Message, sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending });
+                HttpContext.RequestServices.GetRequiredService<ILogger<SearchController>>().LogError(ex, "RAG request failed");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = "AI yanıtı oluşturulurken bir hata oluştu." });
             }
         }
 

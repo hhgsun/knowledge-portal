@@ -439,6 +439,13 @@ export default function SearchPage() {
                 </div>
               )}
 
+              {(ragResponse.partialResult || (ragResponse.warnings?.length ?? 0) > 0) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                  {ragResponse.partialResult && <p className="font-medium">Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir.</p>}
+                  {ragResponse.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
+                </div>
+              )}
+
               {ragResponse.evidence && ragResponse.evidence.length > 0 && (
                 <details className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
                   <summary className="cursor-pointer text-sm font-medium">Doğrulanabilir kanıtlar ({ragResponse.evidence.length})</summary>

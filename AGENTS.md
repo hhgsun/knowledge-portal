@@ -278,7 +278,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
-| Search (RAG) | ✅ Implemented | Hybrid lexical+semantic retrieval with weighted RRF, chunk reranking, duplicate suppression and fair interleaving; structured atomic claims bound to server-issued `S1` evidence IDs, server-side citation validation, evidence passages and grounding status; configurable narrow/broad context, attachments, filters, injection-hardened blocks, and single-leg fallback |
+| Search (RAG) | ✅ Implemented | Hybrid retrieval/RRF/reranking/diversity; structured claims bound to validated `S1` evidence; process-wide concurrency bulkhead, total request budget, per-stage timeouts, bounded transient retry and AI circuit breaker; broad map batches run with bounded parallelism and return explicit partial results when individual batches/reduce fail |
 | RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, durable background runs, Recall/MRR/NDCG/fact/citation/refusal/safety/latency metrics, run history at `/settings/rag-evaluations` |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint |

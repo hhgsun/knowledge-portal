@@ -221,6 +221,7 @@ export interface RagResponse {
   citationCoverage?: number;
   groundingStatus?: "citations_verified" | "partially_verified" | "failed" | "unverified" | "insufficient_context";
   insufficientContext?: boolean;
+  partialResult?: boolean;
   warnings?: string[];
 }
 
