@@ -13,6 +13,8 @@ namespace KnowledgePortal.Api.Services;
 public sealed class PortalMetrics
 {
     public const string MeterName = "KnowledgePortal";
+    public const string ActivitySourceName = "KnowledgePortal.Rag";
+    public static readonly ActivitySource RagActivities = new(ActivitySourceName);
 
     private readonly Meter _meter = new(MeterName);
 
@@ -25,6 +27,18 @@ public sealed class PortalMetrics
     public Counter<long> UsageRequests { get; }
     public Histogram<double> UsageDuration { get; }
     public Counter<long> UsageTrackingFailures { get; }
+    public Counter<long> RagRequests { get; }
+    public Histogram<double> RagDuration { get; }
+    public Histogram<double> RagStageDuration { get; }
+    public Histogram<long> RagCandidates { get; }
+    public Histogram<long> RagContextChunks { get; }
+    public Histogram<long> RagContextWords { get; }
+    public Counter<long> RagLlmCalls { get; }
+    public Counter<long> RagRefusals { get; }
+    public Counter<long> RagPartialResults { get; }
+    public Counter<long> RagFailures { get; }
+    public Histogram<double> RagCitationCoverage { get; }
+    public UpDownCounter<long> RagActiveRequests { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory)
     {
@@ -38,6 +52,18 @@ public sealed class PortalMetrics
         UsageRequests = _meter.CreateCounter<long>("kp_usage_requests", description: "Authenticated usage by channel and outcome");
         UsageDuration = _meter.CreateHistogram<double>("kp_usage_request_duration_ms", unit: "ms", description: "Authenticated request duration by channel and outcome");
         UsageTrackingFailures = _meter.CreateCounter<long>("kp_usage_tracking_failures", description: "Usage events that could not be persisted");
+        RagRequests = _meter.CreateCounter<long>("kp_rag_requests", description: "RAG requests by mode and outcome");
+        RagDuration = _meter.CreateHistogram<double>("kp_rag_duration_ms", "ms", "End-to-end RAG request duration");
+        RagStageDuration = _meter.CreateHistogram<double>("kp_rag_stage_duration_ms", "ms", "RAG stage duration by stage and outcome");
+        RagCandidates = _meter.CreateHistogram<long>("kp_rag_candidates", description: "Candidate chunks returned by retrieval");
+        RagContextChunks = _meter.CreateHistogram<long>("kp_rag_context_chunks", description: "Chunks supplied to generation");
+        RagContextWords = _meter.CreateHistogram<long>("kp_rag_context_words", description: "Approximate words supplied to generation");
+        RagLlmCalls = _meter.CreateCounter<long>("kp_rag_llm_calls", description: "RAG LLM calls by stage and outcome");
+        RagRefusals = _meter.CreateCounter<long>("kp_rag_refusals", description: "RAG insufficient-context responses by mode");
+        RagPartialResults = _meter.CreateCounter<long>("kp_rag_partial_results", description: "RAG responses produced from partial stage results");
+        RagFailures = _meter.CreateCounter<long>("kp_rag_failures", description: "RAG failures by stage and error type");
+        RagCitationCoverage = _meter.CreateHistogram<double>("kp_rag_citation_coverage", description: "Fraction of claims linked to valid evidence");
+        RagActiveRequests = _meter.CreateUpDownCounter<long>("kp_rag_active_requests", description: "RAG requests currently inside the process bulkhead");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",

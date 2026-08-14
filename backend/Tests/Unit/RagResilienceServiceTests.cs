@@ -1,6 +1,7 @@
 using KnowledgePortal.Api.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgePortal.Api.Tests.Unit;
 
@@ -50,7 +51,12 @@ public class RagResilienceServiceTests
         await Assert.ThrowsAsync<RagBusyException>(async () => await service.EnterAsync(CancellationToken.None));
     }
 
-    private static RagResilienceService Build(params (string Key, string Value)[] values) => new(
-        new ConfigurationBuilder().AddInMemoryCollection(values.Select(x => new KeyValuePair<string, string?>(x.Key, x.Value))).Build(),
-        NullLogger<RagResilienceService>.Instance);
+    private static RagResilienceService Build(params (string Key, string Value)[] values)
+    {
+        var provider = new ServiceCollection().BuildServiceProvider();
+        var metrics = new PortalMetrics(provider.GetRequiredService<IServiceScopeFactory>());
+        return new RagResilienceService(
+            new ConfigurationBuilder().AddInMemoryCollection(values.Select(x => new KeyValuePair<string, string?>(x.Key, x.Value))).Build(),
+            metrics, NullLogger<RagResilienceService>.Instance);
+    }
 }

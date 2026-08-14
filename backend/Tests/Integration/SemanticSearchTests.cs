@@ -103,4 +103,18 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(1024, body.GetProperty("configuredDimensions").GetInt32());
         Assert.True(body.TryGetProperty("failedArticles", out _));
     }
+
+    [Fact]
+    public async Task RagObservability_ReturnsRuntimeAndMetricContract()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var response = await _client.GetAsync("/api/search/rag-observability");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("kp_rag_", body.GetProperty("metricPrefix").GetString());
+        Assert.Equal("KnowledgePortal.Rag", body.GetProperty("activitySource").GetString());
+        Assert.True(body.GetProperty("runtime").TryGetProperty("activeRequests", out _));
+    }
 }

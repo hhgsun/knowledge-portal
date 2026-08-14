@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.Server;
 using OllamaSharp;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -60,7 +61,10 @@ builder.Services.AddSingleton<PortalMetrics>();
 builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics
     .AddAspNetCoreInstrumentation()
     .AddMeter(PortalMetrics.MeterName)
-    .AddPrometheusExporter());
+    .AddPrometheusExporter())
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddSource(PortalMetrics.ActivitySourceName));
 
 // ─── Database ────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>

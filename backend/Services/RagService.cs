@@ -1,6 +1,8 @@
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -10,6 +12,7 @@ public class RagService(
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
     RagResilienceService resilience,
+    PortalMetrics metrics,
     ILogger<RagService> logger)
 {
     // Distinct source articles for the fast (narrow) single-pass answer.
@@ -88,18 +91,53 @@ public class RagService(
 
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null, CancellationToken ct = default)
     {
-        await using var capacity = await resilience.EnterAsync(ct);
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        budget.CancelAfter(TimeSpan.FromSeconds(resilience.RequestBudgetSeconds));
-        ct = budget.Token;
+        var broad = IsBroadQuery(question); var mode = broad ? "broad" : "narrow";
+        var fingerprint = QueryFingerprint(question); var watch = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = PortalMetrics.RagActivities.StartActivity("rag.request");
+        activity?.SetTag("rag.mode", mode); activity?.SetTag("rag.query_hash", fingerprint); activity?.SetTag("rag.query_length", question.Length);
+        IAsyncDisposable? capacity = null; var entered = false;
+        try
+        {
+            capacity = await resilience.EnterAsync(ct); entered = true;
+            metrics.RagActiveRequests.Add(1, Tags("mode", mode));
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            budget.CancelAfter(TimeSpan.FromSeconds(resilience.RequestBudgetSeconds));
+            var result = await AskCoreAsync(question, filter, broad, budget.Token);
+            var outcome = result.Warnings.Contains("Answer generation failed.") ? "error" : result.PartialResult ? "partial" : result.InsufficientContext ? "refused" : "success";
+            watch.Stop(); metrics.RagRequests.Add(1, new("mode", mode), new("outcome", outcome));
+            metrics.RagDuration.Record(watch.Elapsed.TotalMilliseconds, new("mode", mode), new("outcome", outcome));
+            metrics.RagCitationCoverage.Record(result.CitationCoverage, Tags("mode", mode));
+            if (result.InsufficientContext) metrics.RagRefusals.Add(1, Tags("mode", mode));
+            if (result.PartialResult) metrics.RagPartialResults.Add(1, Tags("mode", mode));
+            activity?.SetTag("rag.outcome", outcome); activity?.SetTag("rag.citation_coverage", result.CitationCoverage);
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            watch.Stop(); var kind = ex is RagBusyException ? "busy" : ex is RagCircuitOpenException ? "circuit_open" : ex is RagStageTimeoutException ? "timeout" : "error";
+            metrics.RagRequests.Add(1, new("mode", mode), new("outcome", kind));
+            metrics.RagDuration.Record(watch.Elapsed.TotalMilliseconds, new("mode", mode), new("outcome", kind));
+            metrics.RagFailures.Add(1, new("stage", "request"), new("error_type", kind));
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, kind); throw;
+        }
+        finally
+        {
+            if (entered) metrics.RagActiveRequests.Add(-1, Tags("mode", mode));
+            if (capacity != null) await capacity.DisposeAsync();
+        }
+    }
+
+    private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad, CancellationToken ct)
+    {
         // Retrieve a wide chunk-level candidate pool (multiple chunks per article) so long
         // documents aren't reduced to a single window. The filter goes into the retrieval query
         // so the pool isn't spent on articles that would be discarded straight afterwards.
-        var broad = IsBroadQuery(question);
         var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
             token => retriever.RetrieveAsync(question, broad ? _broadCandidateLimit : _candidateLimit,
                 _ragMinScore, _maxChunksPerArticle, filter, token), ct);
         var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
+        metrics.RagCandidates.Record(chunks.Count, Tags("mode", broad ? "broad" : "narrow"));
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -134,13 +172,14 @@ public class RagService(
             var result = broad
                 ? await AnswerBroadAsync(question, usableChunks, articles, ct)
                 : await AnswerNarrowAsync(question, usableChunks, articles, ct);
-            logger.LogInformation("RAG answer generated for query '{Query}' ({Mode}) with {SourceCount} sources",
-                question[..Math.Min(50, question.Length)], broad ? "broad/map-reduce" : "narrow", result.Sources.Count);
+            logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
+                QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
             return result;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to generate RAG answer for query '{Query}'", question);
+            logger.LogError(ex, "RAG generation failed queryHash={QueryHash} queryLength={QueryLength} mode={Mode}",
+                QueryFingerprint(question), question.Length, broad ? "broad" : "narrow");
             return new RagResult("AI yanıtı oluşturulurken bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
                 BuildSources(BestScores(usableChunks), articles), [], BuildEvidence(usableChunks, articles), 0,
                 "unverified", false, false, ["Answer generation failed."]);
@@ -176,6 +215,9 @@ public class RagService(
 
         if (contextParts.Count == 0)
             return EmptyResult(RefuseInsufficient);
+
+        metrics.RagContextChunks.Record(selected.Count, Tags("mode", "narrow"));
+        metrics.RagContextWords.Record(totalWords, Tags("mode", "narrow"));
 
         var raw = await CompleteAsync("generation", resilience.GenerationTimeoutSeconds,
             SystemPrompt, BuildContextMessage(question, contextParts), ct);
@@ -217,6 +259,9 @@ public class RagService(
         var partials = mapped.Where(x => !string.IsNullOrWhiteSpace(x.Partial)).Select(x => x.Partial!).ToList();
         var failures = mapped.Where(x => x.Error != null).ToList();
         foreach (var c in mapped.Where(x => x.Partial != null).SelectMany(x => x.Chunks)) RecordScore(sourceScores, c.ArticleId, c.Score);
+        var successfulChunks = mapped.Where(x => x.Partial != null).SelectMany(x => x.Chunks).ToList();
+        metrics.RagContextChunks.Record(successfulChunks.Count, Tags("mode", "broad"));
+        metrics.RagContextWords.Record(successfulChunks.Sum(x => CountWords(x.ChunkText)), Tags("mode", "broad"));
 
         if (partials.Count == 0)
             return EmptyResult(RefuseInsufficient);
@@ -231,8 +276,7 @@ public class RagService(
         }
         var extraWarnings = failures.Select(x => $"Map batch {x.index + 1} failed.").ToList();
         if (reduceFailed) extraWarnings.Add("Reduce stage failed; response contains a partial map result.");
-        var consultedChunks = mapped.Where(x => x.Partial != null).SelectMany(x => x.Chunks).ToList();
-        return BuildValidatedResult(finalAnswer, consultedChunks, sourceScores, articles, evidenceIds,
+        return BuildValidatedResult(finalAnswer, successfulChunks, sourceScores, articles, evidenceIds,
             failures.Count > 0 || reduceFailed, extraWarnings);
     }
 
@@ -359,6 +403,11 @@ public class RagService(
 
     private static string ChunkKey(VectorChunkResult x) =>
         $"{x.ArticleId}:{x.SourceType}:{x.AttachmentId}:{x.ChunkIndex}";
+
+    private static int CountWords(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+    private static string QueryFingerprint(string query) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(query)))[..12].ToLowerInvariant();
+    private static KeyValuePair<string, object?>[] Tags(string key, object? value) => [new(key, value)];
 
     /// <summary>
     /// Neutralizes source-delimiter sequences in article text so content cannot close its

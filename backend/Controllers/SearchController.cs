@@ -346,6 +346,18 @@ public class SearchController(
     public async Task<IActionResult> Diagnostics([FromServices] SearchDiagnosticsService diagnostics, CancellationToken ct)
         => Ok(await diagnostics.CollectAsync(ct));
 
+    [HttpGet("rag-observability")]
+    [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
+    public IActionResult RagObservability([FromServices] RagResilienceService resilience) => Ok(new
+    {
+        runtime = resilience.Snapshot(),
+        metricsEndpoint = "/metrics",
+        activitySource = PortalMetrics.ActivitySourceName,
+        metricPrefix = "kp_rag_",
+        privacy = "Raw questions are not logged or used as metric labels; traces contain a short SHA-256 fingerprint and query length."
+    });
+
     [HttpGet("storage-status")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]

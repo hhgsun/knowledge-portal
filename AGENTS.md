@@ -201,6 +201,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/search/reindex` | POST | ✓ | `users:manage` | ✓ |
 | `/api/search/embedding-status` | GET | ✓ | `users:manage` | ✓ |
 | `/api/search/storage-status` | GET | ✓ | `users:manage` | ✓ |
+| `/api/search/rag-observability` | GET | ✓ | `users:manage` | ✓ |
 | `/api/analytics` | GET | ✓ | `analytics:view` | ✓ |
 | `/api/dashboard` | GET | ✓ | — | ✗ |
 | `/api/admin/users` | GET | ✓ | `users:manage` | ✓ |
@@ -291,6 +292,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints — partitioned per API key/user/IP |
 | Health Check | ✅ Implemented | GET /api/health (readiness: 503 "unhealthy" when DB unreachable, 200 "degraded" when only Ollama down, else "healthy") + GET /api/health/live (liveness, always 200) |
 | Metrics | ✅ Implemented | OpenTelemetry → Prometheus at /metrics (not proxied by nginx — internal only): ASP.NET Core instrumentation + `kp_pending_embeddings` gauge + `kp_embedding_failures` counter |
+| RAG Observability | ✅ Implemented | `kp_rag_*` request/stage/latency/candidate/context/LLM/refusal/partial/failure/citation/active metrics, `KnowledgePortal.Rag` activities, privacy-safe query fingerprints, and admin runtime snapshot at `/api/search/rag-observability` |
 | OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
 | 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |

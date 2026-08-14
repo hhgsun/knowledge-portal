@@ -70,12 +70,14 @@ public class RagServiceTests
 
         var chat = new FakeChatClient();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+        var metrics = new PortalMetrics(scopeFactory);
         var rag = new RagService(
             chat,
             new FakeRagRetriever(new FakeVectorSearch(scopeFactory, vectorResults)),
             scopeFactory,
             new ConfigurationBuilder().Build(),
-            new RagResilienceService(new ConfigurationBuilder().Build(), NullLogger<RagResilienceService>.Instance),
+            new RagResilienceService(new ConfigurationBuilder().Build(), metrics, NullLogger<RagResilienceService>.Instance),
+            metrics,
             NullLogger<RagService>.Instance);
 
         return new Harness(rag, chat);
