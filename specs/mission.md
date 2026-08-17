@@ -20,6 +20,6 @@
 
 - **Author once, find everywhere** — full-text and tag-based search surface content across content types (reference, how-to, ADR, runbook, FAQ, policy, onboarding).
 - **Version everything** — every edit creates an immutable version with author attribution and optional change summary; any two versions can be compared.
-- **Review lifecycle** — articles move through `draft → pending → published → archived` with configurable review-interval reminders (default 90 days).
+- **Publication and review lifecycle** — articles move between `draft`, `published`, and `archived`; approval is an independent trust signal on published content, with configurable review intervals (default 90 days).
 - **Dual access model** — interactive users authenticate via JWT; automated consumers authenticate via scoped, expiring API keys (`kp_` prefix).
 - **Role-based access** — three roles (admin, editor, viewer) with a static permission matrix controlling create, edit, delete, publish, and administrative operations.

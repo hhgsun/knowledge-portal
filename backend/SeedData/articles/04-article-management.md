@@ -14,21 +14,19 @@
 
 ## Makale Yaşam Döngüsü
 
-Her makale dört durumdan birinde bulunabilir. Durum geçişleri kullanıcı rolüne göre kısıtlanmıştır.
+Her makale üç durumdan birinde bulunabilir. Onay, durumdan bağımsız bir güven sinyalidir.
 
 ### Durumlar
 
 - **draft (Taslak):** Yeni oluşturulan makalelerin varsayılan durumu. Sadece sahibi görebilir.
-- **pending (Onay Bekliyor):** İnceleme için gönderilmiş makaleler. Editor veya admin onaylayabilir.
 - **published (Yayında):** Herkesin görebildiği aktif makaleler. Arama indeksine dahildir.
 - **archived (Arşivlenmiş):** Güncelliğini yitirmiş ama silinmemiş makaleler.
 
 ### Durum Geçiş Kuralları
 
-- draft → pending: Tüm roller yapabilir
-- draft/pending → published: articles:publish yetkisi gerekir (admin, editor)
+- draft → published: Tüm roller kendi makaleleri için yapabilir
 - published → archived: articles:archive yetkisi gerekir (admin, editor)
-- pending → published (onay): articles:approve yetkisi gerekir
+- published → onaylı: Makalenin durumu değişmez; articles:approve yetkisi gerekir (admin, editor)
 
 ## Makale Oluşturma
 

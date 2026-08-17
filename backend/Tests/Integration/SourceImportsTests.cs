@@ -44,6 +44,25 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("source.txt", attachments.GetProperty("attachments")[0].GetProperty("fileName").GetString());
     }
 
+    [Fact]
+    public async Task Commit_InvalidOriginal_RollsBackArticle()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Rolled back import {Guid.NewGuid():N}";
+        using var body = FileBody("invalid", "source.exe");
+        body.Add(new StringContent(JsonSerializer.Serialize(new
+        {
+            drafts = new[] { new { sourceIndex = 0, title, contentMarkdown = "Should not persist", contentType = "reference", status = "published", tags = Array.Empty<string>(), keepOriginal = true } }
+        })), "manifest");
+
+        var response = await client.PostAsync("/api/source-imports/commit", body);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(1, result.GetProperty("failed").GetInt32());
+        var list = await client.GetStringAsync($"/api/articles?q={Uri.EscapeDataString(title)}");
+        Assert.DoesNotContain(title, list);
+    }
+
     private static MultipartFormDataContent FileBody(string value, string name)
     {
         var body = new MultipartFormDataContent();

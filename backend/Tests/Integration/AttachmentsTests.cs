@@ -34,7 +34,7 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("test.txt", body.GetProperty("fileName").GetString());
         Assert.Equal("text/plain", body.GetProperty("contentType").GetString());
         Assert.Equal(fileBytes.Length, body.GetProperty("sizeBytes").GetInt64());
-        Assert.True(body.GetProperty("downloadUrl").GetString()!.StartsWith("/api/attachments/"));
+        Assert.StartsWith("/api/attachments/", body.GetProperty("downloadUrl").GetString());
     }
 
     [Fact]
@@ -161,6 +161,28 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Viewer_CannotAccessAnotherUsersDraftAttachmentOrFeedback()
+    {
+        await AuthenticateAsAdmin();
+        var articleId = await CreateArticle("Private draft " + Guid.NewGuid().ToString("N"), "draft");
+        var attachmentId = await UploadTextFile(articleId, "private.txt", "private knowledge");
+
+        var viewerToken = await RegisterAndGetToken($"viewer-private-{Guid.NewGuid():N}@example.com");
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", viewerToken);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.GetAsync($"/api/articles/{articleId}/attachments")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.GetAsync($"/api/attachments/{attachmentId}/download")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.GetAsync($"/api/articles/{articleId}/votes")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.GetAsync($"/api/articles/{articleId}/comments")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync($"/api/articles/{articleId}/comments", new { comment = "probe" })).StatusCode);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────
 
     private async Task AuthenticateAsAdmin()
@@ -193,12 +215,12 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
         return body.GetProperty("token").GetString()!;
     }
 
-    private async Task<string> CreateArticle(string title)
+    private async Task<string> CreateArticle(string title, string status = "published")
     {
         var response = await _client.PostAsJsonAsync("/api/articles", new
         {
             title,
-            status = "published"
+            status
         });
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("id").GetString()!;

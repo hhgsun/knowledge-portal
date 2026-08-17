@@ -92,15 +92,13 @@ public class SearchController(
         var callerApiKeyId = User.FindFirst("apiKeyId")?.Value;
         var scopedApiKeyId = onlyOwnContent && callerApiKeyId != null ? callerApiKeyId : null;
 
-        // Resolve tag slugs for filtering. Only the slugs that actually exist are kept — an
-        // unknown slug must not turn the whole query into a no-match. The filter itself is
-        // pushed into the search query (EXISTS per tag) instead of materializing every
-        // matching article ID here, which would not survive a large corpus.
+        // Resolve every requested tag. Tag filters have AND semantics, so one unknown slug is
+        // necessarily a definite miss; silently dropping it would broaden the user's query.
         List<string>? tagSlugFilter = null;
         if (tagSlugs.Count > 0)
         {
             var tags = await db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync();
-            if (tags.Count == 0)
+            if (tags.Count != tagSlugs.Count)
             {
                 sw.Stop();
                 // Record the miss too — zero-result searches feed content-gap analytics
@@ -139,7 +137,7 @@ public class SearchController(
         // Resolve AI services
         var ollamaEnabled = config.GetValue("Ollama:Enabled", false);
         var vectorSearch = ollamaEnabled ? HttpContext.RequestServices.GetService<IVectorSearchService>() : null;
-        var indexingPending = await db.Articles.AnyAsync(a => a.Status == "published" && a.IndexedAt == null);
+        var indexingPending = await IsIndexingPendingAsync();
 
         // ═══ RAG ═══
         if (type == "rag")
@@ -164,7 +162,8 @@ public class SearchController(
                 var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),
                     claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
-                    ragResult.GroundingStatus, ragResult.InsufficientContext, ragResult.PartialResult, ragResult.Warnings,
+                    ragResult.GroundingStatus, ragResult.ClaimSupportCoverage, ragResult.InsufficientContext,
+                    ragResult.PartialResult, ragResult.Warnings,
                     query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
             }
             catch (RagBusyException)
@@ -370,14 +369,20 @@ public class SearchController(
     public async Task<IActionResult> EmbeddingStatus()
     {
         var totalPublished = await db.Articles.CountAsync(a => a.Status == "published");
-        var totalIndexed = await db.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt != null);
+        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
+        var totalFtsIndexed = await db.Articles.CountAsync(a => a.Status == "published" && a.FtsIndexedAt != null);
+        var totalSemanticIndexed = semanticEnabled
+            ? await db.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt != null)
+            : 0;
         var failedJobs = await db.IndexJobs.Where(j => j.Status == "failed")
             .OrderByDescending(j => j.AttemptCount).Take(20).ToListAsync();
 
         return Ok(new
         {
             totalPublished,
-            totalIndexed,
+            totalIndexed = semanticEnabled ? totalSemanticIndexed : totalFtsIndexed,
+            totalFtsIndexed,
+            totalSemanticIndexed,
             pendingCount = await db.IndexJobs.CountAsync(j => j.Status == "pending" || j.Status == "processing"),
             failedCount = await db.IndexJobs.CountAsync(j => j.Status == "failed"),
             ollamaEnabled = config.GetValue("Ollama:Enabled", false),
@@ -416,6 +421,13 @@ public class SearchController(
         db.SearchQueries.Add(record);
         await db.SaveChangesAsync();
         return record;
+    }
+
+    private Task<bool> IsIndexingPendingAsync()
+    {
+        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
+        return db.Articles.AnyAsync(a => a.Status == "published"
+            && (a.FtsIndexedAt == null || (semanticEnabled && a.IndexedAt == null)));
     }
 
     private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, string[] snippetTokens, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)

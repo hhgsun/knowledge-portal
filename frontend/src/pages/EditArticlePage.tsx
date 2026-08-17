@@ -29,26 +29,20 @@ export default function EditArticlePage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<Set<string>>(new Set());
 
-  const { uploadImage, deleteBlobImage, uploadPendingImages, uploadPendingFiles } = useArticleImages();
+  const { uploadImage, deleteBlobImage, uploadPendingImages, uploadPendingFiles, deleteUploadedAttachments } = useArticleImages();
 
   const deleteImage = useCallback(async (src: string) => {
     if (src.startsWith("blob:")) {
       await deleteBlobImage(src);
       return;
     }
-    // If it's an already-uploaded image, delete from backend
+    // Existing images are deleted only after the article update succeeds.
     if (!article) return;
     const match = src.match(/\/api\/attachments\/([^/]+)\/download/);
     if (!match) return;
     const attachmentId = match[1];
-    try {
-      await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, {
-        method: "DELETE",
-      });
-    } catch {
-      // Silent fail — orphan cleanup is not critical
-    }
-  }, [article, fetchWithAuth, deleteBlobImage]);
+    setDeletedAttachmentIds(prev => new Set(prev).add(attachmentId));
+  }, [article, deleteBlobImage]);
 
   useEffect(() => {
     if (params.slug) {
@@ -79,7 +73,7 @@ export default function EditArticlePage() {
           setLoading(false);
         });
     }
-  }, [params.slug, fetchWithAuth]);
+  }, [params.slug, fetchWithAuth, navigate, user?.id, user?.role]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -91,27 +85,19 @@ export default function EditArticlePage() {
     setSaving(true);
     setError("");
 
+    let newlyUploadedIds: string[] = [];
     try {
       // Upload pending images first, replace blob URLs with real URLs
-      const finalContent = await uploadPendingImages(article.id, contentMarkdown);
+      const images = await uploadPendingImages(article.id, contentMarkdown);
+      newlyUploadedIds.push(...images.uploadedIds);
 
-      // Delete attachments marked for removal
-      for (const attachmentId of deletedAttachmentIds) {
-        try {
-          await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, { method: "DELETE" });
-        } catch {
-          // Silent fail on delete
-        }
-      }
-
-      // Upload pending file attachments
-      await uploadPendingFiles(article.id, pendingFiles);
+      newlyUploadedIds.push(...await uploadPendingFiles(article.id, pendingFiles));
 
       const res = await fetchWithAuth(`/api/articles/${article.id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: title.trim(),
-          contentMarkdown: finalContent,
+          contentMarkdown: images.markdown,
           excerpt: excerpt.trim() || undefined,
           contentType,
           status,
@@ -122,15 +108,24 @@ export default function EditArticlePage() {
 
       if (res.ok) {
         const updated = await res.json();
+        let deleteFailed = false;
+        for (const attachmentId of deletedAttachmentIds) {
+          const deleted = await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, { method: "DELETE" });
+          if (!deleted.ok) deleteFailed = true;
+        }
+        if (deleteFailed) toast.error("Makale kaydedildi; bazı eski ekler silinemedi");
         toast.success("Makale başarıyla kaydedildi");
         navigate(`/articles/${updated.slug}`);
       } else {
         const data = await res.json();
+        await deleteUploadedAttachments(article.id, newlyUploadedIds);
+        newlyUploadedIds = [];
         setError(data.error || "Failed to save article");
         setSaving(false);
       }
-    } catch {
-      setError("An unexpected error occurred");
+    } catch (error) {
+      await deleteUploadedAttachments(article.id, newlyUploadedIds);
+      setError(error instanceof Error ? error.message : "An unexpected error occurred");
       setSaving(false);
     }
   };

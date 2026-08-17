@@ -51,8 +51,8 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 
     /// <summary>
     /// Brings the index up to date without ever taking it down: only articles that have no
-    /// search_vector are computed. This is what startup calls, so a restart costs one indexed
-    /// COUNT when everything is already indexed instead of re-deriving the whole corpus.
+    /// search_vector are computed. Kept for explicit maintenance operations; normal startup
+    /// backfill goes through the durable index queue so readiness is independent of corpus size.
     /// Resumable — each batch commits, so an interrupted run continues where it stopped.
     /// </summary>
     public Task<int> EnsureIndexedAsync(CancellationToken ct = default)
@@ -80,7 +80,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         // handles this per article; this covers rows that changed while the app was down. One
         // indexed statement, unlike the per-article work below.
         await db.Database.ExecuteSqlRawAsync(
-            """UPDATE articles SET search_vector = NULL WHERE "Status" <> 'published' AND search_vector IS NOT NULL""", ct);
+            """UPDATE articles SET search_vector = NULL, "FtsIndexedAt" = NULL WHERE "Status" <> 'published' AND search_vector IS NOT NULL""", ct);
 
         var missingOnly = onlyMissing ? "AND search_vector IS NULL" : "";
         var lastId = "";
@@ -170,13 +170,15 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
             UPDATE articles SET search_vector =
                 setweight(to_tsvector('{{TsConfig}}', COALESCE({0}, '')), 'A') ||
                 setweight(to_tsvector('{{TsConfig}}', COALESCE({1}, '')), 'B') ||
-                setweight(to_tsvector('{{TsConfig}}', COALESCE({2}, '')), 'C')
+                setweight(to_tsvector('{{TsConfig}}', COALESCE({2}, '')), 'C'),
+                "FtsIndexedAt" = {4}
             WHERE "Id" = {3}
             """,
             SlugHelper.Transliterate(title),
             SlugHelper.Transliterate(excerpt ?? ""),
             SlugHelper.Transliterate(contentText),
-            articleId);
+            articleId,
+            DateTime.UtcNow);
     }
 
     /// <summary>
@@ -186,7 +188,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     {
         if (!db.Database.IsRelational()) return;
         await db.Database.ExecuteSqlRawAsync(
-            "UPDATE articles SET search_vector = NULL WHERE \"Id\" = {0}", articleId);
+            "UPDATE articles SET search_vector = NULL, \"FtsIndexedAt\" = NULL WHERE \"Id\" = {0}", articleId);
     }
 
     /// <summary>

@@ -24,24 +24,16 @@
      ┌─────────────────────────▼───────────────────────────────┐
      │  ASP.NET Core Web API (port 5174)                       │
      │                                                         │
-     │  Middleware Pipeline (ordered):                          │
-     │  ┌─────────┐ ┌──────┐ ┌─────────┐ ┌──────────────────┐ │
-     │  │GlobalErr│→│ CORS │→│RateLimit│→│ ApiKeyMiddleware │ │
-     │  └─────────┘ └──────┘ └─────────┘ └────────┬─────────┘ │
-     │                                             │           │
-     │            ┌──────┐ ┌───────────┐           │           │
-     │            │ Auth │→│ Authorize │←──────────┘           │
-     │            └──────┘ └─────┬─────┘                       │
+     │  Ordered security/auth middleware (detailed below)       │
+     │                           │                             │
      │                           │                             │
      │  ┌────────────────────────▼──────────────────────────┐  │
-     │  │  10 Controllers                                   │  │
-     │  │  Auth · Articles · Tags · Search · Dashboard      │  │
-     │  │  Analytics · AdminUsers · ApiKeys · Feedback       │  │
-     │  │  ArticleVersions                                   │  │
+     │  │  API Controllers                                   │  │
+     │  │  Auth · content · search/RAG · admin · MCP         │  │
      │  └──────────────────────┬────────────────────────────┘  │
      │                         │                               │
      │  ┌──────────────────────▼────────────────────────────┐  │
-     │  │  EF Core DbContext (9 DbSets)                     │  │
+     │  │  Services → EF Core DbContext                     │  │
      │  └──────────────────────┬────────────────────────────┘  │
      └─────────────────────────┼───────────────────────────────┘
                                │
@@ -98,19 +90,20 @@ Static role-permission matrix with three roles (admin, editor, viewer).
 
 > **Full permission matrix**: See `AGENTS.md` → "RBAC Permission Matrix"
 
-Viewers can **create, edit, and delete their own articles** but are restricted to `draft` or `pending` status only. They cannot publish, archive, or manage tags. Publishing requires editor/admin approval via the `approve` workflow.
+Viewers can **create, edit, publish, and delete their own articles**. They cannot archive, approve, or manage tags. Approval is an optional editor/admin trust signal on an already-published article; it is not a publication gate.
 
 ## Frontend Architecture
 
 ### State Management
 
-Single React Context (`AuthContext`) manages all global state:
+Two focused React contexts manage global authentication and theme state; feature/page state stays local:
 
 | State | Type | Persistence |
 |-------|------|-------------|
 | `user` | `{ id, name, email, role } \| null` | Derived from JWT; validated on mount via `GET /api/auth/me` |
 | `token` | `string \| null` | `localStorage` key `"token"` |
 | `loading` | `boolean` | Transient |
+| `theme` | `light \| dark \| system` | `localStorage` via `ThemeContext` |
 
 No additional state management libraries (Redux, Zustand, etc.). All page-level state is component-local via `useState`.
 
@@ -176,9 +169,11 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 
 ## Key Design Decisions
 
-1. **No service layer** — Business logic lives in controllers. Acceptable for current complexity; becomes a liability if controller methods exceed ~80 lines.
-2. **No external dependencies** — Fully self-contained. Search is SQL LIKE; semantic/RAG endpoints are stubs returning placeholder responses.
+1. **Shared service layer** — Controllers retain routing, authorization scoping, and response shaping; reusable domain behavior lives in `backend/Services/`.
+2. **Provider-aware hybrid retrieval** — PostgreSQL FTS and pgvector supply lexical and semantic candidates; Ollama provides optional embeddings/chat. When Ollama is unavailable, lexical search remains available and semantic modes report an explicit fallback warning.
 3. **Centralized DTOs** — Request/response shapes are C# records defined in `backend/Models/Dtos.cs`.
 4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for a single-database deployment.
 5. **Cascade deletes** — Deleting an article cascades to versions, tags, feedback, and views. Deleting a user cascades to API keys. API key deletion sets `created_via_api_key_id` to null on articles.
 6. **UTC timestamps** — All `DateTime` values stored and transmitted in UTC.
+7. **Private attachment delivery** — Attachment downloads and inline images use authenticated bearer requests and apply the same article-visibility policy as the article itself; credentials are never placed in URLs.
+8. **Durable indexing** — Article changes invalidate separate lexical (`FtsIndexedAt`) and semantic (`IndexedAt`) state and enqueue a generation-guarded, leased PostgreSQL job.

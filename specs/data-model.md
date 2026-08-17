@@ -146,6 +146,7 @@ erDiagram
 | Column | C# Type | DB Column | Constraints | Default |
 |--------|---------|-----------|-------------|---------|
 | Id | `string` | `id` | PK, 21 chars | Truncated GUID |
+| ExternalId | `string?` | `external_id` | Unique (nullable), max 200 | Stable bulk-import identity |
 | Name | `string` | `name` | Required | — |
 | Email | `string` | `email` | Required, Unique index | — |
 | PasswordHash | `string` | `password_hash` | Required | BCrypt (cost 12) |
@@ -171,14 +172,16 @@ erDiagram
 | CreatedViaApiKeyId | `string?` | `created_via_api_key_id` | FK → api_keys.id (SetNull) | `null` |
 | ReadTimeMinutes | `int?` | `read_time_minutes` | — | `null` |
 | PublishedAt | `DateTime?` | `published_at` | — | `null` (set on first publish) |
-| LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` (auto-set on publish/approve) |
+| LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` (set on approval; material changes clear it) |
 | ReviewIntervalDays | `int` | `review_interval_days` | — | `90` |
-| IndexedAt | `DateTime?` | `indexed_at` | — | `null` |
+| VersionCounter | `int` | `version_counter` | Required | Atomic per-article version allocator |
+| FtsIndexedAt | `DateTime?` | `fts_indexed_at` | — | `null` (lexical index dirty marker) |
+| IndexedAt | `DateTime?` | `indexed_at` | — | `null` (semantic index dirty marker) |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 | UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
 
-**Valid statuses**: `draft`, `pending`, `published`, `archived`
-**Valid content types**: `reference`, `how-to`, `adr`, `runbook`, `faq`, `policy`, `onboarding`
+**Valid statuses**: `draft`, `published`, `archived`
+**Valid content types**: DB-driven active values in `lookup_values` category `content_type`
 **Valid difficulties**: `beginner`, `intermediate`, `advanced`
 
 ### ArticleVersion
@@ -191,7 +194,7 @@ erDiagram
 | Content | `string?` | `content` | — | `null` |
 | ChangedBy | `string` | `changed_by` | FK → users.id | — |
 | ChangeSummary | `string?` | `change_summary` | — | `null` |
-| Version | `int` | `version` | Required | Sequential |
+| Version | `int` | `version` | Required, unique with ArticleId | Sequential via Article.VersionCounter |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
 ### Tag
@@ -209,15 +212,26 @@ erDiagram
 | ArticleId | `string` | `article_id` | Composite PK, FK (Cascade) |
 | TagId | `string` | `tag_id` | Composite PK, FK (Cascade) |
 
-### ArticleFeedback
+### ArticleVote
 
 | Column | C# Type | DB Column | Constraints | Default |
 |--------|---------|-----------|-------------|---------|
 | Id | `string` | `id` | PK | Truncated GUID |
 | ArticleId | `string` | `article_id` | FK (Cascade) | — |
-| UserId | `string?` | `user_id` | FK → users.id | `null` |
-| Helpful | `bool` | `helpful` | Required | — |
-| Comment | `string?` | `comment` | — | `null` |
+| UserId | `string` | `user_id` | FK → users.id; unique with ArticleId | — |
+| IsHelpful | `bool` | `is_helpful` | Required | — |
+| Reason | `string?` | `reason` | — | `null` |
+| CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+| UpdatedAt | `DateTime` | `updated_at` | Required | UTC Now |
+
+### ArticleComment
+
+| Column | C# Type | DB Column | Constraints | Default |
+|--------|---------|-----------|-------------|---------|
+| Id | `string` | `id` | PK | Truncated GUID |
+| ArticleId | `string` | `article_id` | FK (Cascade) | — |
+| UserId | `string` | `user_id` | FK → users.id | — |
+| Comment | `string` | `comment` | Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
 ### ArticleView
@@ -272,6 +286,8 @@ erDiagram
 | ExtractionStatus | `string` | `extraction_status` | Required | `pending` |
 | ExtractionError | `string?` | `extraction_error` | Max 2000 | `null` |
 | ExtractedAt | `DateTime?` | `extracted_at` | — | `null` |
+| ExtractedText | `string?` | `extracted_text` | Cached bounded plain text | `null` |
+| ExtractedSegmentsJson | `string?` | `extracted_segments_json` | Provenance segments | `null` |
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
@@ -327,7 +343,8 @@ One durable, coalescing queue row per article. `Generation` increments on every 
 | User | Article | (no cascade — ownership preserved) |
 | Article | ArticleVersion | Cascade |
 | Article | ArticleTag | Cascade |
-| Article | ArticleFeedback | Cascade |
+| Article | ArticleVote | Cascade |
+| Article | ArticleComment | Cascade |
 | Article | ArticleView | Cascade |
 | Article | ArticleAttachment | Cascade |
 | Article | ArticleEmbedding | Cascade |

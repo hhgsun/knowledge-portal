@@ -36,7 +36,7 @@ interface AttachmentListProps {
   onRemovePendingFile?: (index: number) => void;
 }
 
-const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.xls,.yaml,.json,.csv,.svg";
+const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.yaml,.json,.csv,.svg";
 
 function getFileIcon(contentType: string) {
   if (contentType.startsWith("image/")) return <Image size={16} className="text-blue-500" />;

@@ -9,12 +9,14 @@ using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
-using NPOI.SS.UserModel;
+using Microsoft.EntityFrameworkCore.Storage;
 using UglyToad.PdfPig;
+using S = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace KnowledgePortal.Api.Services;
 
-public class SourceImportService(AppDbContext db, ArticleService articleService, IConfiguration config)
+public class SourceImportService(AppDbContext db, ArticleService articleService, IConfiguration config,
+    ILogger<SourceImportService> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<string> TextExtensions = [".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".yaml", ".yml"];
@@ -27,7 +29,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         {
             await using var stream = file.OpenReadStream();
             object content;
-            if (extension is ".xlsx" or ".xls") content = ReadWorkbook(stream);
+            if (extension == ".xlsx") content = ReadWorkbook(stream);
             else if (extension == ".pdf") content = ReadPdf(stream);
             else if (extension == ".docx") content = ReadOpenXmlText(stream, true);
             else if (extension == ".pptx") content = ReadOpenXmlText(stream, false);
@@ -71,8 +73,14 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         foreach (var draft in request.Drafts)
         {
             var title = draft.Title?.Trim() ?? "";
+            IDbContextTransaction? transaction = null;
+            string? storedAttachment = null;
+            string? articleId = null;
+            var committed = false;
             try
             {
+                if (db.Database.IsRelational())
+                    transaction = await db.Database.BeginTransactionAsync(ct);
                 if (title.Length is < 1 or > 300) throw new InvalidDataException("Title is required (1-300 chars)");
                 var contentType = draft.ContentType ?? "reference";
                 if (!validTypes.Contains(contentType)) throw new InvalidDataException($"Invalid content type: {contentType}");
@@ -89,6 +97,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                     LastReviewedAt = null,
                     ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown)
                 };
+                articleId = article.Id;
                 db.Articles.Add(article);
                 await articleService.AddVersionAsync(article.Id, article.Title, article.Content, user.GetUserId(), "Source import");
                 if (draft.Tags is { Length: > 0 })
@@ -97,19 +106,37 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 await db.SaveChangesAsync(ct);
 
                 if (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count)
-                    await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed, user.GetUserId(), ct);
+                    storedAttachment = await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed, user.GetUserId(), ct);
                 await articleService.QueueReindexAsync(article);
+                if (transaction != null) await transaction.CommitAsync(ct);
+                committed = true;
                 results.Add(new(draft.SourceIndex, article.Id, article.Slug, article.Title, null));
             }
-            catch (Exception ex) when (ex is InvalidDataException or IOException or DbUpdateException)
+            catch (OperationCanceledException)
             {
+                await RollbackDraftAsync(transaction, articleId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                await RollbackDraftAsync(transaction, articleId);
+                logger.LogWarning(ex, "Source import row {SourceIndex} was rolled back", draft.SourceIndex);
                 results.Add(new(draft.SourceIndex, null, null, title, ex.Message));
+            }
+            finally
+            {
+                if (!committed && storedAttachment != null && articleId != null)
+                {
+                    try { AttachmentHelper.MoveToTrash(config, articleId, storedAttachment); }
+                    catch (Exception ex) { logger.LogError(ex, "Failed to clean rolled-back source attachment {StoredFileName}", storedAttachment); }
+                }
+                if (transaction != null) await transaction.DisposeAsync();
             }
         }
         return new(results.Count(x => x.ArticleId != null), results.Count(x => x.Error != null), results.ToArray());
     }
 
-    private async Task SaveAttachmentAsync(Article article, IFormFile file, long maxSize, string[] allowed, string userId, CancellationToken ct)
+    private async Task<string> SaveAttachmentAsync(Article article, IFormFile file, long maxSize, string[] allowed, string userId, CancellationToken ct)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (file.Length == 0 || file.Length > maxSize) throw new InvalidDataException("Original file is empty or exceeds the attachment size limit");
@@ -118,31 +145,76 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         var dir = AttachmentHelper.GetArticleDirectory(config, article.Id);
         Directory.CreateDirectory(dir);
         string sha256;
-        await using (var input = file.OpenReadStream())
-            sha256 = await AttachmentHelper.SaveAtomicAsync(config, article.Id, stored, input, ct);
-        db.ArticleAttachments.Add(new ArticleAttachment { ArticleId = article.Id, FileName = Path.GetFileName(file.FileName), StoredFileName = stored, ContentType = file.ContentType, SizeBytes = file.Length, Sha256 = sha256, UploadedById = userId });
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await using (var input = file.OpenReadStream())
+                sha256 = await AttachmentHelper.SaveAtomicAsync(config, article.Id, stored, input, ct);
+            db.ArticleAttachments.Add(new ArticleAttachment { ArticleId = article.Id, FileName = Path.GetFileName(file.FileName), StoredFileName = stored, ContentType = file.ContentType, SizeBytes = file.Length, Sha256 = sha256, UploadedById = userId });
+            await db.SaveChangesAsync(ct);
+            return stored;
+        }
+        catch
+        {
+            try { AttachmentHelper.MoveToTrash(config, article.Id, stored); }
+            catch (Exception ex) { logger.LogError(ex, "Failed to clean unsuccessful source attachment {StoredFileName}", stored); }
+            throw;
+        }
+    }
+
+    private async Task RollbackDraftAsync(IDbContextTransaction? transaction, string? articleId)
+    {
+        if (transaction != null)
+            await transaction.RollbackAsync(CancellationToken.None);
+        else if (articleId != null)
+        {
+            // The Docker-free provider has no transactions; compensate so tests and alternate
+            // providers preserve the same all-or-nothing contract.
+            db.ChangeTracker.Clear();
+            var persisted = await db.Articles.FindAsync([articleId], CancellationToken.None);
+            if (persisted != null)
+            {
+                db.Articles.Remove(persisted);
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+        }
+        db.ChangeTracker.Clear();
     }
 
     private static object ReadWorkbook(Stream stream)
     {
-        using var workbook = WorkbookFactory.Create(stream);
+        using var document = SpreadsheetDocument.Open(stream, false);
+        var workbook = document.WorkbookPart;
+        if (workbook?.Workbook.Sheets == null) return Doc();
+        var sharedStrings = workbook.SharedStringTablePart?.SharedStringTable;
         var blocks = new List<object>();
-        for (var s = 0; s < workbook.NumberOfSheets; s++)
+        foreach (var sheet in workbook.Workbook.Sheets.Elements<S.Sheet>())
         {
-            var sheet = workbook.GetSheetAt(s); blocks.Add(Heading(sheet.SheetName, 2));
+            if (sheet.Id?.Value == null || workbook.GetPartById(sheet.Id.Value) is not WorksheetPart worksheet)
+                continue;
+            blocks.Add(Heading(sheet.Name?.Value ?? "Sheet", 2));
             var rows = new List<object>();
-            var formatter = new DataFormatter();
-            foreach (IRow row in sheet)
+            var firstRow = true;
+            foreach (var row in worksheet.Worksheet.Descendants<S.Row>())
             {
-                var cells = new List<object>();
-                var last = Math.Max(0, (int)row.LastCellNum);
-                for (var c = 0; c < last; c++) cells.Add(Cell(formatter.FormatCellValue(row.GetCell(c)), row.RowNum == sheet.FirstRowNum));
+                var cells = row.Elements<S.Cell>()
+                    .Select(cell => Cell(ReadCell(cell, sharedStrings), firstRow)).ToList();
                 if (cells.Count > 0) rows.Add(new { type = "tableRow", content = cells });
+                firstRow = false;
             }
             if (rows.Count > 0) blocks.Add(new { type = "table", content = rows });
         }
         return new { type = "doc", content = blocks };
+    }
+
+    private static string ReadCell(S.Cell cell, S.SharedStringTable? sharedStrings)
+    {
+        if (cell.DataType?.Value == S.CellValues.SharedString && sharedStrings != null
+            && int.TryParse(cell.CellValue?.InnerText, out var index)
+            && index >= 0 && index < sharedStrings.ChildElements.Count)
+            return sharedStrings.ChildElements[index].InnerText;
+        if (cell.DataType?.Value == S.CellValues.InlineString)
+            return cell.InlineString?.InnerText ?? "";
+        return cell.CellValue?.InnerText ?? "";
     }
 
     private static object ReadPdf(Stream stream)

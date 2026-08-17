@@ -40,10 +40,10 @@
 | `OllamaSharp` | 5.4.25 | Ollama client (implements IChatClient + IEmbeddingGenerator from Microsoft.Extensions.AI) |
 | `ModelContextProtocol.AspNetCore` | 2.0.0-preview.1 | MCP server over Streamable HTTP transport |
 | `UglyToad.PdfPig` | 1.7.0-custom-5 | PDF text extraction for attachment indexing |
-| `DocumentFormat.OpenXml` | 3.3.0 | DOCX text extraction for attachment indexing |
+| `DocumentFormat.OpenXml` | 3.3.0 | DOCX/XLSX/PPTX text extraction and source import |
 | `Serilog.AspNetCore` | 9.0.0 | Structured logging: console + rolling daily JSON file (CompactJsonFormatter), retention limit |
-| `OpenTelemetry.Extensions.Hosting` | 1.12.0 | OpenTelemetry host wiring for metrics |
-| `OpenTelemetry.Instrumentation.AspNetCore` | 1.12.0 | HTTP request metrics |
+| `OpenTelemetry.Extensions.Hosting` | 1.17.0 | OpenTelemetry host wiring for metrics |
+| `OpenTelemetry.Instrumentation.AspNetCore` | 1.17.0 | HTTP request metrics |
 | `OpenTelemetry.Exporter.Prometheus.AspNetCore` | 1.12.0-beta.1 (pinned prerelease) | Prometheus scrape endpoint at /metrics |
 
 ### Frontend
@@ -84,7 +84,9 @@
 
 ## External APIs & Services
 
-None. The application is fully self-contained with no external service dependencies. Search is local SQL LIKE-based (semantic/RAG endpoints are placeholder stubs).
+- **Ollama (optional)** — local embedding and chat models for semantic/hybrid/RAG search. Full-text search continues to work when it is disabled or unavailable.
+- **Microsoft Graph** — validates Azure AD access tokens during Azure login.
+- **PostgreSQL/pgvector** — persistent relational, full-text, vector, and durable index-queue storage.
 
 ## Testing Framework
 
@@ -94,7 +96,7 @@ None. The application is fully self-contained with no external service dependenc
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
 | Database (tests) | `Microsoft.EntityFrameworkCore.InMemory` | Whole suite is Docker-free: isolated in-memory database per test class. App degrades to `EnsureCreated` + LINQ FTS fallback on non-relational providers |
 | AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama; `FakeVectorSearchService` replaces pgvector search (`IVectorSearchService`) — no Docker, no network |
-| Test project | `backend/Tests/` | 145 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
+| Test project | `backend/Tests/` | 245 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
 
 Run tests: `cd backend/Tests && dotnet test` (no Docker required)
 

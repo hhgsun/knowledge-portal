@@ -6,9 +6,8 @@ using KnowledgePortal.Api.Helpers;
 namespace KnowledgePortal.Api.Tests.Unit;
 
 /// <summary>
-/// Verifies attachment text extraction for the Office formats — especially .xlsx (OpenXML) and
-/// the legacy .xls (NPOI) paths, which feed the search / embedding index. Files are generated on
-/// disk with the same libraries and read back through the production extractor.
+/// Verifies attachment text extraction for the OpenXML formats that feed the search and
+/// embedding index. Files are generated on disk and read back through the production extractor.
 /// </summary>
 public class AttachmentTextExtractorTests : IDisposable
 {
@@ -42,23 +41,6 @@ public class AttachmentTextExtractorTests : IDisposable
         Assert.Contains("42000TL", text);
     }
 
-    // ── legacy .xls (NPOI) ──
-
-    [Fact]
-    public void ExtractText_LegacyXls_ReturnsCellText()
-    {
-        var path = TempPath(".xls");
-        var wb = new NPOI.HSSF.UserModel.HSSFWorkbook();
-        var sheet = wb.CreateSheet("Sayfa1");
-        sheet.CreateRow(0).CreateCell(0).SetCellValue("EskiExcelIcerigi");
-        using (var fs = File.Create(path)) wb.Write(fs, false);
-        wb.Close();
-
-        var text = AttachmentTextExtractor.ExtractText(path, ".xls");
-
-        Assert.Contains("EskiExcelIcerigi", text);
-    }
-
     // ── graceful degradation ──
 
     [Fact]
@@ -73,17 +55,21 @@ public class AttachmentTextExtractorTests : IDisposable
     [Fact]
     public void ExtractText_MissingFile_ReturnsEmpty()
     {
-        Assert.Equal("", AttachmentTextExtractor.ExtractText(TempPath(".pdf"), ".pdf"));
+        var result = AttachmentTextExtractor.Extract(TempPath(".pdf"), ".pdf");
+        Assert.Equal("", result.Text);
+        Assert.Equal("failed", result.Status);
+        Assert.NotNull(result.Error);
     }
 
     [Fact]
     public void ExtractText_CorruptOfficeFile_ReturnsEmptyNotThrow()
     {
-        // A .xls that isn't a real OLE2 document must be swallowed, not crash the indexer.
-        var path = TempPath(".xls");
+        var path = TempPath(".xlsx");
         File.WriteAllText(path, "definitely not a spreadsheet");
 
-        Assert.Equal("", AttachmentTextExtractor.ExtractText(path, ".xls"));
+        var result = AttachmentTextExtractor.Extract(path, ".xlsx");
+        Assert.Equal("", result.Text);
+        Assert.Equal("failed", result.Status);
     }
 
     private static void CreateXlsx(string path, string sharedString, string directString)

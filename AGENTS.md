@@ -120,7 +120,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
    - Each article's tags are assigned automatically
    - Content is stored as canonical CommonMark/GFM Markdown (`contentMarkdown` in API payloads)
    - Slug is auto-generated from title (with collision detection)
-   - Articles marked as "published" get `PublishedAt` and `LastReviewedAt` timestamps
+   - Articles marked as "published" get `PublishedAt`; seed/import does not claim a human review, so `LastReviewedAt` remains null until approval
 
 **To reset seed data**: Drop the PostgreSQL database, then restart backend (it recreates and reseeds automatically).
 
@@ -264,7 +264,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `profile.name` | 1 | — | Required for profile update |
 | `profile.newPassword` | 8 | 128 | Optional, requires currentPassword (not required for Azure users first-time set) |
 | `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
-| `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .yaml, .json, .csv, .svg |
+| `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .pptx, .yaml, .json, .csv, .svg |
 | `attachment.maxPerArticle` | — | 20 | Configurable via appsettings.json |
 
 ## Feature Status
@@ -338,9 +338,9 @@ No known gaps at this time.
 - **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(1024)` column in `article_embeddings` table, accelerated by an HNSW index (`ix_article_embeddings_embedding_hnsw`). Query over-fetches chunk rows (published-only via JOIN), best chunk per article is picked in memory (its index returned for RAG). MinSimilarityScore=0.5 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Both legs over-fetch (limit×3, cap 50) so post-merge filters don't starve the final `Take(limit)`. Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
 - **Search RAG**: Chunk-level retrieval uses provenance-bearing article/attachment chunks. Narrow questions use `RagCandidateLimit` and a small distinct-source cap; broad intents use `RagBroadCandidateLimit` and map-reduce over the wider pool. Attachment source names appear in prompt citations. Filters are applied inside vector retrieval and rechecked against article metadata.
-- **Search indexing**: Mutations set `IndexedAt=null` when appropriate and upsert one durable `index_jobs` row per article. A generation increment prevents an older in-flight worker from acknowledging a newer edit. Workers claim with `FOR UPDATE SKIP LOCKED`, process with configurable parallelism, recover expired leases, retry with persisted exponential backoff, and expose pending/failed state through diagnostics. Full reindex populates the same durable queue instead of starting an untracked task.
+- **Search indexing**: Mutations set lexical `FtsIndexedAt=null` and semantic `IndexedAt=null` when appropriate, then upsert one durable `index_jobs` row per article. A generation increment prevents an older in-flight worker from acknowledging a newer edit. Workers claim with `FOR UPDATE SKIP LOCKED`, renew leases during long processing, use configurable parallelism, recover expired leases, retry with persisted exponential backoff, and expose pending/failed state through diagnostics. Full reindex populates the same durable queue instead of starting an untracked task.
 - **Search indexing concurrency**: `IndexedAt` is claimed with an optimistic conditional update (`UPDATE ... WHERE xmin = <captured>`). The queue generation guard independently prevents stale completion; together they cover edits both during embedding and around job acknowledgement.
-- **Search responses**: All search types include `indexingPending` boolean (true if any published article has IndexedAt=null). Semantic/hybrid/rag include `warning` string when Ollama unavailable.
+- **Search responses**: All search types include `indexingPending` (true when a published article lacks FTS state, or lacks semantic state while Ollama is enabled). Semantic/hybrid/rag include `warning` when Ollama is unavailable.
 - **MCP search parity**: `search_articles` exposes the same fulltext/semantic/hybrid/rag modes, inline and explicit author/tag/content-type filters, API-key `onlyOwnContent` scoping, content/attachment inclusion, indexing state, fallback warnings, search recording, and result shapes as `GET /api/search`. Its default remains `fulltext` for REST and backwards compatibility.
 - **MCP structured/provenance results**: Every tool declares `outputSchema` and returns JSON in `structuredContent`, duplicating the serialized JSON in `content[].text` for older clients. Search hits add `evidenceAvailable` plus provenance-bearing `evidence[]` (article ID/slug, canonical API URL, source type, matched passage when one exists, updated timestamp, match type, score); title-only matches never fabricate passages. RAG sources include canonical URL and source type.
 - **Content governance for MCP decisions**: Every dynamic `content_type` lookup has configurable `authorityWeight` (0-100, default 50); no content-type value is hard-coded into authority ranking. Approvals are nullable provenance (`ApprovedById`/`ApprovedAt`): approval applies only to an already-published article, while direct/imported publication is valid but reported as `not_recorded`; material changes clear prior approval. Per-article `ReviewIntervalDays` is configurable (1-3650). MCP search/detail derives review state, next review, authority level, reliability score and warnings, with aggregate `decisionSupport` caution counts on search responses.

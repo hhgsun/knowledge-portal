@@ -8,6 +8,7 @@ using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -93,9 +94,13 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
             }
 
             var title = item.Title.Trim();
+            var externalId = string.IsNullOrWhiteSpace(item.ExternalId) ? null : item.ExternalId.Trim();
+            var titleSlug = SlugHelper.GenerateArticleSlug(title);
             var existing = await db.Articles
                 .Include(a => a.ArticleTags)
-                .FirstOrDefaultAsync(a => a.Slug == SlugHelper.GenerateSlug(title), ct);
+                .FirstOrDefaultAsync(a => externalId != null
+                    ? a.ExternalId == externalId || a.Id == externalId
+                    : a.Slug == titleSlug, ct);
 
             if (existing != null && conflictPolicy == "skip")
             {
@@ -115,56 +120,88 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                 continue;
             }
 
-            var content = item.ContentMarkdown?.Trim();
-            var status = item.Status ?? "draft";
+            IDbContextTransaction? transaction = null;
+            var didUpdate = false;
+            var didCreate = false;
+            try
+            {
+                if (db.Database.IsRelational()) transaction = await db.Database.BeginTransactionAsync(ct);
+                var content = item.ContentMarkdown?.Trim();
+                var status = item.Status ?? "draft";
 
-            if (existing != null && conflictPolicy == "update")
-            {
-                var contentChanged = existing.Content != content;
-                existing.Title = title;
-                existing.Excerpt = item.Excerpt?.Trim();
-                existing.Status = status;
-                existing.ContentType = item.ContentType ?? "reference";
-                existing.Content = content;
-                existing.UpdatedAt = DateTime.UtcNow;
-                existing.ReadTimeMinutes = ContentExtractor.CalculateReadTime(content);
-                if (status == "published")
+                if (existing != null && conflictPolicy == "update")
                 {
-                    existing.PublishedAt ??= DateTime.UtcNow;
-                    existing.LastReviewedAt = DateTime.UtcNow;
+                    var contentChanged = existing.Content != content;
+                    var trustChanged = existing.Title != title
+                        || existing.Excerpt != item.Excerpt?.Trim()
+                        || existing.ContentType != (item.ContentType ?? "reference")
+                        || existing.Status != status
+                        || contentChanged
+                        || item.Tags != null;
+                    existing.Title = title;
+                    existing.Slug = await db.GenerateUniqueArticleSlugAsync(title, existing.Id);
+                    existing.Excerpt = item.Excerpt?.Trim();
+                    existing.Status = status;
+                    existing.ContentType = item.ContentType ?? "reference";
+                    existing.Content = content;
+                    existing.ExternalId ??= externalId;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    existing.ReadTimeMinutes = ContentExtractor.CalculateReadTime(content);
+                    if (status == "published") existing.PublishedAt ??= DateTime.UtcNow;
+                    if (trustChanged) ArticleService.InvalidateApproval(existing);
+                    if (contentChanged)
+                        await articleService.AddVersionAsync(existing.Id, existing.Title, content, userId, "Bulk import");
+                    db.ArticleTags.RemoveRange(existing.ArticleTags);
+                    if (item.Tags is { Length: > 0 })
+                        await articleService.AttachTagsAsync(existing.Id, item.Tags, CanCreateTags(user));
+                    await db.SaveChangesAsync(ct);
+                    await articleService.QueueReindexAsync(existing);
+                    didUpdate = true;
                 }
-                if (contentChanged)
-                    await articleService.AddVersionAsync(existing.Id, existing.Title, content, userId, "Bulk import");
-                db.ArticleTags.RemoveRange(existing.ArticleTags);
-                if (item.Tags is { Length: > 0 })
-                    await articleService.AttachTagsAsync(existing.Id, item.Tags, CanCreateTags(user));
-                await db.SaveChangesAsync(ct);
-                await articleService.QueueReindexAsync(existing);
-                updated++;
-            }
-            else
-            {
-                var article = new Article
+                else
                 {
-                    Title = title,
-                    Slug = await db.GenerateUniqueArticleSlugAsync(title),
-                    Excerpt = item.Excerpt?.Trim(),
-                    Status = status,
-                    ContentType = item.ContentType ?? "reference",
-                    Content = content,
-                    OwnerId = userId,
-                    CreatedViaApiKeyId = user.GetApiKeyId(),
-                    ReadTimeMinutes = ContentExtractor.CalculateReadTime(content),
-                    PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                    LastReviewedAt = null
-                };
-                db.Articles.Add(article);
-                await articleService.AddVersionAsync(article.Id, article.Title, content, userId, "Bulk import");
-                if (item.Tags is { Length: > 0 })
-                    await articleService.AttachTagsAsync(article.Id, item.Tags, CanCreateTags(user));
-                await db.SaveChangesAsync(ct);
-                await articleService.QueueReindexAsync(article);
-                created++;
+                    var article = new Article
+                    {
+                        Title = title,
+                        Slug = await db.GenerateUniqueArticleSlugAsync(title),
+                        Excerpt = item.Excerpt?.Trim(),
+                        Status = status,
+                        ContentType = item.ContentType ?? "reference",
+                        Content = content,
+                        OwnerId = userId,
+                        CreatedViaApiKeyId = user.GetApiKeyId(),
+                        ExternalId = existing != null && conflictPolicy == "duplicate" ? null : externalId,
+                        ReadTimeMinutes = ContentExtractor.CalculateReadTime(content),
+                        PublishedAt = status == "published" ? DateTime.UtcNow : null,
+                        LastReviewedAt = null
+                    };
+                    db.Articles.Add(article);
+                    await articleService.AddVersionAsync(article.Id, article.Title, content, userId, "Bulk import");
+                    if (item.Tags is { Length: > 0 })
+                        await articleService.AttachTagsAsync(article.Id, item.Tags, CanCreateTags(user));
+                    await db.SaveChangesAsync(ct);
+                    await articleService.QueueReindexAsync(article);
+                    didCreate = true;
+                }
+                if (transaction != null) await transaction.CommitAsync(ct);
+                if (didUpdate) updated++;
+                if (didCreate) created++;
+            }
+            catch (OperationCanceledException)
+            {
+                if (transaction != null) await transaction.RollbackAsync(CancellationToken.None);
+                db.ChangeTracker.Clear();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (transaction != null) await transaction.RollbackAsync(CancellationToken.None);
+                errors.Add(new(index + 1, title, ex.InnerException?.Message ?? ex.Message));
+                db.ChangeTracker.Clear();
+            }
+            finally
+            {
+                if (transaction != null) await transaction.DisposeAsync();
             }
         }
 
@@ -180,7 +217,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         {
             output.AppendLine(JsonSerializer.Serialize(new
             {
-                externalId = article.Id,
+                externalId = article.ExternalId ?? article.Id,
                 article.Title,
                 article.Excerpt,
                 article.Status,
@@ -198,7 +235,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
             .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
         var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,contentMarkdown\r\n");
         foreach (var a in articles)
-            output.AppendJoin(',', Csv(a.Id), Csv(a.Title), Csv(a.Excerpt), Csv(a.Status), Csv(a.ContentType),
+            output.AppendJoin(',', Csv(a.ExternalId ?? a.Id), Csv(a.Title), Csv(a.Excerpt), Csv(a.Status), Csv(a.ContentType),
                 Csv(string.Join('|', a.ArticleTags.Select(x => x.Tag.Slug))), Csv(a.Content)).Append("\r\n");
         return Encoding.UTF8.GetBytes(output.ToString());
     }
@@ -220,7 +257,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                 var entry = archive.CreateEntry(name, CompressionLevel.Fastest);
                 await using var entryStream = entry.Open();
                 await using var writer = new StreamWriter(entryStream, new UTF8Encoding(false));
-                await writer.WriteAsync(SerializeMarkdown(new BulkImportItem(article.Id, article.Title, article.Excerpt,
+                await writer.WriteAsync(SerializeMarkdown(new BulkImportItem(article.ExternalId ?? article.Id, article.Title, article.Excerpt,
                     article.Status, article.ContentType, article.Content,
                     article.ArticleTags.Select(x => x.Tag.Slug).ToArray())));
             }
@@ -231,6 +268,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
     private static string? Validate(BulkImportItem item, HashSet<string> contentTypes, string role)
     {
         if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Trim().Length > 300) return "Title is required (1-300 chars)";
+        if (item.ExternalId?.Trim().Length > 200) return "externalId may contain at most 200 characters";
         var status = item.Status ?? "draft";
         if (!ValidStatuses.Contains(status)) return $"Invalid status '{status}'";
         if (status == "archived" && role is not ("admin" or "editor")) return "Archive permission is required";

@@ -79,16 +79,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.Status).IsRequired().HasDefaultValue("draft");
             e.Property(a => a.OwnerId).IsRequired();
             e.Property(a => a.ContentType).IsRequired().HasDefaultValue("reference");
+            e.Property(a => a.ExternalId).HasMaxLength(200);
             e.Property(a => a.ReviewIntervalDays).HasDefaultValue(90);
+            e.Property(a => a.VersionCounter).HasDefaultValue(0);
             e.Property(a => a.CreatedAt).IsRequired();
             e.Property(a => a.UpdatedAt).IsRequired();
             e.HasIndex(a => a.Slug).IsUnique();
+            e.HasIndex(a => a.ExternalId).IsUnique();
             // Nearly every read path filters WHERE Status='published' (search, listings, counts,
-            // MCP tools), and the embedding backfill queue hits (Status='published' AND IndexedAt IS
-            // NULL) on every poll. A (Status, IndexedAt) composite serves both: the leading column
-            // covers status-only filters, and the pair makes the highly-selective backfill-queue
-            // lookup an index scan instead of a seq scan over all articles at 750k+ rows.
+            // MCP tools), while the durable queue scans separate lexical and semantic dirty flags.
+            // Both pairs keep the queue selective at large corpus sizes.
             e.HasIndex(a => new { a.Status, a.IndexedAt });
+            e.HasIndex(a => new { a.Status, a.FtsIndexedAt });
             e.HasOne(a => a.Owner).WithMany(u => u.Articles).HasForeignKey(a => a.OwnerId);
             e.HasOne(a => a.ApprovedBy).WithMany().HasForeignKey(a => a.ApprovedById).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(a => a.CreatedViaApiKey).WithMany().HasForeignKey(a => a.CreatedViaApiKeyId).OnDelete(DeleteBehavior.SetNull);
@@ -106,6 +108,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(v => v.CreatedAt).IsRequired();
             e.HasOne(v => v.Article).WithMany(a => a.Versions).HasForeignKey(v => v.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(v => v.ChangedByUser).WithMany().HasForeignKey(v => v.ChangedBy);
+            e.HasIndex(v => new { v.ArticleId, v.Version }).IsUnique();
         });
 
         // ─── ArticleTags (composite PK) ───────────────────
@@ -169,6 +172,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.Sha256).IsRequired().HasMaxLength(64);
             e.Property(a => a.ExtractionStatus).IsRequired().HasMaxLength(20);
             e.Property(a => a.ExtractionError).HasMaxLength(2000);
+            e.Property(a => a.ExtractedText).HasColumnType("text");
+            e.Property(a => a.ExtractedSegmentsJson).HasColumnType("text");
             e.Property(a => a.UploadedById).IsRequired();
             e.Property(a => a.CreatedAt).IsRequired();
             e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);

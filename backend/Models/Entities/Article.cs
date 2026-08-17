@@ -11,12 +11,15 @@ public class Article
     public string OwnerId { get; set; } = null!;
     public string ContentType { get; set; } = "reference";
     public string? CreatedViaApiKeyId { get; set; }
+    public string? ExternalId { get; set; }
     public int? ReadTimeMinutes { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime? LastReviewedAt { get; set; }
     public string? ApprovedById { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public int ReviewIntervalDays { get; set; } = 90;
+    public int VersionCounter { get; set; }
+    public DateTime? FtsIndexedAt { get; set; }
     public DateTime? IndexedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

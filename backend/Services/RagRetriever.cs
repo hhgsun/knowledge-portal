@@ -1,6 +1,7 @@
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -87,13 +88,46 @@ public sealed class HybridRagRetriever(
 
         var chunks = semantic.Where(x => metadata.ContainsKey(x.ArticleId)).ToList();
         var semanticKeys = chunks.Select(Key).ToHashSet();
-        foreach (var articleId in lexicalIds.Where(metadata.ContainsKey))
+        var lexicalCandidateIds = lexicalIds.Where(metadata.ContainsKey).ToList();
+        var lexicalAttachments = await db.ArticleAttachments
+            .Where(x => lexicalCandidateIds.Contains(x.ArticleId) && x.ExtractionStatus == "completed"
+                && x.ExtractedText != null)
+            .Select(x => new { x.ArticleId, x.Id, x.FileName, x.ExtractedText, x.ExtractedSegmentsJson })
+            .ToListAsync(ct);
+        var queryTokens = Tokens(query);
+
+        // Add provenance-bearing lexical passages even when the same article already has a
+        // semantic hit: the exact FTS match may live in an attachment, not in that vector chunk.
+        foreach (var articleId in lexicalCandidateIds)
         {
-            if (chunks.Any(x => x.ArticleId == articleId)) continue;
             var a = metadata[articleId];
             var text = ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
-            var synthetic = new VectorChunkResult(articleId, -1, 0, text, "article");
-            if (semanticKeys.Add(Key(synthetic))) chunks.Add(synthetic);
+            var syntheticCandidates = new List<VectorChunkResult>
+            {
+                new(articleId, -1, 0, text, "article", SourceName: a.Title, SourceLocation: "article")
+            };
+            var syntheticIndex = -2;
+            foreach (var attachment in lexicalAttachments.Where(x => x.ArticleId == articleId))
+            {
+                List<AttachmentTextSegment>? segments = null;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(attachment.ExtractedSegmentsJson))
+                        segments = JsonSerializer.Deserialize<List<AttachmentTextSegment>>(attachment.ExtractedSegmentsJson);
+                }
+                catch (JsonException) { /* Fall back to the combined extracted text. */ }
+                segments ??= [new(attachment.ExtractedText!, "extracted")];
+                foreach (var segment in segments)
+                foreach (var passage in EmbeddingService.ChunkText(segment.Text))
+                    syntheticCandidates.Add(new(articleId, syntheticIndex--, 0, passage, "attachment",
+                        attachment.Id, attachment.FileName, segment.Location));
+            }
+
+            foreach (var synthetic in syntheticCandidates
+                .OrderByDescending(x => Tokens(x.ChunkText).Intersect(queryTokens).Count())
+                .ThenByDescending(x => x.SourceType == "attachment")
+                .Take(Math.Max(1, maxPerArticle)))
+                if (semanticKeys.Add(Key(synthetic))) chunks.Add(synthetic);
         }
 
         var candidates = chunks.Select(chunk =>

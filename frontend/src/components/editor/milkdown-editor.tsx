@@ -20,14 +20,19 @@ export default function MilkdownEditor({ contentMarkdown, onChange, uploadImage,
   const uploadRef = useRef(uploadImage);
   const deleteRef = useRef(deleteImage);
   const { token } = useAuth();
-  onChangeRef.current = onChange;
-  uploadRef.current = uploadImage;
-  deleteRef.current = deleteImage;
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    uploadRef.current = uploadImage;
+    deleteRef.current = deleteImage;
+  }, [onChange, uploadImage, deleteImage]);
 
   useEffect(() => {
     if (!rootRef.current) return;
     let active = true;
     let previousImages = extractImageUrls(initialMarkdown.current);
+    const protectedImageUrls: string[] = [];
+    const proxiedImages = new Map<string, string>();
 
     const handleUpload = async (file: File) => {
       const url = await uploadRef.current?.(file);
@@ -38,42 +43,59 @@ export default function MilkdownEditor({ contentMarkdown, onChange, uploadImage,
       return url;
     };
 
-    const crepe = new Crepe({
-      root: rootRef.current,
-      defaultValue: initialMarkdown.current,
-      features: {
-        [Crepe.Feature.Latex]: false,
-        [Crepe.Feature.AI]: false,
-        [Crepe.Feature.TopBar]: true,
-      },
-      featureConfigs: {
-        [Crepe.Feature.Placeholder]: { text: "Makalenizi yazmaya başlayın..." },
-        [Crepe.Feature.ImageBlock]: {
-          onUpload: handleUpload,
-          inlineOnUpload: handleUpload,
-          blockOnUpload: handleUpload,
-          proxyDomURL: (url) => url.startsWith("/api/") && token
-            ? `${url}${url.includes("?") ? "&" : "?"}token=${token}`
-            : url,
-        },
-      },
-    });
-
-    crepe.on((listener) => listener.markdownUpdated((_ctx, markdown) => {
-      if (!active) return;
-      const currentImages = extractImageUrls(markdown);
-      for (const url of previousImages) {
-        if (!currentImages.has(url) && (url.startsWith("/api/") || url.startsWith("blob:")))
-          void deleteRef.current?.(url);
+    let crepe: Crepe | undefined;
+    const createEditor = async () => {
+      if (token) {
+        for (const url of previousImages) {
+          if (!url.startsWith("/api/attachments/")) continue;
+          try {
+            const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (!response.ok) continue;
+            const objectUrl = URL.createObjectURL(await response.blob());
+            protectedImageUrls.push(objectUrl);
+            proxiedImages.set(url, objectUrl);
+          } catch { /* The editor keeps the canonical URL and shows a broken preview. */ }
+        }
       }
-      previousImages = currentImages;
-      onChangeRef.current(markdown);
-    }));
-    void crepe.create();
+      if (!active || !rootRef.current) return;
+
+      crepe = new Crepe({
+        root: rootRef.current,
+        defaultValue: initialMarkdown.current,
+        features: {
+          [Crepe.Feature.Latex]: false,
+          [Crepe.Feature.AI]: false,
+          [Crepe.Feature.TopBar]: true,
+        },
+        featureConfigs: {
+          [Crepe.Feature.Placeholder]: { text: "Makalenizi yazmaya başlayın..." },
+          [Crepe.Feature.ImageBlock]: {
+            onUpload: handleUpload,
+            inlineOnUpload: handleUpload,
+            blockOnUpload: handleUpload,
+            proxyDomURL: (url) => proxiedImages.get(url) ?? url,
+          },
+        },
+      });
+
+      crepe.on((listener) => listener.markdownUpdated((_ctx, markdown) => {
+        if (!active) return;
+        const currentImages = extractImageUrls(markdown);
+        for (const url of previousImages) {
+          if (!currentImages.has(url) && (url.startsWith("/api/") || url.startsWith("blob:")))
+            void deleteRef.current?.(url);
+        }
+        previousImages = currentImages;
+        onChangeRef.current(markdown);
+      }));
+      await crepe.create();
+    };
+    void createEditor();
 
     return () => {
       active = false;
-      void crepe.destroy();
+      protectedImageUrls.forEach(URL.revokeObjectURL);
+      if (crepe) void crepe.destroy();
     };
   }, [token]);
 

@@ -205,8 +205,11 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         if (req.Title != null)
         {
             var title = req.Title.Trim();
+            if (title.Length is < 1 or > 300)
+                return BadRequest(new { error = "Title is required (1-300 chars)" });
             approvalInvalidated |= title != article.Title;
             article.Title = title;
+            article.Slug = await db.GenerateUniqueArticleSlugAsync(title, article.Id);
         }
         if (req.ContentMarkdown != null)
         {
@@ -216,20 +219,25 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
             approvalInvalidated |= contentChanged;
         }
-        if (req.Excerpt != null) article.Excerpt = req.Excerpt.Trim();
+        if (req.Excerpt != null)
+        {
+            var excerpt = req.Excerpt.Trim();
+            approvalInvalidated |= excerpt != article.Excerpt;
+            article.Excerpt = excerpt;
+        }
         if (req.ContentType != null)
         {
             approvalInvalidated |= req.ContentType != article.ContentType;
             article.ContentType = req.ContentType;
         }
         if (approvalInvalidated)
-        {
-            article.ApprovedById = null;
-            article.ApprovedAt = null;
-        }
+            ArticleService.InvalidateApproval(article);
         if (req.ReviewIntervalDays.HasValue) article.ReviewIntervalDays = req.ReviewIntervalDays.Value;
         if (req.Status != null)
         {
+            if (req.Status != article.Status)
+                ArticleService.InvalidateApproval(article);
+
             // Archiving requires articles:archive permission
             if (req.Status == "archived" && article.Status != "archived"
                 && !RbacService.HasPermission(User, Permissions.ArticlesArchive))
@@ -264,8 +272,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         if (req.Tags != null)
         {
-            article.ApprovedById = null;
-            article.ApprovedAt = null;
+            ArticleService.InvalidateApproval(article);
             var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
             db.ArticleTags.RemoveRange(existingTags);
             await articleService.AttachTagsAsync(id, req.Tags,
@@ -273,17 +280,6 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         }
 
         await db.SaveChangesAsync();
-
-        // Update slug if title changed
-        if (req.Title != null)
-        {
-            var newSlug = SlugHelper.GenerateArticleSlug(req.Title);
-            if (newSlug != article.Slug && !await db.Articles.AnyAsync(a => a.Slug == newSlug && a.Id != id))
-            {
-                article.Slug = newSlug;
-                await db.SaveChangesAsync();
-            }
-        }
 
         // Coalesced durable job handles FTS + semantic indexing (including title/excerpt/status).
         await articleService.QueueReindexAsync(article);
@@ -357,6 +353,9 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
     {
         limit = Math.Clamp(limit, 1, 20);
 
+        if (await articleService.GetViewableByIdAsync(id, User) == null)
+            return NotFound(new { error = "Article not found" });
+
         var articleTagIds = await db.ArticleTags
             .Where(at => at.ArticleId == id)
             .Select(at => at.TagId)
@@ -369,14 +368,14 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             .Where(at => articleTagIds.Contains(at.TagId) && at.ArticleId != id)
             .GroupBy(at => at.ArticleId)
             .Select(g => new { ArticleId = g.Key, SharedTags = g.Count() })
-            .OrderByDescending(g => g.SharedTags)
-            .Take(limit)
             .Join(db.Articles.Include(a => a.ArticleTags).ThenInclude(at => at.Tag),
                 g => g.ArticleId,
                 a => a.Id,
                 (g, a) => new { Article = a, g.SharedTags })
             .Where(x => x.Article.Status == "published")
             .OrderByDescending(x => x.SharedTags)
+            .ThenByDescending(x => x.Article.UpdatedAt)
+            .Take(limit)
             .Select(x => new
             {
                 x.Article.Id,

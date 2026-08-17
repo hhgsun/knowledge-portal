@@ -25,14 +25,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
     foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
         options.KnownProxies.Add(System.Net.IPAddress.Parse(proxy));
     foreach (var network in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
     {
         var parts = network.Split('/');
-        options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(
+        options.KnownIPNetworks.Add(new System.Net.IPNetwork(
             System.Net.IPAddress.Parse(parts[0]), int.Parse(parts[1])));
     }
 });
@@ -282,7 +282,9 @@ app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
     {
         using var dbScope = sp.CreateScope();
         var dbCtx = dbScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        pendingEmbeddings = await dbCtx.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt == null);
+        pendingEmbeddings = ollamaEnabled
+            ? await dbCtx.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt == null)
+            : 0;
     }
     catch
     {
@@ -356,10 +358,8 @@ using (var scope = app.Services.CreateScope())
     // FTS infrastructure is PostgreSQL raw SQL; the service no-ops on non-relational providers.
     var ftsService = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
     await ftsService.InitializeAsync();
-    // Backfill only what is missing. A full rebuild here used to blank every search_vector and
-    // re-derive it — including re-reading each article's attachments from disk — so every boot
-    // broke search for a stretch that grew with the corpus. This is a no-op on a warm database.
-    await ftsService.EnsureIndexedAsync();
+    // Corpus backfill is deliberately left to the durable background queue. Application
+    // readiness must not wait for attachment extraction across the entire knowledge base.
 }
 
 // ─── Ensure uploads directory ────────────────────────────────

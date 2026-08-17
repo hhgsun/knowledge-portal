@@ -34,7 +34,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 İçerik editörü rolü. Kendi makalelerini tam kontrol eder, ek olarak:
 
 - Makale yayınlama ve arşivleme
-- Pending makaleleri onaylama/reddetme
+- Yayınlanmış makalelere onay güven sinyali ekleme/kaldırma
 - Etiket yönetimi
 - Analitik görüntüleme
 
@@ -42,7 +42,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 
 Temel kullanıcı rolü. Yeni kayıtlarda varsayılan rol:
 
-- Makale oluşturma (draft veya pending olarak)
+- Makale oluşturma ve kendi makalelerini yayınlama
 - Kendi makalelerini düzenleme ve silme
 - Yayınlanmış makaleleri ve kendi makalelerini görüntüleme
 - Oy verme ve yorum yapma

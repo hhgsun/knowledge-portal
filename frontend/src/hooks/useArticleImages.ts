@@ -24,67 +24,82 @@ export function useArticleImages() {
   }, []);
 
   const uploadPendingImages = useCallback(
-    async (articleId: string, markdown: string): Promise<string> => {
+    async (articleId: string, markdown: string): Promise<{ markdown: string; uploadedIds: string[] }> => {
       const pending = pendingUploadsRef.current;
-      if (pending.size === 0) return markdown;
+      if (pending.size === 0) return { markdown, uploadedIds: [] };
 
       const urlMap = new Map<string, string>();
+      const uploadedIds: string[] = [];
 
-      for (const [blobUrl, file] of pending) {
-        const formData = new FormData();
-        formData.append("file", file);
-        try {
-          const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
-            method: "POST",
-            body: formData,
-          });
-          if (res.ok) {
-            const data = await res.json();
-            urlMap.set(blobUrl, data.downloadUrl);
-          } else {
-            const err = await res.json();
-            toast.error(err.error || `Failed to upload ${file.name}`);
-          }
-        } catch {
-          toast.error(`Failed to upload ${file.name}`);
-        }
-        URL.revokeObjectURL(blobUrl);
-      }
-      pending.clear();
-
-      if (urlMap.size > 0) {
-        let result = markdown;
-        for (const [blobUrl, realUrl] of urlMap) {
-          result = result.split(blobUrl).join(realUrl);
-        }
-        return result;
-      }
-      return markdown;
-    },
-    [fetchWithAuth]
-  );
-
-  const uploadPendingFiles = useCallback(
-    async (articleId: string, files: File[]) => {
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append("file", file);
-        try {
+      try {
+        for (const [blobUrl, file] of pending) {
+          const formData = new FormData();
+          formData.append("file", file);
           const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
             method: "POST",
             body: formData,
           });
           if (!res.ok) {
-            const err = await res.json();
-            toast.error(err.error || `Failed to upload ${file.name}`);
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Failed to upload ${file.name}`);
           }
-        } catch {
-          toast.error(`Failed to upload ${file.name}`);
+          const data = await res.json();
+          urlMap.set(blobUrl, data.downloadUrl);
+          uploadedIds.push(data.id);
         }
+      } catch (error) {
+        await Promise.all(uploadedIds.map((id) => fetchWithAuth(
+          `/api/articles/${articleId}/attachments/${id}`, { method: "DELETE" }).catch(() => undefined)));
+        const message = error instanceof Error ? error.message : "Image upload failed";
+        toast.error(message);
+        throw error;
+      }
+
+      let result = markdown;
+      for (const [blobUrl, realUrl] of urlMap) {
+        result = result.split(blobUrl).join(realUrl);
+        URL.revokeObjectURL(blobUrl);
+      }
+      pending.clear();
+      return { markdown: result, uploadedIds };
+    },
+    [fetchWithAuth]
+  );
+
+  const uploadPendingFiles = useCallback(
+    async (articleId: string, files: File[]): Promise<string[]> => {
+      const uploadedIds: string[] = [];
+      try {
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append("file", file);
+          const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Failed to upload ${file.name}`);
+          }
+          const data = await res.json();
+          uploadedIds.push(data.id);
+        }
+        return uploadedIds;
+      } catch (error) {
+        await Promise.all(uploadedIds.map((id) => fetchWithAuth(
+          `/api/articles/${articleId}/attachments/${id}`, { method: "DELETE" }).catch(() => undefined)));
+        const message = error instanceof Error ? error.message : "File upload failed";
+        toast.error(message);
+        throw error;
       }
     },
     [fetchWithAuth]
   );
+
+  const deleteUploadedAttachments = useCallback(async (articleId: string, ids: string[]) => {
+    await Promise.all(ids.map((id) => fetchWithAuth(
+      `/api/articles/${articleId}/attachments/${id}`, { method: "DELETE" }).catch(() => undefined)));
+  }, [fetchWithAuth]);
 
   return {
     pendingUploadsRef,
@@ -92,5 +107,6 @@ export function useArticleImages() {
     deleteBlobImage,
     uploadPendingImages,
     uploadPendingFiles,
+    deleteUploadedAttachments,
   };
 }

@@ -25,7 +25,7 @@ export default function KnowledgeImportPage() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [error, setError] = useState("");
   const current = drafts[selected];
-  const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.xls,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
+  const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
 
   const analyze = async () => {
     if (!files.length) return;

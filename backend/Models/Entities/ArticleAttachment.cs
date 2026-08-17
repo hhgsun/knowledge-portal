@@ -11,6 +11,8 @@ public class ArticleAttachment
     public string Sha256 { get; set; } = null!;
     public string ExtractionStatus { get; set; } = "pending";
     public string? ExtractionError { get; set; }
+    public string? ExtractedText { get; set; }
+    public string? ExtractedSegmentsJson { get; set; }
     public DateTime? ExtractedAt { get; set; }
     public string UploadedById { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

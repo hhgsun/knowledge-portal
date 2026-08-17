@@ -70,6 +70,10 @@ public class EmbeddingBackgroundService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // Lease renewal uses its own scope/DbContext. EF DbContext is not thread-safe and the
+        // main scope is simultaneously used by FTS/embedding work below.
+        var heartbeat = KeepLeaseAliveAsync(claim, heartbeatCts.Token);
         try
         {
             var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == claim.ArticleId, ct);
@@ -92,6 +96,23 @@ public class EmbeddingBackgroundService(
             logger.LogError(ex, "Index job failed for article {ArticleId}, generation {Generation}",
                 claim.ArticleId, claim.Generation);
             await queue.FailAsync(claim, ex, CancellationToken.None);
+        }
+        finally
+        {
+            heartbeatCts.Cancel();
+            try { await heartbeat; } catch (OperationCanceledException) { }
+        }
+    }
+
+    private async Task KeepLeaseAliveAsync(IndexJobClaim claim, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
+        var interval = TimeSpan.FromSeconds(Math.Max(10, _leaseMinutes * 60 / 3));
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(interval, ct);
+            if (await queue.RenewLeaseAsync(claim, ct) == 0) return;
         }
     }
 

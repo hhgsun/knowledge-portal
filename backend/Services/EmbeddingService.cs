@@ -144,25 +144,24 @@ public class EmbeddingService(
             .Where(a => a.ArticleId == article.Id).OrderBy(a => a.CreatedAt).ToListAsync(ct);
         foreach (var attachment in attachments)
         {
-            try
+            var extraction = AttachmentHelper.GetOrExtract(config, attachment);
+            if (extraction.Status == "failed")
             {
-                var path = AttachmentHelper.GetFilePath(config, article.Id, attachment.StoredFileName);
-                var text = AttachmentTextExtractor.ExtractText(path, Path.GetExtension(attachment.FileName));
-                attachment.ExtractionStatus = string.IsNullOrWhiteSpace(text) ? "no_text" : "completed";
-                attachment.ExtractionError = null;
-                attachment.ExtractedAt = DateTime.UtcNow;
-                if (!string.IsNullOrWhiteSpace(text))
-                    AddSource(result, ChunkText(text).Select((chunk, i) =>
-                        new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName, $"chunk:{i}")),
-                        article.Id, attachment.FileName);
+                logger.LogWarning("Attachment extraction failed: {AttachmentId}: {Error}",
+                    attachment.Id, extraction.Error);
+                continue;
             }
-            catch (Exception ex)
+
+            var attachmentChunks = extraction.Segments.SelectMany(segment =>
+                ChunkText(segment.Text).Select((chunk, i) =>
+                    new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName,
+                        $"{segment.Location}:chunk:{i}")));
+            if (!extraction.Segments.Any() && !string.IsNullOrWhiteSpace(extraction.Text))
             {
-                attachment.ExtractionStatus = "failed";
-                attachment.ExtractionError = ex.Message[..Math.Min(2000, ex.Message.Length)];
-                attachment.ExtractedAt = DateTime.UtcNow;
-                logger.LogWarning(ex, "Attachment extraction failed: {AttachmentId}", attachment.Id);
+                attachmentChunks = ChunkText(extraction.Text).Select((chunk, i) =>
+                    new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName, $"file:chunk:{i}"));
             }
+            AddSource(result, attachmentChunks, article.Id, attachment.FileName);
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
         return result;

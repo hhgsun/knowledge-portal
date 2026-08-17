@@ -85,7 +85,7 @@ public class RagService(
 
     public record RagResult(string Answer, List<RagSource> Sources, List<RagClaim> Claims,
         List<RagEvidence> Evidence, double CitationCoverage, string GroundingStatus,
-        bool InsufficientContext, bool PartialResult, List<string> Warnings);
+        double ClaimSupportCoverage, bool InsufficientContext, bool PartialResult, List<string> Warnings);
     public record RagSource(string ArticleId, string Title, string Slug, double Score);
     private record ArticleMeta(string Id, string Title, string Slug);
 
@@ -182,7 +182,7 @@ public class RagService(
                 QueryFingerprint(question), question.Length, broad ? "broad" : "narrow");
             return new RagResult("AI yanıtı oluşturulurken bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
                 BuildSources(BestScores(usableChunks), articles), [], BuildEvidence(usableChunks, articles), 0,
-                "unverified", false, false, ["Answer generation failed."]);
+                "unverified", 0, false, false, ["Answer generation failed."]);
         }
     }
 
@@ -231,13 +231,23 @@ public class RagService(
     {
         var sourceScores = new Dictionary<string, double>();
         var evidenceIds = EvidenceIds(chunks);
-        var batches = Batch(chunks, Math.Max(1, _batchChunks)).Select((items, index) => (items, index)).ToList();
+        var mapSeconds = Math.Max(resilience.GenerationTimeoutSeconds,
+            resilience.RequestBudgetSeconds - resilience.ReduceTimeoutSeconds - 5);
+        var mapRounds = Math.Max(1, mapSeconds / resilience.GenerationTimeoutSeconds);
+        var maxBatches = Math.Max(1, resilience.MapParallelism * mapRounds);
+        var maxChunksPerBatch = Math.Max(1, Math.Max(_batchChunks, _maxContextWords / 500));
+        var plannedChunks = chunks.Take(maxBatches * maxChunksPerBatch).ToList();
+        var batchSize = Math.Max(1, Math.Min(maxChunksPerBatch,
+            Math.Max(_batchChunks, (int)Math.Ceiling(plannedChunks.Count / (double)maxBatches))));
+        var batches = Batch(plannedChunks, batchSize).Select((items, index) => (items, index)).ToList();
+        var budgetTruncated = plannedChunks.Count < chunks.Count;
         using var gate = new SemaphoreSlim(resilience.MapParallelism);
         var tasks = batches.Select(async batch =>
         {
-            await gate.WaitAsync(ct);
+            var entered = false;
             try
             {
+                await gate.WaitAsync(ct); entered = true;
                 var context = new List<string>(); var usedChunks = new List<VectorChunkResult>(); var words = 0;
                 foreach (var c in batch.items)
                 {
@@ -251,9 +261,10 @@ public class RagService(
                     MapSystemPrompt, BuildContextMessage(question, context), ct);
                 return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (string?)null);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            { return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: "Request budget expired"); }
             catch (Exception ex) { logger.LogWarning(ex, "RAG map batch {Batch} failed", batch.index + 1); return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: ex.Message); }
-            finally { gate.Release(); }
+            finally { if (entered) gate.Release(); }
         }).ToList();
         var mapped = (await Task.WhenAll(tasks)).OrderBy(x => x.index).ToList();
         var partials = mapped.Where(x => !string.IsNullOrWhiteSpace(x.Partial)).Select(x => x.Partial!).ToList();
@@ -264,17 +275,20 @@ public class RagService(
         metrics.RagContextWords.Record(successfulChunks.Sum(x => CountWords(x.ChunkText)), Tags("mode", "broad"));
 
         if (partials.Count == 0)
-            return EmptyResult(RefuseInsufficient);
+            return EmptyResult(RefuseInsufficient, failures.Count > 0,
+                failures.Count > 0 ? ["Broad RAG map stages did not finish within the request budget."] : []);
 
         var finalAnswer = partials[0];
         var reduceFailed = false;
-        if (partials.Count > 1)
+        if (partials.Count > 1 && !ct.IsCancellationRequested)
         {
             try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds, ReduceSystemPrompt, BuildReduceMessage(question, partials), ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { logger.LogWarning(ex, "RAG reduce failed; returning first successful partial"); reduceFailed = true; }
         }
+        else if (partials.Count > 1) reduceFailed = true;
         var extraWarnings = failures.Select(x => $"Map batch {x.index + 1} failed.").ToList();
+        if (budgetTruncated) extraWarnings.Add("Candidate chunks were capped to fit the configured request budget.");
         if (reduceFailed) extraWarnings.Add("Reduce stage failed; response contains a partial map result.");
         return BuildValidatedResult(finalAnswer, successfulChunks, sourceScores, articles, evidenceIds,
             failures.Count > 0 || reduceFailed, extraWarnings);
@@ -283,7 +297,10 @@ public class RagService(
     private bool IsBroadQuery(string question)
     {
         var q = question.ToLowerInvariant();
-        return _broadKeywords.Any(k => q.Contains(k, StringComparison.Ordinal));
+        var tokens = q.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        return _broadKeywords.Any(k => k.Contains(' ')
+            ? q.Contains(k, StringComparison.Ordinal)
+            : tokens.Contains(k));
     }
 
     private Task<string> CompleteAsync(string stage, int timeoutSeconds, string systemPrompt, string userMessage, CancellationToken ct)
@@ -377,11 +394,12 @@ public class RagService(
         var validated = RagCitationValidator.Validate(raw, evidence);
         var warnings = validated.Warnings.Concat(extraWarnings ?? []).Distinct().ToList();
         return new RagResult(validated.Answer, BuildSources(scores, articles), validated.Claims, evidence,
-            validated.CitationCoverage, validated.GroundingStatus, validated.InsufficientContext, partialResult, warnings);
+            validated.CitationCoverage, validated.GroundingStatus, validated.ClaimSupportCoverage,
+            validated.InsufficientContext, partialResult, warnings);
     }
 
-    private static RagResult EmptyResult(string answer) =>
-        new(answer, [], [], [], 1, "insufficient_context", true, false, []);
+    private static RagResult EmptyResult(string answer, bool partial = false, List<string>? warnings = null) =>
+        new(answer, [], [], [], 1, "insufficient_context", 1, true, partial, warnings ?? []);
 
     private static Dictionary<string, string> EvidenceIds(IEnumerable<VectorChunkResult> chunks) =>
         chunks.Select(ChunkKey).Distinct().Select((key, i) => (key, id: $"S{i + 1}"))

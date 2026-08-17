@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Claims;
+using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using KnowledgePortal.Api.Models;
@@ -136,9 +138,25 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     /// <summary>Appends the next version snapshot for an article. Caller saves.</summary>
     public async Task<int> AddVersionAsync(string articleId, string title, string? content, string changedBy, string? changeSummary)
     {
-        var maxVersion = await db.ArticleVersions
-            .Where(v => v.ArticleId == articleId)
-            .MaxAsync(v => (int?)v.Version) ?? 0;
+        int nextVersion;
+        var addedArticle = db.Articles.Local.FirstOrDefault(a => a.Id == articleId
+            && db.Entry(a).State == EntityState.Added);
+        if (addedArticle != null)
+        {
+            nextVersion = ++addedArticle.VersionCounter;
+        }
+        else if (db.Database.IsRelational())
+        {
+            nextVersion = await db.Database.SqlQueryRaw<int>(
+                """UPDATE articles SET "VersionCounter" = "VersionCounter" + 1 WHERE "Id" = {0} RETURNING "VersionCounter" AS "Value""",
+                articleId).SingleAsync();
+        }
+        else
+        {
+            var article = await db.Articles.FindAsync(articleId)
+                ?? throw new InvalidOperationException("Article not found while allocating a version");
+            nextVersion = ++article.VersionCounter;
+        }
 
         db.ArticleVersions.Add(new ArticleVersion
         {
@@ -147,9 +165,16 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             Content = content,
             ChangedBy = changedBy,
             ChangeSummary = changeSummary,
-            Version = maxVersion + 1
+            Version = nextVersion
         });
-        return maxVersion + 1;
+        return nextVersion;
+    }
+
+    public static void InvalidateApproval(Article article)
+    {
+        article.ApprovedById = null;
+        article.ApprovedAt = null;
+        article.LastReviewedAt = null;
     }
 
     /// <summary>
@@ -158,12 +183,13 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     /// </summary>
     public async Task AttachTagsAsync(string articleId, string[] tags, bool allowCreate)
     {
+        var resolvedIds = new HashSet<string>();
         foreach (var tagInput in tags)
         {
             var tag = await tagService.ResolveAsync(tagInput);
             if (tag == null && allowCreate && !string.IsNullOrWhiteSpace(tagInput))
                 (tag, _) = await tagService.FindOrCreateAsync(tagInput, saveChanges: false);
-            if (tag != null)
+            if (tag != null && resolvedIds.Add(tag.Id))
                 db.ArticleTags.Add(new ArticleTag { ArticleId = articleId, TagId = tag.Id });
         }
     }
@@ -173,7 +199,11 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     /// </summary>
     public async Task QueueReindexAsync(Article article)
     {
-        if (article.Status == "published") article.IndexedAt = null;
+        if (article.Status == "published")
+        {
+            article.FtsIndexedAt = null;
+            article.IndexedAt = null;
+        }
         await db.SaveChangesAsync();
         await indexJobs.EnqueueAsync(article.Id);
     }
@@ -230,6 +260,15 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             .Include(a => a.Owner)
             .Include(a => a.ArticleTags).ThenInclude(at => at.Tag)
             .FirstOrDefaultAsync(a => a.Id == idOrSlug || a.Slug == idOrSlug);
+
+    /// <summary>Loads an article only when the current principal may view it.</summary>
+    public async Task<Article?> GetViewableByIdAsync(string articleId, ClaimsPrincipal principal)
+    {
+        var article = await db.Articles.FindAsync(articleId);
+        if (article == null) return null;
+        return RbacService.CanViewArticle(principal, article.Status,
+            article.OwnerId == principal.GetUserId()) ? article : null;
+    }
 
     /// <summary>
     /// Builds the full article detail shared by the REST detail endpoint and the MCP get_article tool.

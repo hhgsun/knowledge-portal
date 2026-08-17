@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
-public sealed record IndexJobClaim(string ArticleId, int Generation);
+public sealed record IndexJobClaim(string ArticleId, int Generation, string LockedBy = "");
 
 /// <summary>PostgreSQL-backed durable queue; no external broker is required.</summary>
 public class IndexJobQueue(AppDbContext db, IConfiguration config)
@@ -76,7 +76,7 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
             UPDATE index_jobs j SET
                 "Status" = 'processing', "LockedAt" = {0}, "LockedBy" = {3}, "UpdatedAt" = {0}
             FROM picked WHERE j."ArticleId" = picked."ArticleId"
-            RETURNING j."ArticleId", j."Generation"
+            RETURNING j."ArticleId", j."Generation", j."LockedBy"
             """, now, expired, Math.Max(1, count), workerId).ToListAsync(ct);
 #pragma warning restore EF1002
     }
@@ -86,7 +86,15 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         UPDATE index_jobs SET "Status" = 'completed', "CompletedAt" = {0}, "LockedAt" = NULL,
             "LockedBy" = NULL, "LastError" = NULL, "UpdatedAt" = {0}
         WHERE "ArticleId" = {1} AND "Generation" = {2} AND "Status" = 'processing'
-        """, [DateTime.UtcNow, claim.ArticleId, claim.Generation], ct);
+          AND "LockedBy" = {3}
+        """, [DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
+
+    public Task<int> RenewLeaseAsync(IndexJobClaim claim, CancellationToken ct) => db.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE index_jobs SET "LockedAt" = {0}, "UpdatedAt" = {0}
+        WHERE "ArticleId" = {1} AND "Generation" = {2} AND "Status" = 'processing'
+          AND "LockedBy" = {3}
+        """, [DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
 
     public async Task FailAsync(IndexJobClaim claim, Exception error, CancellationToken ct)
     {
@@ -104,22 +112,24 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
             """
             UPDATE index_jobs SET "Status" = {0}, "AttemptCount" = {1}, "AvailableAt" = {2},
                 "LockedAt" = NULL, "LockedBy" = NULL, "LastError" = {3}, "UpdatedAt" = {4}
-            WHERE "ArticleId" = {5} AND "Generation" = {6}
+            WHERE "ArticleId" = {5} AND "Generation" = {6} AND "LockedBy" = {7}
             """,
             [terminal ? "failed" : "pending", attempt, DateTime.UtcNow.AddSeconds(delay), message,
-             DateTime.UtcNow, claim.ArticleId, claim.Generation], ct);
+             DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
     }
 
     public async Task<int> BackfillDirtyArticlesAsync(CancellationToken ct)
     {
         if (!db.Database.IsRelational()) return 0;
+        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
         return await db.Database.ExecuteSqlRawAsync(
             """
             INSERT INTO index_jobs ("ArticleId", "Status", "Generation", "Priority", "AttemptCount",
                 "AvailableAt", "CreatedAt", "UpdatedAt")
             SELECT a."Id", 'pending', 1, 10, 0, NOW(), NOW(), NOW()
             FROM articles a
-            WHERE a."Status" = 'published' AND a."IndexedAt" IS NULL
+            WHERE a."Status" = 'published'
+              AND (a."FtsIndexedAt" IS NULL OR ({0} AND a."IndexedAt" IS NULL))
             ON CONFLICT ("ArticleId") DO UPDATE SET
                 "Status" = 'pending',
                 "Generation" = index_jobs."Generation" + 1,
@@ -131,6 +141,6 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
                 "LastError" = NULL,
                 "CompletedAt" = NULL,
                 "UpdatedAt" = NOW()
-            """, ct);
+            """, [semanticEnabled], ct);
     }
 }

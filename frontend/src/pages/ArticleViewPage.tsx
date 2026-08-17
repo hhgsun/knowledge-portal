@@ -10,6 +10,7 @@ import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { ArticleViewSkeleton } from "../components/ui/skeleton";
 import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
+import { AuthenticatedImage } from "../components/attachments/authenticated-image";
 
 export default function ArticleViewPage() {
   const params = useParams();
@@ -316,7 +317,7 @@ export default function ArticleViewPage() {
 
       <div className="prose dark:prose-invert max-w-none border-t border-zinc-200 dark:border-zinc-800 pt-6">
         {article.contentMarkdown ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.contentMarkdown}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ img: AuthenticatedImage }}>{article.contentMarkdown}</ReactMarkdown>
         ) : (
           <p className="text-zinc-400 italic">Henüz içerik yok.</p>
         )}

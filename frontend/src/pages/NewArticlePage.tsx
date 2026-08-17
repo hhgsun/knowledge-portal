@@ -33,50 +33,56 @@ export default function NewArticlePage() {
     setSaving(true);
     setError("");
 
+    let createdArticleId: string | undefined;
     try {
+      const shellContent = removePendingImageNodes(contentMarkdown);
       const res = await fetchWithAuth("/api/articles", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
-          contentMarkdown,
+          contentMarkdown: shellContent,
           excerpt: excerpt.trim() || undefined,
           contentType,
-          status,
+          status: "draft",
           tags,
         }),
       });
 
       if (res.ok) {
         const article = await res.json();
+        createdArticleId = article.id;
 
-        // Upload pending images and update content if needed
-        const finalContent = await uploadPendingImages(article.id, contentMarkdown);
-        if (finalContent !== contentMarkdown) {
-          await fetchWithAuth(`/api/articles/${article.id}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              title: title.trim(),
-              contentMarkdown: finalContent,
-              excerpt: excerpt.trim() || undefined,
-              contentType,
-              status,
-              tags,
-            }),
-          });
-        }
-
-        // Upload pending file attachments
+        const images = await uploadPendingImages(article.id, contentMarkdown);
         await uploadPendingFiles(article.id, pendingFiles);
+        const finalize = await fetchWithAuth(`/api/articles/${article.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            title: title.trim(),
+            contentMarkdown: images.markdown,
+            excerpt: excerpt.trim() || undefined,
+            contentType,
+            status,
+            tags,
+            changeSummary: "Finalized initial attachment uploads",
+          }),
+        });
+        if (!finalize.ok) {
+          const data = await finalize.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to finalize article");
+        }
+        const finalized = await finalize.json();
 
         toast.success("Article created successfully");
-        navigate(`/articles/${article.slug}`);
+        navigate(`/articles/${finalized.slug}`);
       } else {
         const data = await res.json();
         setError(data.error || "Failed to save article");
         setSaving(false);
       }
-    } catch {
-      setError("An unexpected error occurred");
+    } catch (error) {
+      if (createdArticleId)
+        await fetchWithAuth(`/api/articles/${createdArticleId}`, { method: "DELETE" }).catch(() => undefined);
+      setError(error instanceof Error ? error.message : "An unexpected error occurred");
       setSaving(false);
     }
   };
@@ -112,4 +118,8 @@ export default function NewArticlePage() {
       }
     />
   );
+}
+
+function removePendingImageNodes(markdown: string) {
+  return markdown.replace(/!\[[^\]]*\]\((?:<blob:[^>]+>|blob:[^\s)]+)(?:\s+["'][^"']*["'])?\)/g, "");
 }

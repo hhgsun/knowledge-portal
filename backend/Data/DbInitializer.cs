@@ -118,10 +118,20 @@ public static class DbInitializer
                 OwnerId = admin.Id,
                 ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown),
                 PublishedAt = metadata.Status == "published" ? DateTime.UtcNow : null,
-                LastReviewedAt = metadata.Status == "published" ? DateTime.UtcNow : null,
+                LastReviewedAt = null,
+                VersionCounter = 1,
             };
 
             db.Articles.Add(article);
+            db.ArticleVersions.Add(new ArticleVersion
+            {
+                ArticleId = article.Id,
+                Title = article.Title,
+                Content = article.Content,
+                ChangedBy = admin.Id,
+                ChangeSummary = "Initial seeded version",
+                Version = 1
+            });
             await db.SaveChangesAsync();
 
             // Assign tags

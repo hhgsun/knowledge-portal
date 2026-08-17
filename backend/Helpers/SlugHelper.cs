@@ -30,6 +30,7 @@ public static partial class SlugHelper
     public static string GenerateArticleSlug(string title)
     {
         var slug = GenerateSlugCore(title);
+        if (string.IsNullOrEmpty(slug)) slug = "article";
         return slug.Length > 100 ? slug[..100] : slug;
     }
 

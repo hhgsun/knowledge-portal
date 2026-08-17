@@ -3,6 +3,7 @@ using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,14 +13,14 @@ namespace KnowledgePortal.Api.Controllers;
 [ApiController]
 [Route("api/articles/{articleId}")]
 [Authorize]
-public class ArticleFeedbackController(AppDbContext db) : ControllerBase
+public class ArticleFeedbackController(AppDbContext db, ArticleService articleService) : ControllerBase
 {
     // ─── Votes ────────────────────────────────────────────────
 
     [HttpPost("vote")]
     public async Task<IActionResult> Vote(string articleId, [FromBody] VoteRequest req)
     {
-        if (!await db.Articles.AnyAsync(a => a.Id == articleId))
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
             return NotFound(new { error = "Article not found" });
 
         var userId = User.GetUserId();
@@ -66,6 +67,9 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [HttpDelete("vote")]
     public async Task<IActionResult> RemoveVote(string articleId)
     {
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
+            return NotFound(new { error = "Article not found" });
+
         var userId = User.GetUserId();
         var existing = await db.ArticleVotes
             .FirstOrDefaultAsync(v => v.ArticleId == articleId && v.UserId == userId);
@@ -81,6 +85,9 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [HttpGet("votes")]
     public async Task<IActionResult> GetVotes(string articleId)
     {
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
+            return NotFound(new { error = "Article not found" });
+
         var userId = User.GetUserId();
         var votes = await db.ArticleVotes
             .Where(v => v.ArticleId == articleId)
@@ -109,7 +116,7 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Comment))
             return BadRequest(new { error = "Comment is required" });
 
-        if (!await db.Articles.AnyAsync(a => a.Id == articleId))
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
             return NotFound(new { error = "Article not found" });
 
         var userId = User.GetUserId();
@@ -127,6 +134,9 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [HttpGet("comments")]
     public async Task<IActionResult> GetComments(string articleId)
     {
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
+            return NotFound(new { error = "Article not found" });
+
         var userId = User.GetUserId();
         var comments = await db.ArticleComments
             .Where(c => c.ArticleId == articleId)
@@ -149,6 +159,9 @@ public class ArticleFeedbackController(AppDbContext db) : ControllerBase
     [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> DeleteComment(string articleId, string commentId)
     {
+        if (await articleService.GetViewableByIdAsync(articleId, User) == null)
+            return NotFound(new { error = "Article not found" });
+
         var userId = User.GetUserId();
         var role = User.GetRole();
         var comment = await db.ArticleComments

@@ -11,6 +11,10 @@ public static class SlugQueries
     public static async Task<string> GenerateUniqueArticleSlugAsync(this AppDbContext db, string title)
         => await MakeUniqueAsync(SlugHelper.GenerateArticleSlug(title), slug => db.Articles.AnyAsync(a => a.Slug == slug));
 
+    public static async Task<string> GenerateUniqueArticleSlugAsync(this AppDbContext db, string title, string excludeArticleId)
+        => await MakeUniqueAsync(SlugHelper.GenerateArticleSlug(title),
+            slug => db.Articles.AnyAsync(a => a.Slug == slug && a.Id != excludeArticleId));
+
     public static async Task<string> GenerateUniqueUserSlugAsync(this AppDbContext db, string name)
         => await MakeUniqueAsync(SlugHelper.GenerateSlug(name), slug => db.Users.AnyAsync(u => u.Slug == slug));
 

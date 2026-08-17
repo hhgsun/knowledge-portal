@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Clock, User, GitCompare, Eye, RotateCcw, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AuthenticatedImage } from "../components/attachments/authenticated-image";
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import { VersionsListSkeleton } from "../components/ui/skeleton";
@@ -274,7 +275,7 @@ export default function VersionsPage() {
             </div>
             <div className="p-4 overflow-y-auto prose dark:prose-invert max-w-none">
               {viewingVersion.contentMarkdown ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{viewingVersion.contentMarkdown}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ img: AuthenticatedImage }}>{viewingVersion.contentMarkdown}</ReactMarkdown>
               ) : (
                 <p className="text-zinc-400 italic">Bu sürümde içerik yok.</p>
               )}

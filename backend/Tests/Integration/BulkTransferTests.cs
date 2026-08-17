@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.IO.Compression;
@@ -132,15 +133,63 @@ public class BulkTransferTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/bulk/export?dateFrom=not-a-date")).StatusCode);
     }
 
+    [Fact]
+    public async Task Import_UpdateByExternalId_InvalidatesApprovalAndReview()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Approved bulk {Guid.NewGuid():N}";
+        var created = JsonDocument.Parse(await (await client.PostAsJsonAsync("/api/articles", new
+        {
+            title, contentMarkdown = "Original", status = "published"
+        })).Content.ReadAsStringAsync()).RootElement;
+        var id = created.GetProperty("id").GetString()!;
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/articles/{id}/approve", null)).StatusCode);
 
-    private static MultipartFormDataContent Form(string content, string name, bool dryRun = false)
+        var row = JsonSerializer.Serialize(new
+        {
+            externalId = id, title, status = "published", contentType = "reference",
+            contentMarkdown = "Changed by external source"
+        });
+        using var form = Form(row, "update.jsonl", conflictPolicy: "update");
+        var imported = await client.PostAsync("/api/bulk/import", form);
+
+        Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+        var article = JsonDocument.Parse(await client.GetStringAsync($"/api/articles/{id}")).RootElement;
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("approvedAt").ValueKind);
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("lastReviewedAt").ValueKind);
+        Assert.Equal("Changed by external source", article.GetProperty("contentMarkdown").GetString());
+    }
+
+    [Fact]
+    public async Task Import_PublishedArticle_DoesNotClaimHumanReview()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Unreviewed bulk {Guid.NewGuid():N}";
+        using var form = Form(JsonSerializer.Serialize(new
+        {
+            externalId = "ext-" + Guid.NewGuid().ToString("N"), title,
+            status = "published", contentType = "reference", contentMarkdown = "Imported"
+        }), "published.jsonl");
+
+        var imported = JsonDocument.Parse(await (await client.PostAsync("/api/bulk/import", form))
+            .Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(1, imported.GetProperty("created").GetInt32());
+        var exported = await client.GetStringAsync($"/api/articles?q={Uri.EscapeDataString(title)}");
+        var id = JsonDocument.Parse(exported).RootElement.GetProperty("articles")[0].GetProperty("id").GetString();
+        var article = JsonDocument.Parse(await client.GetStringAsync($"/api/articles/{id}")).RootElement;
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("lastReviewedAt").ValueKind);
+    }
+
+
+    private static MultipartFormDataContent Form(string content, string name, bool dryRun = false,
+        string conflictPolicy = "skip")
     {
         var form = new MultipartFormDataContent();
         var file = new ByteArrayContent(Encoding.UTF8.GetBytes(content));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         form.Add(file, "file", name);
         form.Add(new StringContent(dryRun.ToString()), "dryRun");
-        form.Add(new StringContent("skip"), "conflictPolicy");
+        form.Add(new StringContent(conflictPolicy), "conflictPolicy");
         return form;
     }
 

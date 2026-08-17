@@ -239,8 +239,7 @@ Tag picker with inline creation capability.
 - **Fonts**: Geist (sans-serif), Geist Mono (monospace) via `@theme inline`
 - **Icons**: `lucide-react` exclusively (no other icon libraries)
 - **Color patterns**:
-  - Status badges: draft=zinc, pending=amber, published=green, archived=red
-  - Status badges: draft=gray, pending=amber, published=green, archived=red
+  - Status badges: draft=gray, published=green, archived=red
   - Role badges: admin=red, editor=blue, viewer=gray
   - Dashboard stat cards: blue, green, amber, purple
 

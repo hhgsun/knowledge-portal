@@ -1,6 +1,8 @@
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
+using System.Text.Json;
+using KnowledgePortal.Api.Models.Entities;
 
 namespace KnowledgePortal.Api.Helpers;
 
@@ -89,7 +91,6 @@ public static class AttachmentHelper
     {
         var attachments = await db.ArticleAttachments
             .Where(a => a.ArticleId == articleId)
-            .Select(a => new { a.StoredFileName, a.FileName })
             .ToListAsync(ct);
 
         if (attachments.Count == 0) return "";
@@ -97,17 +98,45 @@ public static class AttachmentHelper
         var sb = new System.Text.StringBuilder();
         foreach (var att in attachments)
         {
-            var extension = Path.GetExtension(att.FileName).ToLowerInvariant();
-            var filePath = GetFilePath(config, articleId, att.StoredFileName);
-            var text = AttachmentTextExtractor.ExtractText(filePath, extension);
-            if (!string.IsNullOrWhiteSpace(text))
+            var extraction = GetOrExtract(config, att);
+            if (!string.IsNullOrWhiteSpace(extraction.Text))
             {
-                sb.Append(text);
+                sb.Append(extraction.Text);
                 sb.Append(' ');
             }
         }
 
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+
         return sb.ToString();
+    }
+
+    public static AttachmentExtractionResult GetOrExtract(IConfiguration config, ArticleAttachment attachment)
+    {
+        if (attachment.ExtractedAt != null && attachment.ExtractionStatus is "completed" or "no_text")
+        {
+            try
+            {
+                var segments = string.IsNullOrWhiteSpace(attachment.ExtractedSegmentsJson)
+                    ? []
+                    : JsonSerializer.Deserialize<List<AttachmentTextSegment>>(attachment.ExtractedSegmentsJson) ?? [];
+                return new(attachment.ExtractionStatus, attachment.ExtractedText ?? "", segments,
+                    attachment.ExtractionError);
+            }
+            catch (JsonException)
+            {
+                // Legacy/corrupt extraction metadata is regenerated from the immutable file.
+            }
+        }
+
+        var path = GetFilePath(config, attachment.ArticleId, attachment.StoredFileName);
+        var result = AttachmentTextExtractor.Extract(path, Path.GetExtension(attachment.FileName));
+        attachment.ExtractionStatus = result.Status;
+        attachment.ExtractionError = result.Error;
+        attachment.ExtractedText = result.Text;
+        attachment.ExtractedSegmentsJson = JsonSerializer.Serialize(result.Segments);
+        attachment.ExtractedAt = DateTime.UtcNow;
+        return result;
     }
 
     /// <summary>Builds articleId → attachment summaries (with download URLs) for a set of articles.</summary>

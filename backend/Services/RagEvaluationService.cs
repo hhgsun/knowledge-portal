@@ -46,10 +46,9 @@ public class RagEvaluationService(AppDbContext db, RagService rag)
         var ideal = Enumerable.Range(0, Math.Min(expected.Count, ranked.Count)).Sum(i => 1 / Math.Log2(i + 2));
         var answer = Fold(response.Answer);
         var forbidden = item.ForbiddenFacts.Where(x => answer.Contains(Fold(x), StringComparison.Ordinal)).ToList();
-        var cited = response.Sources.Count(x => response.Answer.Contains($"[{x.Title}]", StringComparison.OrdinalIgnoreCase));
         return new(item.Id, item.Category, recall, mrr, expected.Count == 0 ? 1 : ideal == 0 ? 0 : dcg / ideal,
             item.ExpectedFacts.Count == 0 ? 1 : item.ExpectedFacts.Count(x => answer.Contains(Fold(x), StringComparison.Ordinal)) / (double)item.ExpectedFacts.Count,
-            response.Sources.Count == 0 ? (item.ExpectedRefusal ? 1 : 0) : cited / (double)response.Sources.Count,
+            response.Sources.Count == 0 ? (item.ExpectedRefusal ? 1 : 0) : response.CitationCoverage,
             Refusals.Any(x => answer.Contains(Fold(x), StringComparison.Ordinal)) == item.ExpectedRefusal,
             forbidden.Count == 0, watch.ElapsedMilliseconds, ranked, forbidden, response.Answer);
     }

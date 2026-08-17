@@ -40,7 +40,7 @@ public sealed class PortalMetrics
     public Histogram<double> RagCitationCoverage { get; }
     public UpDownCounter<long> RagActiveRequests { get; }
 
-    public PortalMetrics(IServiceScopeFactory scopeFactory)
+    public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
     {
         EmbeddingFailures = _meter.CreateCounter<long>(
             "kp_embedding_failures",
@@ -69,6 +69,7 @@ public sealed class PortalMetrics
             "kp_pending_embeddings",
             () =>
             {
+                if (!(config?.GetValue("Ollama:Enabled", false) ?? false)) return 0;
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 return db.Articles.Count(a => a.Status == "published" && a.IndexedAt == null);

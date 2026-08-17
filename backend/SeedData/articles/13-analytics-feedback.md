@@ -27,7 +27,7 @@ Ana sayfa dashboard'u (GET /api/dashboard) tüm giriş yapmış kullanıcılara 
 
 Analitik paneli (GET /api/analytics) daha detaylı metrikler sunar. Erişim için analytics:view yetkisi gerekir (admin ve editor rolleri) ve yalnızca session (JWT) ile erişilebilir — API key ile erişilemez.
 
-- **Durum dağılımı:** Makalelerin draft/pending/published/archived durumlarına göre sayıları.
+- **Durum dağılımı:** Makalelerin draft/published/archived durumlarına göre sayıları.
 - **Popüler aramalar:** En çok yapılan 10 arama sorgusu ve sayıları.
 - **Sonuçsuz aramalar:** Sonuç döndürmeyen 10 arama — içerik açığı tespiti için en değerli metrik. Kullanıcıların aradığı ama bulamadığı konular yeni makale adaylarıdır.
 - **En çok görüntülenenler:** Son 7 günde en çok görüntülenen 10 makale.

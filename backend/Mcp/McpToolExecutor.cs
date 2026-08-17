@@ -283,13 +283,13 @@ public class McpToolExecutor
             ? await _db.ResolveAuthorIdsAsync(authorSlugs)
             : null;
 
-        // Match REST semantics: an entirely unknown tag set is a definite miss. An unknown
-        // author must also remain a restrictive filter instead of widening to every author.
+        // Match REST semantics: tag filters are ANDed, so any unknown tag is a definite miss.
+        // An unknown author also remains restrictive instead of widening to every author.
         List<string>? resolvedTags = null;
         if (tagSlugs.Count > 0)
         {
             resolvedTags = await _db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync(ct);
-            if (resolvedTags.Count == 0)
+            if (resolvedTags.Count != tagSlugs.Count)
                 return await SearchResultAsync(new { results = Array.Empty<object>(), query, type = "tag", tags = tagSlugs, total = 0, page = 1, totalPages = 0 }, query, 0, "tag", sw, principal, ct);
         }
 
@@ -311,8 +311,9 @@ public class McpToolExecutor
             return await SearchResultAsync(new { results, query, type = "tag", tags = tagSlugs, total, page, totalPages = (int)Math.Ceiling(total / (double)limit) }, query, total, "tag", sw, principal, ct);
         }
 
-        var indexingPending = await _db.Articles.AnyAsync(a => a.Status == "published" && a.IndexedAt == null, ct);
         var ollamaEnabled = _config.GetValue("Ollama:Enabled", false);
+        var indexingPending = await _db.Articles.AnyAsync(a => a.Status == "published"
+            && (a.FtsIndexedAt == null || (ollamaEnabled && a.IndexedAt == null)), ct);
         var vectorSearch = ollamaEnabled ? _services.GetService<IVectorSearchService>() : null;
 
         if (type == "rag")
@@ -340,7 +341,8 @@ public class McpToolExecutor
                     evidence = rag.Evidence.Select(e => new { e.SourceId, e.ArticleId, e.Title, e.Slug,
                         canonicalUrl = $"/api/articles/{e.Slug}", e.SourceType, e.AttachmentId, e.SourceName,
                         e.SourceLocation, e.Passage, e.Score }),
-                    rag.CitationCoverage, rag.GroundingStatus, rag.InsufficientContext, rag.PartialResult, rag.Warnings,
+                    rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
+                    rag.InsufficientContext, rag.PartialResult, rag.Warnings,
                     query, type, indexingPending
                 }, query, rag.Sources.Count, type, sw, principal, ct);
             }

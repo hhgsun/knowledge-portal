@@ -313,7 +313,7 @@ Adds an approval trust signal to an already-published article without changing i
 Removes the recorded approval without unpublishing the article.
 
 **Guards**: Article must currently have a recorded approval.
-**200 Response**: `{ "message": "Article rejected and returned to draft", "id": "...", "slug": "..." }`
+**200 Response**: `{ "message": "Article approval removed", "id": "...", "slug": "..." }`
 **400**: Article is not approved.
 
 `POST /api/articles/{id}/reject` remains as a backwards-compatible alias.
@@ -348,7 +348,7 @@ Removes the recorded approval without unpublishing the article.
 **403**: No edit permission.
 
 ### `DELETE /api/articles/{id}/attachments/{attachmentId}`
-**Auth**: Bearer (JWT or API Key) — requires `articles:edit_own` (if owner) or `articles:edit_any`
+**Auth**: Bearer session only — requires `articles:edit_own` (if owner) or `articles:edit_any`
 
 **200 Response**: `{ "message": "Attachment deleted" }`
 **403**: No edit permission.
@@ -358,7 +358,8 @@ Removes the recorded approval without unpublishing the article.
 **Auth**: Bearer (JWT or API Key)
 
 Returns the file as a binary stream with appropriate `Content-Type` and `Content-Disposition` headers.
-**404**: Attachment not found or file missing from disk.
+The caller must also be allowed to view the parent article; draft ownership is enforced and inline images are loaded with bearer-authenticated fetches.
+**404**: Attachment/parent article not visible, or file missing from disk.
 
 ---
 
@@ -701,7 +702,7 @@ Returns local `data/uploads` bytes/free space, extraction backlog/failures, and 
 {
   "overview": {
     "totalArticles": 42,
-    "articlesByStatus": { "draft": 5, "published": 30, "pending": 4, "archived": 3 },
+    "articlesByStatus": { "draft": 9, "published": 30, "archived": 3 },
     "viewsThisWeek": 156,
     "searchesToday": 23,
     "staleArticles": 3

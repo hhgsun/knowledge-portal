@@ -117,6 +117,58 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task UpdateArticle_RejectsBlankTitle()
+    {
+        await AuthenticateAsAdmin();
+        var created = await (await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Valid title " + Guid.NewGuid().ToString("N")
+        })).Content.ReadFromJsonAsync<JsonElement>();
+
+        var response = await _client.PutAsJsonAsync($"/api/articles/{created.GetProperty("id").GetString()}",
+            new { title = "   " });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateArticle_TitleCollision_GeneratesUniqueSlug()
+    {
+        await AuthenticateAsAdmin();
+        var suffix = Guid.NewGuid().ToString("N");
+        var title = "Collision " + suffix;
+        await _client.PostAsJsonAsync("/api/articles", new { title });
+        var second = await (await _client.PostAsJsonAsync("/api/articles", new { title = "Other " + suffix }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        var response = await _client.PutAsJsonAsync($"/api/articles/{second.GetProperty("id").GetString()}",
+            new { title });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.EndsWith("-1", body.GetProperty("slug").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateArticle_StatusChange_InvalidatesApprovalAndReview()
+    {
+        await AuthenticateAsAdmin();
+        var created = await (await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Approval status " + Guid.NewGuid().ToString("N"), status = "published"
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/articles/{id}/approve", null)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK,
+            (await _client.PutAsJsonAsync($"/api/articles/{id}", new { status = "archived" })).StatusCode);
+        var article = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{id}");
+
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("approvedAt").ValueKind);
+        Assert.Equal(JsonValueKind.Null, article.GetProperty("lastReviewedAt").ValueKind);
+    }
+
+    [Fact]
     public async Task DeleteArticle_RemovesArticle()
     {
         await AuthenticateAsAdmin();

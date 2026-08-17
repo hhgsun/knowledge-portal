@@ -29,7 +29,6 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
         [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"],
         [".pptx"] = ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/octet-stream"],
-        [".xls"] = ["application/vnd.ms-excel", "application/octet-stream"],
         [".yaml"] = ["text/yaml", "application/x-yaml", "text/plain", "application/octet-stream"],
         [".json"] = ["application/json", "text/plain"],
         [".csv"] = ["text/csv", "text/plain", "application/octet-stream"],
@@ -38,7 +37,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
     [HttpGet("api/articles/{articleId}/attachments")]
     public async Task<IActionResult> List(string articleId)
     {
-        var article = await db.Articles.FindAsync(articleId);
+        var article = await articleService.GetViewableByIdAsync(articleId, User);
         if (article == null) return NotFound(new { error = "Article not found" });
 
         var attachments = await db.ArticleAttachments
@@ -79,7 +78,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         // Extension whitelist check
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         var allowedExtensions = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>()
-            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".pptx", ".xls", ".yaml", ".json", ".csv", ".svg"];
+            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".pptx", ".yaml", ".json", ".csv", ".svg"];
 
         if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
             return BadRequest(new { error = $"File type '{extension}' is not allowed" });
@@ -122,8 +121,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         };
 
         db.ArticleAttachments.Add(attachment);
-        article.ApprovedById = null;
-        article.ApprovedAt = null;
+        ArticleService.InvalidateApproval(article);
+        article.UpdatedAt = DateTime.UtcNow;
         try { await db.SaveChangesAsync(); }
         catch
         {
@@ -160,8 +159,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         // Delete file from disk
         var filePath = AttachmentHelper.GetFilePath(config, articleId, attachment.StoredFileName);
         db.ArticleAttachments.Remove(attachment);
-        article.ApprovedById = null;
-        article.ApprovedAt = null;
+        ArticleService.InvalidateApproval(article);
+        article.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         try { AttachmentHelper.MoveToTrash(config, articleId, attachment.StoredFileName); }
         catch (Exception ex) { logger.LogError(ex, "Failed to move deleted attachment {AttachmentId} to trash", attachmentId); }
@@ -173,24 +172,14 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
     }
 
     [HttpGet("api/attachments/{id}/download")]
-    [AllowAnonymous]
-    public async Task<IActionResult> Download(string id, [FromQuery] string? token = null)
+    [Authorize]
+    public async Task<IActionResult> Download(string id)
     {
-        // Allow token via query param (for <img> tags that can't send headers)
-        if (!User.Identity?.IsAuthenticated == true)
-        {
-            if (string.IsNullOrEmpty(token))
-                return Unauthorized(new { error = "Authentication required" });
-
-            // Validate the token manually
-            var jwtService = HttpContext.RequestServices.GetRequiredService<JwtService>();
-            var principal = jwtService.ValidateToken(token);
-            if (principal == null)
-                return Unauthorized(new { error = "Invalid token" });
-        }
-
         var attachment = await db.ArticleAttachments.FindAsync(id);
         if (attachment == null) return NotFound(new { error = "Attachment not found" });
+
+        if (await articleService.GetViewableByIdAsync(attachment.ArticleId, User) == null)
+            return NotFound(new { error = "Attachment not found" });
 
         var filePath = AttachmentHelper.GetFilePath(config, attachment.ArticleId, attachment.StoredFileName);
 

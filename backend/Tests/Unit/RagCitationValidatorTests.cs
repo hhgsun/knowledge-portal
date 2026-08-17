@@ -14,8 +14,9 @@ public class RagCitationValidatorTests
 
         var result = RagCitationValidator.Validate(raw, [Evidence]);
 
-        Assert.Equal("citations_verified", result.GroundingStatus);
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Equal(1, result.CitationCoverage);
+        Assert.Equal(1, result.ClaimSupportCoverage);
         Assert.Equal(["S1"], result.Claims.Single().SourceIds);
     }
 
@@ -41,6 +42,19 @@ public class RagCitationValidatorTests
         Assert.Equal("unverified", result.GroundingStatus);
         Assert.Equal("serbest metin cevap", result.Answer);
         Assert.Empty(result.Claims);
+    }
+
+    [Fact]
+    public void Validate_SeparatesValidCitationIdFromUnsupportedClaim()
+    {
+        const string raw = """{"answer":"Sunucular ayda bir kapatılır [S1].","claims":[{"text":"Sunucular ayda bir kapatılır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal(1, result.CitationCoverage);
+        Assert.Equal(0, result.ClaimSupportCoverage);
+        Assert.Equal("citation_ids_verified", result.GroundingStatus);
+        Assert.NotEmpty(result.Warnings);
     }
 
     [Fact]
