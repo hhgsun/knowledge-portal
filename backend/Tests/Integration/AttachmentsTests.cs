@@ -38,6 +38,33 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task UploadImage_ThenSaveImageMarkdown_ReturnsOk()
+    {
+        await AuthenticateAsAdmin();
+        var articleId = await CreateArticle("Inline Image Save Test");
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent([0x89, 0x50, 0x4E, 0x47]);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "inline.png");
+
+        var uploadResponse = await _client.PostAsync($"/api/articles/{articleId}/attachments", content);
+        Assert.Equal(HttpStatusCode.Created, uploadResponse.StatusCode);
+        var upload = await uploadResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var markdown = $"![inline image]({upload.GetProperty("downloadUrl").GetString()})";
+
+        var updateResponse = await _client.PutAsJsonAsync($"/api/articles/{articleId}", new
+        {
+            contentMarkdown = markdown,
+            changeSummary = "Added inline image"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var article = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}");
+        Assert.Equal(markdown, article.GetProperty("contentMarkdown").GetString());
+    }
+
+    [Fact]
     public async Task Upload_InvalidExtension_Returns400()
     {
         await AuthenticateAsAdmin();

@@ -24,9 +24,13 @@ export function useArticleImages() {
   }, []);
 
   const uploadPendingImages = useCallback(
-    async (articleId: string, markdown: string): Promise<{ markdown: string; uploadedIds: string[] }> => {
+    async (articleId: string, markdown: string): Promise<{
+      markdown: string;
+      uploadedIds: string[];
+      uploadedBlobUrls: string[];
+    }> => {
       const pending = pendingUploadsRef.current;
-      if (pending.size === 0) return { markdown, uploadedIds: [] };
+      if (pending.size === 0) return { markdown, uploadedIds: [], uploadedBlobUrls: [] };
 
       const urlMap = new Map<string, string>();
       const uploadedIds: string[] = [];
@@ -58,13 +62,17 @@ export function useArticleImages() {
       let result = markdown;
       for (const [blobUrl, realUrl] of urlMap) {
         result = result.split(blobUrl).join(realUrl);
-        URL.revokeObjectURL(blobUrl);
       }
-      pending.clear();
-      return { markdown: result, uploadedIds };
+      return { markdown: result, uploadedIds, uploadedBlobUrls: [...urlMap.keys()] };
     },
     [fetchWithAuth]
   );
+
+  const commitUploadedImages = useCallback((blobUrls: string[]) => {
+    for (const blobUrl of blobUrls) {
+      if (pendingUploadsRef.current.delete(blobUrl)) URL.revokeObjectURL(blobUrl);
+    }
+  }, []);
 
   const uploadPendingFiles = useCallback(
     async (articleId: string, files: File[]): Promise<string[]> => {
@@ -106,6 +114,7 @@ export function useArticleImages() {
     uploadImage,
     deleteBlobImage,
     uploadPendingImages,
+    commitUploadedImages,
     uploadPendingFiles,
     deleteUploadedAttachments,
   };

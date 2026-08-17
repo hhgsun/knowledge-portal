@@ -13,6 +13,36 @@ namespace KnowledgePortal.Api.PostgresTests;
 public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
     [PostgresFact]
+    public async Task VersionAllocator_ExecutesUpdateReturningWithoutSqlComposition()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        await using var db = fixture.CreateDb();
+        var owner = User("version-u" + suffix);
+        var article = Article("version-a" + suffix, owner.Id, "reference");
+        db.AddRange(owner, article);
+        await db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder().Build();
+        var service = new ArticleService(
+            db,
+            new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance),
+            new TagService(db),
+            new IndexJobQueue(db, config));
+
+        Assert.Equal(1, await service.AddVersionAsync(article.Id, article.Title, "![image](/api/attachments/one/download)", owner.Id, null));
+        await db.SaveChangesAsync();
+        Assert.Equal(2, await service.AddVersionAsync(article.Id, article.Title, "![image](/api/attachments/two/download)", owner.Id, null));
+        await db.SaveChangesAsync();
+
+        var versions = await db.ArticleVersions
+            .Where(version => version.ArticleId == article.Id)
+            .OrderBy(version => version.Version)
+            .Select(version => version.Version)
+            .ToArrayAsync();
+        Assert.Equal([1, 2], versions);
+    }
+
+    [PostgresFact]
     public async Task Migrations_CreatePgvectorAndRequiredIndexes()
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);

@@ -22,7 +22,7 @@ export default function NewArticlePage() {
   const [error, setError] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const { uploadImage, deleteBlobImage, uploadPendingImages, uploadPendingFiles } = useArticleImages();
+  const { uploadImage, deleteBlobImage, uploadPendingImages, commitUploadedImages, uploadPendingFiles } = useArticleImages();
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -71,6 +71,7 @@ export default function NewArticlePage() {
           throw new Error(data.error || "Failed to finalize article");
         }
         const finalized = await finalize.json();
+        commitUploadedImages(images.uploadedBlobUrls);
 
         toast.success("Article created successfully");
         navigate(`/articles/${finalized.slug}`);

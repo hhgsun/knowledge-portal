@@ -147,9 +147,17 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         }
         else if (db.Database.IsRelational())
         {
-            nextVersion = await db.Database.SqlQueryRaw<int>(
-                """UPDATE articles SET "VersionCounter" = "VersionCounter" + 1 WHERE "Id" = {0} RETURNING "VersionCounter" AS "Value""",
-                articleId).SingleAsync();
+            // Materialize the command directly. SingleAsync() composes LIMIT over the raw SQL,
+            // which turns PostgreSQL's UPDATE ... RETURNING into an invalid derived table.
+            var allocatedVersions = await db.Database.SqlQueryRaw<int>(
+                """
+                UPDATE articles
+                SET "VersionCounter" = "VersionCounter" + 1
+                WHERE "Id" = {0}
+                RETURNING "VersionCounter" AS "Value"
+                """,
+                articleId).ToListAsync();
+            nextVersion = allocatedVersions.Single();
         }
         else
         {

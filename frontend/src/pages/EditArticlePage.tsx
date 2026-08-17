@@ -29,7 +29,14 @@ export default function EditArticlePage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<Set<string>>(new Set());
 
-  const { uploadImage, deleteBlobImage, uploadPendingImages, uploadPendingFiles, deleteUploadedAttachments } = useArticleImages();
+  const {
+    uploadImage,
+    deleteBlobImage,
+    uploadPendingImages,
+    commitUploadedImages,
+    uploadPendingFiles,
+    deleteUploadedAttachments,
+  } = useArticleImages();
 
   const deleteImage = useCallback(async (src: string) => {
     if (src.startsWith("blob:")) {
@@ -107,7 +114,10 @@ export default function EditArticlePage() {
       });
 
       if (res.ok) {
+        // The article now references these attachments; later cleanup failures must not roll them back.
+        newlyUploadedIds = [];
         const updated = await res.json();
+        commitUploadedImages(images.uploadedBlobUrls);
         let deleteFailed = false;
         for (const attachmentId of deletedAttachmentIds) {
           const deleted = await fetchWithAuth(`/api/articles/${article.id}/attachments/${attachmentId}`, { method: "DELETE" });
