@@ -199,6 +199,7 @@ builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<StatsService>();
+builder.Services.AddScoped<UsageAnalyticsService>();
 builder.Services.AddScoped<IndexJobQueue>();
 builder.Services.AddSingleton<ISearchReranker, LocalSearchReranker>();
 builder.Services.AddScoped<AttachmentStorageService>();

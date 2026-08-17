@@ -252,14 +252,91 @@ export interface AnalyticsResponse {
   topArticles: { articleId: string; title: string; slug: string; views: number }[];
   usage: {
     periodDays: number;
+    periodStart: string;
+    periodEnd: string;
     totalRequests: number;
+    successfulRequests: number;
     errors: number;
     errorRate: number;
     averageDurationMs: number;
-    users: { userId: string; name: string; email: string; requests: number; errors: number; averageDurationMs: number; lastUsedAt: string }[];
-    integrations: { apiKeyId: string; name: string; ownerName: string; requests: number; mcpCalls: number; errors: number; averageDurationMs: number; lastUsedAt: string }[];
-    operations: { operation: string; channel: string; requests: number; errors: number; averageDurationMs: number }[];
+    activeUsers: number;
+    activeIntegrations: number;
+    sessionRequests: number;
+    integrationRequests: number;
+    restRequests: number;
+    mcpCalls: number;
+    daily: AnalyticsDailyUsage[];
+    users: AnalyticsUserUsage[];
+    integrations: AnalyticsIntegrationUsage[];
+    operations: AnalyticsOperationUsage[];
   };
+}
+
+export interface AnalyticsDailyUsage {
+  date: string;
+  requests: number;
+  errors: number;
+  averageDurationMs: number;
+  activeUsers: number;
+  activeIntegrations: number;
+  sessionRequests: number;
+  integrationRequests: number;
+  restRequests: number;
+  mcpCalls: number;
+}
+
+export interface AnalyticsUserUsage {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  requests: number;
+  sessionRequests: number;
+  integrationRequests: number;
+  restRequests: number;
+  mcpCalls: number;
+  readRequests: number;
+  writeRequests: number;
+  errors: number;
+  errorRate: number;
+  averageDurationMs: number;
+  lastUsedAt: string;
+  activeDays: number;
+  integrationsUsed: number;
+  topOperation: string | null;
+  topOperationRequests: number;
+}
+
+export interface AnalyticsIntegrationUsage {
+  apiKeyId: string;
+  name: string;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+  requests: number;
+  restRequests: number;
+  mcpCalls: number;
+  readRequests: number;
+  writeRequests: number;
+  errors: number;
+  errorRate: number;
+  averageDurationMs: number;
+  lastUsedAt: string;
+  activeDays: number;
+  topOperation: string | null;
+  topOperationRequests: number;
+}
+
+export interface AnalyticsOperationUsage {
+  operation: string;
+  channel: string;
+  requests: number;
+  errors: number;
+  errorRate: number;
+  averageDurationMs: number;
+  lastUsedAt: string;
+  uniqueUsers: number;
+  uniqueIntegrations: number;
 }
 
 // ─── API Keys ────────────────────────────────────────────────

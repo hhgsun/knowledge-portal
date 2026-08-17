@@ -697,6 +697,10 @@ Returns local `data/uploads` bytes/free space, extraction backlog/failures, and 
 **Auth**: Bearer (session only, rejects API key)
 **Permission**: `analytics:view`
 
+| Param | Type | Default | Constraints |
+|-------|------|---------|-------------|
+| `days` | int | 30 | Clamped to 1–365; usage aggregates use this calendar-day window |
+
 **200 Response**:
 ```json
 {
@@ -709,9 +713,54 @@ Returns local `data/uploads` bytes/free space, extraction backlog/failures, and 
   },
   "topSearches": [{ "query": "...", "count": 15 }],
   "failedSearches": [{ "query": "...", "count": 8 }],
-  "topArticles": [{ "articleId": "...", "title": "...", "slug": "...", "views": 42 }]
+  "topArticles": [{ "articleId": "...", "title": "...", "slug": "...", "views": 42 }],
+  "usage": {
+    "periodDays": 30,
+    "periodStart": "2026-07-19T00:00:00Z",
+    "periodEnd": "2026-08-17T12:00:00Z",
+    "totalRequests": 1200,
+    "successfulRequests": 1176,
+    "errors": 24,
+    "errorRate": 0.02,
+    "averageDurationMs": 84.5,
+    "activeUsers": 18,
+    "activeIntegrations": 4,
+    "sessionRequests": 900,
+    "integrationRequests": 300,
+    "restRequests": 1050,
+    "mcpCalls": 150,
+    "daily": [{
+      "date": "2026-08-17", "requests": 40, "errors": 1,
+      "averageDurationMs": 75, "activeUsers": 9, "activeIntegrations": 2,
+      "sessionRequests": 30, "integrationRequests": 10,
+      "restRequests": 34, "mcpCalls": 6
+    }],
+    "users": [{
+      "userId": "...", "name": "...", "email": "...", "role": "editor",
+      "requests": 80, "sessionRequests": 60, "integrationRequests": 20,
+      "restRequests": 72, "mcpCalls": 8, "readRequests": 70, "writeRequests": 10,
+      "errors": 2, "errorRate": 0.025, "averageDurationMs": 70,
+      "lastUsedAt": "...", "activeDays": 12, "integrationsUsed": 1,
+      "topOperation": "GET api/articles", "topOperationRequests": 30
+    }],
+    "integrations": [{
+      "apiKeyId": "...", "name": "CI", "ownerId": "...",
+      "ownerName": "...", "ownerEmail": "...", "requests": 100,
+      "restRequests": 40, "mcpCalls": 60, "readRequests": 95, "writeRequests": 5,
+      "errors": 3, "errorRate": 0.03, "averageDurationMs": 90,
+      "lastUsedAt": "...", "activeDays": 20,
+      "topOperation": "mcp.search_articles", "topOperationRequests": 45
+    }],
+    "operations": [{
+      "operation": "mcp.search_articles", "channel": "mcp", "requests": 60,
+      "errors": 2, "errorRate": 0.0333, "averageDurationMs": 110,
+      "lastUsedAt": "...", "uniqueUsers": 3, "uniqueIntegrations": 2
+    }]
+  }
 }
 ```
+
+`daily` always contains one row per calendar day (including zero-usage days). User totals include both their direct session traffic and traffic made by their API keys. Integration totals identify API keys and their owners. Read/write classification treats non-mutating REST methods and the current read-only MCP tools as reads.
 
 **Timeframes**: Week = last 7 days, Day = last 24 hours, Stale = 90+ days since `last_reviewed_at`.
 

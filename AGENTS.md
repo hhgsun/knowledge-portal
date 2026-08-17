@@ -283,7 +283,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (RAG) | ✅ Implemented | Hybrid retrieval/RRF/reranking/diversity; structured claims bound to validated `S1` evidence; process-wide concurrency bulkhead, total request budget, per-stage timeouts, bounded transient retry and AI circuit breaker; broad map batches run with bounded parallelism and return explicit partial results when individual batches/reduce fail |
 | RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, durable background runs, Recall/MRR/NDCG/fact/citation/refusal/safety/latency metrics, run history at `/settings/rag-evaluations` |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
-| Analytics | ✅ Implemented | Session-only endpoint |
+| Analytics | ✅ Implemented | Session-only endpoint; persisted authenticated usage events with calendar-day trend plus per-user, per-API-key integration, REST/MCP, read/write, error, latency, and top-operation breakdowns |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
 | API Key Management | ✅ Implemented | Self-service create/list/rotate/delete (all roles, ProfilePage); admin CRUD over all users' keys (`/api/admin/keys`, `/admin/keys`) |
 | Article Feedback | ✅ Implemented | Vote (1 per user/article, toggle) + Comments (independent, multiple). Wilson Score. View count in responses. |
