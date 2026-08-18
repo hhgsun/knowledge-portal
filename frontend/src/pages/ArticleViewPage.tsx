@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
+import { Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, LoaderCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useApi } from "../hooks/useApi";
@@ -166,6 +166,7 @@ export default function ArticleViewPage() {
 
   const handleReject = async () => {
     if (!article) return;
+    if (!confirm(`"${article.title}" makalesinin onayını kaldırmak istediğinize emin misiniz?`)) return;
     setActionLoading(true);
     const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "DELETE" });
     if (res.ok) {
@@ -254,27 +255,56 @@ export default function ArticleViewPage() {
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
         <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-zinc-500">
           <ContentTypeBadge contentType={article.contentType} size="md" clickable />
-          {article.status === "published" && (
+          {article.status === "published" && isApprover && (
+            <button
+              type="button"
+              onClick={article.approvedAt ? handleReject : handleApprove}
+              disabled={actionLoading}
+              aria-pressed={Boolean(article.approvedAt)}
+              aria-label={article.approvedAt ? "Makale onayını kaldır" : "Makaleyi onayla"}
+              title={article.approvedAt
+                ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından onaylandı. Onayı kaldırmak için tıklayın.`
+                : "Makaleyi onaylamak için tıklayın."}
+              className={`group inline-flex h-7 w-28 shrink-0 items-center justify-center rounded-full border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 dark:focus-visible:ring-offset-zinc-950 ${article.approvedAt
+                ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-300 focus-visible:bg-red-50 focus-visible:text-red-700 focus-visible:ring-red-500 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:border-red-800 dark:hover:bg-red-950 dark:hover:text-red-300 dark:focus-visible:border-red-800 dark:focus-visible:bg-red-950 dark:focus-visible:text-red-300"
+                : "border-zinc-300 bg-white text-zinc-700 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-950 dark:hover:text-emerald-300"
+                }`}
+            >
+              {actionLoading ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <LoaderCircle size={13} className="animate-spin" />
+                  İşleniyor
+                </span>
+              ) : article.approvedAt ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 group-hover:hidden group-focus-visible:hidden">
+                    <CheckCircle size={13} />
+                    Onaylı
+                  </span>
+                  <span className="hidden items-center gap-1.5 group-hover:inline-flex group-focus-visible:inline-flex">
+                    <XCircle size={13} />
+                    Onayı kaldır
+                  </span>
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle size={13} />
+                  Onayla
+                </span>
+              )}
+            </button>
+          )}
+          {article.status === "published" && !isApprover && (
             <span
-              title={article.approvedAt ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından doğrulandı` : "Yayımlanmış fakat henüz doğrulanmamış içerik"}
+              title={article.approvedAt ? `${article.approvedBy ?? "Yetkili kullanıcı"} tarafından onaylandı` : "Yayımlanmış fakat henüz onaylanmamış içerik"}
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${article.approvedAt
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                 }`}
             >
               {article.approvedAt ? <CheckCircle size={12} /> : <Clock size={12} />}
               {article.approvedAt ? "Onaylı" : "Onaylanmamış"}
             </span>
-          )}
-          {article.status === "published" && isApprover && (
-            <button
-              onClick={article.approvedAt ? handleReject : handleApprove}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              {article.approvedAt ? <XCircle size={12} /> : <CheckCircle size={12} />}
-              {article.approvedAt ? "Onayı kaldır" : "Onayla"}
-            </button>
           )}
           {article.status !== "published" && (
             <span className={`text-xs px-2 py-0.5 rounded-full ${article.status === "draft" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" :
