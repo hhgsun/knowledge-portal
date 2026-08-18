@@ -145,11 +145,19 @@ public static class AttachmentHelper
         var attachments = await db.ArticleAttachments
             .Where(a => articleIds.Contains(a.ArticleId))
             .OrderBy(a => a.CreatedAt)
-            .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes })
+            .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes, a.CreatedAt })
             .ToListAsync();
 
         return attachments.GroupBy(a => a.ArticleId).ToDictionary(
             g => g.Key,
-            g => g.Select(a => (object)new { a.Id, a.FileName, a.ContentType, a.SizeBytes, DownloadUrl = GetDownloadUrl(a.Id) }).ToList());
+            g => g.Select(a => (object)new
+            {
+                a.Id,
+                a.FileName,
+                a.ContentType,
+                a.SizeBytes,
+                DownloadUrl = GetDownloadUrl(a.Id),
+                CreatedAt = a.CreatedAt.ToString("o")
+            }).ToList());
     }
 }

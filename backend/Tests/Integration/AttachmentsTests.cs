@@ -100,6 +100,20 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ArticleDetail_AttachmentIncludesCreatedAt()
+    {
+        await AuthenticateAsAdmin();
+        var articleId = await CreateArticle("Attachment Detail Date Test");
+        await UploadTextFile(articleId, "dated.txt", "Dated content");
+
+        var article = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}");
+        var attachment = article.GetProperty("attachments")[0];
+        var createdAt = attachment.GetProperty("createdAt").GetString();
+
+        Assert.True(DateTimeOffset.TryParse(createdAt, out _));
+    }
+
+    [Fact]
     public async Task Download_ReturnsFileContent()
     {
         await AuthenticateAsAdmin();

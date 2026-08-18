@@ -50,6 +50,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatAttachmentDate(value: string): { date: string; dateTime: string } | null {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    date: parsed.toLocaleDateString(),
+    dateTime: parsed.toLocaleString(),
+  };
+}
+
 export default function AttachmentList({ articleId, canEdit, initialAttachments, onDeferredDelete, onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile }: AttachmentListProps) {
   const { fetchWithAuth } = useApi();
   const [attachments, setAttachments] = useState<ArticleAttachment[]>(initialAttachments ?? []);
@@ -282,6 +291,7 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {visibleAttachments.map((attachment) => {
             const isDeleted = deletedIds?.has(attachment.id);
+            const formattedDate = formatAttachmentDate(attachment.createdAt);
             return (
             <li key={attachment.id} className={cn(
               "flex items-center gap-3 px-4 py-2.5 transition-colors",
@@ -306,9 +316,11 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
               <span className="text-xs text-zinc-400 whitespace-nowrap">
                 {formatFileSize(attachment.sizeBytes)}
               </span>
-              <span className="text-xs text-zinc-400 whitespace-nowrap" title={new Date(attachment.createdAt).toLocaleString()}>
-                {new Date(attachment.createdAt).toLocaleDateString()}
-              </span>
+              {formattedDate && (
+                <span className="text-xs text-zinc-400 whitespace-nowrap" title={formattedDate.dateTime}>
+                  {formattedDate.date}
+                </span>
+              )}
               {!isDeleted && (
                 <button
                   onClick={() => handleDownload(attachment)}
