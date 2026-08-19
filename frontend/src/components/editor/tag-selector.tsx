@@ -136,7 +136,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
         if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
       });
     return () => controller.abort();
-  }, [fetchWithAuth, selectedTags, tagsById]);
+  }, [fetchWithAuth, selectedTags, tagsById, valueField]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
 
@@ -216,7 +216,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
           {selectedTagObjects.map((tag) => (
             <span
               key={tag.id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs rounded-full"
+              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
             >
               {tag.name}
               {tag.pending && (

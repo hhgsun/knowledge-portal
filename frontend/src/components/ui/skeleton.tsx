@@ -120,18 +120,25 @@ export function ArticleViewSkeleton() {
 /** Edit article loading skeleton */
 export function EditArticleSkeleton() {
   return (
-    <div className="max-w-4xl mx-auto" aria-label="Loading editor">
-      <div className="flex items-center justify-between mb-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-9 w-28 rounded-lg" />
+    <div className="max-w-5xl mx-auto" aria-label="Loading editor">
+      <div className="mb-6">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <Skeleton className="h-9 w-2/3" />
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-20 rounded-lg" />
+            <Skeleton className="h-9 w-36 rounded-lg" />
+          </div>
+        </div>
+        <Skeleton className="h-5 w-1/2 mb-4" />
+        <div className="flex gap-3 mb-3">
+          <Skeleton className="h-8 w-28 rounded-lg" />
+          <Skeleton className="h-8 w-24 rounded-lg" />
+        </div>
+        <Skeleton className="h-7 w-48 rounded-full" />
       </div>
-      <Skeleton className="h-10 w-full rounded-lg mb-4" />
-      <Skeleton className="h-10 w-1/3 rounded-lg mb-4" />
-      <Skeleton className="h-64 w-full rounded-xl mb-4" />
-      <div className="flex gap-2">
-        <Skeleton className="h-8 w-20 rounded-lg" />
-        <Skeleton className="h-8 w-20 rounded-lg" />
-        <Skeleton className="h-8 w-20 rounded-lg" />
+      <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <Skeleton className="h-80 w-full rounded-xl mb-4" />
+        <Skeleton className="h-20 w-full rounded-xl" />
       </div>
     </div>
   );
