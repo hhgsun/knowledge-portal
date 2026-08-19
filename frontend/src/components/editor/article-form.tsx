@@ -144,15 +144,17 @@ export function ArticleForm({
           </div>
         )}
 
-        <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
-          <MilkdownEditor
-            contentMarkdown={contentMarkdown}
-            onChange={onContentMarkdownChange}
-            articleId={articleId}
-            uploadImage={uploadImage}
-            deleteImage={deleteImage}
-          />
-        </Suspense>
+        <div className="md:-mx-8 lg:-mx-16 xl:-mx-24">
+          <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse" />}>
+            <MilkdownEditor
+              contentMarkdown={contentMarkdown}
+              onChange={onContentMarkdownChange}
+              articleId={articleId}
+              uploadImage={uploadImage}
+              deleteImage={deleteImage}
+            />
+          </Suspense>
+        </div>
 
         {attachmentSection}
       </div>
