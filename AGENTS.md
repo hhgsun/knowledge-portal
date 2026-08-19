@@ -403,6 +403,20 @@ These entity fields exist in the database but are not yet used in business logic
 |-------|--------|---------|--------|
 | `ReviewIntervalDays` | Article | Configurable staleness threshold per article | Has DB default (90) but analytics uses hardcoded 90 days |
 
+## Future Enhancements (Not Implemented)
+
+### Generic Article Classifications
+
+- Generalize the current DB-driven `content_type` lookup into admin-configurable classification definitions and options. Example definitions: Content Type, Team, Project, Department, Product, or Location.
+- Do not hardcode or globally require organizational dimensions. An installation may enable only Team, use several dimensions, or disable all optional dimensions. Each definition independently controls active/inactive, required/optional, single/multiple selection, display order, search filtering, and AI filtering.
+- Keep Content Type as a protected system definition (single-select and required by default); admins may manage its options but cannot accidentally delete the definition or change its stable slug.
+- Store definitions, options, and article-option assignments separately (candidate entities: `ClassificationDefinition`, `ClassificationOption`, `ArticleClassification`). Used options should be deactivated rather than deleted so historical articles remain valid.
+- Render article form fields and search filters dynamically from active definitions. Keep free-form Tags separate from managed classifications.
+- Apply classification filters consistently to article lists, full-text, semantic, hybrid, RAG, and MCP searches. For RAG, enforce filters during retrieval before sources enter the model context.
+- Suggested filter semantics: values within the same definition are OR; different definitions are AND.
+- Migration path: create a protected `content-type` definition, migrate existing `lookup_values(category = "content_type")` and article values, temporarily accept the legacy `contentType` API field, then remove the compatibility path after frontend/API consumers migrate.
+- Initial scope should support managed single-select and multi-select fields only; arbitrary text/number/date custom fields are intentionally deferred.
+
 ## Rules for AI Agents
 
 ### MUST DO
