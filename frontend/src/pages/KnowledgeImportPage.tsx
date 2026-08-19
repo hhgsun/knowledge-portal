@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
+import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
@@ -25,6 +26,8 @@ export default function KnowledgeImportPage() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [error, setError] = useState("");
   const current = drafts[selected];
+  const titleRef = useAutoResizeTextArea(current?.title ?? "");
+  const excerptRef = useAutoResizeTextArea(current?.excerpt ?? "");
   const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
 
   const analyze = async () => {
@@ -90,8 +93,8 @@ export default function KnowledgeImportPage() {
       <aside className="border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-200 dark:divide-zinc-800 h-fit overflow-hidden">{drafts.map((draft, index) => <button key={`${draft.fileName}-${index}`} onClick={() => { setSelected(index); setError(""); }} className={`w-full flex items-center gap-2 text-left p-3 transition-colors ${selected === index ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}><div className="min-w-0 flex-1"><p className="font-medium text-sm truncate">{draft.title || "Untitled article"}</p><p className="text-xs text-zinc-500 truncate">{draft.fileName}</p>{draft.warning && <p className="text-xs text-amber-600 mt-1">Attachment only</p>}</div><ChevronRight size={15} className="shrink-0 text-zinc-400"/></button>)}</aside>
       {current && <section className="min-w-0 space-y-4">
         {current.warning && <div className="p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm">{current.warning}</div>}
-        <input value={current.title} onChange={event => update({ title: event.target.value })} placeholder="Makale başlığı..." className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"/>
-        <input value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value })} placeholder="Kısa açıklama (isteğe bağlı)..." className="w-full text-sm bg-transparent border-none outline-none placeholder:text-zinc-400 text-zinc-600 dark:text-zinc-400"/>
+        <textarea ref={titleRef} rows={1} value={current.title} onChange={event => update({ title: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Makale başlığı..." aria-label="Makale başlığı" maxLength={300} className="w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"/>
+        <textarea ref={excerptRef} rows={1} value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Kısa açıklama (isteğe bağlı)..." aria-label="Kısa açıklama" className="w-full resize-none overflow-hidden bg-transparent text-sm leading-relaxed text-zinc-600 outline-none placeholder:text-zinc-400 dark:text-zinc-400"/>
         <div className="flex flex-wrap gap-3 pb-4 border-b border-zinc-200 dark:border-zinc-800"><select value={current.contentType} onChange={event => update({ contentType: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">{contentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</select><select value={current.status} onChange={event => update({ status: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"><option value="draft">Taslak</option><option value="published">Yayımlandı</option></select></div>
         <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800"><label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags</label><TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/></div>
         {current.parsed && <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense>}

@@ -1,9 +1,10 @@
-import { lazy, Suspense, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Save, ArrowLeft, Tag, X } from "lucide-react";
 import { TagSelector } from "./tag-selector";
 import { ContentTypeSelect } from "./content-type-select";
 import { useLookups } from "../../hooks/useLookups";
+import { useAutoResizeTextArea } from "../../hooks/useAutoResizeTextArea";
 
 const MilkdownEditor = lazy(() => import("./milkdown-editor"));
 
@@ -260,17 +261,4 @@ export function ArticleForm({
       )}
     </div>
   );
-}
-
-function useAutoResizeTextArea(value: string) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    element.style.height = "auto";
-    element.style.height = `${element.scrollHeight}px`;
-  }, [value]);
-
-  return ref;
 }
