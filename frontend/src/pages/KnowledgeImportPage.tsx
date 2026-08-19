@@ -1,13 +1,19 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { ArrowLeft, Check, ChevronRight, FileText, Paperclip, Upload, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileText, Paperclip, Tag, Upload, WandSparkles, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ContentTypeSelect } from "../components/editor/content-type-select";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
+
+const STATUS_DESCRIPTIONS: Record<string, string> = {
+  draft: "Henüz yayımlanmadı",
+  published: "Okuyuculara açık",
+};
 
 type Draft = {
   sourceIndex: number; fileName: string; title: string; excerpt?: string; contentMarkdown: string;
@@ -91,14 +97,36 @@ export default function KnowledgeImportPage() {
     <div className="mb-5 p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl"><div className="flex flex-wrap items-end gap-3"><div className="min-w-56 flex-1"><label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags for all drafts</label><TagSelector selectedTags={bulkTags} onChange={setBulkTags}/></div><button type="button" onClick={applyBulk} disabled={!bulkTags.length} className="px-4 py-2 text-sm font-medium border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-50 hover:bg-zinc-50 dark:hover:bg-zinc-800">Apply to All</button></div></div>
     <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
       <aside className="border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-200 dark:divide-zinc-800 h-fit overflow-hidden">{drafts.map((draft, index) => <button key={`${draft.fileName}-${index}`} onClick={() => { setSelected(index); setError(""); }} className={`w-full flex items-center gap-2 text-left p-3 transition-colors ${selected === index ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}><div className="min-w-0 flex-1"><p className="font-medium text-sm truncate">{draft.title || "Untitled article"}</p><p className="text-xs text-zinc-500 truncate">{draft.fileName}</p>{draft.warning && <p className="text-xs text-amber-600 mt-1">Attachment only</p>}</div><ChevronRight size={15} className="shrink-0 text-zinc-400"/></button>)}</aside>
-      {current && <section className="min-w-0 space-y-4">
+      {current && <section className="min-w-0">
         {current.warning && <div className="p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm">{current.warning}</div>}
-        <textarea ref={titleRef} rows={1} value={current.title} onChange={event => update({ title: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Makale başlığı..." aria-label="Makale başlığı" maxLength={300} className="w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"/>
-        <textarea ref={excerptRef} rows={1} value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Kısa açıklama (isteğe bağlı)..." aria-label="Kısa açıklama" className="w-full resize-none overflow-hidden bg-transparent text-sm leading-relaxed text-zinc-600 outline-none placeholder:text-zinc-400 dark:text-zinc-400"/>
-        <div className="flex flex-wrap gap-3 pb-4 border-b border-zinc-200 dark:border-zinc-800"><select value={current.contentType} onChange={event => update({ contentType: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">{contentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</select><select value={current.status} onChange={event => update({ status: event.target.value })} className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"><option value="draft">Taslak</option><option value="published">Yayımlandı</option></select></div>
-        <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800"><label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags</label><TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/></div>
-        {current.parsed && <Suspense fallback={<div className="h-64 bg-zinc-50 dark:bg-zinc-900 rounded-lg animate-pulse"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense>}
-        <label className="flex items-center gap-2 p-3 border border-zinc-200 dark:border-zinc-800 rounded-lg"><input type="checkbox" checked={current.keepOriginal} onChange={event => update({ keepOriginal: event.target.checked })}/><Paperclip size={17}/><span className="text-sm">Keep original <strong>{current.fileName}</strong> as an attachment</span></label>
+        <div className={current.warning ? "mt-5 mb-6" : "mb-6"}>
+          <textarea ref={titleRef} rows={1} value={current.title} onChange={event => update({ title: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Makale başlığı..." aria-label="Makale başlığı" maxLength={300} className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-zinc-900 outline-none placeholder:text-zinc-300 dark:text-zinc-100 dark:placeholder:text-zinc-600"/>
+          <textarea ref={excerptRef} rows={1} value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Kısa açıklama (isteğe bağlı)..." aria-label="Kısa açıklama" className="mt-2 block w-full resize-none overflow-hidden bg-transparent text-base leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400 dark:text-zinc-400"/>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
+            <ContentTypeSelect options={contentTypes} value={current.contentType} onChange={contentType => update({ contentType })}/>
+            <div className="inline-flex min-w-0 items-center gap-2">
+              <label>
+                <span className="sr-only">Yayın durumu</span>
+                <select value={current.status} onChange={event => update({ status: event.target.value })} aria-describedby="import-article-status-description" className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"><option value="draft">Taslak</option><option value="published">Yayımlandı</option></select>
+              </label>
+              <span id="import-article-status-description" className="text-xs text-zinc-400 dark:text-zinc-500">{STATUS_DESCRIPTIONS[current.status] ?? ""}</span>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-start gap-2">
+            <Tag size={14} className="mt-2 shrink-0 text-zinc-400"/>
+            <TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/>
+          </div>
+        </div>
+
+        <label className="mb-5 flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 transition-colors hover:border-blue-300 hover:bg-blue-50/50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-blue-800 dark:hover:bg-blue-950/20">
+          <input type="checkbox" checked={current.keepOriginal} onChange={event => update({ keepOriginal: event.target.checked })} className="size-4 accent-blue-600"/>
+          <Paperclip size={18} className="shrink-0 text-zinc-500"/>
+          <span className="min-w-0 text-sm text-zinc-700 dark:text-zinc-300">Orijinal <strong className="break-all">{current.fileName}</strong> dosyasını ek dosya olarak sakla</span>
+        </label>
+
+        {current.parsed && <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-zinc-50 dark:bg-zinc-900"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense>}
       </section>}
     </div>
   </div>;
