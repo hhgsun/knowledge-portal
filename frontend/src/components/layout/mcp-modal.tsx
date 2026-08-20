@@ -11,8 +11,23 @@ interface McpModalProps {
 }
 
 type AuthTab = "bearer" | "apikey";
-type ClientTab = "vscode" | "claude" | "claude-code" | "cursor" | "windsurf";
+type ClientTab = "vscode" | "copilot" | "claude" | "claude-code" | "cursor" | "windsurf";
 type LangTab = "dotnet" | "java" | "python";
+
+interface McpToolInfo {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+interface ToolSummary {
+  name: string;
+  desc: string;
+  params: string;
+}
 
 const LANGS: { id: LangTab; label: string }[] = [
   { id: "dotnet", label: ".NET" },
@@ -25,19 +40,96 @@ const MCP_SERVER_NAME = "knowledge-portal";
 
 const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
   { id: "vscode", label: "VS Code", file: ".vscode/mcp.json" },
+  { id: "copilot", label: "GitHub Copilot", file: "~/.copilot/mcp-config.json" },
   { id: "claude", label: "Claude Desktop", file: "claude_desktop_config.json" },
   { id: "claude-code", label: "Claude Code", file: "Terminal komutu" },
   { id: "cursor", label: "Cursor", file: "~/.cursor/mcp.json" },
   { id: "windsurf", label: "Windsurf", file: "~/.codeium/windsurf/mcp_config.json" },
 ];
 
-const TOOLS = [
-  { name: "search_articles", desc: "Full-text arama", params: "query*, limit, tags, authors, content_type, include_content" },
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  search_articles: "Makale arama",
+  get_article: "Makale detayı",
+  list_articles: "Makale listesi",
+  list_tags: "Etiket listesi",
+  get_portal_info: "Portal istatistikleri",
+  get_project_context: "Proje bağlamı",
+  get_integration_guidance: "Entegrasyon rehberi",
+  find_authoritative_content: "Yetkili içerik bulma",
+  compare_sources: "Kaynak karşılaştırma",
+  get_recent_changes: "Son değişiklikler",
+};
+
+const DEFAULT_TOOLS: ToolSummary[] = [
+  { name: "search_articles", desc: TOOL_DESCRIPTIONS.search_articles, params: "query*, type, page, limit, tags, authors, content_type, include_content, include_attachments, only_own_content" },
   { name: "get_article", desc: "Makale detayı", params: "id_or_slug*" },
   { name: "list_articles", desc: "Makale listesi", params: "page, limit, content_type, tags, sort" },
   { name: "list_tags", desc: "Etiket listesi", params: "—" },
-  { name: "get_portal_info", desc: "İstatistikler", params: "—" },
+  { name: "get_portal_info", desc: "Portal istatistikleri", params: "—" },
+  { name: "get_project_context", desc: "Proje bağlamı", params: "project_tag*, limit, include_content, include_attachments" },
+  { name: "get_integration_guidance", desc: "Entegrasyon rehberi", params: "integration_query*, project_tag, limit, include_attachments" },
+  { name: "find_authoritative_content", desc: "Yetkili içerik bulma", params: "query*, project_tag, limit" },
+  { name: "compare_sources", desc: "Kaynak karşılaştırma", params: "article_ids*" },
+  { name: "get_recent_changes", desc: "Son değişiklikler", params: "project_tag, days, limit" },
 ];
+
+const summarizeTools = (tools: McpToolInfo[]): ToolSummary[] => tools.map((tool) => {
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const params = Object.keys(tool.inputSchema?.properties ?? {})
+    .map((name) => `${name}${required.has(name) ? "*" : ""}`)
+    .join(", ");
+
+  return {
+    name: tool.name,
+    desc: TOOL_DESCRIPTIONS[tool.name] ?? tool.description ?? "—",
+    params: params || "—",
+  };
+});
+
+type CopyHandler = (text: string, label: string) => void;
+
+function CopyButton({ text, label, copied, onCopy, small = false }: {
+  text: string;
+  label: string;
+  copied: string | null;
+  onCopy: CopyHandler;
+  small?: boolean;
+}) {
+  return (
+    <button
+      onClick={() => onCopy(text, label)}
+      className={`inline-flex items-center gap-1 rounded bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors shrink-0 ${small ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs"}`}
+    >
+      {copied === label ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+      <span>{copied === label ? "Kopyalandı" : "Kopyala"}</span>
+    </button>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{children}</span>
+  );
+}
+
+function CodeBlock({ content, copyKey, copied, onCopy, full }: {
+  content: string;
+  copyKey: string;
+  copied: string | null;
+  onCopy: CopyHandler;
+  full?: string;
+}) {
+  return (
+    <div className="relative group">
+      <pre className="text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2.5 overflow-x-auto leading-relaxed">
+        <code className="text-zinc-800 dark:text-zinc-300">{content}</code>
+      </pre>
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <CopyButton text={full || content} label={copyKey} copied={copied} onCopy={onCopy} small />
+      </div>
+    </div>
+  );
+}
 
 export function McpModal({ open, onClose }: McpModalProps) {
   const { token } = useAuth();
@@ -47,27 +139,53 @@ export function McpModal({ open, onClose }: McpModalProps) {
   const [clientTab, setClientTab] = useState<ClientTab>("vscode");
   const [langTab, setLangTab] = useState<LangTab>("dotnet");
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [protocolVersion, setProtocolVersion] = useState<string | null>(null);
+  const [tools, setTools] = useState<ToolSummary[]>(DEFAULT_TOOLS);
 
   useEffect(() => {
     if (!open) return;
-    setLoadingKeys(true);
+    let cancelled = false;
+
     fetchWithAuth("/api/keys")
       .then(async (res) => {
-        if (res.ok) setKeys(await res.json());
+        if (res.ok && !cancelled) setKeys(await res.json());
       })
-      .finally(() => setLoadingKeys(false));
-    fetchWithAuth("/mcp")
+      .catch(() => {});
+
+    const callMcp = (id: string, method: string, params?: object) => fetchWithAuth("/mcp", {
+      method: "POST",
+      noRetry: true,
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) }),
+    });
+
+    callMcp("modal-initialize", "initialize", {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "knowledge-portal-web", version: "1.0.0" },
+    })
       .then(async (res) => {
         if (res.ok) {
           const info = await res.json();
-          if (info?.protocolVersion) setProtocolVersion(info.protocolVersion);
+          if (!cancelled && info?.result?.protocolVersion) setProtocolVersion(info.result.protocolVersion);
         }
       })
       .catch(() => {});
-  }, [open]);
+
+    callMcp("modal-tools", "tools/list")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const response = await res.json();
+        if (!cancelled && Array.isArray(response?.result?.tools)) {
+          setTools(summarizeTools(response.result.tools));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, fetchWithAuth]);
 
   if (!open) return null;
 
@@ -99,6 +217,11 @@ export function McpModal({ open, onClose }: McpModalProps) {
       case "vscode":
         return JSON.stringify(
           { servers: { [MCP_SERVER_NAME]: { type: "http", ...entry } } },
+          null, 2,
+        );
+      case "copilot":
+        return JSON.stringify(
+          { mcpServers: { [MCP_SERVER_NAME]: { type: "http", ...entry, tools: ["*"] } } },
           null, 2,
         );
       case "claude-code":
@@ -217,31 +340,6 @@ String tags    = callTool("list_tags", "{}");`;
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const CopyBtn = ({ text, label, small = false }: { text: string; label: string; small?: boolean }) => (
-    <button
-      onClick={() => copyToClipboard(text, label)}
-      className={`inline-flex items-center gap-1 rounded bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors shrink-0 ${small ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs"}`}
-    >
-      {copied === label ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
-      <span>{copied === label ? "Kopyalandı" : "Kopyala"}</span>
-    </button>
-  );
-
-  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-    <span className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide">{children}</span>
-  );
-
-  const CodeBlock = ({ content, copyKey, full }: { content: string; copyKey: string; full?: string }) => (
-    <div className="relative group">
-      <pre className="text-xs bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2.5 overflow-x-auto leading-relaxed">
-        <code className="text-zinc-800 dark:text-zinc-300">{content}</code>
-      </pre>
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <CopyBtn text={full || content} label={copyKey} small />
-      </div>
-    </div>
-  );
-
   const currentClient = CLIENTS.find((c) => c.id === clientTab)!;
 
   return (
@@ -273,7 +371,7 @@ String tags    = callTool("list_tags", "{}");`;
               <code className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 px-3 py-2 rounded-lg truncate font-mono">
                 {mcpEndpoint}
               </code>
-              <CopyBtn text={mcpEndpoint} label="Endpoint" />
+              <CopyButton text={mcpEndpoint} label="Endpoint" copied={copied} onCopy={copyToClipboard} />
             </div>
           </div>
 
@@ -312,7 +410,7 @@ String tags    = callTool("list_tags", "{}");`;
                   ? (token ? `Bearer ${token.slice(0, 28)}...` : "Oturum açılmamış")
                   : "kp_YOUR_API_KEY"}
               </code>
-              {authTab === "bearer" && token && <CopyBtn text={`Bearer ${token}`} label="Bearer Value" />}
+              {authTab === "bearer" && token && <CopyButton text={`Bearer ${token}`} label="Bearer Value" copied={copied} onCopy={copyToClipboard} />}
               {authTab === "apikey" && (
                 <a
                   href="/profile?tab=api-keys"
@@ -329,7 +427,7 @@ String tags    = callTool("list_tags", "{}");`;
             )}
             {authTab === "apikey" && (
               <div className="mt-2">
-                {loadingKeys ? (
+                {keys === null ? (
                   <p className="text-xs text-zinc-400">API key'ler yükleniyor...</p>
                 ) : keys.length > 0 ? (
                   <div className="space-y-1">
@@ -384,7 +482,7 @@ String tags    = callTool("list_tags", "{}");`;
               )}
             </p>
             <div className="mt-2">
-              <CodeBlock content={configJson} copyKey="Config JSON" />
+              <CodeBlock content={configJson} copyKey="Config JSON" copied={copied} onCopy={copyToClipboard} />
             </div>
           </div>
 
@@ -392,7 +490,7 @@ String tags    = callTool("list_tags", "{}");`;
           <div>
             <SectionLabel>cURL Testi</SectionLabel>
             <div className="mt-1.5">
-              <CodeBlock content={curlCmd} copyKey="cURL" full={curlFull} />
+              <CodeBlock content={curlCmd} copyKey="cURL" copied={copied} onCopy={copyToClipboard} full={curlFull} />
             </div>
           </div>
 
@@ -414,7 +512,7 @@ String tags    = callTool("list_tags", "{}");`;
               ))}
             </div>
             <div className="mt-2">
-              <CodeBlock content={langSnippets[langTab]} copyKey={LANGS.find((l) => l.id === langTab)!.label} />
+              <CodeBlock content={langSnippets[langTab]} copyKey={LANGS.find((l) => l.id === langTab)!.label} copied={copied} onCopy={copyToClipboard} />
             </div>
           </div>
 
@@ -424,7 +522,7 @@ String tags    = callTool("list_tags", "{}");`;
               onClick={() => setToolsOpen((v) => !v)}
               className="flex items-center gap-2 w-full group"
             >
-              <SectionLabel>Araçlar ({TOOLS.length} tool)</SectionLabel>
+              <SectionLabel>Araçlar ({tools.length} araç)</SectionLabel>
               {toolsOpen ? (
                 <ChevronUp size={14} className="text-zinc-400 ml-auto" />
               ) : (
@@ -442,7 +540,7 @@ String tags    = callTool("list_tags", "{}");`;
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {TOOLS.map((t) => (
+                    {tools.map((t) => (
                       <tr key={t.name}>
                         <td className="px-3 py-2">
                           <code className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[11px]">{t.name}</code>
