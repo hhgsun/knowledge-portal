@@ -1,0 +1,31 @@
+groups:
+  - name: knowledge-portal-rag
+    rules:
+      - alert: KnowledgePortalRagFailures
+        expr: increase(kp_rag_failures_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Portal RAG failures are elevated"
+      - alert: KnowledgePortalRagBusy
+        expr: increase(kp_rag_requests_total{outcome="busy"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Portal RAG capacity is saturated"
+      - alert: KnowledgePortalRagP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(kp_rag_duration_ms_milliseconds_bucket[10m]))) > 30000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Portal RAG p95 latency exceeds 30 seconds"
+      - alert: KnowledgePortalEmbeddingBacklog
+        expr: kp_pending_embeddings > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Portal embedding backlog is growing"

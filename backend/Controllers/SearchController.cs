@@ -157,7 +157,7 @@ public class SearchController(
 
             try
             {
-                var ragResult = await ragService.AskAsync(searchQuery, filter);
+                var ragResult = await ragService.AskAsync(searchQuery, filter, HttpContext.RequestAborted);
                 sw.Stop();
                 var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),

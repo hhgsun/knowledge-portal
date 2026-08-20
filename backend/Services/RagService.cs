@@ -15,6 +15,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
+    public const string PromptVersion = "2026-08-20.fail-closed-v1";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
@@ -29,6 +30,7 @@ public class RagService(
     // generic questions score low in cosine similarity, and the LLM already refuses
     // when context is insufficient
     private readonly double _ragMinScore = config.GetValue("Ollama:RagMinSimilarityScore", 0.3);
+    private readonly int _maxOutputTokens = Math.Max(128, config.GetValue("Ollama:RagMaxOutputTokens", 2048));
     private readonly string[] _broadKeywords =
         config.GetSection("Ollama:RagBroadIntentKeywords").Get<string[]>() ?? DefaultBroadKeywords;
 
@@ -102,8 +104,16 @@ public class RagService(
             metrics.RagActiveRequests.Add(1, Tags("mode", mode));
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
             budget.CancelAfter(TimeSpan.FromSeconds(resilience.RequestBudgetSeconds));
-            var result = await AskCoreAsync(question, filter, broad, budget.Token);
-            var outcome = result.Warnings.Contains("Answer generation failed.") ? "error" : result.PartialResult ? "partial" : result.InsufficientContext ? "refused" : "success";
+            RagResult result;
+            try
+            {
+                result = await AskCoreAsync(question, filter, broad, budget.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested && budget.IsCancellationRequested)
+            {
+                throw new RagStageTimeoutException("request", resilience.RequestBudgetSeconds);
+            }
+            var outcome = result.PartialResult ? "partial" : result.InsufficientContext ? "refused" : "success";
             watch.Stop(); metrics.RagRequests.Add(1, new("mode", mode), new("outcome", outcome));
             metrics.RagDuration.Record(watch.Elapsed.TotalMilliseconds, new("mode", mode), new("outcome", outcome));
             metrics.RagCitationCoverage.Record(result.CitationCoverage, Tags("mode", mode));
@@ -167,23 +177,12 @@ public class RagService(
         if (usableChunks.Count == 0)
             return EmptyResult("Sorunuzla yeterince ilgili bir makale bulunamadı. Soruyu farklı kelimelerle sormayı deneyin.");
 
-        try
-        {
-            var result = broad
-                ? await AnswerBroadAsync(question, usableChunks, articles, ct)
-                : await AnswerNarrowAsync(question, usableChunks, articles, ct);
-            logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
-                QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "RAG generation failed queryHash={QueryHash} queryLength={QueryLength} mode={Mode}",
-                QueryFingerprint(question), question.Length, broad ? "broad" : "narrow");
-            return new RagResult("AI yanıtı oluşturulurken bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
-                BuildSources(BestScores(usableChunks), articles), [], BuildEvidence(usableChunks, articles), 0,
-                "unverified", 0, false, false, ["Answer generation failed."]);
-        }
+        var result = broad
+            ? await AnswerBroadAsync(question, usableChunks, articles, ct)
+            : await AnswerNarrowAsync(question, usableChunks, articles, ct);
+        logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
+            QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
+        return result;
     }
 
     /// <summary>Fast path: pack the top chunks (a few source articles, multiple chunks each) into
@@ -256,14 +255,14 @@ public class RagService(
                     context.Add(FormatSourceBlock(evidenceIds[ChunkKey(c)], SourceTitle(articles[c.ArticleId].Title, c), text));
                     usedChunks.Add(c); words += used;
                 }
-                if (context.Count == 0) return (batch.index, Partial: (string?)null, Chunks: usedChunks, Error: (string?)null);
+                if (context.Count == 0) return (batch.index, Partial: (string?)null, Chunks: usedChunks, Error: (Exception?)null);
                 var partial = await CompleteAsync($"map-{batch.index + 1}", resilience.GenerationTimeoutSeconds,
                     MapSystemPrompt, BuildContextMessage(question, context), ct);
-                return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (string?)null);
+                return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (Exception?)null);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            { return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: "Request budget expired"); }
-            catch (Exception ex) { logger.LogWarning(ex, "RAG map batch {Batch} failed", batch.index + 1); return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: ex.Message); }
+            catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
+            { return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: (Exception?)ex); }
+            catch (Exception ex) { logger.LogWarning(ex, "RAG map batch {Batch} failed", batch.index + 1); return (batch.index, Partial: (string?)null, Chunks: batch.items, Error: (Exception?)ex); }
             finally { if (entered) gate.Release(); }
         }).ToList();
         var mapped = (await Task.WhenAll(tasks)).OrderBy(x => x.index).ToList();
@@ -275,8 +274,13 @@ public class RagService(
         metrics.RagContextWords.Record(successfulChunks.Sum(x => CountWords(x.ChunkText)), Tags("mode", "broad"));
 
         if (partials.Count == 0)
-            return EmptyResult(RefuseInsufficient, failures.Count > 0,
-                failures.Count > 0 ? ["Broad RAG map stages did not finish within the request budget."] : []);
+        {
+            if (failures.Select(x => x.Error).OfType<RagCircuitOpenException>().FirstOrDefault() is { } circuit) throw circuit;
+            if (failures.Select(x => x.Error).OfType<RagStageTimeoutException>().FirstOrDefault() is { } timeout) throw timeout;
+            if (failures.Select(x => x.Error).OfType<OperationCanceledException>().FirstOrDefault() is { } cancelled) throw cancelled;
+            if (failures.FirstOrDefault().Error is { } failure) throw failure;
+            return EmptyResult(RefuseInsufficient);
+        }
 
         var finalAnswer = partials[0];
         var reduceFailed = false;
@@ -312,7 +316,12 @@ public class RagService(
         };
         return resilience.ExecuteAsync(stage, timeoutSeconds, resilience.AiRetryCount, true, async token =>
         {
-            var response = await chatClient.GetResponseAsync(messages, cancellationToken: token);
+            var response = await chatClient.GetResponseAsync(messages, new ChatOptions
+            {
+                Temperature = 0,
+                MaxOutputTokens = _maxOutputTokens,
+                ResponseFormat = ChatResponseFormat.Json
+            }, token);
             return response.Text ?? "Yanıt oluşturulamadı.";
         }, ct);
     }

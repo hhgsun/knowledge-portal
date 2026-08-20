@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using KnowledgePortal.Api.Data;
@@ -11,15 +12,15 @@ public record RagEvaluationCase(string Id, string Category, string Question, Lis
     List<string> ExpectedFacts, List<string> ForbiddenFacts, bool ExpectedRefusal, RagEvaluationFilters? Filters = null);
 public record RagEvaluationThresholds(double RecallAtK = .8, double Mrr = .75, double NdcgAtK = .75,
     double FactCoverage = .7, double CitationCoverage = .8, double RefusalAccuracy = .9,
-    double ForbiddenFactPassRate = 1, long P95LatencyMs = 30000);
+    double ForbiddenFactPassRate = 1, long P95LatencyMs = 30000, double GroundingCoverage = .8);
 public record RagEvaluationCaseResult(string Id, string Category, double RecallAtK, double Mrr, double NdcgAtK,
-    double FactCoverage, double CitationCoverage, bool RefusalCorrect, bool NoForbiddenFacts, long LatencyMs,
+    double FactCoverage, double CitationCoverage, double GroundingCoverage, bool RefusalCorrect, bool NoForbiddenFacts, long LatencyMs,
     List<string> RetrievedSlugs, List<string> ForbiddenFactHits, string Answer);
 public record RagEvaluationMetrics(double RecallAtK, double Mrr, double NdcgAtK, double FactCoverage,
-    double CitationCoverage, double RefusalAccuracy, double ForbiddenFactPassRate, long P50LatencyMs,
+    double CitationCoverage, double GroundingCoverage, double RefusalAccuracy, double ForbiddenFactPassRate, long P50LatencyMs,
     long P95LatencyMs, bool Passed, List<string> FailedGates);
 
-public class RagEvaluationService(AppDbContext db, RagService rag)
+public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguration config)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly string[] Refusals = ["yeterli bilgi bulamadım", "yeterince ilgili bir makale bulunamadı", "henüz indexlenmiş makale bulunamadı", "ai arama şu anda kullanılamıyor"];
@@ -45,10 +46,11 @@ public class RagEvaluationService(AppDbContext db, RagService rag)
         var dcg = ranked.Select((slug, i) => expected.Contains(slug) ? 1 / Math.Log2(i + 2) : 0).Sum();
         var ideal = Enumerable.Range(0, Math.Min(expected.Count, ranked.Count)).Sum(i => 1 / Math.Log2(i + 2));
         var answer = Fold(response.Answer);
-        var forbidden = item.ForbiddenFacts.Where(x => answer.Contains(Fold(x), StringComparison.Ordinal)).ToList();
+        var forbidden = item.ForbiddenFacts.Where(x => IsFactCovered(x, answer)).ToList();
         return new(item.Id, item.Category, recall, mrr, expected.Count == 0 ? 1 : ideal == 0 ? 0 : dcg / ideal,
-            item.ExpectedFacts.Count == 0 ? 1 : item.ExpectedFacts.Count(x => answer.Contains(Fold(x), StringComparison.Ordinal)) / (double)item.ExpectedFacts.Count,
+            item.ExpectedFacts.Count == 0 ? 1 : item.ExpectedFacts.Count(x => IsFactCovered(x, answer)) / (double)item.ExpectedFacts.Count,
             response.Sources.Count == 0 ? (item.ExpectedRefusal ? 1 : 0) : response.CitationCoverage,
+            response.ClaimSupportCoverage,
             Refusals.Any(x => answer.Contains(Fold(x), StringComparison.Ordinal)) == item.ExpectedRefusal,
             forbidden.Count == 0, watch.ElapsedMilliseconds, ranked, forbidden, response.Answer);
     }
@@ -57,44 +59,123 @@ public class RagEvaluationService(AppDbContext db, RagService rag)
     {
         double Avg(Func<RagEvaluationCaseResult, double> p) => cases.Count == 0 ? 0 : cases.Average(p);
         long P(double q) { if (cases.Count == 0) return 0; var a = cases.Select(x => x.LatencyMs).Order().ToArray(); return a[(int)Math.Ceiling(q * a.Length) - 1]; }
-        var values = new { Recall = Avg(x => x.RecallAtK), Mrr = Avg(x => x.Mrr), Ndcg = Avg(x => x.NdcgAtK), Facts = Avg(x => x.FactCoverage), Citations = Avg(x => x.CitationCoverage), Refusal = Avg(x => x.RefusalCorrect ? 1 : 0), Safe = Avg(x => x.NoForbiddenFacts ? 1 : 0), P50 = P(.5), P95 = P(.95) };
+        var values = new { Recall = Avg(x => x.RecallAtK), Mrr = Avg(x => x.Mrr), Ndcg = Avg(x => x.NdcgAtK), Facts = Avg(x => x.FactCoverage), Citations = Avg(x => x.CitationCoverage), Grounding = Avg(x => x.GroundingCoverage), Refusal = Avg(x => x.RefusalCorrect ? 1 : 0), Safe = Avg(x => x.NoForbiddenFacts ? 1 : 0), P50 = P(.5), P95 = P(.95) };
         var failed = new List<string>();
         Gate(values.Recall, t.RecallAtK, "Recall@K"); Gate(values.Mrr, t.Mrr, "MRR"); Gate(values.Ndcg, t.NdcgAtK, "NDCG@K");
         Gate(values.Facts, t.FactCoverage, "Fact coverage"); Gate(values.Citations, t.CitationCoverage, "Citation coverage");
+        Gate(values.Grounding, t.GroundingCoverage, "Grounding coverage");
         Gate(values.Refusal, t.RefusalAccuracy, "Refusal accuracy"); Gate(values.Safe, t.ForbiddenFactPassRate, "Forbidden-fact pass rate");
         if (values.P95 > t.P95LatencyMs) failed.Add($"p95 latency: {values.P95} > {t.P95LatencyMs} ms");
-        return new(values.Recall, values.Mrr, values.Ndcg, values.Facts, values.Citations, values.Refusal, values.Safe, values.P50, values.P95, failed.Count == 0, failed);
+        return new(values.Recall, values.Mrr, values.Ndcg, values.Facts, values.Citations, values.Grounding, values.Refusal, values.Safe, values.P50, values.P95, failed.Count == 0, failed);
         void Gate(double actual, double threshold, string name) { if (actual < threshold) failed.Add($"{name}: {actual:P1} < {threshold:P1}"); }
     }
 
-    public async Task ExecuteRunAsync(string runId, CancellationToken ct)
+    public async Task<string?> ClaimNextAsync(string workerId, TimeSpan lease, CancellationToken ct)
     {
-        var claimed = 0;
         if (db.Database.IsRelational())
-            claimed = await db.RagEvaluationRuns.Where(x => x.Id == runId && x.Status == "pending")
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "running").SetProperty(x => x.StartedAt, DateTime.UtcNow), ct);
-        else
         {
-            var pending = await db.RagEvaluationRuns.SingleOrDefaultAsync(x => x.Id == runId && x.Status == "pending", ct);
-            if (pending != null) { pending.Status = "running"; pending.StartedAt = DateTime.UtcNow; claimed = 1; await db.SaveChangesAsync(ct); }
+            var now = DateTime.UtcNow;
+            var claimedIds = await db.Database.SqlQueryRaw<string>(
+                """
+                WITH picked AS (
+                    SELECT "Id" FROM rag_evaluation_runs
+                    WHERE "Status" = 'pending'
+                       OR ("Status" = 'running' AND ("LeaseExpiresAt" IS NULL OR "LeaseExpiresAt" < {0}))
+                    ORDER BY "CreatedAt"
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                UPDATE rag_evaluation_runs r SET
+                    "Status" = 'running', "StartedAt" = COALESCE(r."StartedAt", {0}),
+                    "WorkerId" = {1}, "LeaseExpiresAt" = {2}, "AttemptCount" = r."AttemptCount" + 1,
+                    "CompletedCases" = 0, "ResultsJson" = NULL, "MetricsJson" = NULL,
+                    "Error" = NULL, "CompletedAt" = NULL
+                FROM picked WHERE r."Id" = picked."Id"
+                RETURNING r."Id" AS "Value"
+                """, now, workerId, now.Add(lease)).ToListAsync(ct);
+            return claimedIds.FirstOrDefault();
         }
-        if (claimed == 0) return;
+
+        var nowMemory = DateTime.UtcNow;
+        var run = await db.RagEvaluationRuns.OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(x =>
+            x.Status == "pending" || (x.Status == "running" && (x.LeaseExpiresAt == null || x.LeaseExpiresAt < nowMemory)), ct);
+        if (run == null) return null;
+        run.Status = "running"; run.StartedAt ??= nowMemory; run.WorkerId = workerId;
+        run.LeaseExpiresAt = nowMemory.Add(lease); run.AttemptCount++; run.CompletedCases = 0;
+        run.ResultsJson = null; run.MetricsJson = null; run.Error = null; run.CompletedAt = null;
+        await db.SaveChangesAsync(ct);
+        return run.Id;
+    }
+
+    public async Task ExecuteRunAsync(string runId, string workerId, TimeSpan lease, CancellationToken ct)
+    {
         var run = await db.RagEvaluationRuns.Include(x => x.Dataset).SingleAsync(x => x.Id == runId, ct);
-        var cases = ParseCases(run.Dataset.CasesJson);
+        if (run.Status != "running" || run.WorkerId != workerId) return;
+        var cases = ParseCases(run.CasesSnapshotJson);
         var results = new List<RagEvaluationCaseResult>();
         try
         {
             foreach (var item in cases)
             {
                 results.Add(await ExecuteCaseAsync(item, ct));
-                run.CompletedCases = results.Count; run.ResultsJson = JsonSerializer.Serialize(results, Json); await db.SaveChangesAsync(ct);
+                run.CompletedCases = results.Count; run.ResultsJson = JsonSerializer.Serialize(results, Json);
+                run.LeaseExpiresAt = DateTime.UtcNow.Add(lease); await db.SaveChangesAsync(ct);
             }
-            var metrics = Aggregate(results, ParseThresholds(run.Dataset.ThresholdsJson));
+            var metrics = Aggregate(results, ParseThresholds(run.ThresholdsSnapshotJson));
             run.MetricsJson = JsonSerializer.Serialize(metrics, Json); run.Status = "completed"; run.CompletedAt = DateTime.UtcNow;
         }
         catch (Exception ex) { run.Status = "failed"; run.Error = ex.Message[..Math.Min(4000, ex.Message.Length)]; run.CompletedAt = DateTime.UtcNow; }
+        run.LeaseExpiresAt = null; run.WorkerId = null;
         await db.SaveChangesAsync(CancellationToken.None);
     }
+
+    public async Task<string> BuildRuntimeSnapshotAsync(CancellationToken ct)
+    {
+        var corpus = await db.Articles.Where(x => x.Status == "published").OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.UpdatedAt, x.IndexedAt, x.FtsIndexedAt }).ToListAsync(ct);
+        var fingerprintInput = string.Join('\n', corpus.Select(x =>
+            $"{x.Id}|{x.UpdatedAt:o}|{x.IndexedAt:o}|{x.FtsIndexedAt:o}"));
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintInput))).ToLowerInvariant();
+
+        return JsonSerializer.Serialize(new SortedDictionary<string, object?>
+        {
+            ["applicationVersion"] = typeof(RagService).Assembly.GetName().Version?.ToString(),
+            ["promptVersion"] = RagService.PromptVersion,
+            ["chatModel"] = config["Ollama:ChatModel"],
+            ["embeddingModel"] = config["Ollama:EmbeddingModel"],
+            ["embeddingDimensions"] = config.GetValue<int>("Ollama:EmbeddingDimensions"),
+            ["ragCandidateLimit"] = config.GetValue<int>("Ollama:RagCandidateLimit"),
+            ["ragBroadCandidateLimit"] = config.GetValue<int>("Ollama:RagBroadCandidateLimit"),
+            ["ragMinSimilarityScore"] = config.GetValue<double>("Ollama:RagMinSimilarityScore"),
+            ["ragLexicalWeight"] = config.GetValue<double>("Ollama:RagLexicalWeight"),
+            ["ragSemanticWeight"] = config.GetValue<double>("Ollama:RagSemanticWeight"),
+            ["ragMaxContextWords"] = config.GetValue<int>("Ollama:RagMaxContextWords"),
+            ["ragMaxOutputTokens"] = config.GetValue<int>("Ollama:RagMaxOutputTokens"),
+            ["requestBudgetSeconds"] = config.GetValue<int>("RagResilience:RequestBudgetSeconds"),
+            ["publishedArticleCount"] = corpus.Count,
+            ["semanticallyIndexedArticleCount"] = corpus.Count(x => x.IndexedAt != null),
+            ["lexicallyIndexedArticleCount"] = corpus.Count(x => x.FtsIndexedAt != null),
+            ["corpusFingerprint"] = fingerprint
+        }, Json);
+    }
+
+    private static bool IsFactCovered(string expected, string foldedAnswer)
+    {
+        var fact = Fold(expected);
+        if (foldedAnswer.Contains(fact, StringComparison.Ordinal)) return true;
+        var expectedTokens = SignificantTokens(fact);
+        if (expectedTokens.Count == 0) return false;
+        var answerTokens = SignificantTokens(foldedAnswer);
+        if (expectedTokens.Count(answerTokens.Contains) / (double)expectedTokens.Count < .8) return false;
+        var expectedNumbers = System.Text.RegularExpressions.Regex.Matches(fact, @"\b\d+(?:[.,]\d+)?\b").Select(x => x.Value).ToHashSet();
+        var answerNumbers = System.Text.RegularExpressions.Regex.Matches(foldedAnswer, @"\b\d+(?:[.,]\d+)?\b").Select(x => x.Value).ToHashSet();
+        return expectedNumbers.IsSubsetOf(answerNumbers);
+    }
+
+    private static HashSet<string> SignificantTokens(string value) => value
+        .Split(new[] { ' ', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+        .Where(x => x.Length >= 3 && x is not ("bir" or "ve" or "ile" or "icin" or "the" or "and" or "for"))
+        .ToHashSet(StringComparer.Ordinal);
 
     private static string Fold(string value)
     {

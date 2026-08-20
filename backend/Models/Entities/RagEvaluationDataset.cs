@@ -21,6 +21,13 @@ public class RagEvaluationRun
     public string Status { get; set; } = "pending";
     public int TotalCases { get; set; }
     public int CompletedCases { get; set; }
+    public int AttemptCount { get; set; }
+    public string? WorkerId { get; set; }
+    public DateTime? LeaseExpiresAt { get; set; }
+    public string DatasetVersion { get; set; } = "1.0.0";
+    public string CasesSnapshotJson { get; set; } = "[]";
+    public string ThresholdsSnapshotJson { get; set; } = "{}";
+    public string RuntimeSnapshotJson { get; set; } = "{}";
     public string? MetricsJson { get; set; }
     public string? ResultsJson { get; set; }
     public string? Error { get; set; }

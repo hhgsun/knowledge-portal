@@ -18,6 +18,7 @@ public class RagCitationValidatorTests
         Assert.Equal(1, result.CitationCoverage);
         Assert.Equal(1, result.ClaimSupportCoverage);
         Assert.Equal(["S1"], result.Claims.Single().SourceIds);
+        Assert.Equal("VPN talebi portal üzerinden açılır. [S1]", result.Answer);
     }
 
     [Fact]
@@ -27,20 +28,22 @@ public class RagCitationValidatorTests
 
         var result = RagCitationValidator.Validate(raw, [Evidence]);
 
-        Assert.Equal("failed", result.GroundingStatus);
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
         Assert.Equal(0, result.CitationCoverage);
-        Assert.Empty(result.Claims.Single().SourceIds);
+        Assert.Empty(result.Claims);
         Assert.DoesNotContain("[S99]", result.Answer);
+        Assert.True(result.InsufficientContext);
         Assert.NotEmpty(result.Warnings);
     }
 
     [Fact]
-    public void Validate_MalformedModelOutput_IsExplicitlyUnverified()
+    public void Validate_MalformedModelOutput_IsRejectedFailClosed()
     {
         var result = RagCitationValidator.Validate("serbest metin cevap", [Evidence]);
 
-        Assert.Equal("unverified", result.GroundingStatus);
-        Assert.Equal("serbest metin cevap", result.Answer);
+        Assert.Equal("rejected_unstructured", result.GroundingStatus);
+        Assert.DoesNotContain("serbest metin cevap", result.Answer);
+        Assert.True(result.InsufficientContext);
         Assert.Empty(result.Claims);
     }
 
@@ -53,7 +56,9 @@ public class RagCitationValidatorTests
 
         Assert.Equal(1, result.CitationCoverage);
         Assert.Equal(0, result.ClaimSupportCoverage);
-        Assert.Equal("citation_ids_verified", result.GroundingStatus);
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.Empty(result.Claims);
+        Assert.True(result.InsufficientContext);
         Assert.NotEmpty(result.Warnings);
     }
 
@@ -71,5 +76,40 @@ public class RagCitationValidatorTests
         Assert.True(result.InsufficientContext);
         Assert.Equal("insufficient_context", result.GroundingStatus);
         Assert.Equal(1, result.CitationCoverage);
+    }
+
+    [Fact]
+    public void Validate_RebuildsAnswerAndDropsUnclaimedFreeFormAssertions()
+    {
+        const string raw = """{"answer":"VPN talebi portal üzerinden açılır [S1]. Ayrıca tüm sunucular kapatılır.","claims":[{"text":"VPN talebi portal üzerinden açılır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("VPN talebi portal üzerinden açılır. [S1]", result.Answer);
+        Assert.DoesNotContain("sunucular", result.Answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Validate_RejectsChangedNumberEvenWithHighTokenOverlap()
+    {
+        var evidence = Evidence with { Passage = "Parola süresi 90 gündür ve portal üzerinden değiştirilir." };
+        const string raw = """{"answer":"Parola süresi 30 gündür [S1].","claims":[{"text":"Parola süresi 30 gündür ve portal üzerinden değiştirilir.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.Empty(result.Claims);
+    }
+
+    [Fact]
+    public void Validate_RejectsNegationMismatchEvenWithHighTokenOverlap()
+    {
+        var evidence = Evidence with { Passage = "VPN bakım sırasında kapatılmamalıdır." };
+        const string raw = """{"answer":"VPN bakım sırasında kapatılmalıdır [S1].","claims":[{"text":"VPN bakım sırasında kapatılmalıdır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.Empty(result.Claims);
     }
 }

@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -40,6 +45,10 @@ public class RagEvaluationAdminTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("completed", status.GetProperty("status").GetString());
         Assert.Equal(1, status.GetProperty("completedCases").GetInt32());
         Assert.True(status.GetProperty("metrics").TryGetProperty("passed", out _));
+        Assert.Equal("1.0.0", status.GetProperty("datasetVersion").GetString());
+        Assert.Equal(RagService.PromptVersion,
+            status.GetProperty("runtimeSnapshot").GetProperty("promptVersion").GetString());
+        Assert.True(status.GetProperty("runtimeSnapshot").TryGetProperty("corpusFingerprint", out _));
     }
 
     [Fact]
@@ -53,5 +62,48 @@ public class RagEvaluationAdminTests : IClassFixture<TestWebApplicationFactory>
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.GetProperty("token").GetString());
 
         Assert.Equal(HttpStatusCode.Forbidden, (await _client.GetAsync("/api/admin/rag-evaluations/datasets")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ExpiredRunningEvaluation_IsReclaimedAfterWorkerCrash()
+    {
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            var worker = services.SingleOrDefault(x => x.ImplementationType == typeof(RagEvaluationWorker));
+            if (worker != null) services.Remove(worker);
+        }));
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var owner = db.Users.First(x => x.Role == "admin");
+        var dataset = new RagEvaluationDataset
+        {
+            Name = "Recovery " + Guid.NewGuid().ToString("N"),
+            CasesJson = "[]",
+            ThresholdsJson = "{}"
+        };
+        var stale = new RagEvaluationRun
+        {
+            Dataset = dataset,
+            RequestedById = owner.Id,
+            Status = "running",
+            WorkerId = "dead-worker",
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(-1),
+            CompletedCases = 7,
+            ResultsJson = "[]",
+            CasesSnapshotJson = "[]",
+            ThresholdsSnapshotJson = "{}",
+            RuntimeSnapshotJson = "{}"
+        };
+        db.Add(stale);
+        await db.SaveChangesAsync();
+
+        var claimed = await scope.ServiceProvider.GetRequiredService<RagEvaluationService>()
+            .ClaimNextAsync("recovery-worker", TimeSpan.FromMinutes(5), CancellationToken.None);
+
+        Assert.Equal(stale.Id, claimed);
+        Assert.Equal("recovery-worker", stale.WorkerId);
+        Assert.Equal(1, stale.AttemptCount);
+        Assert.Equal(0, stale.CompletedCases);
+        Assert.Null(stale.ResultsJson);
     }
 }

@@ -16,8 +16,16 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Auth | JWT Bearer + API Key (`X-API-Key: kp_` prefix) + Azure AD (MSAL v5 redirect-bridge) |
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | Milkdown Crepe (ProseMirror); canonical CommonMark/GFM Markdown |
-| Tests | xUnit + WebApplicationFactory (backend only). The default suite is **Docker-free** and runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. A separate opt-in `backend/Tests.Postgres` suite uses `RAG_FIDELITY_CONNECTION_STRING` against real PostgreSQL/pgvector to gate migrations, cosine ranking/filtering, Turkish stemming, and HNSW/GIN query plans. CI runs both gates; the fidelity gate skips when its secret connection is not configured. |
+| Tests | xUnit + WebApplicationFactory (backend only). The default suite is **Docker-free** and runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. `backend/Tests.Postgres` uses `RAG_FIDELITY_CONNECTION_STRING` against real PostgreSQL/pgvector to gate migrations, cosine ranking/filtering, Turkish stemming, and HNSW/GIN query plans. Local runs skip when that variable is absent, but CI treats the variable and fidelity gate as mandatory. CI also runs a mandatory live-Ollama golden-dataset evaluation through `backend/scripts/run-rag-live-quality-gate.ps1`. |
 | MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
+
+## Accepted Operational Decisions (2026-08-20)
+
+The following items are explicit owner decisions and are not open findings unless the owner asks to revisit them:
+
+- **Tracked deployment secrets**: The real connection/JWT values in `backend/appsettings.json` are intentionally stored in the repository for this controlled deployment. Do not remove, rotate, relocate, redact, or report them as a defect by default.
+- **Single backend instance**: The supported production topology has exactly one backend instance. Distributed bulkheads, shared circuit-breaker state, cross-instance AI concurrency controls, and horizontal-scaling work are out of scope; do not report their absence as a defect.
+- **Embedding-time data governance**: Pre-embedding secret/PII redaction and related embedding-provider governance are intentionally deferred. Keep prompt-time/output redaction intact, but do not change or report the embedding-time behavior unless this decision is explicitly reopened.
 
 ## Conventions
 
@@ -280,8 +288,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
-| Search (RAG) | ✅ Implemented | Hybrid retrieval/RRF/reranking/diversity; structured claims bound to validated `S1` evidence; process-wide concurrency bulkhead, total request budget, per-stage timeouts, bounded transient retry and AI circuit breaker; broad map batches run with bounded parallelism and return explicit partial results when individual batches/reduce fail |
-| RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, durable background runs, Recall/MRR/NDCG/fact/citation/refusal/safety/latency metrics, run history at `/settings/rag-evaluations` |
+| Search (RAG) | ✅ Implemented | Hybrid retrieval/RRF/reranking/diversity; fail-closed structured output where the user-visible answer is rebuilt only from claims that pass known-evidence, lexical, numeric and negation checks; process-wide concurrency bulkhead, total request budget, typed per-stage timeouts, bounded transient retry and AI circuit breaker; broad map batches run with bounded parallelism and return explicit partial results when individual batches/reduce fail |
+| RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, lease-recoverable durable background runs, immutable dataset/config/model/prompt snapshots, Recall/MRR/NDCG/fact/citation/grounding/refusal/safety/latency metrics, run history at `/settings/rag-evaluations`, and a mandatory CI live-model gate |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint; persisted authenticated usage events with calendar-day trend plus per-user, per-API-key integration, REST/MCP, read/write, error, latency, and top-operation breakdowns |
 | Admin Users | ✅ Implemented | Session-only, self-protection |
@@ -291,9 +299,9 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
 | Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints — partitioned per API key/user/IP |
-| Health Check | ✅ Implemented | GET /api/health (readiness: 503 "unhealthy" when DB unreachable, 200 "degraded" when only Ollama down, else "healthy") + GET /api/health/live (liveness, always 200) |
+| Health Check | ✅ Implemented | GET /api/health (readiness: 503 "unhealthy" when DB unreachable, 200 "degraded" when only Ollama down, else "healthy"; Ollama probe is separately timeout-bounded and cached) + GET /api/health/live (liveness, always 200) |
 | Metrics | ✅ Implemented | OpenTelemetry → Prometheus at /metrics (not proxied by nginx — internal only): ASP.NET Core instrumentation + `kp_pending_embeddings` gauge + `kp_embedding_failures` counter |
-| RAG Observability | ✅ Implemented | `kp_rag_*` request/stage/latency/candidate/context/LLM/refusal/partial/failure/citation/active metrics, `KnowledgePortal.Rag` activities, privacy-safe query fingerprints, and admin runtime snapshot at `/api/search/rag-observability` |
+| RAG Observability | ✅ Implemented | `kp_rag_*` request/stage/latency/candidate/context/LLM/refusal/partial/failure/citation/active metrics, optional OTLP export for `KnowledgePortal.Rag` traces (`OpenTelemetry:OtlpEndpoint` or `OTEL_EXPORTER_OTLP_ENDPOINT`), Prometheus alerts under `ops/prometheus/rag-alerts.yml`, Grafana dashboard under `ops/grafana/rag-overview.json`, measurable objectives/error-budget policy in `specs/rag-slo.md`, privacy-safe query fingerprints, and admin runtime snapshot at `/api/search/rag-observability` |
 | OpenAPI/Swagger | ✅ Implemented | Available at /swagger in development |
 | Read Time Calculation | ✅ Implemented | Auto-calculated from content (~200 wpm) |
 | 404 Page | ✅ Implemented | NotFoundPage for unmatched routes |

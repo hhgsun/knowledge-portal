@@ -12,6 +12,8 @@ public record ValidatedRagAnswer(string Answer, List<RagClaim> Claims, bool Insu
 
 public static partial class RagCitationValidator
 {
+    private const string RefuseInsufficient = "Bu konuda yeterli bilgi bulamadım.";
+    private const double MinimumLexicalSupport = .65;
     private sealed record ModelOutput(string? Answer, List<RagClaim>? Claims, bool InsufficientContext);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -20,7 +22,11 @@ public static partial class RagCitationValidator
         var warnings = new List<string>();
         var parsed = TryParse(raw);
         if (parsed == null)
-            return new(raw, [], false, 0, 0, "unverified", ["Model did not return the required structured JSON output."]);
+            return new(RefuseInsufficient, [], true, 0, 0, "rejected_unstructured",
+                ["Model output was rejected because it did not match the required structured JSON contract."]);
+
+        if (parsed.InsufficientContext)
+            return new(RefuseInsufficient, [], true, 1, 1, "insufficient_context", []);
 
         var allowed = evidence.Select(x => x.SourceId).ToHashSet(StringComparer.Ordinal);
         var evidenceById = evidence.ToDictionary(x => x.SourceId, StringComparer.Ordinal);
@@ -30,31 +36,42 @@ public static partial class RagCitationValidator
         foreach (var claim in parsed.Claims ?? [])
         {
             if (string.IsNullOrWhiteSpace(claim.Text)) continue;
-            var ids = claim.SourceIds.Where(allowed.Contains).Distinct(StringComparer.Ordinal).ToList();
-            if (ids.Count != claim.SourceIds.Count)
+            var requestedIds = claim.SourceIds ?? [];
+            var ids = requestedIds.Where(allowed.Contains).Distinct(StringComparer.Ordinal).ToList();
+            if (ids.Count != requestedIds.Count)
                 warnings.Add($"Claim contained unknown evidence IDs: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
             if (ids.Count > 0) valid++;
-            if (ids.Count > 0 && IsLexicallySupported(claim.Text,
-                    string.Join(' ', ids.Select(id => evidenceById[id].Passage))))
-                supported++;
+            if (ids.Count == 0) continue;
+
+            var passage = string.Join(' ', ids.Select(id => evidenceById[id].Passage));
+            if (!IsLexicallySupported(claim.Text, passage))
+            {
+                warnings.Add($"Unsupported claim was removed: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
+                continue;
+            }
+
+            supported++;
             claims.Add(new RagClaim(claim.Text.Trim(), ids));
         }
 
-        var coverage = claims.Count == 0 ? (parsed.InsufficientContext ? 1 : 0) : valid / (double)claims.Count;
-        var supportCoverage = claims.Count == 0 ? (parsed.InsufficientContext ? 1 : 0) : supported / (double)claims.Count;
-        var answer = parsed.Answer?.Trim() ?? "";
-        foreach (var id in CitationRegex().Matches(answer).Select(m => m.Groups[1].Value).Distinct())
-            if (!allowed.Contains(id)) { answer = answer.Replace($"[{id}]", "", StringComparison.Ordinal); warnings.Add($"Unknown citation {id} was removed."); }
+        var claimCount = (parsed.Claims ?? []).Count(x => !string.IsNullOrWhiteSpace(x.Text));
+        var coverage = claimCount == 0 ? 0 : valid / (double)claimCount;
+        var supportCoverage = claimCount == 0 ? 0 : supported / (double)claimCount;
 
-        var status = parsed.InsufficientContext ? "insufficient_context"
-            : claims.Count == 0 ? "unverified"
-            : coverage < 1 ? (coverage > 0 ? "partially_cited" : "failed")
-            : supportCoverage == 1 ? "lexically_grounded"
-            : supportCoverage > 0 ? "partially_grounded"
-            : "citation_ids_verified";
-        if (coverage == 1 && supportCoverage < 1)
-            warnings.Add("One or more cited claims lack sufficient lexical support in their cited passages.");
-        return new(answer, claims, parsed.InsufficientContext, coverage, supportCoverage, status, warnings.Distinct().ToList());
+        foreach (var id in CitationRegex().Matches(parsed.Answer ?? "").Select(m => m.Groups[1].Value).Distinct())
+            if (!allowed.Contains(id)) warnings.Add($"Unknown citation {id} was rejected.");
+
+        if (claims.Count == 0)
+            return new(RefuseInsufficient, [], true, coverage, supportCoverage, "rejected_unsupported", warnings.Distinct().ToList());
+
+        // The model's prose is not trusted independently from its structured claims. Rebuild the
+        // user-visible answer exclusively from claims that survived evidence-id and support checks,
+        // so uncited sentences cannot bypass validation through the free-form answer field.
+        var answer = string.Join("\n", claims.Select(claim =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}"));
+
+        var status = coverage == 1 && supportCoverage == 1 ? "lexically_grounded" : "partially_grounded";
+        return new(answer, claims, false, coverage, supportCoverage, status, warnings.Distinct().ToList());
     }
 
     private static ModelOutput? TryParse(string raw)
@@ -73,8 +90,19 @@ public static partial class RagCitationValidator
         var claimTokens = SignificantTokens(claim);
         if (claimTokens.Count == 0) return false;
         var passageTokens = SignificantTokens(passage);
-        return claimTokens.Count(passageTokens.Contains) / (double)claimTokens.Count >= .35;
+        if (claimTokens.Count(passageTokens.Contains) / (double)claimTokens.Count < MinimumLexicalSupport)
+            return false;
+
+        var claimNumbers = NumberRegex().Matches(claim).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        var passageNumbers = NumberRegex().Matches(passage).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        if (!claimNumbers.IsSubsetOf(passageNumbers)) return false;
+
+        // A lexical overlap score alone treats "must" and "must not" as equivalent. Reject the
+        // claim when explicit English/Turkish negation polarity differs from its cited passage.
+        return HasNegation(claim) == HasNegation(passage);
     }
+
+    private static bool HasNegation(string text) => NegationRegex().IsMatch(SlugHelper.Transliterate(text).ToLowerInvariant());
 
     private static HashSet<string> SignificantTokens(string text)
     {
@@ -91,6 +119,10 @@ public static partial class RagCitationValidator
 
     [GeneratedRegex(@"\[(S\d+)\]")]
     private static partial Regex CitationRegex();
+    [GeneratedRegex(@"\b\d+(?:[.,]\d+)?\b")]
+    private static partial Regex NumberRegex();
+    [GeneratedRegex(@"\b(?:not|never|no|degil|yok|hayir)\b|mamal[ıi]|memeli|maz\b|mez\b", RegexOptions.IgnoreCase)]
+    private static partial Regex NegationRegex();
     [GeneratedRegex(@"^```(?:json)?\s*|\s*```$", RegexOptions.IgnoreCase)]
     private static partial Regex CodeFenceRegex();
 }

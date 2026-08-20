@@ -598,10 +598,24 @@ Ordered by version number descending.
 **200 Response (RAG)**:
 ```json
 {
-  "answer": "...",
-  "sources": [{ "articleId": "...", "text": "...", "score": 0.95 }]
+  "answer": "Doğrulanmış claim [S1]",
+  "sources": [{ "articleId": "...", "title": "...", "slug": "...", "score": 0.95 }],
+  "claims": [{ "text": "Doğrulanmış claim", "sourceIds": ["S1"] }],
+  "evidence": [{ "sourceId": "S1", "articleId": "...", "passage": "..." }],
+  "citationCoverage": 1.0,
+  "claimSupportCoverage": 1.0,
+  "groundingStatus": "lexically_grounded",
+  "insufficientContext": false,
+  "partialResult": false,
+  "warnings": []
 }
 ```
+
+The free-form model answer is never returned independently. The API rebuilds `answer` only from
+claims that pass known-evidence, lexical-overlap, numeric-consistency and negation-consistency
+checks. Malformed structured output or a response with no supported claims fails closed as an
+insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
+**503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
 
 ---
 

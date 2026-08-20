@@ -302,6 +302,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("rag_evaluation_runs");
             e.HasKey(x => x.Id);
             e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.Property(x => x.WorkerId).HasMaxLength(100);
+            e.Property(x => x.DatasetVersion).IsRequired().HasMaxLength(30);
+            e.Property(x => x.CasesSnapshotJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.ThresholdsSnapshotJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.RuntimeSnapshotJson).IsRequired().HasColumnType("jsonb");
             e.Property(x => x.MetricsJson).HasColumnType("jsonb");
             e.Property(x => x.ResultsJson).HasColumnType("jsonb");
             e.Property(x => x.Error).HasMaxLength(4000);

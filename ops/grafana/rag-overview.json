@@ -1,0 +1,76 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [{ "expr": "100 * sum(rate(kp_rag_requests_total{outcome=~\"success|refused|partial\"}[5m])) / clamp_min(sum(rate(kp_rag_requests_total[5m])), 0.000001)", "refId": "A" }],
+      "title": "RAG availability (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(kp_rag_duration_ms_milliseconds_bucket[10m])))", "refId": "A" }],
+      "title": "RAG p95 latency (10m)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "targets": [{ "expr": "sum by (error_type, stage) (increase(kp_rag_failures_total[1h]))", "legendFormat": "{{stage}} / {{error_type}}", "refId": "A" }],
+      "title": "RAG failures (1h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "targets": [
+        { "expr": "sum(kp_rag_active_requests)", "legendFormat": "active RAG", "refId": "A" },
+        { "expr": "kp_pending_embeddings", "legendFormat": "pending embeddings", "refId": "B" }
+      ],
+      "title": "Capacity and indexing backlog",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 5,
+      "targets": [{ "expr": "sum(rate(kp_rag_citation_coverage_sum[10m])) / clamp_min(sum(rate(kp_rag_citation_coverage_count[10m])), 0.000001)", "refId": "A" }],
+      "title": "Average citation coverage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 6,
+      "targets": [
+        { "expr": "sum by (mode) (increase(kp_rag_refusals_total[1h]))", "legendFormat": "refused {{mode}}", "refId": "A" },
+        { "expr": "sum by (mode) (increase(kp_rag_partial_results_total[1h]))", "legendFormat": "partial {{mode}}", "refId": "B" }
+      ],
+      "title": "Refusals and partial responses (1h)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["knowledge-portal", "rag"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "Knowledge Portal RAG Overview",
+  "uid": "knowledge-portal-rag",
+  "version": 1
+}

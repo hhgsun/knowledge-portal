@@ -107,7 +107,8 @@ public class RagServiceTests
 
         var result = await h.Rag.AskAsync("vpn kurulum");
 
-        Assert.Equal("FAKE-ANSWER", result.Answer);
+        Assert.Contains("Vpn Kurulum Rehberi", result.Answer);
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Single(result.Sources);
         Assert.Equal("Vpn Kurulum Rehberi", result.Sources[0].Title);
     }
@@ -247,8 +248,12 @@ public class RagServiceTests
 
         var result = await h.Rag.AskAsync("vpn nasıl kurulur");
 
-        Assert.Equal("FAKE-ANSWER", result.Answer);
+        Assert.False(result.InsufficientContext);
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Equal(1, h.Chat.CallCount); // one LLM call for a focused question
+        Assert.Same(ChatResponseFormat.Json, h.Chat.LastOptions?.ResponseFormat);
+        Assert.Equal(0, h.Chat.LastOptions?.Temperature);
+        Assert.Equal(2048, h.Chat.LastOptions?.MaxOutputTokens);
     }
 
     [Fact]
@@ -268,7 +273,8 @@ public class RagServiceTests
 
         var result = await h.Rag.AskAsync("tüm güvenlik politikalarını özetle");
 
-        Assert.Equal("FAKE-ANSWER", result.Answer);
+        Assert.False(result.InsufficientContext);
+        Assert.NotEmpty(result.Claims);
         Assert.Equal(3, h.Chat.CallCount);   // 2 map + 1 reduce
         Assert.Equal(8, result.Sources.Count); // every consulted document is cited
     }

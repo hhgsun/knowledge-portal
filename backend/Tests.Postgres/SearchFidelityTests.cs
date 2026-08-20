@@ -43,6 +43,38 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
     }
 
     [PostgresFact]
+    public async Task RagEvaluationQueue_ClaimsPendingRunWithoutSqlComposition()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        await using var db = fixture.CreateDb();
+        var owner = User("rag-eval-u" + suffix);
+        var dataset = new RagEvaluationDataset
+        {
+            Id = "rag-eval-d" + suffix,
+            Name = "RAG evaluation " + suffix
+        };
+        var run = new RagEvaluationRun
+        {
+            Id = "rag-eval-r" + suffix,
+            DatasetId = dataset.Id,
+            RequestedById = owner.Id,
+            TotalCases = 1
+        };
+        db.AddRange(owner, dataset, run);
+        await db.SaveChangesAsync();
+
+        var service = new RagEvaluationService(db, null!, new ConfigurationBuilder().Build());
+        var claimedId = await service.ClaimNextAsync("postgres-fidelity-worker", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        Assert.Equal(run.Id, claimedId);
+        await db.Entry(run).ReloadAsync();
+        Assert.Equal("running", run.Status);
+        Assert.Equal("postgres-fidelity-worker", run.WorkerId);
+        Assert.Equal(1, run.AttemptCount);
+        Assert.NotNull(run.LeaseExpiresAt);
+    }
+
+    [PostgresFact]
     public async Task Migrations_CreatePgvectorAndRequiredIndexes()
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
@@ -55,6 +87,12 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
         var fts = new FullTextSearchService(db, new ConfigurationBuilder().Build(), NullLogger<FullTextSearchService>.Instance);
         await fts.InitializeAsync();
         Assert.True(await Scalar<bool>(connection, "SELECT to_regclass('idx_articles_search_vector') IS NOT NULL"));
+        Assert.True(await Scalar<bool>(connection, """
+            SELECT count(*) = 7 FROM information_schema.columns
+            WHERE table_name = 'rag_evaluation_runs'
+              AND column_name IN ('AttemptCount', 'CasesSnapshotJson', 'DatasetVersion',
+                  'LeaseExpiresAt', 'RuntimeSnapshotJson', 'ThresholdsSnapshotJson', 'WorkerId')
+            """));
     }
 
     [PostgresFact]

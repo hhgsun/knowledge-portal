@@ -56,15 +56,21 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
         retainedFileCountLimit: ctx.Configuration.GetValue("Logging:RetainedFileCountLimit", 30),
         rollOnFileSizeLimit: false));
 
-// ─── Metrics (OpenTelemetry → Prometheus /metrics) ───────────
+// ─── Metrics/traces (Prometheus + optional OTLP) ─────────────
 builder.Services.AddSingleton<PortalMetrics>();
-builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics
+var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+if (string.IsNullOrWhiteSpace(otlpEndpoint))
+    otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+var telemetry = builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics
     .AddAspNetCoreInstrumentation()
     .AddMeter(PortalMetrics.MeterName)
-    .AddPrometheusExporter())
-    .WithTracing(tracing => tracing
-        .AddAspNetCoreInstrumentation()
-        .AddSource(PortalMetrics.ActivitySourceName));
+    .AddPrometheusExporter());
+telemetry.WithTracing(tracing =>
+{
+    tracing.AddAspNetCoreInstrumentation().AddSource(PortalMetrics.ActivitySourceName);
+    if (Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var endpoint))
+        tracing.AddOtlpExporter(options => options.Endpoint = endpoint);
+});
 
 // ─── Database ────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -207,6 +213,7 @@ builder.Services.AddScoped<BulkTransferService>();
 builder.Services.AddScoped<SourceImportService>();
 builder.Services.AddScoped<RagEvaluationService>();
 builder.Services.AddHostedService<RagEvaluationWorker>();
+builder.Services.AddSingleton<OllamaHealthProbe>();
 builder.Services.AddScoped<McpToolExecutor>();
 builder.Services.AddScoped<ContentGovernanceService>();
 builder.Services.AddScoped<McpAuditService>();
@@ -259,7 +266,8 @@ app.MapGet("/api/health/live", () => Results.Ok(new { status = "alive" }));
 
 // Readiness: DB unreachable → 503 "unhealthy" (orchestrator/deploy probes fail);
 // only Ollama down → 200 "degraded" (search gracefully falls back to fulltext)
-app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
+app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp, OllamaHealthProbe ollamaProbe,
+    CancellationToken ct) =>
 {
     var ollamaEnabled = cfg.GetValue("Ollama:Enabled", false);
     var embeddingModel = cfg["Ollama:EmbeddingModel"] ?? "bge-m3";
@@ -270,9 +278,7 @@ app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
     {
         try
         {
-            using var scope = sp.CreateScope();
-            var embeddingService = scope.ServiceProvider.GetService<EmbeddingService>();
-            ollamaStatus = embeddingService != null && await embeddingService.IsOllamaAvailableAsync()
+            ollamaStatus = await ollamaProbe.CheckAsync(ct)
                 ? "connected" : "unavailable";
         }
         catch { ollamaStatus = "unavailable"; }
@@ -284,7 +290,7 @@ app.MapGet("/api/health", async (IConfiguration cfg, IServiceProvider sp) =>
         using var dbScope = sp.CreateScope();
         var dbCtx = dbScope.ServiceProvider.GetRequiredService<AppDbContext>();
         pendingEmbeddings = ollamaEnabled
-            ? await dbCtx.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt == null)
+            ? await dbCtx.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt == null, ct)
             : 0;
     }
     catch

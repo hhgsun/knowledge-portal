@@ -4,6 +4,8 @@ using KnowledgePortal.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -140,8 +142,10 @@ public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
 public sealed class FakeChatClient : IChatClient
 {
     public IReadOnlyList<ChatMessage> LastMessages { get; private set; } = [];
+    public ChatOptions? LastOptions { get; private set; }
     /// <summary>Number of completion calls — lets tests distinguish single-pass from map-reduce.</summary>
     public int CallCount { get; private set; }
+    private string? _lastGroundedResponse;
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -149,8 +153,10 @@ public sealed class FakeChatClient : IChatClient
         CancellationToken cancellationToken = default)
     {
         LastMessages = messages.ToList();
+        LastOptions = options;
         CallCount++;
-        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "FAKE-ANSWER")));
+        var response = BuildResponse(LastMessages);
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, response)));
     }
 
     public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -170,6 +176,37 @@ public sealed class FakeChatClient : IChatClient
 
     public object? GetService(Type serviceType, object? serviceKey = null) =>
         serviceType.IsInstanceOfType(this) ? this : null;
+
+    private string BuildResponse(IReadOnlyList<ChatMessage> messages)
+    {
+        var user = messages.LastOrDefault(x => x.Role == ChatRole.User)?.Text ?? "";
+        var matches = Regex.Matches(user,
+            "<source id=\\\"(?<id>S\\d+)\\\"[^>]*>\\s*(?:\\[SECURITY-RISK[^\\r\\n]*\\]\\s*)?(?<text>.*?)\\s*</source>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        if (matches.Count == 0)
+            return Volatile.Read(ref _lastGroundedResponse) ??
+                "{\"answer\":\"Bilgi yok.\",\"claims\":[],\"insufficientContext\":true}";
+
+        var claims = matches.Cast<Match>().Select(match => new
+        {
+            text = Compact(match.Groups["text"].Value),
+            sourceIds = new[] { match.Groups["id"].Value }
+        }).Where(x => x.text.Length > 0).ToList();
+        var response = JsonSerializer.Serialize(new
+        {
+            answer = string.Join(' ', claims.Select(x => x.text)),
+            claims,
+            insufficientContext = claims.Count == 0
+        });
+        Volatile.Write(ref _lastGroundedResponse, response);
+        return response;
+    }
+
+    private static string Compact(string text)
+    {
+        var compact = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return compact.Length <= 400 ? compact : compact[..400];
+    }
 
     public void Dispose() { }
 }

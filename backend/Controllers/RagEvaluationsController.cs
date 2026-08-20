@@ -65,9 +65,21 @@ public class RagEvaluationsController(AppDbContext db, IServiceProvider services
         if (!config.GetValue("Ollama:Enabled", false) || services.GetService<RagService>() == null)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "RAG service is not available" });
         var dataset = await db.RagEvaluationDatasets.FindAsync(id); if (dataset == null) return NotFound(new { error = "Evaluation dataset not found" });
-        if (await db.RagEvaluationRuns.AnyAsync(x => x.Status == "pending" || x.Status == "running"))
+        var now = DateTime.UtcNow;
+        if (await db.RagEvaluationRuns.AnyAsync(x => x.Status == "pending" ||
+                (x.Status == "running" && x.LeaseExpiresAt != null && x.LeaseExpiresAt > now)))
             return Conflict(new { error = "Another evaluation run is already active" });
-        var run = new RagEvaluationRun { DatasetId = id, RequestedById = User.GetUserId(), TotalCases = RagEvaluationService.ParseCases(dataset.CasesJson).Count };
+        var evaluator = services.GetRequiredService<RagEvaluationService>();
+        var run = new RagEvaluationRun
+        {
+            DatasetId = id,
+            RequestedById = User.GetUserId(),
+            TotalCases = RagEvaluationService.ParseCases(dataset.CasesJson).Count,
+            DatasetVersion = dataset.Version,
+            CasesSnapshotJson = dataset.CasesJson,
+            ThresholdsSnapshotJson = dataset.ThresholdsJson,
+            RuntimeSnapshotJson = await evaluator.BuildRuntimeSnapshotAsync(HttpContext.RequestAborted)
+        };
         db.Add(run); await db.SaveChangesAsync(); return AcceptedAtAction(nameof(GetRun), new { runId = run.Id }, RunDto(run));
     }
 
@@ -86,7 +98,8 @@ public class RagEvaluationsController(AppDbContext db, IServiceProvider services
     private static object ToDataset(RagEvaluationDataset x) => new { x.Id, x.Name, x.Description, x.Version,
         cases = RagEvaluationService.ParseCases(x.CasesJson), thresholds = RagEvaluationService.ParseThresholds(x.ThresholdsJson), x.CreatedAt, x.UpdatedAt };
     private static object RunDto(RagEvaluationRun x) => new { x.Id, x.DatasetId, datasetName = x.Dataset?.Name, x.Status, x.TotalCases,
-        x.CompletedCases, metrics = Deserialize(x.MetricsJson), results = Deserialize(x.ResultsJson), x.Error, x.CreatedAt, x.StartedAt, x.CompletedAt };
+            x.CompletedCases, x.AttemptCount, x.DatasetVersion, runtimeSnapshot = Deserialize(x.RuntimeSnapshotJson),
+            metrics = Deserialize(x.MetricsJson), results = Deserialize(x.ResultsJson), x.Error, x.CreatedAt, x.StartedAt, x.CompletedAt };
     private static object? Deserialize(string? value) => value == null ? null : JsonSerializer.Deserialize<JsonElement>(value, Json);
     private static string? Validate(SaveRagDatasetRequest x) => string.IsNullOrWhiteSpace(x.Name) ? "Name is required" : x.Cases.Count is < 1 or > 500 ? "Dataset must contain 1-500 cases" : x.Cases.Any(c => string.IsNullOrWhiteSpace(c.Id) || string.IsNullOrWhiteSpace(c.Question)) ? "Every case requires id and question" : x.Cases.Select(c => c.Id).Distinct().Count() != x.Cases.Count ? "Case ids must be unique" : null;
     private static void Apply(RagEvaluationDataset x, SaveRagDatasetRequest r) { x.Name = r.Name.Trim(); x.Description = r.Description?.Trim() ?? ""; x.Version = r.Version?.Trim() ?? "1.0.0"; x.CasesJson = JsonSerializer.Serialize(r.Cases, Json); x.ThresholdsJson = JsonSerializer.Serialize(r.Thresholds, Json); x.UpdatedAt = DateTime.UtcNow; }

@@ -45,6 +45,7 @@
 | `OpenTelemetry.Extensions.Hosting` | 1.17.0 | OpenTelemetry host wiring for metrics |
 | `OpenTelemetry.Instrumentation.AspNetCore` | 1.17.0 | HTTP request metrics |
 | `OpenTelemetry.Exporter.Prometheus.AspNetCore` | 1.12.0-beta.1 (pinned prerelease) | Prometheus scrape endpoint at /metrics |
+| `OpenTelemetry.Exporter.OpenTelemetryProtocol` | 1.17.0 | Optional OTLP export for RAG and ASP.NET Core traces |
 
 ### Frontend
 
