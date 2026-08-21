@@ -8,6 +8,7 @@ import type { Article } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
 import { ArticleForm } from "../components/editor/article-form";
 import { useArticleImages } from "../hooks/useArticleImages";
+import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
 
 export default function EditArticlePage() {
   const params = useParams();
@@ -180,6 +181,7 @@ export default function EditArticlePage() {
       deleteImage={deleteImage}
       changeSummary={changeSummary}
       onChangeSummaryChange={setChangeSummary}
+      statusIndicator={isViewer ? null : <ArticleIndexStatusBadge status={article.indexingStatus} />}
       attachmentSection={
         <AttachmentList
           articleId={article.id}

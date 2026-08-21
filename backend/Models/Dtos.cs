@@ -70,7 +70,11 @@ public record ArticleSummaryDto(
     string? ContentMarkdown,
     List<object>? Attachments,
     // Match-context window from the article body (search results only; null → clients show Excerpt)
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Snippet = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Snippet = null,
+    // Operational metadata: populated only for editor/admin article-list requests.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null);
+
+public record ArticleIndexingStatusDto(string State, string? IndexedAt);
 
 // Full article detail shared by GET /api/articles/{idOrSlug} and the MCP get_article tool.
 // Markdown is the canonical source; ContentText is its normalized searchable text.
@@ -96,7 +100,9 @@ public record ArticleDetailDto(
     string? ApprovedBy,
     List<object>? Tags,
     int ViewCount,
-    List<object>? Attachments);
+    List<object>? Attachments,
+    // Operational metadata: populated only for editor/admin article-detail requests.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null);
 
 // Tags
 public record CreateTagRequest(string Name);

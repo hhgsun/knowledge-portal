@@ -7,6 +7,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
+import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
 import { ArticleViewSkeleton } from "../components/ui/skeleton";
 import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
@@ -255,6 +256,7 @@ export default function ArticleViewPage() {
         {article.excerpt && <p className="text-zinc-500 mt-2">{article.excerpt}</p>}
         <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-zinc-500">
           <ContentTypeBadge contentType={article.contentType} size="md" clickable />
+          {isApprover && <ArticleIndexStatusBadge status={article.indexingStatus} />}
           {article.status === "published" && isApprover && (
             <button
               type="button"

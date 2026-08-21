@@ -235,6 +235,7 @@ Behavior:
       "updatedAt": "...", "ownerName": "...", "apiKeyName": null,
       "tags": [{ "id": "...", "name": "...", "slug": "..." }],
       "viewCount": 5, "wilsonScore": 0.72,
+      "indexingStatus": { "state": "indexed", "indexedAt": "2026-08-21T10:30:00Z" },
       "content": "plain text (only if includeContent=true)",
       "attachments": [{ "id": "...", "fileName": "...", "contentType": "...", "sizeBytes": 1024, "downloadUrl": "/api/attachments/.../download" }]
     }
@@ -242,6 +243,11 @@ Behavior:
   "total": 42
 }
 ```
+
+For editor/admin callers, list items and article detail include `indexingStatus`. Its `state` is
+`indexed`, `indexing`, `pending`, `stale`, `failed`, or `not_applicable`; `indexedAt` is populated
+only when the current article revision is fully synchronized. Viewer responses omit this
+operational field.
 
 ---
 
@@ -269,7 +275,7 @@ Behavior:
 Accepts both article ID and slug for lookup.
 
 **Side effects**: Records an `ArticleView` entry (deduplicated: same user+article within 15 minutes counts as 1 view).
-**200 Response**: Full article object with canonical `contentMarkdown`, derived `contentText`, and attachment metadata.
+**200 Response**: Full article object with canonical `contentMarkdown`, derived `contentText`, and attachment metadata. Editor/admin responses also include the revision-aware `indexingStatus` described above.
 **404**: Article not found.
 
 ---

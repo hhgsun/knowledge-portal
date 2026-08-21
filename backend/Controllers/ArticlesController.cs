@@ -92,7 +92,9 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         }
 
         var (articles, total) = await articleService.ListAsync(query, page, limit,
-            includeContent: includeContent, includeAttachments: includeAttachments);
+            includeContent: includeContent,
+            includeAttachments: includeAttachments,
+            includeIndexingStatus: role is "admin" or "editor");
 
         return Ok(new { articles, total });
     }
@@ -177,7 +179,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
             await db.SaveChangesAsync();
         }
 
-        return Ok(await articleService.BuildDetailAsync(article));
+        var includeIndexingStatus = User.GetRole() is "admin" or "editor";
+        return Ok(await articleService.BuildDetailAsync(article, includeIndexingStatus));
     }
 
     [HttpPut("{id}")]

@@ -28,7 +28,8 @@ public record ArticleEnrichment(
 /// search-index maintenance, and response enrichment. Controllers and MCP tools
 /// call these instead of duplicating the logic.
 /// </summary>
-public class ArticleService(AppDbContext db, FullTextSearchService ftsService, TagService tagService, IndexJobQueue indexJobs)
+public class ArticleService(AppDbContext db, FullTextSearchService ftsService, TagService tagService,
+    IndexJobQueue indexJobs, IConfiguration config)
 {
     public static IQueryable<Article> ApplyFilter(IQueryable<Article> query, ArticleFilter? filter)
     {
@@ -282,7 +283,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     /// Builds the full article detail shared by the REST detail endpoint and the MCP get_article tool.
     /// The article must have Owner and Tags loaded (see <see cref="GetByIdOrSlugAsync"/>).
     /// </summary>
-    public async Task<ArticleDetailDto> BuildDetailAsync(Article article)
+    public async Task<ArticleDetailDto> BuildDetailAsync(Article article, bool includeIndexingStatus = false)
     {
         var apiKeyName = article.CreatedViaApiKeyId != null
             ? await db.ApiKeys.Where(k => k.Id == article.CreatedViaApiKeyId).Select(k => k.Name).FirstOrDefaultAsync()
@@ -291,6 +292,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         var attachmentMap = await AttachmentHelper.GetAttachmentMapAsync(db, [article.Id]);
         var approvedBy = article.ApprovedById == null ? null
             : await db.Users.Where(u => u.Id == article.ApprovedById).Select(u => u.Name).FirstOrDefaultAsync();
+        var indexingStatus = includeIndexingStatus
+            ? (await GetIndexingStatusesAsync([article.Id])).GetValueOrDefault(article.Id)
+            : null;
 
         return new ArticleDetailDto(
             article.Id, article.Title, article.Slug, article.Excerpt,
@@ -304,7 +308,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             article.ApprovedAt?.ToString("o"), approvedBy,
             article.ArticleTags.Select(at => (object)new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
             viewCount,
-            attachmentMap.GetValueOrDefault(article.Id) ?? []);
+            attachmentMap.GetValueOrDefault(article.Id) ?? [],
+            indexingStatus);
     }
 
     /// <summary>Builds enriched summaries for already-loaded articles, preserving their order (e.g. search rank).</summary>
@@ -320,6 +325,58 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 includeContent ? a.Content : null,
                 attachmentMap?.GetValueOrDefault(a.Id)))
             .ToList();
+    }
+
+    /// <summary>
+    /// Returns the user-facing state of the combined lexical/semantic index. Article mutations
+    /// clear the index timestamps before the durable job is enqueued, so a non-null timestamp
+    /// always belongs to the current revision. Existing chunks distinguish a stale semantic
+    /// revision from an article that has never completed semantic indexing.
+    /// </summary>
+    private async Task<Dictionary<string, ArticleIndexingStatusDto>> GetIndexingStatusesAsync(IEnumerable<string> articleIds)
+    {
+        var ids = articleIds.Distinct().ToList();
+        if (ids.Count == 0) return new();
+
+        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
+        var articles = await db.Articles
+            .Where(a => ids.Contains(a.Id))
+            .Select(a => new
+            {
+                a.Id,
+                a.Status,
+                a.FtsIndexedAt,
+                a.IndexedAt,
+                HasEmbeddings = a.ArticleEmbeddings.Any()
+            })
+            .ToListAsync();
+        var jobs = await db.IndexJobs
+            .Where(j => ids.Contains(j.ArticleId))
+            .ToDictionaryAsync(j => j.ArticleId);
+
+        return articles.ToDictionary(a => a.Id, a =>
+        {
+            jobs.TryGetValue(a.Id, out var job);
+            if (a.Status != "published")
+                return new ArticleIndexingStatusDto("not_applicable", null);
+            if (job?.Status == "failed")
+                return new ArticleIndexingStatusDto("failed", null);
+            if (job?.Status == "processing")
+                return new ArticleIndexingStatusDto("indexing", null);
+
+            var isCurrent = a.FtsIndexedAt != null && (!semanticEnabled || a.IndexedAt != null);
+            if (isCurrent)
+            {
+                var completedAt = semanticEnabled && a.IndexedAt > a.FtsIndexedAt
+                    ? a.IndexedAt
+                    : a.FtsIndexedAt;
+                return new ArticleIndexingStatusDto("indexed", completedAt?.ToString("o"));
+            }
+
+            return new ArticleIndexingStatusDto(
+                semanticEnabled && a.HasEmbeddings ? "stale" : "pending",
+                null);
+        });
     }
 
     /// <summary>Single construction point for the shared article summary shape.</summary>
@@ -345,7 +402,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             matchType,
             content,
             attachments,
-            snippet);
+            snippet,
+            null);
     }
 
     /// <summary>
@@ -354,7 +412,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     /// </summary>
     public async Task<(List<ArticleSummaryDto> Articles, int Total)> ListAsync(
         IQueryable<Article> query, int page, int limit, string sort = "updated",
-        bool includeContent = false, bool includeAttachments = false)
+        bool includeContent = false, bool includeAttachments = false,
+        bool includeIndexingStatus = false)
     {
         query = sort switch
         {
@@ -378,12 +437,18 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
 
         var enrichment = await GetEnrichmentAsync(rows.Select(r => r.Id));
         var attachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, rows.Select(r => r.Id).ToList()) : null;
+        var indexingStatuses = includeIndexingStatus
+            ? await GetIndexingStatusesAsync(rows.Select(r => r.Id))
+            : null;
 
         var articles = rows.Select(r => BuildSummary(
                 r.Id, r.Title, r.Slug, r.Excerpt, r.ContentType, r.UpdatedAt,
                 enrichment.GetValueOrDefault(r.Id),
                 includeContent ? r.Content : null,
-                attachmentMap?.GetValueOrDefault(r.Id)))
+                attachmentMap?.GetValueOrDefault(r.Id)) with
+            {
+                IndexingStatus = indexingStatuses?.GetValueOrDefault(r.Id)
+            })
             .ToList();
 
         return (articles, total);

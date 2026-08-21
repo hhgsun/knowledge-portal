@@ -2,15 +2,19 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KnowledgePortal.Api.Data;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
 public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebApplicationFactory _factory;
 
     public ArticlesTests(TestWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -84,6 +88,56 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Fetch By Slug Test", body.GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task IndexingStatus_IsRevisionAware_AndHiddenFromViewers()
+    {
+        await AuthenticateAsAdmin();
+        var title = "Index status " + Guid.NewGuid().ToString("N");
+        var created = await (await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title,
+            contentMarkdown = "Current revision",
+            status = "published"
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetString()!;
+
+        var pending = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{id}");
+        Assert.Equal("pending", pending.GetProperty("indexingStatus").GetProperty("state").GetString());
+
+        var indexedAt = DateTime.UtcNow;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var article = (await db.Articles.FindAsync(id))!;
+            article.FtsIndexedAt = indexedAt;
+            article.IndexedAt = indexedAt;
+            var job = (await db.IndexJobs.FindAsync(id))!;
+            job.Status = "completed";
+            job.CompletedAt = indexedAt;
+            await db.SaveChangesAsync();
+        }
+
+        var indexed = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{id}");
+        var indexStatus = indexed.GetProperty("indexingStatus");
+        Assert.Equal("indexed", indexStatus.GetProperty("state").GetString());
+        Assert.Equal(JsonValueKind.String, indexStatus.GetProperty("indexedAt").ValueKind);
+        var adminList = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/articles?q={Uri.EscapeDataString(title)}");
+        var adminListItem = adminList.GetProperty("articles").EnumerateArray()
+            .Single(a => a.GetProperty("id").GetString() == id);
+        Assert.Equal("indexed", adminListItem.GetProperty("indexingStatus").GetProperty("state").GetString());
+
+        var viewerToken = await RegisterAndGetToken($"index-viewer-{Guid.NewGuid():N}@example.com");
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", viewerToken);
+        var viewerResponse = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{id}");
+        Assert.False(viewerResponse.TryGetProperty("indexingStatus", out _));
+        var viewerList = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/articles?q={Uri.EscapeDataString(title)}");
+        var viewerListItem = viewerList.GetProperty("articles").EnumerateArray()
+            .Single(a => a.GetProperty("id").GetString() == id);
+        Assert.False(viewerListItem.TryGetProperty("indexingStatus", out _));
     }
 
     [Fact]

@@ -74,4 +74,6 @@ Inline sözdizimi ve eşdeğer query parametreleri birlikte kullanılabilir:
 
 Yayınlama, içerik değişikliği ve ek ekleme/silme işlemleri PostgreSQL-backed dayanıklı `index_jobs` kuyruğuna iş bırakır. Aynı makaledeki değişiklikler generation counter ile birleştirilir. Worker'lar işleri lease ve `FOR UPDATE SKIP LOCKED` ile sahiplenir; bounded parallelism, exponential retry ve terminal failure takibi uygular. Başarılı iş hem fulltext hem semantic indeksi senkronize eder.
 
+Editör ve yöneticiler makale listesinde, detay sayfasında ve düzenleme ekranında sürüme duyarlı indeks durumunu görür: `İndekslendi`, `İndeksleniyor`, `İndeks bekliyor`, `İndeks güncel değil` veya `İndeksleme başarısız`. İşaret yalnızca embedding satırının varlığına dayanmaz; makalenin güncel revizyonu için gerekli lexical ve (etkinse) semantic indekslerin tamamlanmış olmasını doğrular. Normal okuyucu yanıtları bu operasyonel alanı içermez.
+
 Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics`, `/api/search/storage-status` ve `/api/search/rag-observability` endpoint'leriyle arama altyapısını izleyebilir.

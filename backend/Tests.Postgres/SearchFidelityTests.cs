@@ -27,7 +27,8 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
             db,
             new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance),
             new TagService(db),
-            new IndexJobQueue(db, config));
+            new IndexJobQueue(db, config),
+            config);
 
         Assert.Equal(1, await service.AddVersionAsync(article.Id, article.Title, "![image](/api/attachments/one/download)", owner.Id, null));
         await db.SaveChangesAsync();

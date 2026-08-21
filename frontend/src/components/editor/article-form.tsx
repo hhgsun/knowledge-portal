@@ -42,6 +42,8 @@ export interface ArticleFormProps {
   onChangeSummaryChange?: (v: string) => void;
   // Attachment section rendered by parent
   attachmentSection?: ReactNode;
+  // Optional operational metadata rendered next to the publication state.
+  statusIndicator?: ReactNode;
 }
 
 export function ArticleForm({
@@ -69,6 +71,7 @@ export function ArticleForm({
   changeSummary,
   onChangeSummaryChange,
   attachmentSection,
+  statusIndicator,
 }: ArticleFormProps) {
   const { contentTypes } = useLookups();
   const titleRef = useAutoResizeTextArea(title);
@@ -151,6 +154,7 @@ export function ArticleForm({
               {STATUS_DESCRIPTIONS[status] ?? ""}
             </span>
           </div>
+          {statusIndicator}
         </div>
 
         <div className="mt-3 flex items-start gap-2">

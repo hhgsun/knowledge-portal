@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
+import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
 import { ArticleListSkeleton } from "../components/ui/skeleton";
 import { TagSelector } from "../components/editor/tag-selector";
 import type { ArticleListItem, Tag } from "../types/api";
@@ -348,6 +349,7 @@ export default function ArticlesPage() {
                         {article.status}
                       </span>
                     )}
+                    {isApprover && <ArticleIndexStatusBadge status={article.indexingStatus} />}
                     <span className="flex items-center gap-0.5 text-xs text-zinc-400">
                       <Eye size={12} />
                       {article.viewCount}

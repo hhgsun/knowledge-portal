@@ -77,6 +77,13 @@ export interface TagWithCount extends Tag {
   articleCount: number;
 }
 
+export type ArticleIndexState = "indexed" | "indexing" | "pending" | "stale" | "failed" | "not_applicable";
+
+export interface ArticleIndexingStatus {
+  state: ArticleIndexState;
+  indexedAt: string | null;
+}
+
 export interface ArticleListItem {
   id: string;
   title: string;
@@ -90,6 +97,7 @@ export interface ArticleListItem {
   tags: Tag[];
   viewCount: number;
   wilsonScore: number;
+  indexingStatus?: ArticleIndexingStatus | null;
 }
 
 export interface ArticlesResponse {
@@ -118,6 +126,7 @@ export interface Article {
   apiKeyName: string | null;
   viewCount: number;
   attachments: ArticleAttachment[];
+  indexingStatus?: ArticleIndexingStatus | null;
 }
 
 // ─── Article Versions ────────────────────────────────────────
