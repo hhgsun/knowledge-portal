@@ -37,9 +37,9 @@ The following items are explicit owner decisions and are not open findings unles
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — 14 models: User (with AzureObjectId, Slug), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, ArticleEmbedding, IndexJob
+- **Entities**: `backend/Models/Entities/` — User (with AzureObjectId, Slug), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, FeaturedLink, ArticleEmbedding, IndexJob, UsageEvent, RagEvaluationDataset, RagEvaluationRun
 - **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
-- **Seed data**: `DbInitializer.SeedAsync()` — admin user + 10 default tags
+- **Seed data**: `DbInitializer.SeedAsync()` — admin user + 11 default tags + content types + project documentation articles
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
 - **Middleware pipeline**: ForwardedHeaders → HSTS (non-dev) → SecurityHeaders (nosniff/DENY/Referrer-Policy) → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → Authentication → RateLimiter → Authorization → Controllers. RateLimiter runs after auth so partitioning sees the principal; ForwardedHeaders first so everything sees real client IP/scheme (`ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy — no in-app HTTPS redirect)
@@ -66,7 +66,7 @@ The following items are explicit owner decisions and are not open findings unles
 
 ```
 backend/
-├── Controllers/          # API endpoints (15 controllers)
+├── Controllers/          # API endpoints
 ├── Auth/                 # JwtService, RbacService, ApiKeyMiddleware, ApiKeyGenerator, Permissions, ClaimsPrincipalExtensions, RequirePermissionAttribute, RequireSessionAuthAttribute
 ├── Data/                 # AppDbContext, DbInitializer, SlugQueries (unique slug generation)
 ├── Middleware/            # GlobalExceptionMiddleware
@@ -77,7 +77,7 @@ backend/
 │                         # Observability: PortalMetrics (OpenTelemetry meters)
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
-│   └── Entities/         # EF Core entity classes (14 models; includes durable IndexJob queue)
+│   └── Entities/         # EF Core entity classes (includes durable IndexJob and RAG evaluation models)
 ├── Migrations/           # EF Core migrations
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
@@ -91,7 +91,7 @@ frontend/
 ├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types & difficulties)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
-├── src/pages/            # 18 page components
+├── src/pages/            # Flat page components
 ├── src/lib/utils.ts      # cn() helper
 ├── src/App.tsx           # Routes
 ├── auth-popup-callback.html  # Vite multi-page entry: Azure AD popup redirect target
@@ -129,6 +129,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
    - Content is stored as canonical CommonMark/GFM Markdown (`contentMarkdown` in API payloads)
    - Slug is auto-generated from title (with collision detection)
    - Articles marked as "published" get `PublishedAt`; seed/import does not claim a human review, so `LastReviewedAt` remains null until approval
+
+> **Seed documentation is part of the product documentation, not disposable sample data.** Whenever a feature, architecture, workflow, configuration, security control, or operational behavior changes, the relevant files in `backend/SeedData/articles/` must be updated in the same change. If the subject is substantial and has no suitable article, add one; for example, implementing or materially changing RAG requires a seed article that explains the actual RAG architecture, retrieval/generation flow, safeguards, configuration, observability, and operational behavior. Seed articles must remain mutually consistent and must not contradict `AGENTS.md`, `specs/`, or the implementation.
 
 **To reset seed data**: Drop the PostgreSQL database, then restart backend (it recreates and reseeds automatically).
 
@@ -285,7 +287,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Articles CRUD | ✅ Implemented | Full lifecycle with versioning |
 | Tags | ✅ Implemented | CRUD + article tagging |
 | Search (fulltext) | ✅ Implemented | PostgreSQL tsvector/tsquery (`turkish` config: stemming + stopwords) with GIN index and weighted ranking, content body indexed, Turkish accent folding via C# transliteration. Multi-word queries are AND-first (all terms must match), retrying with OR then ILIKE when empty. Paged (`page` param) with true post-filter `total`/`totalPages` and match-context `snippet` per result |
-| Search (tag-based) | ✅ Implemented | @tag prefix syntax, multiple tags with AND logic |
+| Search (tag-based) | ✅ Implemented | `#tag` prefix syntax, multiple tags with AND logic |
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + chunking (~500 words/chunk) + pgvector cosine distance, best-chunk scoring (returns matched chunk index) |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
 | Search (RAG) | ✅ Implemented | Hybrid retrieval/RRF/reranking/diversity; fail-closed structured output where the user-visible answer is rebuilt only from claims that pass known-evidence, lexical, numeric and negation checks; process-wide concurrency bulkhead, total request budget, typed per-stage timeouts, bounded transient retry and AI circuit breaker; broad map batches run with bounded parallelism and return explicit partial results when individual batches/reduce fail |
@@ -465,6 +467,8 @@ These entity fields exist in the database but are not yet used in business logic
 | Paket kaldırıldı | `specs/tech-stack.md`'den sil |
 | Known Frontend Gap kapatıldı | Known Frontend Gaps tablosundan satırı sil |
 | Yeni bilinen eksiklik | Known Frontend Gaps tablosuna ekle |
+| Feature/mimari/iş akışı/config/güvenlik davranışı değişti | İlgili `AGENTS.md` + `specs/` bölümleri ve `backend/SeedData/articles/` içindeki kullanıcıya dönük proje makalesi |
+| Yeni kapsamlı teknik yetenek eklendi | Uygun seed makalesi yoksa yeni bir `backend/SeedData/articles/NN-*.md` makalesi oluştur |
 
 #### Kurallar
 
@@ -475,6 +479,9 @@ These entity fields exist in the database but are not yet used in business logic
 5. **types/api.ts senkronizasyonu**: Backend DTO değişikliği → `frontend/src/types/api.ts` aynı commit'te güncellenir.
 6. **Ölü kod/field temizliği**: Kullanılmayan entity field, component veya endpoint kaldırıldığında hem kod hem dokümantasyondan silinir.
 7. **Feature Status doğruluğu**: Yarım kalan iş "✅ Implemented" olarak işaretlenmez. Sadece tam çalışan özellikler işaretlenir.
+8. **Seed makale senkronizasyonu**: `backend/SeedData/articles/*.md` örnek içerik değil, ürünle birlikte sunulan proje dokümantasyonudur. Davranışsal veya teknik bir değişiklik ilgili seed makalesine aynı change/commit içinde yansıtılır; uygun makale yoksa yenisi eklenir.
+9. **Seed makale güncelliği**: Seed makalelerde kaldırılmış teknoloji, eski model adı, eski endpoint, eski yetki veya geçersiz operasyon adımı bırakılamaz. Seed makaleler kendi aralarında ve `AGENTS.md`/`specs/` ile tutarlı olmalıdır; çelişkide bu dosya esas alınır ve diğer dokümanlar düzeltilir.
+10. **Mimari anlatım kapsamı**: RAG gibi kapsamlı bir özellik eklendiğinde veya önemli ölçüde değiştiğinde seed dokümantasyonu yalnızca özelliğin varlığını söylemekle yetinmez; uygulanmış mimariyi, veri akışını, önemli yapılandırmayı, güvenlik/dayanıklılık kontrollerini ve işletim/gözlemlenebilirlik noktalarını açıklar.
 
 #### Post-Change Validation Checklist (Zorunlu)
 
@@ -489,6 +496,9 @@ These entity fields exist in the database but are not yet used in business logic
 - [ ] Validation kuralı değişti → Validation Rules tablosu güncellendi mi?
 - [ ] Yeni paket → `specs/tech-stack.md`'ye eklendi mi?
 - [ ] File Locations ağacı hâlâ doğru mu? (sayfa sayısı, controller sayısı vb.)
+- [ ] Değişen özellik/mimari/iş akışı/config/güvenlik davranışı → ilgili seed makale aynı change içinde güncellendi mi?
+- [ ] Yeni kapsamlı teknik yetenek → uygulanmış mimariyi anlatan bir seed makalesi var mı?
+- [ ] Seed makalelerde eski teknoloji/model/endpoint/yetki/operasyon bilgisi veya dokümanlar arası çelişki kaldı mı?
 
 ### MUST NOT
 - Do NOT add Next.js, SSR, or server components — pure SPA + REST API

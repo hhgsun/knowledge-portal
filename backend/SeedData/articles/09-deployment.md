@@ -7,86 +7,86 @@
     "deployment",
     "monitoring"
   ],
-  "excerpt": "Knowledge Portal'ın kurulumu, yapılandırması, Docker ile çalıştırılması ve ortam değişkenleri.",
+  "excerpt": "Knowledge Portal'ın PostgreSQL/pgvector tabanlı kurulumu, yapılandırması, Docker akışı ve sağlık kontrolleri.",
   "status": "published"
 }
 ---
 
 ## Sistem Gereksinimleri
 
-- .NET 10 SDK (backend)
-- Node.js 20+ (frontend)
-- SQLite (veritabanı — otomatik oluşturulur)
-- Ollama (opsiyonel — semantic search ve RAG için)
+- .NET 10 SDK
+- Node.js 20+
+- PostgreSQL ve `pgvector` eklentisi
+- Ollama veya uyumlu servis (semantic, hybrid'in semantic bacağı ve RAG için)
 
 ## Yerel Geliştirme
 
-```bash
-# Backend başlatma
-cd backend
-dotnet run
-# → http://localhost:5174
-# → Swagger: http://localhost:5174/swagger
+Önce `backend/appsettings.json` içindeki `ConnectionStrings:DefaultConnection` değerinin erişilebilir bir PostgreSQL sunucusunu gösterdiğini doğrulayın. Ardından:
 
-# Frontend başlatma (ayrı terminal)
+```bash
+cd backend
+dotnet ef database update
+dotnet run
+# API: http://localhost:5174
+# Swagger (Development): http://localhost:5174/swagger
+
+# Ayrı terminal
 cd frontend
 npm install
 npm run dev
-# → http://localhost:5173
-# → API proxy: /api/* → localhost:5174
+# UI: http://localhost:5173
+# /api/* proxy: http://localhost:5174
 ```
+
+Backend ilişkisel sağlayıcıyla açıldığında migration'ları uygular ve seed veriyi yükler. Testlerin varsayılan paketi EF Core InMemory kullandığı için Docker gerektirmez.
 
 ## Docker ile Çalıştırma
 
+Repository geliştirme ve test compose dosyaları içerir:
+
 ```bash
-# Development ortamı
-docker-compose -f docker-compose.dev.yml up
-
-# Test ortamı
-docker-compose -f docker-compose.test.yml up
+docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.test.yml up --build
 ```
 
-## Yapılandırma (appsettings.json)
+Bu compose tanımları backend ve frontend container'larını çalıştırır; PostgreSQL ve Ollama bağlantıları deployment ortamının ağ/yapılandırmasıyla sağlanmalıdır.
 
-### JWT Ayarları
+## Temel Yapılandırma
 
-```json
-{
-  "Jwt": {
-    "Key": "your-secret-key-min-32-chars",
-    "Issuer": "KnowledgePortal",
-    "Audience": "KnowledgePortal",
-    "ExpiryHours": 24
-  }
-}
-```
+### JWT ve Rate Limiting
 
-### Rate Limiting
+JWT issuer, audience ve süre ayarları `Jwt` bölümündedir. Rate limit varsayılanları auth için 10/dakika, search için 30/dakika ve MCP için 60/dakikadır. Partition anahtarı API key kimliği, kullanıcı kimliği veya istemci IP'sidir.
 
 ```json
 {
   "RateLimiting": {
     "AuthLimit": 10,
-    "SearchLimit": 30
+    "SearchLimit": 30,
+    "McpLimit": 60
   }
 }
 ```
 
-### Ollama (Opsiyonel)
+### Ollama
 
 ```json
 {
   "Ollama": {
     "Enabled": true,
-    "BaseUrl": "http://localhost:11434",
-    "EmbeddingModel": "nomic-embed-text",
-    "ChatModel": "llama3.2",
-    "MinSimilarityScore": 0.3
+    "EmbeddingModel": "bge-m3",
+    "ChatModel": "qwen2.5vl:7b",
+    "EmbeddingDimensions": 1024,
+    "MinSimilarityScore": 0.5,
+    "RagMinSimilarityScore": 0.3
   }
 }
 ```
 
-Ollama devre dışıyken semantic, hybrid ve RAG arama modları kullanılamaz. Fulltext arama her zaman çalışır.
+Embedding boyutu veritabanındaki `vector(1024)` kolonuyla eşleşmelidir. Ollama devre dışı veya erişilemez olduğunda fulltext arama çalışmaya devam eder; AI bağımlı yollar kontrollü hata/fallback davranışı uygular.
+
+### İndeksleme Worker'ları
+
+`Indexing` bölümü worker sayısı, claim batch boyutu, polling aralığı, lease süresi ve exponential retry sınırlarını yönetir. Kuyruk PostgreSQL `index_jobs` tablosunda dayanıklıdır; uygulama yeniden başlasa da bekleyen işler kaybolmaz.
 
 ### Dosya Depolama
 
@@ -95,37 +95,39 @@ Ollama devre dışıyken semantic, hybrid ve RAG arama modları kullanılamaz. F
   "FileStorage": {
     "BasePath": "../data/uploads",
     "MaxFileSizeMB": 20,
-    "MaxFilesPerArticle": 20
+    "MaxAttachmentsPerArticle": 20
   }
 }
 ```
 
+Uploads ve log dizinleri kalıcı diskte tutulmalıdır. Dosya yazımı aynı volume üzerinde geçici dosya, flush, SHA-256 ve atomik rename akışıyla yapılır; silmeler kurtarılabilir `.trash` alanına taşınır.
+
 ## Veritabanı
 
-SQLite veritabanı otomatik oluşturulur ve migration'lar startup'ta uygulanır. WAL modu ve busy timeout otomatik olarak etkinleştirilir.
+PostgreSQL bağlantısının migration oluşturma/uygulama ve `vector` extension kullanma yetkisi olmalıdır.
 
 ```bash
-# Manuel migration uygulama
-cd backend && dotnet ef database update
-
-# Yeni migration oluşturma
-cd backend && dotnet ef migrations add MigrationName
+cd backend
+dotnet ef database update
+dotnet ef migrations add MigrationName
 ```
 
-## Sağlık Kontrolü (Health Check)
+Gerçek PostgreSQL/pgvector davranışını doğrulayan fidelity testleri için `RAG_FIDELITY_CONNECTION_STRING` tanımlanır ve `backend/Tests.Postgres` projesi çalıştırılır.
 
-Sistemin çalıştığını doğrulamak için:
+## Sağlık ve Gözlemlenebilirlik
 
-```bash
-curl http://localhost:5174/api/health
-# Yanıt: {"status": "healthy", ...}
-```
+- `GET /api/health/live`: süreç liveness kontrolü, her zaman 200.
+- `GET /api/health`: PostgreSQL readiness ve timeout/cached Ollama kontrolü. DB yoksa 503 `unhealthy`; yalnız Ollama sorunu varsa 200 `degraded`.
+- `GET /metrics`: Prometheus metrikleri; nginx üzerinden public olarak yayınlanmaz.
+- Yönetici endpoint'leri: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
 
-## Production Önerileri
+RAG Prometheus alarm kuralları `ops/prometheus/rag-alerts.yml`, Grafana dashboard'u `ops/grafana/rag-overview.json` altındadır.
 
-- JWT secret key'i güçlü ve uzun tutun (en az 32 karakter).
-- SQLite yerine bir production veritabanı düşünün (büyük ölçekte).
-- HTTPS zorunlu tutun — reverse proxy (nginx) arkasında çalıştırın.
-- Uploads dizinini kalıcı bir disk'e mount edin (Docker volume).
-- Rate limit değerlerini trafik paternine göre ayarlayın.
-- Frontend build çıktısını nginx veya CDN ile sunun.
+## Production Kontrol Listesi
+
+- TLS'yi şirket reverse proxy'sinde sonlandırın; `KnownProxies`/`KnownNetworks` ayarlarını doğru yapılandırın.
+- PostgreSQL yedekleme ve `pgvector` extension sürüm yönetimini işletim planına dahil edin.
+- Upload ve log dizinlerini kalıcı diske bağlayın; kapasite ve bütünlük durumunu izleyin.
+- Rate limit, indeks worker ve RAG bütçelerini gerçek trafik ölçümlerine göre ayarlayın.
+- `/metrics` endpoint'ini yalnız iç ağdan erişilebilir tutun.
+- Frontend build çıktısını nginx veya kurumun statik içerik katmanından sunun.

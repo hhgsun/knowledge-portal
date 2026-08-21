@@ -83,7 +83,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | `GET /api/tags` | 200: array with ≥ 10 default tags |
+| 1 | `GET /api/tags` | 200: array with ≥ 11 default tags |
 | 2 | `POST /api/tags` with `{"name":"new-tag"}` | 201: returns `{ id, name, slug }` |
 | 3 | `POST /api/tags` with existing name | 200: returns existing tag (upsert — 200 if exists, 201 if new) |
 | 4 | `DELETE /api/tags?id={id}` | 200: tag deleted |

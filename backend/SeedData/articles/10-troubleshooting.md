@@ -33,16 +33,18 @@ Rate limit aşıldığında döner. Auth endpoint'leri için dakikada 10, search
 
 ### Semantic/Hybrid/RAG arama çalışmıyor
 
-- Ollama'nın çalıştığından emin olun (varsayılan: http://localhost:11434).
+- `Ollama:BaseUrl` ile yapılandırılan Ollama/uyumlu servisin erişilebilir olduğundan emin olun.
 - appsettings.json'da Ollama:Enabled = true olmalı.
-- nomic-embed-text modelinin indirildiğini doğrulayın: ollama pull nomic-embed-text
-- RAG için ek olarak llama3.2 modeli gerekir: ollama pull llama3.2
+- `bge-m3` embedding modelinin erişilebilir olduğunu doğrulayın: `ollama pull bge-m3`
+- RAG için `qwen2.5vl:7b` chat modelinin erişilebilir olduğunu doğrulayın: `ollama pull qwen2.5vl:7b`
+- Yapılandırmadaki `EmbeddingDimensions` değerinin veritabanındaki `vector(1024)` kolonuyla uyumlu olduğunu kontrol edin.
 
 ### Yeni eklenen makale aramada çıkmıyor
 
 - Makalenin status'ünün 'published' olduğundan emin olun — sadece yayınlanmış makaleler indekslenir.
-- İndeksleme arka planda her 5 saniyede çalışır. Birkaç saniye bekleyin.
+- İndeksleme PostgreSQL-backed `index_jobs` kuyruğunda asenkron çalışır. Varsayılan polling aralığı 2 saniyedir; yoğunluk veya retry/backoff nedeniyle daha uzun sürebilir.
 - GET /api/search/embedding-status ile indeksleme durumunu kontrol edebilirsiniz.
+- GET /api/search/diagnostics ile model/boyut, kuyruk ve indeks uyarılarını inceleyebilirsiniz.
 - Sorun devam ederse POST /api/search/reindex ile indeksi yeniden oluşturun.
 
 ## Dosya Ekleri Sorunları
@@ -74,9 +76,18 @@ Editöre yapıştırılan görseller geçici blob URL'ler kullanır. Makaleyi ka
 
 ## Veritabanı Sorunları
 
-### "database is locked" hatası
+### PostgreSQL bağlantısı kurulamıyor
 
-SQLite WAL modu ve busy timeout (5000ms) otomatik olarak etkindir. Bu hata genellikle çok sayıda eşzamanlı yazma işlemi olduğunda ortaya çıkar. Birkaç saniye bekleyip tekrar deneyin. Production ortamında yüksek eşzamanlılık gerekiyorsa PostgreSQL'e geçiş düşünülebilir.
+- `ConnectionStrings:DefaultConnection` değerini ve ağ erişimini doğrulayın.
+- PostgreSQL servisinin çalıştığını ve hedef veritabanının mevcut olduğunu kontrol edin.
+- Uygulama readiness kontrolü için `GET /api/health` çağrısını inceleyin; DB erişilemiyorsa 503 `unhealthy` döner.
+- Migration'ları `cd backend && dotnet ef database update` ile uygulayın.
+
+### "extension vector does not exist" veya vektör sorgusu hatası
+
+- PostgreSQL sunucusunda `pgvector` eklentisinin kurulu olduğundan emin olun.
+- Migration çalıştıran kullanıcının `CREATE EXTENSION vector` işlemi için gerekli yetkiye sahip olduğunu doğrulayın.
+- `/api/search/diagnostics` ve `/api/search/storage-status` yönetici endpoint'lerindeki uyarıları kontrol edin.
 
 ## Destek
 

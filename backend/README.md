@@ -1,295 +1,164 @@
 # Knowledge Portal — Backend API
 
-ASP.NET Core Web API powering the Knowledge Portal platform.
+ASP.NET Core Web API for the Knowledge Portal platform.
+
+> `../AGENTS.md` is the project’s single source of truth. The complete endpoint contract is in `../specs/api-surface.md`; this README is a concise backend quick reference.
 
 ## Tech Stack
 
-| Component | Version |
-|-----------|---------|
-| .NET | 10.0 |
-| C# | 13 |
-| EF Core | 10.0.8 |
-| SQLite | via EF Core Sqlite provider |
-| Auth | JWT Bearer (HMAC-SHA256) + API Key (`kp_` prefix) |
-| Password Hashing | BCrypt (cost factor 12) |
+| Component | Technology |
+|-----------|------------|
+| Runtime | .NET 10 / C# 13 / ASP.NET Core |
+| Data | EF Core 10 + Npgsql + PostgreSQL |
+| Search | PostgreSQL Turkish FTS (`tsvector`/GIN) + pgvector HNSW |
+| AI | Ollama-compatible embedding/chat services (`bge-m3`, `qwen2.5vl:7b`) |
+| Auth | JWT Bearer + `kp_` API keys + Azure AD |
+| Observability | Serilog + OpenTelemetry + Prometheus |
+| Tests | xUnit + WebApplicationFactory; EF Core InMemory by default |
 
 ## Quick Start
 
+Configure `ConnectionStrings:DefaultConnection` in `appsettings.json` for a PostgreSQL server with the `pgvector` extension available, then run:
+
 ```bash
 cd backend
-dotnet build KnowledgePortal.Api.csproj
-dotnet run --project KnowledgePortal.Api.csproj
+dotnet ef database update
+dotnet run
 ```
 
-Server starts on **http://localhost:5174**. On first run the database is created at `../data/knowledge.db` with seed data.
+The API starts at `http://localhost:5174`; Swagger is available at `/swagger` in Development.
 
-### Seed Data
+On startup, the application applies relational migrations and seeds:
 
-| Item | Value |
-|------|-------|
-| Admin email | `admin@finagotech.com.tr` |
-| Admin password | `1q2w3E*/` |
-| Default tags | 10 tags (getting-started, api, deployment, etc.) |
+- The default admin user.
+- 11 default tags.
+- Seven `content_type` lookup values.
+- `SeedData/articles/*.md` project documentation when the articles table is empty.
+
+Seed articles are product documentation. They must be updated in the same change as the feature, architecture, configuration, security control, or operational behavior they describe.
+
+## Architecture
+
+```text
+Controllers
+    ↓
+Domain/Search services
+    ↓
+EF Core AppDbContext
+    ↓
+PostgreSQL + pgvector
+
+Search/RAG services ──→ Ollama-compatible embedding/chat endpoint
+Background workers  ──→ durable index_jobs and RAG evaluation queues
+```
+
+Controllers handle routing, authentication scope, authorization, and response shaping. Shared business logic belongs in `Services/`; database access uses `AppDbContext`. Service failures are mapped to the standard `{ "error": "..." }` response.
 
 ## Project Structure
 
-```
+```text
 backend/
-├── Program.cs                  # App bootstrap, DI, middleware pipeline
-├── appsettings.json            # Connection string, JWT config
-├── Auth/
-│   ├── JwtService.cs           # Token generation (HMAC-SHA256, 24h expiry)
-│   ├── ApiKeyMiddleware.cs     # kp_ token verification middleware
-│   ├── RbacService.cs          # Static role→permission matrix
-│   ├── RequirePermissionAttribute.cs  # [RequirePermission] filter
-│   └── ClaimsPrincipalExtensions.cs   # GetUserId(), GetRole(), etc.
-├── Controllers/
-│   ├── AuthController.cs       # POST login, register; GET me
-│   ├── ArticlesController.cs   # CRUD articles + versioning
-│   ├── TagsController.cs       # CRUD tags
-│   ├── ArticleVersionsController.cs  # GET article versions
-│   ├── ArticleFeedbackController.cs  # POST/GET feedback
-│   ├── SearchController.cs     # Full-text, tag, RAG search
-│   ├── DashboardController.cs  # Dashboard summary stats
-│   ├── AnalyticsController.cs  # Detailed analytics
-│   ├── AdminUsersController.cs # User management (admin only)
-│   └── ApiKeysController.cs    # API key management
-├── Data/
-│   ├── AppDbContext.cs         # EF Core context, snake_case mapping
-│   └── DbInitializer.cs       # Migrations + seed data
+├── Auth/             # JWT, API keys, RBAC, session-only authorization
+├── Controllers/      # REST endpoints
+├── Data/             # AppDbContext, DbInitializer, slug queries
+├── Helpers/          # Markdown, attachment, search, slug, and RRF helpers
+├── Mcp/              # MCP protocol types and tool execution
+├── Middleware/       # Global exception handling
 ├── Models/
-│   ├── Entities/               # 9 EF Core entities
-│   ├── DTOs/
-│   └── Requests/
-├── Migrations/                 # EF Core migrations
-└── Services/
+│   ├── Dtos.cs       # Request/response records
+│   └── Entities/     # EF Core entities
+├── Migrations/       # PostgreSQL migrations
+├── SeedData/articles # Product documentation loaded on an empty database
+├── Services/         # Domain, indexing, search/RAG, governance, observability
+├── Tests/            # Docker-free default test suite
+└── Tests.Postgres/   # PostgreSQL/pgvector fidelity gate
 ```
 
-## API Endpoints
+## Authentication and Authorization
 
-All routes are prefixed with `/api/`.
+- JWT Bearer tokens represent interactive sessions.
+- API keys use the `X-API-Key: kp_...` header and carry `source=api-key`.
+- Azure AD login is exchanged for a local JWT through the frontend MSAL redirect-bridge flow.
+- Permission names come from `Auth/Permissions.cs`; do not use magic permission strings.
+- API-key principals are capped at editor authority, never receive delete permissions, and cannot call session-only endpoints.
+- Destructive endpoints use `RequireSessionAuth`; removing one’s own article vote is the documented exception.
 
-### Authentication
+The authoritative RBAC and endpoint authorization matrices are in `../AGENTS.md`.
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| POST | `/api/auth/login` | None | Login, returns JWT |
-| POST | `/api/auth/register` | None | Register new user (viewer role) |
-| GET | `/api/auth/me` | JWT | Current user profile |
+## Search and RAG
 
-### Articles
+`GET /api/search` supports `fulltext`, `semantic`, `hybrid`, and `rag` modes:
 
-| Method | Route | Auth | Permission | Description |
-|--------|-------|------|------------|-------------|
-| GET | `/api/articles` | JWT/Key | — | List articles (paginated) |
-| POST | `/api/articles` | JWT/Key | `articles:create` | Create article |
-| GET | `/api/articles/{idOrSlug}` | JWT/Key | — | Get article detail |
-| PUT | `/api/articles/{id}` | JWT/Key | Owner or `articles:edit_any` | Update article |
-| DELETE | `/api/articles/{id}` | JWT/Key | Owner or `articles:delete_any` | Delete article |
+- Fulltext uses PostgreSQL Turkish FTS with AND → OR → escaped `ILIKE` fallback.
+- Semantic search uses `bge-m3` 1024-dimensional embeddings stored in pgvector.
+- Hybrid search merges a wide lexical/semantic pool with RRF and applies a deterministic reranker.
+- RAG performs hybrid chunk retrieval, provenance-aware reranking, narrow or bounded-parallel map-reduce generation, and fail-closed claim/citation validation.
 
-### Tags
+Inline filters are `@author`, `#tag`, and `##content-type`. Equivalent repeatable query parameters are also supported.
 
-| Method | Route | Auth | Permission | Description |
-|--------|-------|------|------------|-------------|
-| GET | `/api/tags` | JWT/Key | — | List all tags |
-| POST | `/api/tags` | JWT/Key | `tags:manage` | Create tag |
-| DELETE | `/api/tags?id={id}` | JWT/Key | `tags:manage` | Delete tag |
-
-### Versions & Feedback
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| GET | `/api/articles/{id}/versions` | JWT | List versions |
-| GET | `/api/articles/{id}/versions/{vid}` | JWT | Get version detail |
-| POST | `/api/articles/{id}/feedback` | JWT | Submit feedback |
-| GET | `/api/articles/{id}/feedback` | JWT | Get feedback stats |
-
-### Search
-
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| GET | `/api/search?q=...&type=...&limit=...` | JWT/Key | Search articles |
-
-Search types: `fulltext` (default), `semantic`, `hybrid`, `rag`. Prefix query with `@tag-slug` for tag-based search.
-
-### Dashboard & Analytics
-
-| Method | Route | Auth | Permission | Description |
-|--------|-------|------|------------|-------------|
-| GET | `/api/dashboard` | JWT | — | Summary stats |
-| GET | `/api/analytics` | JWT (session only) | `analytics:view` | Detailed analytics |
-
-### Admin
-
-| Method | Route | Auth | Permission | Description |
-|--------|-------|------|------------|-------------|
-| GET | `/api/admin/users` | JWT (session only) | `users:manage` | List users |
-| POST | `/api/admin/users` | JWT (session only) | `users:manage` | Create user |
-| PUT | `/api/admin/users` | JWT (session only) | `users:manage` | Update user |
-| DELETE | `/api/admin/users?id={id}` | JWT (session only) | `users:manage` | Delete user |
-| GET | `/api/keys` | JWT (session only) | `api_keys:manage` | List API keys |
-| POST | `/api/keys` | JWT (session only) | `api_keys:manage` | Create API key |
-| DELETE | `/api/keys?id={id}` | JWT (session only) | `api_keys:manage` | Delete API key |
-
-## RBAC Permission Matrix
-
-| Permission | admin | editor | viewer |
-|-----------|:-----:|:------:|:------:|
-| `articles:read` | ✓ | ✓ | ✓ |
-| `articles:create` | ✓ | ✓ | ✓ |
-| `articles:edit_own` | ✓ | ✓ | ✓ |
-| `articles:edit_any` | ✓ | — | — |
-| `articles:delete_own` | ✓ | ✓ | ✓ |
-| `articles:delete_any` | ✓ | — | — |
-| `articles:publish` | ✓ | ✓ | — |
-| `articles:archive` | ✓ | ✓ | — |
-| `articles:approve` | ✓ | ✓ | — |
-| `tags:manage` | ✓ | ✓ | — |
-| `users:manage` | ✓ | — | — |
-| `analytics:view` | ✓ | ✓ | — |
-| `api_keys:manage` | ✓ | — | — |
-
-> **Note**: Viewers can create and directly publish articles, and can edit/delete their own articles. Approval is an optional editor/admin trust signal, not a publication gate.
-
-## Database
-
-SQLite database at `../data/knowledge.db`. Column names use **snake_case** (configured in `AppDbContext.OnModelCreating`). C# properties use **PascalCase**.
-
-### Entity Model
-
-9 entities: `User`, `Article`, `ArticleVersion`, `ArticleView`, `Tag`, `ArticleTag`, `ArticleFeedback`, `ApiKey`, `SearchQuery`.
-
-### Migrations
-
-```bash
-# Apply existing migrations
-dotnet ef database update --project KnowledgePortal.Api.csproj
-
-# Create a new migration
-dotnet ef migrations add <Name> --project KnowledgePortal.Api.csproj
-```
+Published article and attachment indexing is coordinated through the durable PostgreSQL `index_jobs` queue. Workers use leases, `FOR UPDATE SKIP LOCKED`, bounded parallelism, exponential retry, and terminal failure tracking.
 
 ## Configuration
 
-Key settings in `appsettings.json`:
+Important `appsettings.json` sections:
 
-| Key | Description | Default |
-|-----|-------------|---------|
-| `ConnectionStrings:DefaultConnection` | SQLite path | `Data Source=../data/knowledge.db` |
-| `Jwt:Secret` | HMAC signing key (≥32 chars) | Dev key (change in production) |
-| `Jwt:Issuer` | Token issuer | `KnowledgePortal` |
-| `Jwt:Audience` | Token audience | `KnowledgePortal` |
-| `Jwt:ExpirationInMinutes` | Token lifetime | `1440` (24 hours) |
+| Section | Purpose |
+|---------|---------|
+| `ConnectionStrings` | PostgreSQL connection |
+| `Jwt`, `AzureAd` | Authentication |
+| `RateLimiting` | Per-client auth/search/MCP limits |
+| `Ollama` | Models, dimensions, retrieval and context limits |
+| `Indexing` | Durable queue workers, leases and retry |
+| `RagResilience` | Bulkhead, budgets, timeouts, retry and circuit breaker |
+| `FileStorage` | Upload path, size/type limits and integrity sampling |
+| `OpenTelemetry` | Optional OTLP export |
+| `Logging`, `Serilog` | File retention and log levels |
+
+Tracked deployment connection/JWT values are an explicit repository-owner decision documented in `../AGENTS.md`; do not relocate or redact them unless that decision is reopened.
 
 ## Middleware Pipeline
 
-```
-Request → CORS → ApiKeyMiddleware → Authentication → Authorization → Controllers
-```
-
-`ApiKeyMiddleware` intercepts `X-API-Key: kp_*` header before standard JWT auth, sets `ClaimsPrincipal` with an `api-key` source discriminator. Session-only endpoints reject API key auth via `User.GetSource() == "api-key"` checks.
-
-## MCP Server (Model Context Protocol)
-
-The Knowledge Portal includes a **JSON-RPC 2.0 compliant MCP server** at `POST /mcp` for programmatic access to knowledge base tools.
-
-### Authentication
-
-**No OAuth.** MCP uses only simple authentication:
-
-| Method | Header | Example |
-|--------|--------|---------|
-| API Key | `X-API-Key: kp_*` | `X-API-Key: kp_7944228bfb1ff77f7dfa40edd4025074` |
-| JWT Bearer | `Authorization: Bearer <token>` | `Authorization: Bearer eyJhbGc...` |
-
-Both authentication methods are **required** for all MCP requests (no anonymous access).
-
-### Protocol & Methods
-
-```
-POST http://localhost:5174/mcp
-Content-Type: application/json
-X-API-Key: kp_<your-api-key>
-
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "<method>",
-  "params": { ... }
-}
+```text
+ForwardedHeaders
+→ HSTS (non-development)
+→ SecurityHeaders
+→ GlobalExceptionMiddleware
+→ CORS
+→ ApiKeyMiddleware
+→ Authentication
+→ RateLimiter
+→ Authorization
+→ Controllers
 ```
 
-**Standard Methods** (JSON-RPC 2.0 spec):
+Authentication runs before rate limiting so partitions can use API-key or user identity. Forwarded Headers run first so rate limiting and scheme handling see the proxy-provided client information.
 
-| Method | Purpose | Response |
-|--------|---------|----------|
-| `initialize` | Get server capabilities and protocol version | `{ protocolVersion, capabilities, serverInfo }` |
-| `notifications/initialized` | Client signals ready (no response body) | — |
-| `tools/list` | Discover available tools with JSON schemas | `{ tools: [...] }` |
-| `tools/call` | Execute a tool with parameters | `{ content: [{type, text}], isError? }` |
-| `ping` | Health check | `{}` |
+## MCP
 
-### Available Tools
+The stateless JSON-RPC 2.0 endpoint is available at `/mcp` through GET and POST. It uses API-key or JWT authentication only—no OAuth—and is rate-limited per caller.
 
-1. **search_articles** — Full-text search published articles  
-   - Params: `query` (required), `limit` (1-50), `tags`, `authors`, `content_type`, `include_content`
-   - Returns: `{ articles: [...], total, query }`
+Clients discover capabilities with `initialize` and `tools/list`, then invoke tools with `tools/call`. Tools return an `outputSchema`, structured JSON in `structuredContent`, and compatibility text. Article/search output includes provenance and content-security assessment; known secret patterns are redacted.
 
-2. **get_article** — Get article details by ID or slug  
-   - Params: `id_or_slug` (required)
-   - Returns: Full article with content (plain text), tags, attachments
+See `../specs/api-surface.md` for the current tool catalog and schemas.
 
-3. **list_articles** — List published articles with pagination  
-   - Params: `page`, `limit`, `content_type`, `tags`, `sort` (newest/oldest/most_viewed)
-   - Returns: `{ articles: [...], total, page, limit, totalPages }`
+## Tests
 
-4. **list_tags** — List all tags with article counts  
-   - No params required
-   - Returns: `{ tags: [{id, name, slug, articleCount}], total }`
+```bash
+# Docker-free default suite
+dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj
 
-5. **get_portal_info** — Get portal statistics  
-   - No params required
-   - Returns: `{ totalArticles, totalAuthors, totalTags, contentTypes, recentArticles }`
-
-### Example: Claude Desktop Configuration
-
-```json
-{
-  "mcpServers": {
-    "knowledge-portal": {
-      "url": "http://localhost:5174/mcp",
-      "headers": {
-        "X-API-Key": "kp_<your-api-key>"
-      }
-    }
-  }
-}
+# Real PostgreSQL/pgvector fidelity suite
+$env:RAG_FIDELITY_CONNECTION_STRING = "Host=localhost;Database=knowledge_portal_fidelity;Username=postgres;Password=..."
+dotnet test backend/Tests.Postgres/KnowledgePortal.Api.PostgresTests.csproj --configuration Release
 ```
 
-### Example: VS Code / Cursor MCP Configuration
+The default suite uses an isolated EF Core InMemory database per test class and deterministic AI/vector fakes. CI additionally requires the PostgreSQL fidelity gate and the live-Ollama golden-dataset RAG quality gate.
 
-Create `.vscode/mcp.json` in your workspace:
+## Health and Observability
 
-```json
-{
-  "servers": {
-    "knowledge-portal": {
-      "url": "http://localhost:5174/mcp",
-      "headers": {
-        "X-API-Key": "kp_<your-api-key>"
-      }
-    }
-  }
-}
-```
+- `GET /api/health/live`: liveness, always 200.
+- `GET /api/health`: PostgreSQL readiness plus timeout-bounded/cached Ollama health.
+- `GET /metrics`: internal Prometheus endpoint.
+- Admin diagnostics: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
 
-**Note**: Replace `kp_<your-api-key>` with an actual API key from `/api/keys`. Create one via the admin panel or API.
-
-### Stateless & Secure
-
-- **No OAuth**: API Key (BCrypt hashed) or JWT Bearer auth only
-- **Stateless**: Each request is independent; no session state maintained
-- **Published articles only**: All tools filter to `status: "published"`
-- **RBAC-free**: Tools don't enforce permission checks beyond authentication
-- **Rate limiting**: None applied (unlike `/api/search` which has rate limits)
-- **Protocol version**: 2024-11-05
+Prometheus RAG alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`.

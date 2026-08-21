@@ -361,5 +361,8 @@ On application startup, `DbInitializer.SeedAsync()`:
    - Email: `admin@finagotech.com.tr`
    - Password: `1q2w3E*/` (BCrypt, cost 12)
    - Role: `admin`
-3. Creates 10 default tags if they do not exist:
-   - `getting-started`, `tutorial`, `troubleshooting`, `best-practices`, `api`, `deployment`, `security`, `performance`, `testing`, `monitoring`
+3. Creates 11 default tags if they do not exist:
+   - `project-knowledge-portal`, `getting-started`, `tutorial`, `troubleshooting`, `best-practices`, `api`, `deployment`, `security`, `performance`, `testing`, `monitoring`
+4. Creates the default `content_type` lookup values if no lookup values exist:
+   - `reference`, `how-to`, `adr`, `runbook`, `faq`, `policy`, `onboarding`
+5. Loads `backend/SeedData/articles/*.md` in filename order when the articles table is empty. These files are maintained as product documentation and must be updated alongside the behavior they describe.

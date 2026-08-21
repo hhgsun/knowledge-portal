@@ -75,7 +75,7 @@ Metin içerikli dosyalar otomatik olarak arama indeksine dahil edilir:
 - **İndekslenen formatlar:** .pdf, .docx, .txt, .md, .csv, .json, .yaml
 - **Maksimum metin:** Her ek için en fazla 50.000 karakter çıkarılır.
 - Desteklenmeyen veya bozuk dosyalar sessizce atlanır.
-- Yayınlanmış makalelere ek ekleme/silme, FTS5 ve embedding indekslerinin yeniden oluşturulmasını tetikler.
+- Yayınlanmış makalelere ek ekleme/silme, PostgreSQL fulltext ve pgvector embedding indekslerinin yeniden oluşturulmasını tetikler.
 
 ## Depolama
 

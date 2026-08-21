@@ -54,9 +54,9 @@ Frontend starts at `http://localhost:5173`
 ## Key Features
 
 - Markdown-first WYSIWYG editor (Milkdown Crepe) with headings, code blocks, tables, task lists
-- RBAC: Admin / Editor / Viewer with 12 granular permissions
+- RBAC: Admin / Editor / Viewer with granular permissions and API-key-specific caps
 - Article versioning with diff comparison
-- Full-text search with `@tag` syntax
+- Full-text, semantic, hybrid, and RAG search with `@author`, `#tag`, and `##content-type` filters
 - Analytics: views, searches, content gaps, feedback
 - Dual auth: JWT tokens + API keys for integrations
 - Rate limiting on auth and search endpoints

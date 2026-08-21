@@ -19,7 +19,7 @@ Knowledge Portal, kurumsal bilgi birikimini organize etmek, aramak ve paylaşmak
 ## Temel Özellikler
 
 - **Zengin İçerik Editörü:** Milkdown tabanlı editör ile başlıklar, listeler, kod blokları, görseller ve tablolar oluşturabilirsiniz.
-- **Gelişmiş Arama:** FTS5 fulltext, semantic (Ollama embedding), hybrid (RRF) ve RAG (AI yanıtları) arama modları.
+- **Gelişmiş Arama:** PostgreSQL fulltext, pgvector tabanlı semantic, RRF ile hybrid ve kaynak doğrulamalı RAG arama modları.
 - **Versiyon Kontrolü:** Her içerik değişikliği otomatik olarak versiyonlanır. Önceki sürümlere geri dönebilirsiniz.
 - **Etiket Sistemi:** Makaleleri etiketlerle kategorize edin, arama sırasında #etiket sözdizimi ile filtreleyin.
 - **Dosya Ekleri:** Makalelere resim, PDF, Word ve diğer dosyaları ekleyebilirsiniz. Metin içerikli dosyalar arama indeksine dahil edilir.

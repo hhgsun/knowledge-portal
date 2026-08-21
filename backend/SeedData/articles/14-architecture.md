@@ -7,72 +7,104 @@
     "best-practices",
     "api"
   ],
-  "excerpt": "Knowledge Portal'ın genel mimarisi, backend ve frontend teknoloji yığını, veri modeli ve tasarım kararları.",
+  "excerpt": "Knowledge Portal'ın güncel frontend, backend, PostgreSQL, arama/RAG ve işletim mimarisi.",
   "status": "published"
 }
 ---
 
 ## Genel Mimari
 
-Knowledge Portal, klasik bir istemci-sunucu mimarisi kullanır: React tabanlı SPA frontend, ASP.NET Core Web API backend ve SQLite veritabanı. Geliştirme ortamında frontend, /api/* isteklerini Vite proxy üzerinden backend'e yönlendirir.
+Knowledge Portal split monorepo olarak düzenlenmiştir: React tabanlı SPA frontend, ASP.NET Core Web API backend ve PostgreSQL/pgvector veri katmanı. Geliştirme ortamında Vite, `/api/*` isteklerini `http://localhost:5174` adresindeki backend'e yönlendirir.
 
-## Backend Teknolojileri
+```text
+Kullanıcı / entegrasyon
+        │
+        ├── React SPA ── REST /api/* ──┐
+        └── MCP istemcisi ── /mcp ─────┤
+                                       ▼
+                           ASP.NET Core Web API
+                              │             │
+                              ▼             ▼
+                     PostgreSQL/pgvector   Ollama
+                     veri + FTS + kuyruk   embedding + chat
+```
 
-- **.NET 10 / ASP.NET Core:** REST API, controller tabanlı mimari.
-- **Entity Framework Core + SQLite:** Migration'lar startup'ta otomatik uygulanır. WAL modu ve busy timeout etkindir.
-- **SQLite FTS5:** BM25 sıralamalı fulltext arama için sanal tablo.
-- **Ollama (opsiyonel):** nomic-embed-text ile embedding üretimi (semantic arama) ve llama3.2 ile RAG yanıtları.
-- **JWT + API Key:** Çift kimlik doğrulama mekanizması. RBAC ile yetki kontrolü.
-- **Background service:** Arama ve embedding indekslemesi arka planda 5 saniyelik periyotlarla batch olarak çalışır.
+Desteklenen production topolojisi tek backend instance'ıdır. TLS şirket reverse proxy'sinde sonlanır; backend gerçek scheme/IP bilgisini Forwarded Headers üzerinden alır.
 
-## Frontend Teknolojileri
+## Backend
 
-- **React 19 + TypeScript:** Bileşen tabanlı SPA.
-- **Vite 8:** Geliştirme sunucusu ve build aracı. auth-popup-callback.html multi-page entry olarak build edilir.
-- **Tailwind CSS 4:** Utility-first stil altyapısı.
-- **Milkdown 3:** ProseMirror tabanlı zengin metin editörü. Tablolar, görev listeleri, kod blokları (lowlight ile sözdizimi vurgulama), görsel yapıştırma desteklenir.
-- **React Router 7:** İstemci tarafı yönlendirme.
-- **MSAL.js 5:** Azure AD kimlik doğrulaması (popup + PKCE akışı).
-- **Lucide Icons + Sonner:** İkon seti ve toast bildirimleri.
+- **.NET 10 / ASP.NET Core:** Controller tabanlı REST API ve stateless JSON-RPC MCP endpoint'i.
+- **Entity Framework Core + Npgsql:** PostgreSQL migration, veri erişimi ve snake_case kolon eşlemeleri.
+- **PostgreSQL FTS:** Türkçe `tsvector`/`tsquery`, GIN indeks ve sıralamalı lexical arama.
+- **pgvector:** 1024 boyutlu embedding'ler, cosine distance ve HNSW indeks.
+- **Ollama:** `bge-m3` embedding ve `qwen2.5vl:7b` chat modeli.
+- **Kimlik doğrulama:** JWT Bearer, `kp_` prefix'li API key ve Azure AD giriş akışı.
+- **RBAC:** Permission sabitleri, sahiplik kontrolleri, API key yetki tavanı ve session-only destructive endpoint'ler.
+- **Arka plan işleri:** PostgreSQL-backed dayanıklı indeks kuyruğu ve RAG kalite değerlendirme worker'ı.
+- **Gözlemlenebilirlik:** Serilog, OpenTelemetry trace/metric, Prometheus `/metrics`, RAG dashboard ve alarm kuralları.
 
-## Veri Modeli
+Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. Paylaşılan iş kuralları `Services/` katmanındadır; veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
 
-Temel varlıklar ve ilişkileri:
+## Middleware Sırası
 
-- **User:** Kullanıcılar — rol (admin/editor/viewer), yerel şifre ve/veya Azure Object ID.
-- **Article:** Makaleler — Milkdown tarafından düzenlenen Markdown içerik, durum, içerik türü, slug, okuma süresi.
-- **ArticleVersion:** İçerik değişikliklerinde otomatik oluşturulan versiyonlar.
-- **Tag / ArticleTag:** Çoktan-çoğa etiket ilişkisi.
-- **Attachment:** Makale ekleri — fiziksel dosyalar data/uploads/{articleId}/ altında tutulur.
-- **ArticleVote / Comment:** Geri bildirim kayıtları.
-- **ArticleView / SearchLog:** Analitik için görüntülenme ve arama kayıtları.
-- **ApiKey:** kp_ prefix'li anahtarlar — yalnızca hash'i saklanır.
-- **FeaturedLink:** Kenar çubuğu öne çıkan bağlantıları.
-- **LookupValue:** İçerik türleri gibi yönetilebilir sabit listeler (etiket, renk, ikon, sıralama).
+İstek hattı şu sırayı izler: Forwarded Headers → production HSTS → güvenlik header'ları → global exception handling → CORS → API Key middleware → Authentication → Rate Limiter → Authorization → Controllers.
+
+Rate limiter authentication'dan sonra çalıştığı için isteği API key kimliği, kullanıcı kimliği veya IP adresine göre partition edebilir.
+
+## Frontend
+
+- **React 19 + TypeScript strict:** Bileşen tabanlı SPA.
+- **Vite 8:** Geliştirme/build aracı ve Azure popup callback için multi-page entry.
+- **React Router 7:** `ProtectedRoute` ve `RoleRoute` ile istemci yönlendirmesi.
+- **Tailwind CSS 4:** Utility-first stil sistemi.
+- **Milkdown Crepe 7:** ProseMirror tabanlı CommonMark/GFM editörü.
+- **MSAL.js 5:** Azure AD redirect-bridge popup ve PKCE akışı.
+- **React Context:** Auth ve tema state'i; merkezi store kütüphanesi kullanılmaz.
+- **Sonner + lucide-react:** Bildirim ve ikon altyapısı.
+
+Tüm authenticated API çağrıları JWT ekleme ve 401'de logout davranışını merkezileştiren `useApi` hook'u üzerinden yapılır.
+
+## Veri ve İçerik Modeli
+
+Başlıca entity grupları:
+
+- **Kimlik ve yetki:** User, ApiKey.
+- **İçerik:** Article, ArticleVersion, Tag, ArticleTag, LookupValue, FeaturedLink.
+- **Etkileşim ve analitik:** ArticleVote, ArticleComment, ArticleView, SearchQuery, UsageEvent.
+- **Dosya ve arama:** ArticleAttachment, ArticleEmbedding, IndexJob.
+- **RAG kalite yönetimi:** RagEvaluationDataset, RagEvaluationRun.
+
+Makale gövdesi kanonik CommonMark/GFM Markdown olarak saklanır. Arama, embedding, okuma süresi ve `includeContent` çıktısı için Markdown'dan okunabilir düz metin türetilir; URL ve biçim sözdizimi indekse taşınmaz.
+
+## Arama ve RAG
+
+Lexical arama PostgreSQL FTS, semantic arama pgvector kullanır. Hybrid arama iki aday listesini RRF ile birleştirip yerel reranker uygular. RAG, provenance taşıyan makale/ek chunk'larını getirir; dar soruları tek geçişte, geniş soruları bounded-parallel map-reduce ile yanıtlar. Üretilen claim'ler kanıt ve atıf doğrulamasından geçmeden kullanıcı yanıtına alınmaz.
+
+Ayrıntılı akış için **Arama Motoru — Fulltext, Semantic, Hybrid ve RAG** ile **RAG Mimarisi ve İşleyişi** makalelerine bakın.
 
 ## Önemli Tasarım Kararları
 
-- **İçerik formatı olarak Markdown:** Milkdown editörünün ürettiği CommonMark/GFM metni kanonik olarak saklanır. Arama indeksi için biçim işaretleri ayıklanarak düz metin türetilir.
-- **SQLite tercihi:** Sıfır kurulum maliyeti ve FTS5 desteği. Yüksek eşzamanlılık gereken büyük kurulumlarda PostgreSQL'e geçiş önerilir.
-- **Opsiyonel AI katmanı:** Ollama kapalıyken sistem tamamen çalışır durumda kalır — semantic/hybrid/RAG aramalar devre dışı kalır, fulltext her zaman çalışır.
-- **Deferred upload:** Dosya ekleri makale kaydedilene kadar sunucuya gönderilmez; silmeler de kaydetme anında uygulanır. Bu, yarım kalmış düzenlemelerin artık dosya bırakmasını önler.
-- **Seed data:** İlk açılışta backend/SeedData/articles altındaki Markdown dosyaları otomatik yüklenir. Portal, kendi dokümantasyonunu içeren makalelerle hazır gelir.
+- **Markdown kanonik formattır:** Editör görünümü değil Markdown metni kalıcı sözleşmedir.
+- **PostgreSQL ortak veri katmanıdır:** Uygulama verisi, FTS, pgvector embedding'leri ve dayanıklı iş kuyrukları aynı ilişkisel sağlayıcıdadır.
+- **Opsiyonel AI katmanı:** Ollama sorunu fulltext aramayı veya temel içerik yönetimini durdurmaz.
+- **Dayanıklı indeksleme:** Editler makale başına coalesce edilir; lease, bounded parallelism ve exponential retry ile işlenir.
+- **Deferred upload:** Frontend, yeni ekleri ve silmeleri makale kaydına kadar erteler.
+- **Seed dokümantasyonu:** `backend/SeedData/articles/` ürünle birlikte gelen proje dokümantasyonudur ve uygulama davranışıyla aynı değişiklikte güncellenir.
 
 ## Proje Yapısı
 
 ```text
 know/
-├── backend/            # ASP.NET Core Web API
+├── backend/
 │   ├── Controllers/    # REST endpoint'leri
-│   ├── Services/       # İş mantığı (arama, embedding, istatistik...)
+│   ├── Services/       # Domain, arama/RAG ve gözlemlenebilirlik
 │   ├── Auth/           # JWT, API key, RBAC
-│   ├── Models/         # Entity'ler ve DTO'lar
-│   ├── Data/           # DbContext, migration, seed
-│   └── SeedData/       # Başlangıç makaleleri (Markdown)
+│   ├── Models/         # Entity ve DTO'lar
+│   ├── Data/           # DbContext, initializer, slug sorguları
+│   ├── Migrations/     # PostgreSQL migration'ları
+│   └── SeedData/       # Ürünle gelen proje makaleleri
 ├── frontend/           # React + Vite SPA
-│   └── src/
-│       ├── pages/      # Sayfa bileşenleri
-│       ├── components/ # Paylaşılan bileşenler
-│       └── lib/        # API istemcisi, yardımcılar
-└── data/               # SQLite veritabanı ve uploads (runtime)
+├── specs/              # AGENTS.md'ye bağlı ayrıntılı spesifikasyonlar
+├── ops/                # Prometheus ve Grafana RAG varlıkları
+└── data/               # Upload ve log gibi runtime dosyaları
 ```

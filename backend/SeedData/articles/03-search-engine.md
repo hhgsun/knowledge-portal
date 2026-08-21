@@ -7,84 +7,69 @@
     "best-practices",
     "performance"
   ],
-  "excerpt": "Knowledge Portal'ın dört farklı arama modunun detaylı açıklaması, kullanım senaryoları ve yapılandırması.",
+  "excerpt": "Knowledge Portal'ın dört arama modunun güncel mimarisi, kullanım senaryoları, filtreleri ve indeksleme davranışı.",
   "status": "published"
 }
 ---
 
 ## Arama Modları
 
-Knowledge Portal dört farklı arama modu sunar. Her mod farklı senaryolar için optimize edilmiştir. Varsayılan mod fulltext'tir ve Ollama olmadan çalışır.
+Knowledge Portal dört arama modu sunar. Varsayılan mod fulltext'tir ve Ollama olmadan çalışır. Semantic ve RAG için Ollama embedding/chat servisleri kullanılır; hybrid arama lexical ve semantic sonuçları birleştirir.
 
-## 1. Fulltext Arama (FTS5)
+## 1. Fulltext Arama
 
-SQLite FTS5 sanal tablosu kullanılarak BM25 algoritması ile sıralanan tam metin aramasıdır. Ollama gerektirmez.
+PostgreSQL `tsvector`/`tsquery` altyapısı ve GIN indeksi kullanılır. Türkçe sözlük sayesinde stemming ve stopword desteği sağlanır; başlık, özet, makale gövdesi ve metni çıkarılabilen ekler aranır.
 
 ### Nasıl Çalışır?
 
-- Makale başlığı, özet, içerik metni ve ek dosya içerikleri FTS5 indeksine eklenir.
-- Arama sorgusu tokenize edilir ve BM25 skoru hesaplanır.
-- FTS5 kullanılamayan durumlarda LIKE fallback devreye girer.
-- Wildcard karakterleri (% ve _) otomatik olarak escape edilir.
+- Çok kelimeli sorgu önce AND mantığıyla çalışır.
+- Sonuç yoksa OR sorgusu, ardından başlık/özet üzerinde güvenli `ILIKE` fallback uygulanır.
+- `%` ve `_` karakterleri LIKE sorgularında escape edilir.
+- Sonuçlar rank'e göre, eşitlikte makale kimliğine göre deterministik sıralanır.
+- Fulltext ve yalnız etiketle gezinti modları sayfalıdır; filtrelerden sonraki gerçek `total` ve `totalPages` değerleri döner.
+- Sonuç, makale gövdesindeki eşleşmenin çevresinden yaklaşık 240 karakterlik bir `snippet` içerebilir.
 
-### Ne Zaman Kullanmalı?
-
-Kesin kelime eşleşmesi aradığınızda, teknik terimler veya hata kodları gibi spesifik metinleri bulmak istediğinizde kullanın.
+Kesin terim, hata kodu veya ürün adı ararken fulltext iyi bir seçimdir.
 
 ## 2. Semantic Arama
 
-Ollama nomic-embed-text modeli ile metin embedding'leri oluşturulur ve SIMD cosine similarity ile en benzer içerikler bulunur.
+Yayınlanmış makaleler ve metni çıkarılabilen ekleri yaklaşık 500 kelimelik, 50 kelime örtüşmeli parçalara ayrılır. Ollama `bge-m3` modeli her parça için 1024 boyutlu embedding üretir. Vektörler PostgreSQL `pgvector` içinde tutulur; cosine distance sorguları HNSW indeksiyle hızlandırılır.
 
-### Nasıl Çalışır?
+- Liste tipi semantic aramanın varsayılan minimum benzerlik skoru 0.5'tir.
+- Her makale için en iyi eşleşen chunk seçilir ve chunk indeksi sonuçta taşınır.
+- Filtreler vektör sorgusunun içinde uygulanır; yayınlanmamış içerik sonuç havuzuna alınmaz.
 
-- Makaleler ~500 kelimelik chunk'lara bölünür (50 kelime overlap).
-- Her chunk için 768 boyutlu embedding vektörü oluşturulur.
-- Arama sorgusu da embedding'e dönüştürülür.
-- Cosine similarity ile en yüksek skorlu chunk'lar (min 0.3) döner.
-- Her makale için en iyi chunk skoru kullanılır (best-chunk scoring).
-
-### Ne Zaman Kullanmalı?
-
-Anlamsal olarak benzer içerikler aradığınızda, tam kelime eşleşmesi olmasa bile kavramsal yakınlık istediğinizde kullanın. Örneğin 'container yönetimi' araması 'Docker orchestration' içeren makaleleri de bulabilir.
+Tam kelime eşleşmesi olmasa bile kavramsal yakınlık aradığınızda semantic modu kullanın.
 
 ## 3. Hybrid Arama
 
-Fulltext ve semantic aramanın sonuçlarını Reciprocal Rank Fusion (RRF) algoritması ile birleştirir.
+Fulltext ve semantic adaylar Reciprocal Rank Fusion (RRF) ile birleştirilir. Varsayılan ağırlıklar lexical için 0.4, semantic için 0.6 ve RRF `k` değeri için 60'tır. Birleştirilmiş aday havuzu yerel, deterministik bir ikinci aşama reranker'dan geçirilir.
 
-### RRF Parametreleri
+Her iki sinyalden yararlanmak istediğiniz genel aramalarda hybrid mod önerilir. Semantic bacak kullanılamazsa lexical sonuçlarla kontrollü fallback uygulanır.
 
-- **α (alpha):** 0.4 — Fulltext ağırlığı
-- **β (beta):** 0.6 — Semantic ağırlığı
-- **k:** 60 — RRF smoothing parametresi
+## 4. RAG Arama
 
-Her sonuç matchType alanı ile hangi kaynaklardan geldiğini belirtir: fulltext, semantic veya both.
+RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak doğal dilde yanıt oluşturur. Retrieval katmanı lexical ve semantic chunk adaylarını RRF ile birleştirir, yeniden sıralar, yakın kopyaları bastırır ve kaynak çeşitliliğini korur. Dar sorular tek üretim çağrısına, tüm içerikleri özetleme/karşılaştırma gibi geniş sorular bounded-parallel map-reduce akışına yönlendirilir.
 
-### Ne Zaman Kullanmalı?
+Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
 
-En kapsamlı arama deneyimi için önerilir. Hem kelime eşleşmesi hem de anlamsal benzerlik bir arada değerlendirilir. Ollama kullanılamadığında otomatik olarak sadece fulltext'e düşer.
+Uygulama ayrıntıları, güvenlik ve dayanıklılık kontrolleri için **RAG Mimarisi ve İşleyişi** makalesine bakın.
 
-## 4. RAG Arama (AI Yanıtlı)
+## Arama Filtreleri
 
-Retrieval-Augmented Generation: Semantic arama ile bulunan en ilgili makaleler bağlam olarak kullanılarak Ollama llama3.2 modeli ile doğal dilde yanıt üretilir.
+Inline sözdizimi ve eşdeğer query parametreleri birlikte kullanılabilir:
 
-### Nasıl Çalışır?
-
-1. Semantic arama ile en ilgili 5 makale bulunur.
-2. Bu makalelerin içeriği (max 3000 kelime) bağlam olarak hazırlanır.
-3. Ollama llama3.2 modeline sorgu + bağlam gönderilir.
-4. Model, bağlamdaki bilgilere dayanarak yanıt üretir.
-5. Yanıt ile birlikte kaynak makaleler (sources) döner.
-
-## Arama Filtre Sözdizimi
-
-Arama sorgusunda özel sözdizimi ile filtreler ekleyebilirsiniz:
-
-- `#etiket-slug` — Etiket filtresi (AND mantığı, birden fazla kullanılabilir)
-- `@yazar-slug` — Yazar filtresi (OR mantığı, birden fazla kullanılabilir)
-- `##icerik-turu` — İçerik türü filtresi (OR mantığı)
+- `#etiket-slug` — etiket filtresi; birden fazlası AND mantığıyla birleşir.
+- `@yazar-slug` — yazar filtresi; birden fazlası OR mantığıyla birleşir.
+- `##icerik-turu` — içerik türü filtresi; birden fazlası OR mantığıyla birleşir.
+- `onlyOwnContent=true` — API key ile yalnız o key üzerinden oluşturulan içerikleri sınırlar.
+- `includeContent=true` — kanonik Markdown'dan türetilmiş düz metni ekler.
+- `includeAttachments=true` — ek dosya metadatasını ekler.
 
 Örnek: `@admin #tutorial ##how-to react hooks`
 
 ## İndeksleme
 
-Makaleler yayınlandığında, içerik değiştiğinde veya ek dosya eklendiğinde/silindiğinde otomatik olarak indekslenir. Background service her 5 saniyede bir kontrol eder ve batch olarak (10'lu gruplar) işler. İndeksleme durumu API üzerinden sorgulanabilir.
+Yayınlama, içerik değişikliği ve ek ekleme/silme işlemleri PostgreSQL-backed dayanıklı `index_jobs` kuyruğuna iş bırakır. Aynı makaledeki değişiklikler generation counter ile birleştirilir. Worker'lar işleri lease ve `FOR UPDATE SKIP LOCKED` ile sahiplenir; bounded parallelism, exponential retry ve terminal failure takibi uygular. Başarılı iş hem fulltext hem semantic indeksi senkronize eder.
+
+Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics`, `/api/search/storage-status` ve `/api/search/rag-observability` endpoint'leriyle arama altyapısını izleyebilir.
