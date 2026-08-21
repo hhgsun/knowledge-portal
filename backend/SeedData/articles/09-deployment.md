@@ -86,7 +86,7 @@ Embedding boyutu veritabanındaki `vector(1024)` kolonuyla eşleşmelidir. Ollam
 
 ### İndeksleme Worker'ları
 
-`Indexing` bölümü worker sayısı, claim batch boyutu, polling aralığı, lease süresi ve exponential retry sınırlarını yönetir. Kuyruk PostgreSQL `index_jobs` tablosunda dayanıklıdır; uygulama yeniden başlasa da bekleyen işler kaybolmaz.
+`Indexing` bölümü worker sayısı, claim batch boyutu, polling aralığı, `ReconciliationIntervalSeconds` ile eksik iş uzlaştırma aralığı, lease süresi ve exponential retry sınırlarını yönetir. Kuyruk PostgreSQL `index_jobs` tablosunda dayanıklıdır; uygulama yeniden başlasa da bekleyen işler kaybolmaz. Uzlaştırma, başlangıç anındaki geçici PostgreSQL kesintisinden sonra kuyruk satırı oluşmamış kirli makaleleri de kendiliğinden geri kazanır.
 
 ### Dosya Depolama
 

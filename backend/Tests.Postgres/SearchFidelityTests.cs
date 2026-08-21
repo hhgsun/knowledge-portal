@@ -72,6 +72,53 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
     }
 
     [PostgresFact]
+    public async Task QueueReconciliation_RepairsGapsWithoutResettingActiveOrFailedJobs()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        await using var db = fixture.CreateDb();
+        var owner = User("reconcile-u" + suffix);
+        var missing = Article("reconcile-missing-" + suffix, owner.Id, "reference");
+        var completed = Article("reconcile-completed-" + suffix, owner.Id, "reference");
+        var pending = Article("reconcile-pending-" + suffix, owner.Id, "reference");
+        var processing = Article("reconcile-processing-" + suffix, owner.Id, "reference");
+        var failed = Article("reconcile-failed-" + suffix, owner.Id, "reference");
+        var clean = Article("reconcile-clean-" + suffix, owner.Id, "reference");
+        clean.FtsIndexedAt = DateTime.UtcNow;
+
+        db.AddRange(owner, missing, completed, pending, processing, failed, clean);
+        db.IndexJobs.AddRange(
+            Job(completed.Id, "completed", generation: 3),
+            Job(pending.Id, "pending"),
+            Job(processing.Id, "processing"),
+            Job(failed.Id, "failed"),
+            Job(clean.Id, "completed"));
+        await db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Ollama:Enabled"] = "true" })
+            .Build();
+        var reconciled = await new IndexJobQueue(db, config).ReconcileDirtyArticlesAsync(default);
+
+        Assert.Equal(2, reconciled);
+        db.ChangeTracker.Clear();
+        Assert.Equal("pending", (await db.IndexJobs.FindAsync(missing.Id))!.Status);
+        var reopened = (await db.IndexJobs.FindAsync(completed.Id))!;
+        Assert.Equal("pending", reopened.Status);
+        Assert.Equal(4, reopened.Generation);
+        Assert.Equal("pending", (await db.IndexJobs.FindAsync(pending.Id))!.Status);
+        Assert.Equal("processing", (await db.IndexJobs.FindAsync(processing.Id))!.Status);
+        Assert.Equal("failed", (await db.IndexJobs.FindAsync(failed.Id))!.Status);
+        Assert.Equal("completed", (await db.IndexJobs.FindAsync(clean.Id))!.Status);
+
+        static IndexJob Job(string articleId, string status, int generation = 1) => new()
+        {
+            ArticleId = articleId,
+            Status = status,
+            Generation = generation,
+        };
+    }
+
+    [PostgresFact]
     public async Task RagEvaluationQueue_ClaimsPendingRunWithoutSqlComposition()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

@@ -43,7 +43,7 @@ Rate limit aşıldığında döner. Auth endpoint'leri için dakikada 10, search
 ### Yeni eklenen makale aramada çıkmıyor
 
 - Makalenin status'ünün 'published' olduğundan emin olun — sadece yayınlanmış makaleler indekslenir.
-- İndeksleme PostgreSQL-backed `index_jobs` kuyruğunda asenkron çalışır. Varsayılan polling aralığı 2 saniyedir; yoğunluk veya retry/backoff nedeniyle daha uzun sürebilir.
+- İndeksleme PostgreSQL-backed `index_jobs` kuyruğunda asenkron çalışır. Varsayılan polling aralığı 2 saniyedir; yoğunluk veya retry/backoff nedeniyle daha uzun sürebilir. İndekssiz makale olduğu hâlde bekleyen/hatalı iş sayısı sıfırsa periyodik uzlaştırma eksik kuyruk satırını varsayılan olarak 60 saniye içinde yeniden oluşturur; oluşmuyorsa worker günlükleri ve PostgreSQL erişimi kontrol edilmelidir.
 - GET /api/search/embedding-status ile indeksleme durumunu kontrol edebilirsiniz.
 - GET /api/search/diagnostics ile model/boyut, kuyruk ve indeks uyarılarını inceleyebilirsiniz.
 - Sorun devam ederse POST /api/search/reindex ile indeksi yeniden oluşturun.

@@ -17,7 +17,10 @@ public class EmbeddingBackgroundService(
     private readonly int _claimBatchSize = Math.Max(1, config.GetValue("Indexing:ClaimBatchSize", 20));
     private readonly int _pollingInterval = Math.Max(1, config.GetValue("Indexing:PollingIntervalSeconds", 2));
     private readonly int _leaseMinutes = Math.Max(1, config.GetValue("Indexing:LeaseMinutes", 15));
+    private readonly int _reconciliationInterval = Math.Max(5,
+        config.GetValue("Indexing:ReconciliationIntervalSeconds", 60));
     private readonly int _orphanCleanupIntervalHours = config.GetValue("Ollama:OrphanCleanupIntervalHours", 24);
+    private DateTime _lastReconciliationUtc = DateTime.MinValue;
     private DateTime _lastOrphanCleanupUtc = DateTime.MinValue;
     private readonly string _workerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
@@ -33,6 +36,7 @@ public class EmbeddingBackgroundService(
         {
             try
             {
+                await MaybeReconcileDirtyArticlesAsync(stoppingToken);
                 await MaybeCleanupOrphansAsync(stoppingToken);
                 List<IndexJobClaim> claims;
                 using (var scope = scopeFactory.CreateScope())
@@ -81,7 +85,7 @@ public class EmbeddingBackgroundService(
             {
                 var fts = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
                 var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
-                await fts.SyncArticleAsync(article);
+                await fts.SyncArticleAsync(article, ct);
                 if (article.Status == "published" && embeddings != null)
                     await embeddings.EmbedArticleAsync(article, ct);
                 else if (embeddings != null)
@@ -147,6 +151,21 @@ public class EmbeddingBackgroundService(
             if (removed > 0) logger.LogInformation("Removed {Count} orphan embedding chunks", removed);
         }
         catch (Exception ex) { logger.LogError(ex, "Orphan embedding cleanup failed"); }
+    }
+
+    private async Task MaybeReconcileDirtyArticlesAsync(CancellationToken ct)
+    {
+        if (DateTime.UtcNow - _lastReconciliationUtc < TimeSpan.FromSeconds(_reconciliationInterval)) return;
+
+        // Set the timestamp only after a successful database round-trip. If PostgreSQL is down,
+        // the worker retries on its normal polling cadence instead of leaving a queue gap until
+        // the next long reconciliation interval.
+        using var scope = scopeFactory.CreateScope();
+        var reconciled = await scope.ServiceProvider.GetRequiredService<IndexJobQueue>()
+            .ReconcileDirtyArticlesAsync(ct);
+        _lastReconciliationUtc = DateTime.UtcNow;
+        if (reconciled > 0)
+            logger.LogWarning("Reconciled {Count} dirty articles missing from the durable index queue", reconciled);
     }
 
     private static async Task SafeDelay(TimeSpan delay, CancellationToken ct)
