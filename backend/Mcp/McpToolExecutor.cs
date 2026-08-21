@@ -62,8 +62,8 @@ public class McpToolExecutor
                         {
                             ["query"] = new() { Type = "string", Description = "Search query text" },
                             ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid", "rag" }, Default = "fulltext" },
-                            ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1 },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20 },
+                            ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated (AND logic)" },
                             ["authors"] = new() { Type = "string", Description = "Filter by author slugs, comma-separated (OR logic)" },
                             ["content_type"] = new() { Type = "string", Description = "Filter by content type, comma-separated (OR logic)" },
@@ -97,8 +97,8 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1 },
-                            ["limit"] = new() { Type = "integer", Description = "Items per page (1-50)", Default = 20 },
+                            ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
+                            ["limit"] = new() { Type = "integer", Description = "Items per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["content_type"] = new() { Type = "string", Description = "Filter by content type" },
                             ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated" },
                             ["sort"] = new() { Type = "string", Description = "Sort order", Enum = new List<string> { "newest", "oldest", "most_viewed" }, Default = "newest" }
@@ -135,7 +135,7 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["project_tag"] = new() { Type = "string", Description = "Project tag slug" },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum context articles (1-50)", Default = 20 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum context articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["include_content"] = new() { Type = "boolean", Description = "Include canonical article content", Default = true },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
                         },
@@ -153,7 +153,7 @@ public class McpToolExecutor
                         {
                             ["integration_query"] = new() { Type = "string", Description = "Integration goal or question" },
                             ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
                         },
                         Required = ["integration_query"]
@@ -170,7 +170,7 @@ public class McpToolExecutor
                         {
                             ["query"] = new() { Type = "string", Description = "Decision topic" },
                             ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10 }
+                            ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 }
                         },
                         Required = ["query"]
                     },
@@ -199,8 +199,8 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
-                            ["days"] = new() { Type = "integer", Description = "Lookback window (1-3650 days)", Default = 30 },
-                            ["limit"] = new() { Type = "integer", Description = "Maximum articles (1-50)", Default = 20 }
+                            ["days"] = new() { Type = "integer", Description = "Lookback window (1-3650 days)", Default = 30, Minimum = 1, Maximum = 3650 },
+                            ["limit"] = new() { Type = "integer", Description = "Maximum articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 }
                         }
                     },
                     OutputSchema = ObjectOutputSchema("results", "since", "total")
@@ -209,11 +209,70 @@ public class McpToolExecutor
         };
     }
 
+    public static bool IsKnownTool(string toolName) =>
+        GetToolDefinitions().Tools.Any(tool => tool.Name == toolName);
+
+    private static string? ValidateArguments(string toolName, JsonElement? arguments)
+    {
+        var tool = GetToolDefinitions().Tools.FirstOrDefault(item => item.Name == toolName);
+        if (tool == null) return $"Unknown tool: {toolName}";
+
+        if (arguments is { ValueKind: not JsonValueKind.Object and not JsonValueKind.Null })
+            return "Tool arguments must be an object";
+
+        var supplied = arguments is { ValueKind: JsonValueKind.Object }
+            ? arguments.Value.EnumerateObject().ToDictionary(property => property.Name, property => property.Value)
+            : new Dictionary<string, JsonElement>();
+
+        foreach (var required in tool.InputSchema.Required ?? [])
+        {
+            if (!supplied.TryGetValue(required, out var value)
+                || value.ValueKind == JsonValueKind.Null
+                || value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(value.GetString()))
+                return $"Parameter '{required}' is required";
+        }
+
+        foreach (var argument in supplied)
+        {
+            if (!tool.InputSchema.Properties.TryGetValue(argument.Key, out var schema))
+                return $"Unknown parameter '{argument.Key}'";
+
+            var validType = schema.Type switch
+            {
+                "string" => argument.Value.ValueKind == JsonValueKind.String,
+                "integer" => argument.Value.ValueKind == JsonValueKind.Number && argument.Value.TryGetInt32(out _),
+                "boolean" => argument.Value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+                _ => true
+            };
+            if (!validType)
+                return $"Parameter '{argument.Key}' must be of type {schema.Type}";
+
+            if (schema.Enum is { Count: > 0 }
+                && !schema.Enum.Contains(argument.Value.GetString()!, StringComparer.Ordinal))
+                return $"Parameter '{argument.Key}' must be one of: {string.Join(", ", schema.Enum)}";
+
+            if (schema.Type == "integer")
+            {
+                var number = argument.Value.GetInt32();
+                if (schema.Minimum is { } minimum && number < minimum)
+                    return $"Parameter '{argument.Key}' must be at least {minimum}";
+                if (schema.Maximum is { } maximum && number > maximum)
+                    return $"Parameter '{argument.Key}' must be at most {maximum}";
+            }
+        }
+
+        return null;
+    }
+
     // ─── Tool Dispatcher ───────────────────────────────────────────────
 
     public async Task<McpToolCallResult> ExecuteToolAsync(string toolName, JsonElement? arguments,
         ClaimsPrincipal? principal = null, CancellationToken ct = default)
     {
+        var validationError = ValidateArguments(toolName, arguments);
+        if (validationError != null)
+            return ErrorResult(validationError);
+
         try
         {
             return toolName switch
@@ -319,11 +378,13 @@ public class McpToolExecutor
         if (type == "rag")
         {
             if (!ollamaEnabled || vectorSearch == null)
-                return TextResult(JsonSerializer.Serialize(new { answer = "AI arama şu anda kullanılamıyor. Ollama servisi aktif değil.", sources = Array.Empty<object>(), query, type, indexingPending }, _jsonOptions));
+                return McpResilienceService.ResilienceError("ai_unavailable",
+                    "AI search is unavailable because Ollama is disabled.", true, 30);
 
             var ragService = _services.GetService<RagService>();
             if (ragService == null)
-                return TextResult(JsonSerializer.Serialize(new { answer = "RAG servisi kullanılamıyor.", sources = Array.Empty<object>(), query, type, indexingPending }, _jsonOptions));
+                return McpResilienceService.ResilienceError("ai_unavailable",
+                    "RAG service is unavailable.", true, 30);
 
             try
             {
@@ -349,14 +410,16 @@ public class McpToolExecutor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "MCP RAG search failed");
-                return TextResult(JsonSerializer.Serialize(new { answer = "AI yanıtı oluşturulurken bir hata oluştu.", sources = Array.Empty<object>(), query, type, indexingPending, warning = "RAG search failed" }, _jsonOptions));
+                return McpResilienceService.ResilienceError("ai_search_failed",
+                    "RAG search failed.", true, 10);
             }
         }
 
         if (type == "semantic")
         {
             if (!ollamaEnabled || vectorSearch == null)
-                return TextResult(JsonSerializer.Serialize(new { results = Array.Empty<object>(), query, type, total = 0, page = 1, totalPages = 1, indexingPending, warning = "Semantic search unavailable — Ollama disabled" }, _jsonOptions));
+                return McpResilienceService.ResilienceError("ai_unavailable",
+                    "Semantic search is unavailable because Ollama is disabled.", true, 30);
             try
             {
                 var hits = await vectorSearch.SearchAsync(searchQuery, limit, ct, filter: filter);
@@ -369,7 +432,8 @@ public class McpToolExecutor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "MCP semantic search failed");
-                return TextResult(JsonSerializer.Serialize(new { results = Array.Empty<object>(), query, type, total = 0, page = 1, totalPages = 1, indexingPending, warning = "Semantic search failed" }, _jsonOptions));
+                return McpResilienceService.ResilienceError("ai_search_failed",
+                    "Semantic search failed.", true, 10);
             }
         }
 
@@ -812,11 +876,56 @@ public class McpToolExecutor
     {
         ["type"] = "object",
         ["additionalProperties"] = true,
-        ["required"] = new JsonArray(required.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray()),
+        ["oneOf"] = SuccessOrError(required),
         ["properties"] = new JsonObject(required.ToDictionary(
             name => name,
-            name => (JsonNode?)new JsonObject { ["description"] = $"Tool result field '{name}'" }))
+            name => (JsonNode?)OutputPropertySchema(name)))
+        {
+            ["error"] = ErrorPropertySchema()
+        }
     };
+
+    private static JsonArray SuccessOrError(params string[] required) => new(
+        new JsonObject
+        {
+            ["required"] = new JsonArray(required.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray())
+        },
+        new JsonObject
+        {
+            ["required"] = new JsonArray("error")
+        });
+
+    private static JsonObject ErrorPropertySchema() => new()
+    {
+        ["type"] = "object",
+        ["required"] = new JsonArray("code", "message", "retryable"),
+        ["properties"] = new JsonObject
+        {
+            ["code"] = new JsonObject { ["type"] = "string" },
+            ["message"] = new JsonObject { ["type"] = "string" },
+            ["retryable"] = new JsonObject { ["type"] = "boolean" },
+            ["retryAfterSeconds"] = new JsonObject { ["type"] = new JsonArray("integer", "null") },
+            ["details"] = new JsonObject { ["type"] = new JsonArray("object", "null") }
+        }
+    };
+
+    private static JsonObject OutputPropertySchema(string name)
+    {
+        var type = name switch
+        {
+            "articles" or "tags" or "contentTypes" or "recentArticles" or "results" or "sources" => "array",
+            "total" or "page" or "limit" or "totalPages" or "totalArticles" or "totalAuthors" or "totalTags" => "integer",
+            "comparison" => "object",
+            _ => "string"
+        };
+        var schema = new JsonObject
+        {
+            ["type"] = type,
+            ["description"] = $"Tool result field '{name}'"
+        };
+        if (type == "array") schema["items"] = new JsonObject();
+        return schema;
+    }
 
     private static JsonObject SearchOutputSchema() => new()
     {
@@ -872,9 +981,10 @@ public class McpToolExecutor
             ["partialResult"] = new JsonObject { ["type"] = "boolean" },
             ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
             ["query"] = new JsonObject { ["type"] = "string" },
-            ["type"] = new JsonObject { ["type"] = "string" }
+            ["type"] = new JsonObject { ["type"] = "string" },
+            ["error"] = ErrorPropertySchema()
         },
-        ["required"] = new JsonArray("query", "type")
+        ["oneOf"] = SuccessOrError("query", "type")
     };
 
     private static McpToolCallResult ErrorResult(string message)

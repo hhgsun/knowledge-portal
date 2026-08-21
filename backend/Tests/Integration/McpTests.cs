@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using ModelContextProtocol.Client;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -36,6 +37,33 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         method = "tools/call",
         @params = new { name, arguments }
     };
+
+    private static HttpRequestMessage ModernRequest(string method,
+        Dictionary<string, object> parameters, string? name = null)
+    {
+        parameters["_meta"] = new Dictionary<string, object>
+        {
+            ["io.modelcontextprotocol/protocolVersion"] = "2026-07-28",
+            ["io.modelcontextprotocol/clientInfo"] = new { name = "knowledge-portal-tests", version = "1.0.0" },
+            ["io.modelcontextprotocol/clientCapabilities"] = new { }
+        };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(new Dictionary<string, object>
+            {
+                ["jsonrpc"] = "2.0",
+                ["id"] = 1,
+                ["method"] = method,
+                ["params"] = parameters
+            })
+        };
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", method);
+        if (name != null) request.Headers.Add("Mcp-Name", name);
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        return request;
+    }
 
     // ─── Auth ──────────────────────────────────────────────────────────
 
@@ -96,7 +124,6 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     [InlineData("2025-11-25")]
     [InlineData("2025-06-18")]
     [InlineData("2025-03-26")]
-    [InlineData("2024-11-05")]
     public async Task Mcp_Initialize_NegotiatesEverySupportedVersion(string protocolVersion)
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
@@ -125,6 +152,87 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             @params = new { protocolVersion = "1999-01-01" }
         });
         Assert.Equal("2025-11-25", result.GetProperty("protocolVersion").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_ModernDiscover_AdvertisesModernProtocol()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = ModernRequest("server/discover", new Dictionary<string, object>());
+
+        var response = await _client.SendAsync(request);
+        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = envelope.GetProperty("result");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("complete", result.GetProperty("resultType").GetString());
+        Assert.Contains("2026-07-28", result.GetProperty("supportedVersions").EnumerateArray().Select(v => v.GetString()));
+        Assert.Equal("private", result.GetProperty("cacheScope").GetString());
+        Assert.Equal("knowledge-portal", result.GetProperty("_meta")
+            .GetProperty("io.modelcontextprotocol/serverInfo").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_ModernToolCall_UsesSelfContainedEnvelope()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = ModernRequest("tools/call", new Dictionary<string, object>
+        {
+            ["name"] = "list_tags",
+            ["arguments"] = new { }
+        }, "list_tags");
+
+        var response = await _client.SendAsync(request);
+        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var result = envelope.GetProperty("result");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("complete", result.GetProperty("resultType").GetString());
+        Assert.True(result.TryGetProperty("structuredContent", out _));
+        Assert.True(response.Headers.TryGetValues("X-Trace-Id", out _));
+    }
+
+    [Fact]
+    [Trait("Gate", "McpConformance")]
+    public async Task Mcp_OfficialCSharpSdk_ConnectsWithModernProtocolAndCallsTool()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var transport = new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(_client.BaseAddress!, "/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            EnableStandaloneGetStream = false
+        }, _client);
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = "2026-07-28",
+            ClientInfo = new() { Name = "knowledge-portal-integration-tests", Version = "1.0.0" }
+        });
+
+        var tools = await client.ListToolsAsync();
+        Assert.Contains(tools, tool => tool.Name == "list_tags");
+
+        var result = await client.CallToolAsync("list_tags", new Dictionary<string, object?>());
+        Assert.NotEqual(true, result.IsError);
+        Assert.NotNull(result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task Mcp_ModernRequest_RejectsHeaderBodyMismatch()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        using var request = ModernRequest("tools/call", new Dictionary<string, object>
+        {
+            ["name"] = "list_tags",
+            ["arguments"] = new { }
+        }, "wrong_tool");
+
+        var response = await _client.SendAsync(request);
+        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(-32020, envelope.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -199,15 +307,17 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
     }
 
-    [Fact]
-    public async Task Mcp_RejectsUnsupportedProtocolHeader()
+    [Theory]
+    [InlineData("1999-01-01")]
+    [InlineData("2024-11-05")]
+    public async Task Mcp_RejectsUnsupportedProtocolHeader(string protocolVersion)
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
         {
             Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
         };
-        request.Headers.Add("MCP-Protocol-Version", "1999-01-01");
+        request.Headers.Add("MCP-Protocol-Version", protocolVersion);
 
         var response = await _client.SendAsync(request);
 
@@ -322,12 +432,24 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Mcp_UnknownTool_ReturnsIsError()
+    public async Task Mcp_UnknownTool_ReturnsProtocolError()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
-        var result = await RpcResultAsync(ToolCall("no_such_tool", new { }));
+        var response = await RpcAsync(ToolCall("no_such_tool", new { }));
+        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(-32602, envelope.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Mcp_ToolArguments_WrongTypeReturnsActionableError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("list_articles", new { limit = "five" }));
+
         Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains("must be of type integer", ToolText(result));
     }
 
     [Fact]

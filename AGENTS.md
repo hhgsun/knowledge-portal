@@ -384,16 +384,16 @@ No known gaps at this time.
 
 ## MCP Server Behaviors
 
-- **MCP protocol version**: negotiated — supported: 2025-11-25 (default), 2025-06-18, 2025-03-26, 2024-11-05. `initialize` echoes the client's requested version when supported, otherwise answers with the default (JSON-RPC 2.0 spec-compliant)
+- **MCP protocol version**: preferred modern revision `2026-07-28`; initialize-based legacy revisions `2025-11-25`, `2025-06-18`, and `2025-03-26` remain supported. Modern requests use `server/discover`, per-request `_meta`, `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`) `Mcp-Name`. Legacy `initialize` echoes a supported initialize-capable version and otherwise answers with `2025-11-25`. `2024-11-05` is not advertised because its separate HTTP+SSE transport is not implemented.
 - **Server info**: name=`knowledge-portal`, version=`2.0.0`
-- **Supported methods**: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`
-- **Server discovery**: POST `/mcp` with `method: "initialize"` returns server capabilities, protocol version, and implementation info
-- **Streamable HTTP transport**: POST `/mcp` requires JSON, validates supported response media types and an optional `MCP-Protocol-Version`, rejects cross-origin browser requests and MCP batch payloads, and returns 202/no body for JSON-RPC notifications. GET `/mcp` always returns **405** with `Allow: POST` because the server is stateless and provides no SSE/server-initiated messages.
+- **Supported methods**: modern `server/discover`; legacy `initialize`/`notifications/initialized`; common `tools/list`, `tools/call`, and `ping`
+- **Server discovery**: modern POST `/mcp` with `method: "server/discover"` returns the modern supported version and capabilities; legacy clients use `initialize`.
+- **Streamable HTTP transport**: POST `/mcp` requires JSON, validates supported response media types and `MCP-Protocol-Version` when present, rejects cross-origin browser requests and MCP batch payloads, and returns 202/no body for JSON-RPC notifications. Modern requests additionally validate the header/body protocol metadata and routing-header agreement. GET `/mcp` always returns **405** with `Allow: POST` because the server is stateless and provides no SSE/server-initiated messages.
 - **Notifications**: `notifications/initialized` returns **202 Accepted** with empty body (Streamable HTTP spec for response-less messages)
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
 - **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns MCP content array
-- **Tool result format**: `{ "content": [{"type": "text", "text": "..."}], "isError": false }` — results are JSON-serialized strings inside `text` field
-- **Available tools**: `search_articles`, `get_article`, `list_articles`, `list_tags`, `get_portal_info` (all snake_case)
+- **Tool result format**: success results include machine-readable `structuredContent` and the same serialized JSON in `content[0].text`; tool failures set `isError: true`. Modern wire responses additionally carry `resultType: "complete"` and server identity in `_meta`.
+- **Available tools**: `search_articles`, `get_article`, `list_articles`, `list_tags`, `get_portal_info`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, `get_recent_changes` (all snake_case)
 - **Error handling**: JSON-RPC 2.0 error format on protocol errors: `{error: {code, message}, jsonrpc: "2.0"}`. Tool errors use `isError: true` in content result. Unexpected tool exceptions are logged server-side with full detail; the client receives only a generic "Tool execution failed" (no internal detail leakage).
 - **search_articles pagination**: accepts `page` (1-based) + `limit` (1-50); returns true post-filter `total`, `page`, `limit`, `totalPages` (same paged pipeline as `GET /api/search`).
 - **get_portal_info counts**: `totalAuthors` = distinct owners of published articles; `totalTags` = tags used by ≥1 published article (consistent with the published-only scope of all tools). `list_articles` `sort` is validated against `newest|oldest|most_viewed` — invalid values return `isError`.

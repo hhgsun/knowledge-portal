@@ -79,9 +79,21 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
             Assert.False(string.IsNullOrWhiteSpace(tool.GetProperty("description").GetString()));
             Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
             Assert.Equal("object", tool.GetProperty("outputSchema").GetProperty("type").GetString());
-            Assert.True(tool.GetProperty("inputSchema").TryGetProperty("properties", out _));
-            Assert.True(tool.GetProperty("outputSchema").TryGetProperty("properties", out _));
+            Assert.False(tool.GetProperty("inputSchema").GetProperty("additionalProperties").GetBoolean());
+            Assert.True(tool.GetProperty("inputSchema").TryGetProperty("properties", out var inputProperties));
+            Assert.True(tool.GetProperty("outputSchema").TryGetProperty("properties", out var outputProperties));
+            Assert.True(tool.GetProperty("outputSchema").TryGetProperty("oneOf", out _));
+            Assert.All(inputProperties.EnumerateObject(), property =>
+                Assert.False(string.IsNullOrWhiteSpace(property.Value.GetProperty("type").GetString())));
+            Assert.All(outputProperties.EnumerateObject(), property =>
+                Assert.True(property.Value.TryGetProperty("type", out _), property.Name));
         }
+
+        var search = body.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .First(tool => tool.GetProperty("name").GetString() == "search_articles");
+        var limit = search.GetProperty("inputSchema").GetProperty("properties").GetProperty("limit");
+        Assert.Equal(1, limit.GetProperty("minimum").GetInt32());
+        Assert.Equal(50, limit.GetProperty("maximum").GetInt32());
     }
 
     [Fact]

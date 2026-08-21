@@ -14,11 +14,11 @@
 
 ## Genel Bakış
 
-Knowledge Portal, Model Context Protocol (MCP) desteği sunar. Bu sayede Claude Desktop, Cursor, VS Code Copilot ve diğer MCP uyumlu AI araçları, Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir.
+Knowledge Portal, Model Context Protocol (MCP) desteği sunar. Cursor, VS Code Copilot ve özel header gönderebilen diğer MCP istemcileri Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir. Claude remote connector için aşağıdaki kimlik doğrulama sınırlamasına bakın.
 
 MCP araçlarına REST API üzerinden erişim sağlanır. Endpoint: `POST /mcp`
 
-Varsayılan protokol versiyonu: 2025-11-25. Desteklenen sürümler: 2025-11-25, 2025-06-18, 2025-03-26 ve 2024-11-05 (JSON-RPC 2.0 uyumlu).
+Tercih edilen protokol versiyonu `2026-07-28`'dir. Modern istemciler `server/discover` ve istek başına `_meta` zarfını kullanır. Geriye uyumluluk için `initialize` tabanlı `2025-11-25`, `2025-06-18` ve `2025-03-26` sürümleri de desteklenir. Ayrı HTTP+SSE taşıması gerektiren `2024-11-05` desteklenmez.
 
 ## Kimlik Doğrulama
 
@@ -31,14 +31,23 @@ Otomasyon ve AI entegrasyonları için API key kullanımı önerilir. API key ol
 ```bash
 curl -X POST http://localhost:5174/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: kp_your_api_key_here" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: search_articles" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
     "method": "tools/call",
     "params": {
       "name": "search_articles",
-      "arguments": {"query": "deployment"}
+      "arguments": {"query": "deployment"},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {"name": "curl", "version": "1.0.0"},
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
     }
   }'
 ```
@@ -48,28 +57,44 @@ curl -X POST http://localhost:5174/mcp \
 ```bash
 curl -X POST http://localhost:5174/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer eyJ..." \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: search_articles" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
     "method": "tools/call",
     "params": {
       "name": "search_articles",
-      "arguments": {"query": "deployment"}
+      "arguments": {"query": "deployment"},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {"name": "curl", "version": "1.0.0"},
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
     }
   }'
 ```
 
 ## MCP İletişim Akışı
 
-MCP istemcileri aşağıdaki sırayla sunucu ile iletişim kurar:
+Modern (`2026-07-28`) istemciler:
+
+1. İsteğe bağlı `server/discover` ile desteklenen sürüm ve yetenekleri öğrenir.
+2. Her istekte `MCP-Protocol-Version`, `Mcp-Method` ve `tools/call` için `Mcp-Name` header'larını gönderir.
+3. `params._meta` içinde protokol sürümünü, istemci bilgisini ve yeteneklerini taşır.
+4. `tools/list` ve `tools/call` çağrılarını doğrudan yapar.
+
+Legacy 2025-era istemciler aşağıdaki sırayı kullanır:
 
 1. `initialize` — Sunucu yeteneklerini ve protokol versiyonunu öğrenir
 2. `notifications/initialized` — İstemci hazır olduğunu bildirir
 3. `tools/list` — Kullanılabilir araçları ve parametrelerini keşfeder
 4. `tools/call` — Bir aracı çalıştırır ve sonuç alır
 
-HTTP POST istekleri `Content-Type: application/json` kullanmalıdır. İlk `initialize` çağrısından sonraki isteklerde istemci, müzakere edilen sürümü `MCP-Protocol-Version` başlığında gönderebilir. Sunucu stateless çalışır; SSE ve server-initiated mesaj sunmadığı için `GET /mcp` çağrısı `405 Method Not Allowed` döner.
+HTTP POST istekleri `Content-Type: application/json` kullanmalıdır. Legacy akışta istemci, `initialize` sonrasındaki isteklerde müzakere edilen sürümü `MCP-Protocol-Version` başlığında gönderir. Sunucu stateless çalışır; SSE ve server-initiated mesaj sunmadığı için `GET /mcp` çağrısı `405 Method Not Allowed` döner.
 
 ## Kullanılabilir Araçlar (Tools)
 
@@ -174,9 +199,41 @@ Hata durumunda:
 }
 ```
 
-## Claude Desktop Yapılandırması
+## Claude Desktop / Claude.ai
 
-Claude Desktop'ın claude_desktop_config.json dosyasına aşağıdaki yapılandırmayı ekleyin:
+Claude remote custom connector bağlantıları Anthropic altyapısından gelir; bu nedenle sunucunun bu altyapıdan HTTPS ile erişilebilir olması ve Claude'un belgelenmiş OAuth bağlantı akışını desteklemesi gerekir. Knowledge Portal MCP endpoint'i yalnızca `X-API-Key` veya statik Bearer token kabul ettiği için Claude remote connector'a doğrudan eklenemez. `claude_desktop_config.json` içindeki remote `url + headers` biçimi de güncel Claude Desktop tarafından desteklenen kurulum yolu değildir.
+
+Claude entegrasyonu gerekiyorsa şirket ağı içinde çalışan, API key'i sunucu tarafında ekleyen güvenilir bir local stdio köprüsü kullanılmalı veya Knowledge Portal önüne standart MCP OAuth katmanı eklenmelidir. API key'i URL query parametresine koymayın.
+
+## VS Code Copilot Yapılandırması
+
+Workspace kök dizininde `.vscode/mcp.json` dosyası oluşturun. Anahtarı dosyaya düz metin yazmak yerine güvenli input değişkeni kullanın:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "knowledge-portal-key",
+      "description": "Knowledge Portal API key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "knowledge-portal": {
+      "type": "http",
+      "url": "http://localhost:5174/mcp",
+      "headers": {
+        "X-API-Key": "${input:knowledge-portal-key}"
+      }
+    }
+  }
+}
+```
+
+## Cursor Yapılandırması
+
+Workspace kökünde `.cursor/mcp.json` oluşturun. `KNOWLEDGE_PORTAL_API_KEY` ortam değişkenini Cursor başlamadan önce tanımlayın:
 
 ```json
 {
@@ -184,24 +241,7 @@ Claude Desktop'ın claude_desktop_config.json dosyasına aşağıdaki yapıland�
     "knowledge-portal": {
       "url": "http://localhost:5174/mcp",
       "headers": {
-        "X-API-Key": "kp_your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-## VS Code Copilot / Cursor Yapılandırması
-
-Workspace kök dizininde .vscode/mcp.json dosyası oluşturun:
-
-```json
-{
-  "servers": {
-    "knowledge-portal": {
-      "url": "http://localhost:5174/mcp",
-      "headers": {
-        "X-API-Key": "kp_your_api_key_here"
+        "X-API-Key": "${env:KNOWLEDGE_PORTAL_API_KEY}"
       }
     }
   }
@@ -242,28 +282,42 @@ class KnowledgePortalMCP:
         self.base_url = base_url
         self.headers = {
             'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
             'X-API-Key': api_key
         }
         self._id = 0
 
-    def _call(self, method, params=None):
+    def _call(self, method, params=None, name=None):
         self._id += 1
+        call_params = dict(params or {})
+        call_params['_meta'] = {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': {'name': 'knowledge-portal-python', 'version': '1.0.0'},
+            'io.modelcontextprotocol/clientCapabilities': {}
+        }
         payload = {
             'jsonrpc': '2.0',
             'id': self._id,
             'method': method,
-            'params': params or {}
+            'params': call_params
         }
-        r = requests.post(f'{self.base_url}/mcp', json=payload, headers=self.headers)
+        headers = dict(self.headers)
+        headers['MCP-Protocol-Version'] = '2026-07-28'
+        headers['Mcp-Method'] = method
+        if name:
+            headers['Mcp-Name'] = name
+        r = requests.post(f'{self.base_url}/mcp', json=payload, headers=headers)
+        r.raise_for_status()
         data = r.json()
         if 'error' in data:
             raise Exception(data['error']['message'])
         return data['result']
 
     def call_tool(self, tool_name, **arguments):
-        result = self._call('tools/call', {'name': tool_name, 'arguments': arguments})
-        content = result['content'][0]['text']
-        return json.loads(content)
+        result = self._call('tools/call', {'name': tool_name, 'arguments': arguments}, tool_name)
+        if result.get('isError'):
+            raise Exception(result['content'][0]['text'])
+        return result.get('structuredContent') or json.loads(result['content'][0]['text'])
 
     def search(self, query, limit=20, **kwargs):
         return self.call_tool('search_articles', query=query, limit=limit, **kwargs)
@@ -283,7 +337,7 @@ class KnowledgePortalMCP:
 # Kullanım
 mcp = KnowledgePortalMCP('http://localhost:5174', 'kp_your_api_key_here')
 results = mcp.search('deployment', limit=5)
-for article in results['articles']:
+for article in results['results']:
     print(f"- {article['title']} ({article['slug']})")
 ```
 
@@ -298,28 +352,42 @@ class KnowledgePortalMCP {
     private apiKey: string
   ) {}
 
-  private async call(method: string, params?: Record<string, any>) {
+  private async call(method: string, params: Record<string, any> = {}, name?: string) {
+    const requestParams = {
+      ...params,
+      _meta: {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientInfo': { name: 'knowledge-portal-typescript', version: '1.0.0' },
+        'io.modelcontextprotocol/clientCapabilities': {}
+      }
+    };
     const res = await fetch(`${this.baseUrl}/mcp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey
+        'Accept': 'application/json, text/event-stream',
+        'X-API-Key': this.apiKey,
+        'MCP-Protocol-Version': '2026-07-28',
+        'Mcp-Method': method,
+        ...(name ? { 'Mcp-Name': name } : {})
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: ++this.id,
         method,
-        params: params ?? {}
+        params: requestParams
       })
     });
+    if (!res.ok) throw new Error(`MCP HTTP ${res.status}: ${await res.text()}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     return data.result;
   }
 
   async callTool(toolName: string, args: Record<string, any> = {}) {
-    const result = await this.call('tools/call', { name: toolName, arguments: args });
-    return JSON.parse(result.content[0].text);
+    const result = await this.call('tools/call', { name: toolName, arguments: args }, toolName);
+    if (result.isError) throw new Error(result.content[0].text);
+    return result.structuredContent ?? JSON.parse(result.content[0].text);
   }
 
   search(query: string, limit = 20) {
@@ -367,13 +435,27 @@ function Invoke-McpTool {
         params = @{
             name = $ToolName
             arguments = $Arguments
+            _meta = @{
+                'io.modelcontextprotocol/protocolVersion' = '2026-07-28'
+                'io.modelcontextprotocol/clientInfo' = @{ name = 'knowledge-portal-powershell'; version = '1.0.0' }
+                'io.modelcontextprotocol/clientCapabilities' = @{}
+            }
         }
     } | ConvertTo-Json -Depth 10
 
     $response = Invoke-RestMethod -Uri "$BaseUrl/mcp" -Method Post `
-        -Headers @{ 'X-API-Key' = $ApiKey; 'Content-Type' = 'application/json' } `
+        -Headers @{
+            'X-API-Key' = $ApiKey
+            'Content-Type' = 'application/json'
+            'Accept' = 'application/json, text/event-stream'
+            'MCP-Protocol-Version' = '2026-07-28'
+            'Mcp-Method' = 'tools/call'
+            'Mcp-Name' = $ToolName
+        } `
         -Body $payload
-    return $response.result.content[0].text | ConvertFrom-Json
+    if ($response.result.isError) { throw $response.result.content[0].text }
+    if ($response.result.structuredContent) { return $response.result.structuredContent }
+    return ($response.result.content[0].text | ConvertFrom-Json)
 }
 
 # Arama
@@ -394,4 +476,4 @@ Invoke-McpTool -ToolName 'list_tags'
 - Her istek bağımsızdır — stateless çalışır, session tutulmaz.
 - Araç yanıtları MCP spec'e uygun `content[]` dizisi formatında döner.
 - RBAC uygulanmaz — kimlik doğrulaması yeterlidir, ek izin kontrolü yapılmaz.
-- Transport: HTTP POST (Streamable HTTP). SSE stream kullanılmaz.
+- Transport: Stateless Streamable HTTP. Modern `2026-07-28` ve initialize tabanlı 2025-era çağrılar aynı `POST /mcp` endpoint'ini kullanır; SSE stream kullanılmaz.

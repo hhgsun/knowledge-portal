@@ -8,17 +8,22 @@ namespace KnowledgePortal.Api.Mcp;
 
 public static class McpConstants
 {
-    public const string ProtocolVersion = "2025-11-25";
+    public const string ProtocolVersion = "2026-07-28";
+    public const string LegacyProtocolVersion = "2025-11-25";
     public const string ServerName = "knowledge-portal";
     public const string ServerVersion = "2.0.0";
 
     /// <summary>
-    /// Protocol revisions this server can speak. initialize echoes the client's
-    /// requested version when it is in this list, otherwise falls back to
-    /// <see cref="ProtocolVersion"/> (per MCP version negotiation).
+    /// Protocol revisions this server can speak. Modern requests use
+    /// <see cref="ProtocolVersion"/>; initialize only negotiates entries in
+    /// <see cref="LegacyProtocolVersions"/> and otherwise falls back to
+    /// <see cref="LegacyProtocolVersion"/>.
     /// </summary>
     public static readonly string[] SupportedProtocolVersions =
-        ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+        ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"];
+
+    public static readonly string[] LegacyProtocolVersions =
+        ["2025-11-25", "2025-06-18", "2025-03-26"];
 }
 
 // ─── JSON-RPC 2.0 Request/Response ─────────────────────────────────────
@@ -77,7 +82,7 @@ public class JsonRpcError
 public class McpInitializeResult
 {
     [JsonPropertyName("protocolVersion")]
-    public string ProtocolVersion { get; set; } = McpConstants.ProtocolVersion;
+    public string ProtocolVersion { get; set; } = McpConstants.LegacyProtocolVersion;
 
     [JsonPropertyName("capabilities")]
     public McpCapabilities Capabilities { get; set; } = new();
@@ -136,6 +141,9 @@ public class McpInputSchema
     [JsonPropertyName("properties")]
     public Dictionary<string, McpPropertySchema> Properties { get; set; } = new();
 
+    [JsonPropertyName("additionalProperties")]
+    public bool AdditionalProperties { get; set; } = false;
+
     [JsonPropertyName("required")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? Required { get; set; }
@@ -157,6 +165,14 @@ public class McpPropertySchema
     [JsonPropertyName("default")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public object? Default { get; set; }
+
+    [JsonPropertyName("minimum")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Minimum { get; set; }
+
+    [JsonPropertyName("maximum")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Maximum { get; set; }
 }
 
 public class McpToolCallResult
@@ -192,4 +208,6 @@ public static class JsonRpcErrorCodes
     public const int MethodNotFound = -32601;
     public const int InvalidParams = -32602;
     public const int InternalError = -32603;
+    public const int HeaderMismatch = -32020;
+    public const int UnsupportedProtocolVersion = -32022;
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using System.Diagnostics;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Mcp;
@@ -17,7 +18,7 @@ namespace KnowledgePortal.Api.Controllers;
 /// 
 /// Authentication: X-API-Key header or Bearer token (no OAuth).
 /// 
-/// Usage with Claude Desktop / Cursor / other MCP clients:
+/// Usage with Cursor, VS Code, or other MCP clients that support static headers:
 ///   POST /mcp with JSON-RPC 2.0 body
 ///   Headers: X-API-Key: kp_xxx OR Authorization: Bearer xxx
 /// </summary>
@@ -61,12 +62,6 @@ public class McpController : ControllerBase
         if (!IsAllowedOrigin())
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        if (Request.Headers.TryGetValue("MCP-Protocol-Version", out var headerVersion)
-            && !McpConstants.SupportedProtocolVersions.Contains(headerVersion.ToString()))
-        {
-            return BadRequest(new { error = "Unsupported MCP-Protocol-Version" });
-        }
-
         JsonRpcRequest? request;
         try
         {
@@ -92,6 +87,20 @@ public class McpController : ControllerBase
             && id.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.Null))
             return JsonRpcErrorResponse(null, JsonRpcErrorCodes.InvalidRequest, "Invalid request id");
 
+        var protocolVersion = Request.Headers["MCP-Protocol-Version"].ToString();
+        if (!string.IsNullOrWhiteSpace(protocolVersion)
+            && !McpConstants.SupportedProtocolVersions.Contains(protocolVersion))
+        {
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.UnsupportedProtocolVersion,
+                "Unsupported MCP protocol version",
+                new { supported = McpConstants.SupportedProtocolVersions, requested = protocolVersion },
+                StatusCodes.Status400BadRequest);
+        }
+
+        var modern = protocolVersion == McpConstants.ProtocolVersion;
+        if (modern && TryValidateModernRequest(request, out var modernError))
+            return modernError!;
+
         // MCP operations are requests, not fire-and-forget notifications. Do not execute a
         // tool when its result cannot be correlated by the client.
         if (!request.HasId && request.Method != "notifications/initialized")
@@ -100,6 +109,7 @@ public class McpController : ControllerBase
         // Route to handler based on method
         var result = request.Method switch
         {
+            "server/discover" when modern => HandleDiscover(request),
             "initialize" => HandleInitialize(request),
             "notifications/initialized" => HandleNotification(request),
             "tools/list" => HandleToolsList(request),
@@ -136,7 +146,7 @@ public class McpController : ControllerBase
         if (request.Params is { } p
             && p.TryGetProperty("protocolVersion", out var requested)
             && requested.ValueKind == JsonValueKind.String
-            && McpConstants.SupportedProtocolVersions.Contains(requested.GetString()))
+            && McpConstants.LegacyProtocolVersions.Contains(requested.GetString()))
         {
             result.ProtocolVersion = requested.GetString()!;
         }
@@ -148,6 +158,15 @@ public class McpController : ControllerBase
     {
         // Streamable HTTP: notifications (no response expected) get 202 Accepted, no body
         return StatusCode(StatusCodes.Status202Accepted);
+    }
+
+    private IActionResult HandleDiscover(JsonRpcRequest request)
+    {
+        return JsonRpcSuccessResponse(request.Id, new
+        {
+            supportedVersions = new[] { McpConstants.ProtocolVersion },
+            capabilities = new McpCapabilities()
+        });
     }
 
     private IActionResult HandleToolsList(JsonRpcRequest request)
@@ -171,10 +190,16 @@ public class McpController : ControllerBase
 
         var toolName = nameEl.GetString()!;
 
+        if (!McpToolExecutor.IsKnownTool(toolName))
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, $"Unknown tool: {toolName}");
+
         // Extract arguments (optional)
         JsonElement? arguments = paramsEl.TryGetProperty("arguments", out var argsEl)
             ? argsEl
             : null;
+
+        if (arguments is { ValueKind: not JsonValueKind.Object and not JsonValueKind.Null })
+            return JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.InvalidParams, "Tool arguments must be an object");
 
         var audit = _audit.Begin(HttpContext, toolName, arguments);
         var stopwatch = Stopwatch.StartNew();
@@ -214,19 +239,90 @@ public class McpController : ControllerBase
         var response = new JsonRpcResponse
         {
             Id = id,
-            Result = result
+            Result = IsModernRequest() ? BuildModernResult(result) : result
         };
         return new JsonResult(response, _jsonOptions);
     }
 
-    private IActionResult JsonRpcErrorResponse(JsonElement? id, int code, string message)
+    private IActionResult JsonRpcErrorResponse(JsonElement? id, int code, string message,
+        object? data = null, int statusCode = StatusCodes.Status200OK)
     {
         var response = new JsonRpcResponse
         {
             Id = id,
-            Error = new JsonRpcError { Code = code, Message = message }
+            Error = new JsonRpcError { Code = code, Message = message, Data = data }
         };
-        return new JsonResult(response, _jsonOptions) { StatusCode = 200 }; // JSON-RPC errors are still HTTP 200
+        return new JsonResult(response, _jsonOptions) { StatusCode = statusCode };
+    }
+
+    private bool IsModernRequest() =>
+        Request.Headers["MCP-Protocol-Version"].ToString() == McpConstants.ProtocolVersion;
+
+    private object BuildModernResult(object result)
+    {
+        var node = JsonSerializer.SerializeToNode(result, _jsonOptions) as JsonObject ?? new JsonObject();
+        node["resultType"] = "complete";
+        node["_meta"] = new JsonObject
+        {
+            ["io.modelcontextprotocol/serverInfo"] = new JsonObject
+            {
+                ["name"] = McpConstants.ServerName,
+                ["version"] = McpConstants.ServerVersion
+            }
+        };
+
+        var method = HttpContext.Items["McpMethod"] as string;
+        if (method is "server/discover" or "tools/list")
+        {
+            node["ttlMs"] = 30_000;
+            node["cacheScope"] = "private";
+        }
+
+        return node;
+    }
+
+    private bool TryValidateModernRequest(JsonRpcRequest request, out IActionResult? error)
+    {
+        HttpContext.Items["McpMethod"] = request.Method;
+
+        var methodHeader = Request.Headers["Mcp-Method"].ToString();
+        if (string.IsNullOrWhiteSpace(methodHeader) || methodHeader != request.Method)
+        {
+            error = JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.HeaderMismatch,
+                "Mcp-Method header is missing or does not match the request method",
+                new { header = methodHeader, body = request.Method }, StatusCodes.Status400BadRequest);
+            return true;
+        }
+
+        if (request.Params is not { ValueKind: JsonValueKind.Object } parameters
+            || !parameters.TryGetProperty("_meta", out var meta)
+            || meta.ValueKind != JsonValueKind.Object
+            || !meta.TryGetProperty("io.modelcontextprotocol/protocolVersion", out var metaVersion)
+            || metaVersion.ValueKind != JsonValueKind.String
+            || metaVersion.GetString() != McpConstants.ProtocolVersion)
+        {
+            error = JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.HeaderMismatch,
+                "Modern MCP requests must carry matching protocol metadata",
+                new { expected = McpConstants.ProtocolVersion }, StatusCodes.Status400BadRequest);
+            return true;
+        }
+
+        if (request.Method == "tools/call")
+        {
+            var name = parameters.TryGetProperty("name", out var nameElement)
+                && nameElement.ValueKind == JsonValueKind.String ? nameElement.GetString() : null;
+            var nameHeader = Request.Headers["Mcp-Name"].ToString();
+            if (string.IsNullOrWhiteSpace(nameHeader) || nameHeader != name)
+            {
+                error = JsonRpcErrorResponse(request.Id, JsonRpcErrorCodes.HeaderMismatch,
+                    "Mcp-Name header is missing or does not match the requested tool",
+                    new { header = nameHeader, body = name }, StatusCodes.Status400BadRequest);
+                return true;
+            }
+        }
+
+        error = null;
+        return false;
     }
 
     private static bool IsJsonContentType(string? contentType)

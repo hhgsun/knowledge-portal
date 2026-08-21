@@ -59,13 +59,13 @@ Prometheus text exposition: ASP.NET Core request metrics + `kp_pending_embedding
 ### `POST /mcp`
 **Auth**: X-API-Key or Bearer token (required)  
 **Transport**: Streamable HTTP (stateless, JSON-RPC 2.0)  
-**Protocol Version**: negotiated — supported: 2025-11-25 (default), 2025-06-18, 2025-03-26, 2024-11-05. `initialize` echoes a supported client version and otherwise returns the default.
+**Protocol Version**: modern `2026-07-28` plus initialize-based legacy `2025-11-25`, `2025-06-18`, and `2025-03-26`. Modern clients use `server/discover`, per-request `_meta`, and the `Mcp-Method`/`Mcp-Name` routing headers. Legacy `initialize` echoes a supported initialize-capable client version and otherwise returns `2025-11-25`. The separate HTTP+SSE transport required by `2024-11-05` is not supported.
 
 POST requests require `Content-Type: application/json`. `MCP-Protocol-Version`, when supplied, must contain a supported version. Browser-originated requests are accepted only from the MCP endpoint's own host. JSON-RPC notifications return `202 Accepted` with no body; MCP JSON-RPC batch payloads are rejected.
 
-Exposes Knowledge Portal tools via the Model Context Protocol. AI tools (Claude Desktop, Cursor, VS Code Copilot) can connect to this endpoint to search articles, get article content, list tags, and retrieve portal statistics.
+Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code Copilot, and SDK clients that can attach a static API-key/Bearer header can connect directly. Claude remote custom connectors require a publicly reachable endpoint and the documented OAuth connector flow, so they cannot connect directly to this API-key-only endpoint.
 
-**Supported Methods**: `initialize`, `notifications/initialized` (returns 202 Accepted, empty body), `tools/list`, `tools/call`, `ping`
+**Supported Methods**: `server/discover` (2026 era), `initialize` and `notifications/initialized` (2025 era), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
 - `search_articles` — Portal-equivalent search across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid|rag`, default `fulltext`), `page`, `limit`, `tags`, `authors`, `content_type`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and `##content-type` inline syntax. Full-text/tag searches are paged; semantic/hybrid/RAG use the same top-N/fallback behavior as `GET /api/search`.
@@ -89,15 +89,24 @@ MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, ex
 
 Every `tools/call` response includes `X-Trace-Id`. A structured audit event records trace ID, tool, outcome, auth source, user/API-key identifiers, bounded client user-agent, protocol version, duration, serialized output size, and a privacy-preserving argument shape. Raw argument values, queries, article content, credentials, and reversible hashes are never written to the MCP audit event. Prometheus exports `kp_mcp_tool_calls`, `kp_mcp_tool_errors`, `kp_mcp_tool_duration_ms`, and `kp_mcp_tool_output_bytes`, tagged by bounded tool/outcome/auth dimensions.
 
-MCP resilience limits are configurable under `Mcp`: request body 256 KiB, output default 1 MiB, tool/mode-specific execution budgets, bounded AI concurrency (default 2), and an instance-local Ollama circuit breaker (3 transient failures, 30-second break by default). Resilience failures use structured tool errors with stable codes (`tool_timeout`, `server_busy`, `circuit_open`, `output_too_large`), `retryable`, optional `retryAfterSeconds`, and details. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local; distributed concurrency/rate limiting requires a gateway or shared store when horizontally scaled.
+MCP uses a fixed 256 KiB request-body ceiling. Configurable resilience limits under `Mcp` include the output default of 1 MiB, tool/mode-specific execution budgets, bounded AI concurrency (default 2), and an instance-local Ollama circuit breaker (3 transient failures, 30-second break by default). Resilience failures use structured tool errors with stable codes (`tool_timeout`, `server_busy`, `circuit_open`, `output_too_large`, `ai_unavailable`, `ai_search_failed`), `retryable`, optional `retryAfterSeconds`, and details. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local; distributed concurrency/rate limiting requires a gateway or shared store when horizontally scaled.
 
-**Client configuration example (Claude Desktop)**:
+**Client configuration example (VS Code)**:
 ```json
 {
-  "mcpServers": {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "knowledge-portal-key",
+      "description": "Knowledge Portal API key",
+      "password": true
+    }
+  ],
+  "servers": {
     "knowledge-portal": {
+      "type": "http",
       "url": "http://localhost:5174/mcp",
-      "headers": { "X-API-Key": "kp_your_api_key_here" }
+      "headers": { "X-API-Key": "${input:knowledge-portal-key}" }
     }
   }
 }

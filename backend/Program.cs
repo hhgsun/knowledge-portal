@@ -191,7 +191,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 builder.Services.AddOpenApi();
 
 // ─── MCP Server ──────────────────────────────────────────────
-// MCP tools are exposed via REST API at /api/mcp/tools/call
+// MCP tools are exposed via Streamable HTTP at /mcp
 // See McpController for implementation
 
 // ─── Full-Text Search ────────────────────────────────────────

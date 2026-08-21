@@ -5,7 +5,7 @@ The CI test stage runs the complete Docker-free backend suite and then publishes
 
 | Gate | Purpose |
 |---|---|
-| `McpConformance` | JSON-RPC request/notification behavior and invalid parameter handling |
+| `McpConformance` | JSON-RPC behavior, modern/legacy negotiation, routing-header validation, invalid parameters, and a real MCP 2.0 C# SDK connect/list/call flow |
 | `McpSchema` | Tool discovery, input schema and output schema structural contract |
 | `GoldenRetrieval` | Deterministic technical queries: expected source recall@5, forbidden-source exclusion, evidence/governance/security metadata |
 | `DataIsolation` | API-key `only_own_content` isolation across independent keys |
