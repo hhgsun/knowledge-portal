@@ -28,7 +28,8 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
             new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance),
             new TagService(db),
             new IndexJobQueue(db, config),
-            config);
+            config,
+            NullLogger<ArticleService>.Instance);
 
         Assert.Equal(1, await service.AddVersionAsync(article.Id, article.Title, "![image](/api/attachments/one/download)", owner.Id, null));
         await db.SaveChangesAsync();
@@ -41,6 +42,33 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
             .Select(version => version.Version)
             .ToArrayAsync();
         Assert.Equal([1, 2], versions);
+    }
+
+    [PostgresFact]
+    public async Task QueueReindex_EagerlyPublishesFts_ButKeepsSemanticJobDurable()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        await using var db = fixture.CreateDb();
+        var owner = User("eager-fts-u" + suffix);
+        var article = Article("eager-fts-a" + suffix, owner.Id, "reference",
+            "Anında bulunabilir gövde " + suffix);
+        db.AddRange(owner, article);
+        await db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder().Build();
+        var fts = new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance);
+        await fts.InitializeAsync();
+        var service = new ArticleService(db, fts, new TagService(db), new IndexJobQueue(db, config),
+            config, NullLogger<ArticleService>.Instance);
+
+        await service.QueueReindexAsync(article);
+        await db.Entry(article).ReloadAsync();
+
+        Assert.NotNull(article.FtsIndexedAt);
+        Assert.Null(article.IndexedAt);
+        Assert.Equal("pending", (await db.IndexJobs.FindAsync(article.Id))!.Status);
+        var page = await fts.SearchPagedAsync("bulunabilir", null, 1, 10);
+        Assert.Contains(article.Id, page.ArticleIds);
     }
 
     [PostgresFact]

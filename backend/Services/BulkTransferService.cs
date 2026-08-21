@@ -155,7 +155,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                     if (item.Tags is { Length: > 0 })
                         await articleService.AttachTagsAsync(existing.Id, item.Tags, CanCreateTags(user));
                     await db.SaveChangesAsync(ct);
-                    await articleService.QueueReindexAsync(existing);
+                    await articleService.QueueReindexAsync(existing, ct);
                     didUpdate = true;
                 }
                 else
@@ -180,7 +180,7 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
                     if (item.Tags is { Length: > 0 })
                         await articleService.AttachTagsAsync(article.Id, item.Tags, CanCreateTags(user));
                     await db.SaveChangesAsync(ct);
-                    await articleService.QueueReindexAsync(article);
+                    await articleService.QueueReindexAsync(article, ct);
                     didCreate = true;
                 }
                 if (transaction != null) await transaction.CommitAsync(ct);

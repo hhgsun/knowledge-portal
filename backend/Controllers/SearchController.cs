@@ -137,7 +137,9 @@ public class SearchController(
         // Resolve AI services
         var ollamaEnabled = config.GetValue("Ollama:Enabled", false);
         var vectorSearch = ollamaEnabled ? HttpContext.RequestServices.GetService<IVectorSearchService>() : null;
-        var indexingPending = await IsIndexingPendingAsync();
+        var indexCoverage = await articleService.GetSearchIndexCoverageAsync(
+            type, filter, HttpContext.RequestAborted);
+        var indexingPending = indexCoverage.RelevantPending > 0;
 
         // ═══ RAG ═══
         if (type == "rag")
@@ -145,14 +147,14 @@ public class SearchController(
             if (!ollamaEnabled || vectorSearch == null)
             {
                 sw.Stop();
-                return Ok(new { answer = "AI arama şu anda kullanılamıyor. Ollama servisi aktif değil.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending });
+                return Ok(new { answer = "AI arama şu anda kullanılamıyor. Ollama servisi aktif değil.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage });
             }
 
             var ragService = HttpContext.RequestServices.GetService<RagService>();
             if (ragService == null)
             {
                 sw.Stop();
-                return Ok(new { answer = "RAG servisi kullanılamıyor.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending });
+                return Ok(new { answer = "RAG servisi kullanılamıyor.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage });
             }
 
             try
@@ -164,7 +166,7 @@ public class SearchController(
                     claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
                     ragResult.GroundingStatus, ragResult.ClaimSupportCoverage, ragResult.InsufficientContext,
                     ragResult.PartialResult, ragResult.Warnings,
-                    query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, searchQueryId = ragRecord.Id });
+                    query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage, searchQueryId = ragRecord.Id });
             }
             catch (RagBusyException)
             {
@@ -194,7 +196,7 @@ public class SearchController(
             if (!ollamaEnabled || vectorSearch == null)
             {
                 sw.Stop();
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, warning = "Semantic search unavailable — Ollama disabled" });
+                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, indexCoverage, warning = "Semantic search unavailable — Ollama disabled" });
             }
 
             try
@@ -217,12 +219,12 @@ public class SearchController(
 
                 sw.Stop();
                 var semRecord = await RecordSearchAsync(q, scoredResults.Count, "semantic", sw.ElapsedMilliseconds);
-                return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, page = 1, totalPages = 1, indexingPending, searchQueryId = semRecord.Id });
+                return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, searchQueryId = semRecord.Id });
             }
             catch
             {
                 sw.Stop();
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, warning = "Semantic search failed" });
+                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, indexCoverage, warning = "Semantic search failed" });
             }
         }
 
@@ -270,7 +272,7 @@ public class SearchController(
             var hybridRecord = await RecordSearchAsync(q, hybridResults.Count, "hybrid", sw.ElapsedMilliseconds);
 
             var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : (string?)null;
-            return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, page = 1, totalPages = 1, indexingPending, searchQueryId = hybridRecord.Id, warning });
+            return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, searchQueryId = hybridRecord.Id, warning });
         }
 
         // ═══ FULLTEXT (default) — rank order + LIKE fallback handled by the service ═══
@@ -284,7 +286,7 @@ public class SearchController(
 
         sw.Stop();
         var ftRecord = await RecordSearchAsync(q, ftPage.Total, "fulltext", sw.ElapsedMilliseconds);
-        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftPage.Total, page, totalPages = (int)Math.Ceiling(ftPage.Total / (double)limit), indexingPending, searchQueryId = ftRecord.Id });
+        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftPage.Total, page, totalPages = (int)Math.Ceiling(ftPage.Total / (double)limit), indexingPending, indexCoverage, searchQueryId = ftRecord.Id });
     }
 
     [HttpPost("click")]
@@ -421,13 +423,6 @@ public class SearchController(
         db.SearchQueries.Add(record);
         await db.SaveChangesAsync();
         return record;
-    }
-
-    private Task<bool> IsIndexingPendingAsync()
-    {
-        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
-        return db.Articles.AnyAsync(a => a.Status == "published"
-            && (a.FtsIndexedAt == null || (semanticEnabled && a.IndexedAt == null)));
     }
 
     private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, string[] snippetTokens, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)

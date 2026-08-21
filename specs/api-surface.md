@@ -264,7 +264,7 @@ operational field.
 | `contentType` | string | No | Default: `"reference"` |
 | `tags` | string[] | No | Array of tag ID, name, or slug (resolved in that priority) |
 
-**Side effects**: Creates version 1 with the initial content.
+**Side effects**: Creates version 1, durably queues semantic/index recovery, and best-effort refreshes PostgreSQL FTS before returning. The worker still revalidates FTS before asynchronous embedding.
 **201 Response**: `{ "id", "slug", "title" }`
 
 ---
@@ -294,7 +294,7 @@ Accepts both article ID and slug for lookup.
 | `changeSummary` | string | No | Stored in version record |
 | `tags` | string[] | No | Array of tag ID, name, or slug (replaces all existing tags) |
 
-**Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number.
+**Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number. Every mutation durably queues index recovery and best-effort refreshes PostgreSQL FTS before returning; semantic embedding remains asynchronous.
 **200 Response**: `{ "id", "slug", "title" }`
 **403**: Not owner and lacks `articles:edit_any`, OR lacks `articles:publish`/`articles:archive` for status change.
 
@@ -602,6 +602,13 @@ Ordered by version number descending.
   "page": 1,
   "totalPages": 7,
   "searchType": "fulltext",
+  "indexingPending": false,
+  "indexCoverage": {
+    "mode": "fulltext",
+    "fullTextPending": 0,
+    "semanticPending": 3,
+    "relevantPending": 0
+  },
   "responseTimeMs": 12,
   "searchQueryId": "abc123..."
 }
@@ -609,6 +616,10 @@ Ordered by version number descending.
 > `total` is the true post-filter match count for `fulltext`/tag searches (`totalPages = ceil(total/limit)`); for `semantic`/`hybrid` it is the returned top-N count (`page`/`totalPages` fixed at 1).
 > `snippet` is a match-context window from the article body (query terms matched accent/case-insensitively, stem-prefix tolerant); `null` when the match is title-only — clients fall back to `excerpt`.
 > `searchQueryId` is used to track which result was clicked via `POST /api/search/click`.
+> `indexingPending` is mode-aware and filter-scoped. Fulltext checks only `FtsIndexedAt`, semantic
+> checks only `IndexedAt`, and hybrid/RAG check both. `indexCoverage` reports the separate pending
+> counts plus a distinct `relevantPending` count for the requested mode; unrelated articles outside
+> the active author/tag/content-type/API-key filters do not trigger the warning.
 
 **200 Response (RAG)**:
 ```json

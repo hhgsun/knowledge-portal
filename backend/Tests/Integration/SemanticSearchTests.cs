@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KnowledgePortal.Api.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,6 +73,51 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
             .First(r => r.GetProperty("title").GetString() == "Hibrit Arama Deneme Rqpz");
         var matchType = result.GetProperty("matchType").GetString();
         Assert.Contains(matchType, new[] { "fulltext", "semantic", "both" });
+    }
+
+    [Fact]
+    public async Task IndexCoverage_IsModeAware_AndScopedToActiveFilters()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var suffix = Guid.NewGuid().ToString("N");
+        var tag = "coverage-" + suffix;
+        var bodyTerm = "anindagovde" + suffix;
+        var articleId = await CreatePublishedArticleAsync(
+            "Immediate lexical availability " + suffix,
+            "This term exists only in the body: " + bodyTerm,
+            [tag]);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var article = (await db.Articles.FindAsync(articleId))!;
+            Assert.NotNull(article.FtsIndexedAt); // eager/live lexical availability
+            Assert.Null(article.IndexedAt);       // semantic work remains asynchronous
+            Assert.Equal("pending", (await db.IndexJobs.FindAsync(articleId))!.Status);
+        }
+
+        var query = $"q={bodyTerm}&type=fulltext&tag={Uri.EscapeDataString(tag)}";
+        var fullText = await _client.GetFromJsonAsync<JsonElement>($"/api/search?{query}");
+        Assert.Contains(fullText.GetProperty("results").EnumerateArray(),
+            result => result.GetProperty("id").GetString() == articleId);
+        var fullTextCoverage = fullText.GetProperty("indexCoverage");
+        Assert.False(fullText.GetProperty("indexingPending").GetBoolean());
+        Assert.Equal("fulltext", fullTextCoverage.GetProperty("mode").GetString());
+        Assert.Equal(0, fullTextCoverage.GetProperty("fullTextPending").GetInt32());
+        Assert.Equal(1, fullTextCoverage.GetProperty("semanticPending").GetInt32());
+        Assert.Equal(0, fullTextCoverage.GetProperty("relevantPending").GetInt32());
+
+        var semantic = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/search?q={bodyTerm}&type=semantic&tag={Uri.EscapeDataString(tag)}");
+        var semanticCoverage = semantic.GetProperty("indexCoverage");
+        Assert.True(semantic.GetProperty("indexingPending").GetBoolean());
+        Assert.Equal("semantic", semanticCoverage.GetProperty("mode").GetString());
+        Assert.Equal(1, semanticCoverage.GetProperty("relevantPending").GetInt32());
+
+        var hybrid = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/search?q={bodyTerm}&type=hybrid&tag={Uri.EscapeDataString(tag)}");
+        Assert.True(hybrid.GetProperty("indexingPending").GetBoolean());
+        Assert.Equal(1, hybrid.GetProperty("indexCoverage").GetProperty("relevantPending").GetInt32());
     }
 
     // RAG logic (filter enforcement, refusal, prompt-injection sanitization) is covered

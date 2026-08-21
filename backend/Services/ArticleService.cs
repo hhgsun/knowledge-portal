@@ -23,13 +23,17 @@ public record ArticleEnrichment(
     List<object> Tags, int ViewCount, double WilsonScore,
     string CreatedAt, int? ReadTimeMinutes);
 
+/// <summary>Index gaps within the filters of one search request. RelevantPending is mode-aware
+/// and counts distinct articles, so a hybrid request never double-counts an article missing both indexes.</summary>
+public record SearchIndexCoverage(string Mode, int FullTextPending, int SemanticPending, int RelevantPending);
+
 /// <summary>
 /// Shared article operations: search/listing queries, versioning, tag linking,
 /// search-index maintenance, and response enrichment. Controllers and MCP tools
 /// call these instead of duplicating the logic.
 /// </summary>
 public class ArticleService(AppDbContext db, FullTextSearchService ftsService, TagService tagService,
-    IndexJobQueue indexJobs, IConfiguration config)
+    IndexJobQueue indexJobs, IConfiguration config, ILogger<ArticleService> logger)
 {
     public static IQueryable<Article> ApplyFilter(IQueryable<Article> query, ArticleFilter? filter)
     {
@@ -47,6 +51,38 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         if (filter.TagSlugs != null)
             query = query.WhereHasAllTags(filter.TagSlugs);
         return query;
+    }
+
+    /// <summary>
+    /// Calculates index coverage only for articles eligible under the request filters. Full-text
+    /// does not depend on semantic embeddings; semantic does not depend on FTS; hybrid/RAG use both.
+    /// </summary>
+    public async Task<SearchIndexCoverage> GetSearchIndexCoverageAsync(
+        string searchType, ArticleFilter? filter = null, CancellationToken ct = default)
+    {
+        var mode = searchType is "semantic" or "hybrid" or "rag" ? searchType : "fulltext";
+        var semanticEnabled = config.GetValue("Ollama:Enabled", false);
+        var query = ApplyFilter(db.Articles.WherePublished(), filter);
+        var counts = await query
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                FullTextPending = group.Count(a => a.FtsIndexedAt == null),
+                SemanticPending = semanticEnabled ? group.Count(a => a.IndexedAt == null) : 0,
+                CombinedPending = group.Count(a => a.FtsIndexedAt == null
+                    || (semanticEnabled && a.IndexedAt == null))
+            })
+            .SingleOrDefaultAsync(ct);
+
+        var fullTextPending = counts?.FullTextPending ?? 0;
+        var semanticPending = counts?.SemanticPending ?? 0;
+        var relevantPending = mode switch
+        {
+            "semantic" => semanticPending,
+            "hybrid" or "rag" => counts?.CombinedPending ?? 0,
+            _ => fullTextPending
+        };
+        return new SearchIndexCoverage(mode, fullTextPending, semanticPending, relevantPending);
     }
 
     /// <summary>
@@ -204,17 +240,70 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     }
 
     /// <summary>
-    /// Content of an article changed: mark semantic state dirty and durably coalesce an index job.
+    /// Marks both indexes dirty, durably coalesces an index job, then best-effort refreshes the
+    /// local FTS index before returning. Semantic embedding remains exclusively asynchronous.
+    /// The worker still re-runs FTS, preserving generation/race recovery guarantees.
     /// </summary>
-    public async Task QueueReindexAsync(Article article)
+    public async Task QueueReindexAsync(Article article, CancellationToken ct = default)
     {
-        if (article.Status == "published")
+        article.FtsIndexedAt = null;
+        article.IndexedAt = null;
+        await db.SaveChangesAsync(ct);
+
+        // Persist the recovery path before attempting eager FTS. If extraction/PostgreSQL fails,
+        // the article mutation remains valid and the durable worker retries the complete job.
+        await indexJobs.EnqueueAsync(article.Id, ct: ct);
+        await TrySyncFullTextEagerlyAsync(article, ct);
+    }
+
+    private async Task TrySyncFullTextEagerlyAsync(Article article, CancellationToken ct)
+    {
+        var transaction = db.Database.CurrentTransaction;
+        string? savepoint = null;
+        if (transaction != null)
         {
-            article.FtsIndexedAt = null;
-            article.IndexedAt = null;
+            // Bulk/source imports own a wider transaction. A failed PostgreSQL statement aborts
+            // that transaction unless the eager attempt is isolated behind a savepoint.
+            if (!transaction.SupportsSavepoints)
+            {
+                logger.LogDebug(
+                    "Skipping eager full-text sync for article {ArticleId}: ambient transaction does not support savepoints",
+                    article.Id);
+                return;
+            }
+
+            savepoint = $"eager_fts_{Guid.NewGuid():N}";
+            await transaction.CreateSavepointAsync(savepoint, ct);
         }
-        await db.SaveChangesAsync();
-        await indexJobs.EnqueueAsync(article.Id);
+
+        try
+        {
+            await ftsService.SyncArticleAsync(article, ct);
+            if (savepoint != null)
+                await transaction!.ReleaseSavepointAsync(savepoint, ct);
+        }
+        catch (Exception ex)
+        {
+            if (savepoint != null)
+            {
+                try
+                {
+                    await transaction!.RollbackToSavepointAsync(savepoint, CancellationToken.None);
+                }
+                catch (Exception rollbackException)
+                {
+                    logger.LogError(rollbackException,
+                        "Could not roll back eager full-text savepoint for article {ArticleId}", article.Id);
+                    throw;
+                }
+            }
+
+            if (ex is OperationCanceledException && ct.IsCancellationRequested)
+                throw;
+
+            logger.LogWarning(ex,
+                "Eager full-text sync failed for article {ArticleId}; durable index job will retry", article.Id);
+        }
     }
 
     public Task RemoveFromIndexAsync(string articleId) => ftsService.RemoveArticleAsync(articleId);

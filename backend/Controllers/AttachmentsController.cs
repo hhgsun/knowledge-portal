@@ -131,7 +131,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         }
 
         // Attachment text is part of the search index
-        await articleService.QueueReindexAsync(article);
+        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
 
         return StatusCode(201, new AttachmentResponse(
             attachment.Id,
@@ -166,7 +166,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
         catch (Exception ex) { logger.LogError(ex, "Failed to move deleted attachment {AttachmentId} to trash", attachmentId); }
 
         // Attachment text is part of the search index
-        await articleService.QueueReindexAsync(article);
+        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
 
         return Ok(new { message = "Attachment deleted" });
     }

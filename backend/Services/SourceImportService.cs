@@ -107,7 +107,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
 
                 if (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count)
                     storedAttachment = await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed, user.GetUserId(), ct);
-                await articleService.QueueReindexAsync(article);
+                await articleService.QueueReindexAsync(article, ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
                 committed = true;
                 results.Add(new(draft.SourceIndex, article.Id, article.Slug, article.Title, null));

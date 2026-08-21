@@ -700,6 +700,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains(payload.GetProperty("results").EnumerateArray(),
             item => item.GetProperty("title").GetString() == "MCP Semantik Kubernetes Zqmx");
         Assert.True(payload.TryGetProperty("indexingPending", out _));
+        Assert.Equal("semantic", payload.GetProperty("indexCoverage").GetProperty("mode").GetString());
         Assert.True(payload.TryGetProperty("searchQueryId", out _));
     }
 

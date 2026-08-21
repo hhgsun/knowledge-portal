@@ -198,6 +198,13 @@ export interface SearchResult {
   snippet?: string | null;
 }
 
+export interface SearchIndexCoverage {
+  mode: "fulltext" | "semantic" | "hybrid" | "rag";
+  fullTextPending: number;
+  semanticPending: number;
+  relevantPending: number;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   /** True post-filter match count (fulltext/tag); returned count for semantic/hybrid */
@@ -208,6 +215,7 @@ export interface SearchResponse {
   responseTimeMs: number;
   tags?: string[];
   indexingPending?: boolean;
+  indexCoverage?: SearchIndexCoverage;
   warning?: string;
 }
 
@@ -225,6 +233,7 @@ export interface RagResponse {
   type: "rag";
   responseTimeMs: number;
   indexingPending?: boolean;
+  indexCoverage?: SearchIndexCoverage;
   claims?: { text: string; sourceIds: string[] }[];
   evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number }[];
   citationCoverage?: number;

@@ -88,8 +88,8 @@ public class ArticleVersionsController(AppDbContext db, ArticleService articleSe
 
         await db.SaveChangesAsync();
 
-        // Restored content on published article → re-embed + FTS sync (same as article update)
-        await articleService.QueueReindexAsync(article);
+        // Restored content on published article → eager FTS + queued re-embed (same as article update)
+        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
 
         return Ok(new { message = "Article restored to selected version", version = newVersion });
     }

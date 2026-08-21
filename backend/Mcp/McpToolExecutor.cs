@@ -371,8 +371,8 @@ public class McpToolExecutor
         }
 
         var ollamaEnabled = _config.GetValue("Ollama:Enabled", false);
-        var indexingPending = await _db.Articles.AnyAsync(a => a.Status == "published"
-            && (a.FtsIndexedAt == null || (ollamaEnabled && a.IndexedAt == null)), ct);
+        var indexCoverage = await _articleService.GetSearchIndexCoverageAsync(type, filter, ct);
+        var indexingPending = indexCoverage.RelevantPending > 0;
         var vectorSearch = ollamaEnabled ? _services.GetService<IVectorSearchService>() : null;
 
         if (type == "rag")
@@ -404,7 +404,7 @@ public class McpToolExecutor
                         e.SourceLocation, e.Passage, e.Score }),
                     rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
                     rag.InsufficientContext, rag.PartialResult, rag.Warnings,
-                    query, type, indexingPending
+                    query, type, indexingPending, indexCoverage
                 }, query, rag.Sources.Count, type, sw, principal, ct);
             }
             catch (Exception ex)
@@ -427,7 +427,7 @@ public class McpToolExecutor
                 var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
                 var byId = articles.ToDictionary(a => a.Id);
                 var results = await BuildSearchResultsAsync(hits.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList(), includeContent, includeAttachments, snippetTokens, hits.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)));
-                return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending }, query, results.Count, type, sw, principal, ct);
+                return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, indexCoverage }, query, results.Count, type, sw, principal, ct);
             }
             catch (Exception ex)
             {
@@ -456,12 +456,12 @@ public class McpToolExecutor
             var results = await BuildSearchResultsAsync(ordered, includeContent, includeAttachments, snippetTokens,
                 reranked.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)), scores.ToDictionary(s => s.Key, s => s.Value.MatchType));
             var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : null;
-            return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, warning }, query, results.Count, type, sw, principal, ct);
+            return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, warning }, query, results.Count, type, sw, principal, ct);
         }
 
         var pageResult = await _articleService.SearchPublishedPagedAsync(searchQuery, page, limit, filter);
         var fulltextResults = await BuildSearchResultsAsync(pageResult.Articles, includeContent, includeAttachments, snippetTokens);
-        return await SearchResultAsync(new { results = fulltextResults, query, type, total = pageResult.Total, page, totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit), indexingPending }, query, pageResult.Total, type, sw, principal, ct);
+        return await SearchResultAsync(new { results = fulltextResults, query, type, total = pageResult.Total, page, totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit), indexingPending, indexCoverage }, query, pageResult.Total, type, sw, principal, ct);
     }
 
     private async Task<McpToolCallResult> GetArticleAsync(JsonElement? args)
@@ -980,6 +980,19 @@ public class McpToolExecutor
             ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
             ["partialResult"] = new JsonObject { ["type"] = "boolean" },
             ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
+            ["indexingPending"] = new JsonObject { ["type"] = "boolean" },
+            ["indexCoverage"] = new JsonObject
+            {
+                ["type"] = "object",
+                ["required"] = new JsonArray("mode", "fullTextPending", "semanticPending", "relevantPending"),
+                ["properties"] = new JsonObject
+                {
+                    ["mode"] = new JsonObject { ["type"] = "string" },
+                    ["fullTextPending"] = new JsonObject { ["type"] = "integer" },
+                    ["semanticPending"] = new JsonObject { ["type"] = "integer" },
+                    ["relevantPending"] = new JsonObject { ["type"] = "integer" }
+                }
+            },
             ["query"] = new JsonObject { ["type"] = "string" },
             ["type"] = new JsonObject { ["type"] = "string" },
             ["error"] = ErrorPropertySchema()

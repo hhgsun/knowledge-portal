@@ -143,17 +143,24 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// Sync a single article to the FTS index (upsert).
     /// Call when an article is published or content changes.
     /// </summary>
-    public async Task SyncArticleAsync(Article article)
+    public async Task SyncArticleAsync(Article article, CancellationToken ct = default)
     {
-        if (!db.Database.IsRelational()) return; // no tsvector column on non-relational providers
-
-        if (article.Status != "published")
+        if (!db.Database.IsRelational())
         {
-            await RemoveArticleAsync(article.Id);
+            // InMemory search reads live article data, so lexical availability is immediate even
+            // though the provider has no tsvector column. Mirror that readiness in FtsIndexedAt.
+            article.FtsIndexedAt = article.Status == "published" ? DateTime.UtcNow : null;
+            await db.SaveChangesAsync(ct);
             return;
         }
 
-        await UpdateSearchVectorAsync(article.Id, article.Title, article.Excerpt, article.Content);
+        if (article.Status != "published")
+        {
+            await RemoveArticleAsync(article.Id, ct);
+            return;
+        }
+
+        await UpdateSearchVectorAsync(article.Id, article.Title, article.Excerpt, article.Content, ct);
     }
 
     /// <summary>Recomputes the weighted tsvector (title=A, excerpt=B, content+attachments=C) for one article.</summary>
@@ -184,11 +191,12 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     /// <summary>
     /// Remove an article from the FTS index.
     /// </summary>
-    public async Task RemoveArticleAsync(string articleId)
+    public async Task RemoveArticleAsync(string articleId, CancellationToken ct = default)
     {
         if (!db.Database.IsRelational()) return;
         await db.Database.ExecuteSqlRawAsync(
-            "UPDATE articles SET search_vector = NULL, \"FtsIndexedAt\" = NULL WHERE \"Id\" = {0}", articleId);
+            "UPDATE articles SET search_vector = NULL, \"FtsIndexedAt\" = NULL WHERE \"Id\" = {0}",
+            [articleId], ct);
     }
 
     /// <summary>

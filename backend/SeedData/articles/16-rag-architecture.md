@@ -44,7 +44,7 @@ Kullanıcı sorusu                   ▼
 
 ## 1. İndeksleme ve Provenance
 
-Makale yayınlandığında, içeriği değiştiğinde veya eki eklenip silindiğinde `index_jobs` tablosuna iş yazılır. Kuyruk makale başına generation counter ile değişiklikleri birleştirir. Worker'lar işleri `FOR UPDATE SKIP LOCKED` ile claim eder; lease, bounded parallelism, exponential retry ve terminal failure takibi kullanır.
+Makale yayınlandığında, içeriği değiştiğinde veya eki eklenip silindiğinde önce `index_jobs` tablosuna iş yazılır. Ardından kullanıcıların yeni içeriği Full‑Text aramada hemen bulabilmesi için yerel PostgreSQL FTS aynı istekte best-effort güncellenir; semantic embedding asenkron kalır. Kuyruk makale başına generation counter ile değişiklikleri birleştirir. Worker'lar işleri `FOR UPDATE SKIP LOCKED` ile claim eder; lease, bounded parallelism, exponential retry ve terminal failure takibi kullanır. Worker her işi işlerken FTS'yi güncel veriden yeniden hesapladığı için eager işlem RAG'in dayanıklı kuyruğunu, generation guard'ını veya semantic indeks tutarlılığını bypass etmez.
 
 Kanonik Markdown okunabilir düz metne çevrilir. Makale gövdesi ile metni çıkarılabilen her ek ayrı kaynak kabul edilir:
 

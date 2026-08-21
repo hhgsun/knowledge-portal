@@ -9,11 +9,28 @@ import { useLookups } from "../hooks/useLookups";
 import { useSearchHistory } from "../hooks/useNetworkStatus";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
-import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue } from "../types/api";
+import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue, SearchIndexCoverage } from "../types/api";
 
 type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
 type SuggestionType = "tag" | "author" | "contentType";
 interface AuthorItem { id: string; name: string; slug: string; }
+
+function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
+  const count = coverage.relevantPending;
+  if (coverage.mode === "fulltext") {
+    return `${count} makalenin tam metin indeksi güncel değil. Sonuçlar geçici olarak eksik olabilir.`;
+  }
+  if (coverage.mode === "semantic") {
+    return `${count} makalenin semantic arama indeksi güncel değil. Sonuçlar geçici olarak eksik veya eski olabilir.`;
+  }
+  if (coverage.fullTextPending > 0 && coverage.semanticPending > 0) {
+    return `${count} makalenin tam metin ve/veya semantic arama indeksi güncel değil. Sonuçlar geçici olarak eksik veya eski olabilir.`;
+  }
+  if (coverage.fullTextPending > 0) {
+    return `${count} makalenin tam metin indeksi güncel değil. Sonuçlar geçici olarak eksik olabilir.`;
+  }
+  return `${count} makalenin semantic arama indeksi güncel değil. Sonuçlar geçici olarak eksik veya eski olabilir.`;
+}
 
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
@@ -34,7 +51,7 @@ export default function SearchPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
-  const [indexingPending, setIndexingPending] = useState(false);
+  const [indexCoverage, setIndexCoverage] = useState<SearchIndexCoverage | null>(null);
   const searchInFlightRef = useRef(false);
 
   const copyRagAnswer = async () => {
@@ -170,7 +187,7 @@ export default function SearchPage() {
     setResults([]);
     setActiveTags([]);
     setSearchQueryId(null);
-    setIndexingPending(false);
+    setIndexCoverage(null);
     setWarning(null);
 
     try {
@@ -181,7 +198,7 @@ export default function SearchPage() {
 
       if (data.tags) setActiveTags(data.tags);
       if (data.searchQueryId) setSearchQueryId(data.searchQueryId);
-      if (data.indexingPending) setIndexingPending(data.indexingPending);
+      setIndexCoverage(data.indexCoverage ?? null);
       if (data.warning) setWarning(data.warning);
 
       if (searchType === "rag") {
@@ -382,10 +399,10 @@ export default function SearchPage() {
         </div>
       ) : searched ? (
         <div aria-live="polite" aria-atomic="true">
-          {indexingPending && (
+          {indexCoverage && indexCoverage.relevantPending > 0 && (
             <div className="flex items-center gap-2 mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
               <AlertTriangle size={16} />
-              <span>Bazı makaleler henüz indekslenmedi. Sonuçlar tam olmayabilir.</span>
+              <span>{getIndexCoverageMessage(indexCoverage)}</span>
             </div>
           )}
           {warning && (

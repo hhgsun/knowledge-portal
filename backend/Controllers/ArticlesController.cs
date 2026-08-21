@@ -146,8 +146,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         await db.SaveChangesAsync();
 
-        // If published: queue for embedding + sync FTS index
-        await articleService.QueueReindexAsync(article);
+        // If published: queue semantic indexing and eagerly sync the local FTS index.
+        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
 
         return StatusCode(201, new { article.Id, article.Slug, article.Title });
     }
@@ -284,8 +284,9 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         await db.SaveChangesAsync();
 
-        // Coalesced durable job handles FTS + semantic indexing (including title/excerpt/status).
-        await articleService.QueueReindexAsync(article);
+        // Eager FTS provides immediate lexical visibility; the durable job still revalidates
+        // FTS and performs semantic indexing (including title/excerpt/status).
+        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
 
         return Ok(new { article.Id, article.Slug, article.Title });
     }
