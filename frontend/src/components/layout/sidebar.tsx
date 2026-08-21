@@ -211,13 +211,17 @@ export function Sidebar() {
     <>
       {/* Logo + Toggle */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-center gap-1 overflow-hidden select-none my-1">
+        <Link
+          to="/"
+          aria-label="Go to homepage"
+          className="flex items-center gap-1 overflow-hidden select-none my-1"
+        >
           <BookSearch size={24} className="text-blue-600 shrink-0 ml-1" />
           <span className={'font-bold text-md whitespace-nowrap overflow-hidden ' + (!collapsed ? 'block' : 'hidden')}>
             <span>Knowledge</span>
             <span className="text-blue-600">Portal</span>
           </span>
-        </div>
+        </Link>
         {/* Desktop: collapse/expand toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
