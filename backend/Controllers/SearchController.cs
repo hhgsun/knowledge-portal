@@ -338,6 +338,28 @@ public class SearchController(
     }
 
     /// <summary>
+    /// Repairs only missing or stuck index jobs. Current indexes and actively leased work are left
+    /// untouched; unlike a full reindex this is safe for routine operational recovery.
+    /// </summary>
+    [HttpPost("repair-indexing")]
+    [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
+    public async Task<IActionResult> RepairIndexing(CancellationToken ct)
+    {
+        var repaired = await HttpContext.RequestServices.GetRequiredService<IndexJobQueue>()
+            .RepairDirtyArticlesAsync(ct);
+        var pending = await db.IndexJobs.CountAsync(
+            j => j.Status == "pending" || j.Status == "processing", ct);
+
+        return Ok(new
+        {
+            message = repaired > 0 ? "Missing or stuck index jobs repaired" : "No repairable index jobs found",
+            articlesRepaired = repaired,
+            pendingCount = pending,
+        });
+    }
+
+    /// <summary>
     /// Read-only health report for both search indexes: coverage, sizes, effective settings and
     /// EXPLAIN probes of the real query shapes. Nothing here executes a plan or writes anything.
     /// </summary>

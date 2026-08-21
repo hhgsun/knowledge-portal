@@ -685,6 +685,16 @@ Marks all published articles stale and upserts durable PostgreSQL `index_jobs`. 
 
 ---
 
+### `POST /api/search/repair-indexing`
+**Auth**: Bearer (session only, rejects API key)
+**Permission**: `users:manage`
+
+Repairs only published articles whose full-text or semantic index marker is missing. Missing jobs are created; completed, failed, delayed-retry and lease-expired jobs are made immediately available. Healthy articles and actively leased jobs are not changed, and existing index markers/embeddings are not invalidated.
+
+**200 Response**: `{ "message": "Missing or stuck index jobs repaired", "articlesRepaired": 10, "pendingCount": 10 }`
+
+---
+
 ### `GET /api/search/embedding-status`
 **Auth**: Bearer (session only, rejects API key)
 **Permission**: `users:manage`

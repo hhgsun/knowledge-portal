@@ -119,6 +119,55 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
     }
 
     [PostgresFact]
+    public async Task QueueRepair_ReopensOnlyDirtyRepairableJobs()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        await using var db = fixture.CreateDb();
+        var owner = User("repair-u" + suffix);
+        var failed = Article("repair-failed-" + suffix, owner.Id, "reference");
+        var active = Article("repair-active-" + suffix, owner.Id, "reference");
+        var clean = Article("repair-clean-" + suffix, owner.Id, "reference");
+        failed.FtsIndexedAt = null;
+        failed.IndexedAt = null;
+        active.FtsIndexedAt = null;
+        active.IndexedAt = null;
+        clean.FtsIndexedAt = DateTime.UtcNow;
+        clean.IndexedAt = DateTime.UtcNow;
+        db.AddRange(owner, failed, active, clean);
+        db.IndexJobs.AddRange(
+            new IndexJob
+            {
+                ArticleId = failed.Id, Status = "failed", AttemptCount = 10,
+                LastError = "model unavailable",
+            },
+            new IndexJob
+            {
+                ArticleId = active.Id, Status = "processing", LockedAt = DateTime.UtcNow,
+                LockedBy = "active-worker",
+            },
+            new IndexJob { ArticleId = clean.Id, Status = "failed", AttemptCount = 10 });
+        await db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:Enabled"] = "true",
+                ["Indexing:LeaseMinutes"] = "15",
+            })
+            .Build();
+        var repairedCount = await new IndexJobQueue(db, config).RepairDirtyArticlesAsync(default);
+
+        Assert.Equal(1, repairedCount);
+        db.ChangeTracker.Clear();
+        var repaired = (await db.IndexJobs.FindAsync(failed.Id))!;
+        Assert.Equal("pending", repaired.Status);
+        Assert.Equal(0, repaired.AttemptCount);
+        Assert.Null(repaired.LastError);
+        Assert.Equal("processing", (await db.IndexJobs.FindAsync(active.Id))!.Status);
+        Assert.Equal("failed", (await db.IndexJobs.FindAsync(clean.Id))!.Status);
+    }
+
+    [PostgresFact]
     public async Task RagEvaluationQueue_ClaimsPendingRunWithoutSqlComposition()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

@@ -164,6 +164,42 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task RepairIndexing_ReopensFailedDirtyJobWithoutInvalidatingHealthyIndexes()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var articleId = await CreatePublishedArticleAsync("Repair indexing " + Guid.NewGuid().ToString("N"));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var article = (await db.Articles.FindAsync(articleId))!;
+            Assert.NotNull(article.FtsIndexedAt);
+            Assert.Null(article.IndexedAt);
+
+            var job = (await db.IndexJobs.FindAsync(articleId))!;
+            job.Status = "failed";
+            job.AttemptCount = 10;
+            job.LastError = "model unavailable";
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsync("/api/search/repair-indexing", null);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(body.GetProperty("articlesRepaired").GetInt32() >= 1);
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var repaired = (await verifyDb.IndexJobs.FindAsync(articleId))!;
+        Assert.Equal("pending", repaired.Status);
+        Assert.Equal(0, repaired.AttemptCount);
+        Assert.Null(repaired.LastError);
+        var unchanged = (await verifyDb.Articles.FindAsync(articleId))!;
+        Assert.NotNull(unchanged.FtsIndexedAt);
+        Assert.Null(unchanged.IndexedAt);
+    }
+
+    [Fact]
     public async Task RagObservability_ReturnsRuntimeAndMetricContract()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);

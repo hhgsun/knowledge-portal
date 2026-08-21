@@ -160,5 +160,6 @@ The default suite uses an isolated EF Core InMemory database per test class and 
 - `GET /api/health`: PostgreSQL readiness plus timeout-bounded/cached Ollama health.
 - `GET /metrics`: internal Prometheus endpoint.
 - Admin diagnostics: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
+- Routine queue recovery: `POST /api/search/repair-indexing` repairs only missing/stuck jobs without invalidating healthy indexes; corpus-wide `POST /api/search/reindex` is reserved for planned maintenance.
 
 Prometheus RAG alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`.

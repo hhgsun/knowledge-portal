@@ -17,6 +17,8 @@ public class EmbeddingBackgroundService(
     private readonly int _claimBatchSize = Math.Max(1, config.GetValue("Indexing:ClaimBatchSize", 20));
     private readonly int _pollingInterval = Math.Max(1, config.GetValue("Indexing:PollingIntervalSeconds", 2));
     private readonly int _leaseMinutes = Math.Max(1, config.GetValue("Indexing:LeaseMinutes", 15));
+    private readonly int _jobTimeoutSeconds = Math.Max(30,
+        config.GetValue("Indexing:JobTimeoutSeconds", 600));
     private readonly int _reconciliationInterval = Math.Max(5,
         config.GetValue("Indexing:ReconciliationIntervalSeconds", 60));
     private readonly int _orphanCleanupIntervalHours = config.GetValue("Ollama:OrphanCleanupIntervalHours", 24);
@@ -42,7 +44,9 @@ public class EmbeddingBackgroundService(
                 using (var scope = scopeFactory.CreateScope())
                 {
                     var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
-                    claims = await queue.ClaimAsync(_workerId, _claimBatchSize,
+                    // Do not pre-claim work that cannot start yet. A claimed-but-gated item looks
+                    // active operationally and makes one hung batch block the next database poll.
+                    claims = await queue.ClaimAsync(_workerId, Math.Min(_claimBatchSize, _parallelism),
                         TimeSpan.FromMinutes(_leaseMinutes), stoppingToken);
                 }
 
@@ -74,26 +78,38 @@ public class EmbeddingBackgroundService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var queue = scope.ServiceProvider.GetRequiredService<IndexJobQueue>();
+        using var jobTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        jobTimeoutCts.CancelAfter(TimeSpan.FromSeconds(_jobTimeoutSeconds));
+        var jobCt = jobTimeoutCts.Token;
         using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // Lease renewal uses its own scope/DbContext. EF DbContext is not thread-safe and the
         // main scope is simultaneously used by FTS/embedding work below.
         var heartbeat = KeepLeaseAliveAsync(claim, heartbeatCts.Token);
         try
         {
-            var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == claim.ArticleId, ct);
+            var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == claim.ArticleId, jobCt);
             if (article != null)
             {
                 var fts = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
                 var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
-                await fts.SyncArticleAsync(article, ct);
+                await fts.SyncArticleAsync(article, jobCt);
                 if (article.Status == "published" && embeddings != null)
-                    await embeddings.EmbedArticleAsync(article, ct);
+                    await embeddings.EmbedArticleAsync(article, jobCt);
                 else if (embeddings != null)
-                    await embeddings.RemoveEmbeddingAsync(article.Id, ct);
+                    await embeddings.RemoveEmbeddingAsync(article.Id, jobCt);
             }
-            await queue.CompleteAsync(claim, ct);
+            await queue.CompleteAsync(claim, jobCt);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (jobTimeoutCts.IsCancellationRequested)
+        {
+            metrics.EmbeddingFailures.Add(1);
+            var error = new TimeoutException(
+                $"Index job exceeded the {_jobTimeoutSeconds}-second per-article timeout.");
+            logger.LogError(error, "Index job timed out for article {ArticleId}, generation {Generation}",
+                claim.ArticleId, claim.Generation);
+            await queue.FailAsync(claim, error, CancellationToken.None);
+        }
         catch (Exception ex)
         {
             metrics.EmbeddingFailures.Add(1);

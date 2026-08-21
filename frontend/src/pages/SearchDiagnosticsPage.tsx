@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useApi } from "../hooks/useApi";
 import {
   RefreshCw, AlertTriangle, CheckCircle2, XCircle, Database,
-  FileSearch, Boxes, ChevronDown, ChevronRight, Settings2, Workflow,
+  FileSearch, Boxes, ChevronDown, ChevronRight, Settings2, Workflow, Wrench,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "../lib/utils";
 import { SearchFlowModal } from "../components/layout/search-flow-modal";
 
@@ -105,6 +106,7 @@ export default function SearchDiagnosticsPage() {
   const [openPlan, setOpenPlan] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showFlow, setShowFlow] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,6 +121,38 @@ export default function SearchDiagnosticsPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => { load(); }, [load]);
+
+  const repairIndexing = async () => {
+    const confirmed = confirm(
+      "Yalnızca indeksi eksik, yeniden denemede bekleyen, hata almış veya lease süresi geçmiş işler onarılacak. " +
+      "Güncel makaleler ve halen aktif çalışan işler değiştirilmeyecek. Devam edilsin mi?"
+    );
+    if (!confirmed) return;
+
+    setRepairing(true);
+    try {
+      const res = await fetchWithAuth("/api/search/repair-indexing", {
+        method: "POST",
+        noRetry: true,
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        toast.error(result.error || "İndeks işleri onarılamadı");
+        return;
+      }
+
+      toast.success(
+        result.articlesRepaired > 0
+          ? `${result.articlesRepaired.toLocaleString("tr-TR")} indeks işi onarıldı`
+          : "Onarılabilir indeks işi bulunamadı"
+      );
+      await load();
+    } catch {
+      // Network/auth feedback is handled by useApi.
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const fmt = (n: number) => n.toLocaleString("tr-TR");
 
@@ -205,6 +239,24 @@ export default function SearchDiagnosticsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {(data.embedding.pending > 0 || data.embedding.failing > 0 || data.fullText.missing > 0) && (
+                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+                  <button
+                    type="button"
+                    onClick={repairIndexing}
+                    disabled={repairing}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/35 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {repairing
+                      ? <RefreshCw size={16} className="animate-spin" />
+                      : <Wrench size={16} />}
+                    {repairing ? "Onarılıyor…" : "Eksik/takılan indeksleri onar"}
+                  </button>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                    Yalnız sorunlu kuyruk işlerini yeniden açar; güncel makaleleri yeniden indekslemez.
+                  </p>
                 </div>
               )}
             </Card>
