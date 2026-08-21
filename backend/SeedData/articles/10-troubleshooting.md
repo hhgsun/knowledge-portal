@@ -38,6 +38,7 @@ Rate limit aşıldığında döner. Auth endpoint'leri için dakikada 10, search
 - `bge-m3` embedding modelinin erişilebilir olduğunu doğrulayın: `ollama pull bge-m3`
 - RAG için `qwen2.5vl:7b` chat modelinin erişilebilir olduğunu doğrulayın: `ollama pull qwen2.5vl:7b`
 - Yapılandırmadaki `EmbeddingDimensions` değerinin veritabanındaki `vector(1024)` kolonuyla uyumlu olduğunu kontrol edin.
+- Model beklenmeyen embedding boyutu döndürürse health kontrolü Ollama'yı `unavailable` gösterir; semantic sorgular PostgreSQL'e ulaşmadan açıklayıcı bir boyut uyuşmazlığı hatasıyla durdurulur.
 
 ### Yeni eklenen makale aramada çıkmıyor
 

@@ -42,6 +42,8 @@ public sealed class VectorSearchService(
     IConfiguration config) : IVectorSearchService
 {
     private const int HnswEfSearchUpperBound = 1000;
+    private readonly string _modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3";
+    private readonly int _expectedDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024);
     private readonly double _minScore = config.GetValue("Ollama:MinSimilarityScore", 0.5);
     // HNSW candidate-list size at query time. HNSW recall depends on ef_search being several times
     // the number of rows requested (rowLimit); when ef_search ≈ rowLimit recall degrades sharply at
@@ -216,7 +218,17 @@ public sealed class VectorSearchService(
     private async Task<Vector> EmbedQueryAsync(string queryText, CancellationToken ct)
     {
         var queryResults = await embeddingGenerator.GenerateAsync([queryText], cancellationToken: ct);
-        return new Vector(queryResults[0].Vector.ToArray());
+        var result = queryResults.FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"Embedding model '{_modelName}' returned no query embedding.");
+
+        if (result.Vector.Length != _expectedDimensions)
+            throw new InvalidOperationException(
+                $"Query embedding dimension mismatch: model '{_modelName}' returned {result.Vector.Length} dims, " +
+                $"expected {_expectedDimensions} (Ollama:EmbeddingDimensions / vector({_expectedDimensions}) column). " +
+                "Fix the model/config or migrate the article_embeddings column.");
+
+        return new Vector(result.Vector.ToArray());
     }
 
     private static readonly string[] IterativeScanModes = ["off", "relaxed_order", "strict_order"];

@@ -38,6 +38,20 @@ public class OllamaHealthProbeTests
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
     }
 
+    [Fact]
+    public async Task CheckAsync_RejectsEmbeddingWithUnexpectedDimensions()
+    {
+        var generator = new ProbeEmbeddingGenerator(dimensions: 768);
+        var (probe, provider) = Build(generator,
+            ("Ollama:EmbeddingDimensions", "1024"),
+            ("Health:OllamaProbeTimeoutSeconds", "2"),
+            ("Health:OllamaProbeCacheSeconds", "30"));
+        await using var disposable = provider;
+
+        Assert.False(await probe.CheckAsync(CancellationToken.None));
+        Assert.Equal(1, generator.Calls);
+    }
+
     private static (OllamaHealthProbe Probe, ServiceProvider Provider) Build(
         IEmbeddingGenerator<string, Embedding<float>> generator,
         params (string Key, string Value)[] settings)
@@ -55,7 +69,7 @@ public class OllamaHealthProbeTests
             NullLogger<OllamaHealthProbe>.Instance), provider);
     }
 
-    private sealed class ProbeEmbeddingGenerator(TimeSpan? delay = null)
+    private sealed class ProbeEmbeddingGenerator(TimeSpan? delay = null, int dimensions = 1024)
         : IEmbeddingGenerator<string, Embedding<float>>
     {
         public int Calls { get; private set; }
@@ -66,7 +80,7 @@ public class OllamaHealthProbeTests
             Calls++;
             if (delay != null) await Task.Delay(delay.Value, cancellationToken);
             return new GeneratedEmbeddings<Embedding<float>>(
-                values.Select(_ => new Embedding<float>(new float[1024])).ToList());
+                values.Select(_ => new Embedding<float>(new float[dimensions])).ToList());
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null) =>

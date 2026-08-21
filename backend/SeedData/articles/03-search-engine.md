@@ -35,6 +35,8 @@ Kesin terim, hata kodu veya ürün adı ararken fulltext iyi bir seçimdir.
 
 Yayınlanmış makaleler ve metni çıkarılabilen ekleri yaklaşık 500 kelimelik, 50 kelime örtüşmeli parçalara ayrılır. Ollama `bge-m3` modeli her parça için 1024 boyutlu embedding üretir. Vektörler PostgreSQL `pgvector` içinde tutulur; cosine distance sorguları HNSW indeksiyle hızlandırılır.
 
+İndeksleme ve sorgu akışları model çıktısının `Ollama:EmbeddingDimensions` ile eşleştiğini PostgreSQL'e yazmadan veya vektör sorgusu çalıştırmadan önce doğrular. Health kontrolü de yanlış boyutlu bir modeli bağlı/sağlıklı kabul etmez.
+
 - Liste tipi semantic aramanın varsayılan minimum benzerlik skoru 0.5'tir.
 - Her makale için en iyi eşleşen chunk seçilir ve chunk indeksi sonuçta taşınır.
 - Filtreler vektör sorgusunun içinde uygulanır; yayınlanmamış içerik sonuç havuzuna alınmaz.

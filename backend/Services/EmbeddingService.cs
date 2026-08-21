@@ -295,8 +295,14 @@ public class EmbeddingService(
     {
         try
         {
-            await embeddingGenerator.GenerateAsync(["test"], cancellationToken: ct);
-            return true;
+            var results = await embeddingGenerator.GenerateAsync(["test"], cancellationToken: ct);
+            var result = results.FirstOrDefault();
+            if (result?.Vector.Length == _expectedDimensions) return true;
+
+            logger.LogWarning(
+                "Ollama health probe embedding dimension mismatch: model {Model} returned {ActualDimensions} dims, expected {ExpectedDimensions}",
+                _modelName, result?.Vector.Length, _expectedDimensions);
+            return false;
         }
         catch
         {
