@@ -48,14 +48,15 @@ Makale yayınlandığında, içeriği değiştiğinde veya eki eklenip silindiğ
 
 Kanonik Markdown okunabilir düz metne çevrilir. Makale gövdesi ile metni çıkarılabilen her ek ayrı kaynak kabul edilir:
 
-- Her kaynak yaklaşık 500 kelimelik ve 50 kelime örtüşmeli chunk'lara ayrılır.
+- Makale Markdown'ı başlık/bölüm sınırları korunarak; ekler parser'ın page/sheet/slide konumları korunarak chunk'lara ayrılır. Paragraf, liste, tablo ve kod blokları hedef bütçeye sığıyorsa bölünmez; aşırı büyük tek bloklar kontrollü kayan pencereye düşer.
+- Varsayılan hedef 500 kelime ve örtüşme 50 kelimedir; `ChunkTargetWords`, `ChunkOverlapWords` ve `ChunkingVersion` yapılandırılabilir. Chunking sürümü ve sınırlar içerik hash'ine katıldığı için değişiklik dayanıklı kuyruk üzerinden re-embedding tetikler.
 - Kaynak başına ve makale toplamında yapılandırılabilir chunk sınırları uygulanır.
 - Makale ve ek kaynakları round-robin interleave edilerek uzun bir kaynağın tüm bütçeyi tüketmesi önlenir.
 - Her chunk `sourceType`, `attachmentId`, `sourceName` ve `sourceLocation` gibi provenance alanlarını taşır.
 - `bge-m3` modeli 1024 boyutlu embedding üretir; boyut persistence öncesinde doğrulanır.
 - Embedding'ler PostgreSQL `vector(1024)` kolonunda, cosine distance için HNSW indeksle saklanır.
 
-İndeks işi hem fulltext hem semantic görünümü senkronize eder. Yayından kaldırılan içeriklerin eski embedding'leri temizlenir.
+İndeks işi hem fulltext hem semantic görünümü senkronize eder. Model, boyut veya chunking ayarı değiştiğinde türetilen semantic index profile değişir; başlangıç uzlaştırması ilgili makaleleri dirty işaretleyip dayanıklı kuyruğa alır. Önceki satırlar topluca silinmez, her makale yeni profile atomik olarak geçirilir; vector sorgusu farklı embedding modeline ait satırları hiçbir zaman birlikte skorlamaz. Yayından kaldırılan içeriklerin eski embedding'leri temizlenir.
 
 ## 2. Hybrid Retrieval
 
@@ -106,7 +107,7 @@ Her kaynak bloğu sabit bir `[S1]`, `[S2]` benzeri kimlik taşır. Model çıkt�
 - Claim ile kanıt arasında olumlu/olumsuz anlam çelişkisi var mı?
 - Atıfsız veya doğrulanamayan claim var mı?
 
-Kullanıcıya görünen yanıt yalnız doğrulamayı geçen claim'lerden yeniden oluşturulur. Böylece düzgün görünen fakat dayanağı olmayan model metni cevap içine sızamaz. Yanıt; `sources`, provenance-bearing `evidence`, citation ID coverage, claim support coverage, grounding durumu, partial/refusal bilgisi ve uyarıları birlikte taşır. Arayüz citation kimliği geçerliliğini ve gerçek claim desteğini ayrı oranlar olarak gösterir.
+Kullanıcıya görünen yanıt yalnız doğrulamayı geçen claim'lerden yeniden oluşturulur. Böylece düzgün görünen fakat dayanağı olmayan model metni cevap içine sızamaz. Yanıt; `sources`, provenance-bearing `evidence`, citation ID coverage, claim support coverage, grounding durumu, partial/refusal bilgisi ve uyarıları birlikte taşır. Evidence, prompt içi `sourceId` yanında stabil `chunkId`, yetki kontrollü `canonicalUrl` ve PDF provenance'ı varsa `pageNumber` döndürür; lexical sentetik passage kimliği içerik ve provenance'dan deterministik üretilir. Arayüz citation kimliği geçerliliğini ve gerçek claim desteğini ayrı oranlar olarak gösterir.
 
 ## 5. İçerik Güvenliği
 
@@ -151,6 +152,7 @@ Başlıca ayarlar `backend/appsettings.json` içindedir:
 - `Ollama:RagMapReduceBatchChunks` / `RagMaxOutputTokens`
 - `Ollama:RagRrfK` / `RagLexicalWeight` / `RagSemanticWeight`
 - `Ollama:RagDuplicateThreshold` / `RagMinSimilarityScore`
+- `Ollama:ChunkTargetWords` / `ChunkOverlapWords` / `ChunkingVersion`
 - `RagResilience:*` timeout, budget, retry, parallelism ve circuit breaker ayarları
 
 Bu değerler değiştirilirken latency, recall, citation coverage, refusal oranı ve hata bütçesi birlikte değerlendirilmelidir. Değişiklik sonrası PostgreSQL fidelity testleri ve canlı RAG kalite kapısı çalıştırılmalıdır.

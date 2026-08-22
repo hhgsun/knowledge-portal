@@ -230,9 +230,11 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
             var best = Article("best" + suffix, owner.Id, "runbook");
             var second = Article("second" + suffix, owner.Id, "reference");
             var noise = Article("noise" + suffix, owner.Id, "runbook");
-            db.Articles.AddRange(best, second, noise); await db.SaveChangesAsync();
+            var foreignModel = Article("foreign-model" + suffix, owner.Id, "runbook");
+            db.Articles.AddRange(best, second, noise, foreignModel); await db.SaveChangesAsync();
             db.ArticleEmbeddings.AddRange(
-                Embedding(best.Id, Vector(1, 0)), Embedding(second.Id, Vector(.8f, .6f)), Embedding(noise.Id, Vector(0, 1)));
+                Embedding(best.Id, Vector(.98f, .2f)), Embedding(second.Id, Vector(.8f, .6f)),
+                Embedding(noise.Id, Vector(0, 1)), Embedding(foreignModel.Id, Vector(1, 0), "retired-model"));
             await db.SaveChangesAsync();
         }
 
@@ -240,20 +242,21 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
         services.AddDbContext<AppDbContext>(o => o.UseNpgsql(fixture.ConnectionString, n => n.UseVector()));
         await using var provider = services.BuildServiceProvider();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["Ollama:VectorCandidateMultiplier"] = "10", ["Ollama:HnswIterativeScan"] = "relaxed_order" }).Build();
+        { ["Ollama:EmbeddingModel"] = "fidelity", ["Ollama:VectorCandidateMultiplier"] = "10", ["Ollama:HnswIterativeScan"] = "relaxed_order" }).Build();
         var search = new VectorSearchService(new DeterministicEmbeddingGenerator(),
             provider.GetRequiredService<IServiceScopeFactory>(), config);
 
         var ranked = await search.SearchAsync("query", 3, minScore: 0);
         Assert.Equal("best" + suffix, ranked[0].ArticleId);
         Assert.True(ranked[0].Score > ranked[1].Score);
+        Assert.DoesNotContain(ranked, x => x.ArticleId == "foreign-model" + suffix);
         var filtered = await search.SearchAsync("query", 3, minScore: 0, filter: new ArticleFilter(ContentTypes: ["runbook"]));
         Assert.DoesNotContain(filtered, x => x.ArticleId == "second" + suffix);
 
         await using var connection = new NpgsqlConnection(fixture.ConnectionString); await connection.OpenAsync();
         await using (var disableSeq = new NpgsqlCommand("SET enable_seqscan=off", connection)) await disableSeq.ExecuteNonQueryAsync();
         var queryVector = new Vector(Vector(1, 0)).ToString();
-        var plan = await Plan(connection, $"EXPLAIN (COSTS OFF) SELECT \"ArticleId\" FROM article_embeddings ORDER BY \"Embedding\" <=> '{queryVector}'::vector LIMIT 2");
+        var plan = await Plan(connection, $"EXPLAIN (COSTS OFF) SELECT \"ArticleId\" FROM article_embeddings WHERE \"ModelName\" = 'fidelity' ORDER BY \"Embedding\" <=> '{queryVector}'::vector LIMIT 2");
         Assert.Contains("ix_article_embeddings_embedding_hnsw", plan, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -282,8 +285,8 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
     private static User User(string id) => new() { Id = id, Name = id, Slug = id, Email = id + "@test.local", PasswordHash = "x", Role = "admin" };
     private static Article Article(string id, string owner, string type, string? content = null) => new()
     { Id = id, Title = id, Slug = id, OwnerId = owner, Status = "published", ContentType = type, Content = content ?? id, PublishedAt = DateTime.UtcNow, IndexedAt = DateTime.UtcNow };
-    private static ArticleEmbedding Embedding(string articleId, float[] vector) => new()
-    { ArticleId = articleId, ChunkIndex = 0, Embedding = new Vector(vector), ModelName = "fidelity", TextHash = articleId, Content = articleId, Dimensions = 1024 };
+    private static ArticleEmbedding Embedding(string articleId, float[] vector, string model = "fidelity") => new()
+    { ArticleId = articleId, ChunkIndex = 0, Embedding = new Vector(vector), ModelName = model, TextHash = articleId, Content = articleId, Dimensions = 1024 };
     private static float[] Vector(float x, float y) { var value = new float[1024]; value[0] = x; value[1] = y; return value; }
     private static async Task<T> Scalar<T>(NpgsqlConnection connection, string sql) { await using var command = new NpgsqlCommand(sql, connection); return (T)(await command.ExecuteScalarAsync())!; }
     private static async Task<string> Plan(NpgsqlConnection connection, string sql)

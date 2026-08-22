@@ -627,7 +627,7 @@ Ordered by version number descending.
   "answer": "Doğrulanmış claim [S1]",
   "sources": [{ "articleId": "...", "title": "...", "slug": "...", "score": 0.95 }],
   "claims": [{ "text": "Doğrulanmış claim", "sourceIds": ["S1"] }],
-  "evidence": [{ "sourceId": "S1", "articleId": "...", "passage": "..." }],
+  "evidence": [{ "sourceId": "S1", "chunkId": "...", "articleId": "...", "canonicalUrl": "/api/articles/...", "pageNumber": 12, "passage": "..." }],
   "citationCoverage": 1.0,
   "claimSupportCoverage": 1.0,
   "groundingStatus": "lexically_grounded",
@@ -636,6 +636,11 @@ Ordered by version number descending.
   "warnings": []
 }
 ```
+
+`sourceId` is the request-local identifier supplied to the model. `chunkId` is the stable stored
+embedding ID; a lexical-only fallback passage receives a deterministic `lex_...` ID derived from
+its provenance and content. `canonicalUrl` points to the normal authenticated article endpoint,
+and `pageNumber` is present only when PDF page provenance is available.
 
 The chat request supplies an explicit JSON schema requiring `answer`, `claims` and
 `insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
@@ -722,6 +727,8 @@ Repairs only published articles whose full-text or semantic index marker is miss
   "ollamaEnabled": true,
   "modelName": "bge-m3",
   "configuredDimensions": 1024,
+  "chunkingVersion": "markdown-structure-v1",
+  "semanticIndexProfile": "9f0c...",
   "failedArticles": [
     { "articleId": "...", "failureCount": 10, "nextRetryAt": "2026-07-17T12:02:00.000Z", "error": "..." }
   ]

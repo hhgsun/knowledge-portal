@@ -495,6 +495,7 @@ export default function SearchPage() {
                                   <div className="font-medium text-zinc-700 dark:text-zinc-300">
                                     <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
                                     {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
+                                    {evidence.pageNumber ? ` · sayfa ${evidence.pageNumber}` : ""}
                                   </div>
                                   <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
                                 </div>

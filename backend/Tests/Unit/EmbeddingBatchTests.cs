@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -117,5 +118,54 @@ public class EmbeddingBatchTests
 
         Assert.Empty(results);
         Assert.Empty(generator.RequestSizes);
+    }
+
+    [Fact]
+    public async Task InvalidateStaleModel_MarksArticleDirtyWithoutDeletingPreviousChunks()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ollama:EmbeddingModel"] = "new-model",
+            ["Ollama:EmbeddingDimensions"] = "1024",
+            ["Ollama:ChunkingVersion"] = "markdown-structure-v1"
+        }).Build();
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+        db.Articles.Add(new Article
+        {
+            Id = "article-1", Title = "Profile transition", Slug = "profile-transition",
+            OwnerId = "owner", Status = "published", IndexedAt = DateTime.UtcNow
+        });
+        db.ArticleEmbeddings.Add(new ArticleEmbedding
+        {
+            Id = "old-chunk", ArticleId = "article-1", ChunkIndex = 0, ModelName = "old-model",
+            TextHash = "legacy-hash", Dimensions = 1024, Content = "previous searchable content"
+        });
+        await db.SaveChangesAsync();
+        var service = new EmbeddingService(new RecordingGenerator(), db, config,
+            NullLogger<EmbeddingService>.Instance);
+
+        var invalidated = await service.InvalidateStaleModelAsync();
+
+        Assert.Equal(1, invalidated);
+        Assert.Null((await db.Articles.FindAsync("article-1"))!.IndexedAt);
+        Assert.NotNull(await db.ArticleEmbeddings.FindAsync("old-chunk"));
+    }
+
+    [Fact]
+    public void ComputeIndexProfile_ChangesWhenChunkingVersionChanges()
+    {
+        IConfiguration Config(string version) => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:EmbeddingModel"] = "bge-m3",
+                ["Ollama:EmbeddingDimensions"] = "1024",
+                ["Ollama:ChunkTargetWords"] = "500",
+                ["Ollama:ChunkOverlapWords"] = "50",
+                ["Ollama:ChunkingVersion"] = version
+            }).Build();
+
+        Assert.NotEqual(EmbeddingService.ComputeIndexProfile(Config("v1")),
+            EmbeddingService.ComputeIndexProfile(Config("v2")));
     }
 }

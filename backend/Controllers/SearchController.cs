@@ -412,6 +412,8 @@ public class SearchController(
             ollamaEnabled = config.GetValue("Ollama:Enabled", false),
             modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3",
             configuredDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024),
+            chunkingVersion = config["Ollama:ChunkingVersion"] ?? "markdown-structure-v1",
+            semanticIndexProfile = EmbeddingService.ComputeIndexProfile(config),
             failedArticles = failedJobs.Select(j => new
                 {
                     articleId = j.ArticleId,

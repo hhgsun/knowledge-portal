@@ -31,9 +31,25 @@ public class EmbeddingService(
     // Distinct from Ollama:RagMaxChunksPerArticle, which caps chunks per article at query time.
     private readonly int _maxChunksPerSource = config.GetValue("Ollama:MaxIndexChunksPerSource", 100);
     private readonly int _maxTotalChunksPerArticle = config.GetValue("Ollama:MaxTotalChunksPerArticle", 500);
+    private readonly int _chunkTargetWords = Math.Clamp(
+        config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
+    private readonly int _chunkOverlapWords = Math.Clamp(
+        config.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0,
+        Math.Clamp(config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000) - 1);
+    private readonly string _chunkingVersion = config["Ollama:ChunkingVersion"] ?? "markdown-structure-v1";
+    private readonly string _indexProfile = ComputeIndexProfile(config);
 
-    private const int ChunkWordLimit = 500;
-    private const int ChunkOverlap = 50;
+    internal static string ComputeIndexProfile(IConfiguration source)
+    {
+        var target = Math.Clamp(source.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
+        var overlap = Math.Clamp(source.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0, target - 1);
+        return ContentExtractor.ComputeHash(string.Join('|',
+            source["Ollama:EmbeddingModel"] ?? "bge-m3",
+            source.GetValue("Ollama:EmbeddingDimensions", 1024),
+            source["Ollama:ChunkingVersion"] ?? "markdown-structure-v1",
+            target,
+            overlap))[..16];
+    }
 
     public async Task<bool> EmbedArticleAsync(Article article, CancellationToken ct = default)
     {
@@ -55,8 +71,9 @@ public class EmbeddingService(
         }
 
         // Includes provenance so replacing/renaming an attachment invalidates the embedding set.
-        var textHash = ContentExtractor.ComputeHash(string.Join('|', chunks.Select(c =>
-            $"{c.SourceType}:{c.AttachmentId}:{c.SourceName}:{ContentExtractor.ComputeHash(c.Content)}")));
+        var contentHash = ContentExtractor.ComputeHash(string.Join('|', chunks.Select(c =>
+            $"{c.SourceType}:{c.AttachmentId}:{c.SourceName}:{c.SourceLocation}:{ContentExtractor.ComputeHash(c.Content)}")));
+        var textHash = $"{_indexProfile}:{contentHash}";
 
         // Check if already up-to-date (compare hash of first chunk)
         var existingChunks = await db.ArticleEmbeddings
@@ -136,9 +153,10 @@ public class EmbeddingService(
     private async Task<List<List<ChunkSeed>>> BuildChunkSourcesAsync(Article article, CancellationToken ct)
     {
         var result = new List<List<ChunkSeed>>();
-        var articleText = ContentExtractor.ExtractSearchableText(article.Title, article.Excerpt, article.Content, "");
-        AddSource(result, ChunkText(articleText).Select((text, i) =>
-            new ChunkSeed(text, "article", null, article.Title, $"chunk:{i}")), article.Id, "article");
+        AddSource(result, KnowledgeChunker
+            .ChunkMarkdown(article.Title, article.Excerpt, article.Content, _chunkTargetWords, _chunkOverlapWords)
+            .Select(chunk => new ChunkSeed(chunk.Content, "article", null, article.Title, chunk.Location)),
+            article.Id, "article");
 
         var attachments = await db.ArticleAttachments
             .Where(a => a.ArticleId == article.Id).OrderBy(a => a.CreatedAt).ToListAsync(ct);
@@ -153,13 +171,15 @@ public class EmbeddingService(
             }
 
             var attachmentChunks = extraction.Segments.SelectMany(segment =>
-                ChunkText(segment.Text).Select((chunk, i) =>
-                    new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName,
-                        $"{segment.Location}:chunk:{i}")));
+                KnowledgeChunker.ChunkText(segment.Text, _chunkTargetWords, _chunkOverlapWords, segment.Location)
+                    .Select(chunk => new ChunkSeed(chunk.Content, "attachment", attachment.Id,
+                        attachment.FileName, chunk.Location)));
             if (!extraction.Segments.Any() && !string.IsNullOrWhiteSpace(extraction.Text))
             {
-                attachmentChunks = ChunkText(extraction.Text).Select((chunk, i) =>
-                    new ChunkSeed(chunk, "attachment", attachment.Id, attachment.FileName, $"file:chunk:{i}"));
+                attachmentChunks = KnowledgeChunker
+                    .ChunkText(extraction.Text, _chunkTargetWords, _chunkOverlapWords, "file")
+                    .Select(chunk => new ChunkSeed(chunk.Content, "attachment", attachment.Id,
+                        attachment.FileName, chunk.Location));
             }
             AddSource(result, attachmentChunks, article.Id, attachment.FileName);
         }
@@ -271,23 +291,33 @@ public class EmbeddingService(
     public async Task<int> InvalidateStaleModelAsync(CancellationToken ct = default)
     {
         var staleArticleIds = await db.ArticleEmbeddings
-            .Where(e => e.ModelName != _modelName)
+            .Where(e => e.ChunkIndex == 0 &&
+                (e.ModelName != _modelName || !e.TextHash.StartsWith(_indexProfile + ":")))
             .Select(e => e.ArticleId)
             .Distinct()
             .ToListAsync(ct);
 
         if (staleArticleIds.Count == 0) return 0;
 
-        await db.ArticleEmbeddings
-            .Where(e => staleArticleIds.Contains(e.ArticleId))
-            .ExecuteDeleteAsync(ct);
+        // Keep the previous rows until each article is replaced atomically. Vector retrieval is
+        // constrained to the active model, so incompatible vectors are never scored; a chunking-
+        // only transition can continue serving the previous structure during the rolling rebuild.
+        if (db.Database.IsRelational())
+        {
+            await db.Articles
+                .Where(a => staleArticleIds.Contains(a.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null), ct);
+        }
+        else
+        {
+            var articles = await db.Articles.Where(a => staleArticleIds.Contains(a.Id)).ToListAsync(ct);
+            foreach (var article in articles) article.IndexedAt = null;
+            await db.SaveChangesAsync(ct);
+        }
 
-        await db.Articles
-            .Where(a => staleArticleIds.Contains(a.Id))
-            .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null), ct);
-
-        logger.LogWarning("Invalidated {Count} articles' embeddings due to model change (new model: {Model})",
-            staleArticleIds.Count, _modelName);
+        logger.LogWarning(
+            "Queued rolling semantic reindex for {Count} articles due to index profile change (model={Model}, chunkingVersion={ChunkingVersion}, profile={IndexProfile})",
+            staleArticleIds.Count, _modelName, _chunkingVersion, _indexProfile);
         return staleArticleIds.Count;
     }
 
@@ -311,24 +341,10 @@ public class EmbeddingService(
     }
 
     /// <summary>
-    /// Splits text into chunks of approximately ChunkWordLimit words with overlap.
-    /// Short texts (≤ ChunkWordLimit) return a single chunk.
+    /// Backwards-compatible default text chunking entry point used by lexical fallback and tests.
+    /// Production embedding uses the configured limits and Markdown-aware path above.
     /// </summary>
     internal static List<string> ChunkText(string text)
-    {
-        var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length <= ChunkWordLimit)
-            return [text];
-
-        var chunks = new List<string>();
-        var step = ChunkWordLimit - ChunkOverlap;
-        for (int i = 0; i < words.Length; i += step)
-        {
-            var end = Math.Min(i + ChunkWordLimit, words.Length);
-            chunks.Add(string.Join(' ', words[i..end]));
-            if (end >= words.Length) break;
-        }
-
-        return chunks;
-    }
+        => KnowledgeChunker.ChunkText(text, KnowledgeChunker.DefaultTargetWords,
+            KnowledgeChunker.DefaultOverlapWords).Select(x => x.Content).ToList();
 }

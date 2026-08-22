@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using System.Security.Cryptography;
@@ -485,12 +486,28 @@ public class RagService(
             if (passage.Length > 1200) passage = passage[..1200] + "…";
             var article = articles[x.ArticleId];
             return new RagEvidence(ids[ChunkKey(x)], x.ArticleId, article.Title, article.Slug, x.SourceType,
-                x.AttachmentId, x.SourceName, x.SourceLocation, passage, x.Score);
+                x.AttachmentId, x.SourceName, x.SourceLocation, passage, x.Score,
+                x.ChunkId ?? DeterministicChunkId(x), $"/api/articles/{Uri.EscapeDataString(article.Slug)}",
+                ParsePageNumber(x.SourceLocation));
         }).ToList();
     }
 
     private static string ChunkKey(VectorChunkResult x) =>
         $"{x.ArticleId}:{x.SourceType}:{x.AttachmentId}:{x.ChunkIndex}";
+
+    private static string DeterministicChunkId(VectorChunkResult chunk)
+    {
+        var identity = $"{ChunkKey(chunk)}|{chunk.SourceLocation}|{chunk.ChunkText}";
+        return $"ctx_{ContentExtractor.ComputeHash(identity)[..21]}";
+    }
+
+    internal static int? ParsePageNumber(string? sourceLocation)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLocation)) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(sourceLocation, @"(?:^|:)page:(\d+)(?:$|:)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var page) ? page : null;
+    }
 
     private static int CountWords(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
     private static string QueryFingerprint(string query) =>

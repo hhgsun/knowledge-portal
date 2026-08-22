@@ -33,7 +33,7 @@ Kesin terim, hata kodu veya ürün adı ararken fulltext iyi bir seçimdir.
 
 ## 2. Semantic Arama
 
-Yayınlanmış makaleler ve metni çıkarılabilen ekleri yaklaşık 500 kelimelik, 50 kelime örtüşmeli parçalara ayrılır. Ollama `bge-m3` modeli her parça için 1024 boyutlu embedding üretir. Vektörler PostgreSQL `pgvector` içinde tutulur; cosine distance sorguları HNSW indeksiyle hızlandırılır.
+Yayınlanmış makaleler ve metni çıkarılabilen ekleri varsayılan olarak yaklaşık 500 kelimelik, 50 kelime örtüşmeli parçalara ayrılır. Makale chunk'ları Markdown başlık/bölüm sınırlarını; ek chunk'ları PDF sayfası, Excel sayfası ve sunum slaydı gibi parser konumlarını korur. Paragraf, liste, tablo ve kod blokları hedef bütçeye sığıyorsa bölünmez; yalnız aşırı büyük tek bloklar kayan pencereye düşer. Hedef, örtüşme ve `ChunkingVersion` yapılandırılabilir. Ollama `bge-m3` modeli her parça için 1024 boyutlu embedding üretir. Vektörler PostgreSQL `pgvector` içinde tutulur; cosine distance sorguları HNSW indeksiyle hızlandırılır.
 
 İndeksleme ve sorgu akışları model çıktısının `Ollama:EmbeddingDimensions` ile eşleştiğini PostgreSQL'e yazmadan veya vektör sorgusu çalıştırmadan önce doğrular. Health kontrolü de yanlış boyutlu bir modeli bağlı/sağlıklı kabul etmez.
 
@@ -53,7 +53,7 @@ Her iki sinyalden yararlanmak istediğiniz genel aramalarda hybrid mod önerilir
 
 RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak doğal dilde yanıt oluşturur. Retrieval katmanı lexical ve semantic chunk adaylarını RRF ile birleştirir, yeniden sıralar, yakın kopyaları bastırır ve kaynak çeşitliliğini korur. Dar sorular tek üretim çağrısına, tüm içerikleri özetleme/karşılaştırma gibi geniş sorular bounded-parallel map-reduce akışına yönlendirilir.
 
-Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
+Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Her evidence öğesi ayrıca gerçek embedding satırının stabil `chunkId` değerini (lexical fallback için deterministik kimlik), yetki kontrollü canonical makale URL'sini ve varsa ayrıştırılmış PDF sayfa numarasını taşır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
 
 Uygulama ayrıntıları, güvenlik ve dayanıklılık kontrolleri için **RAG Mimarisi ve İşleyişi** makalesine bakın.
 
@@ -78,4 +78,4 @@ Editör ve yöneticiler makale listesinde, detay sayfasında ve düzenleme ekran
 
 Arama ekranındaki indeks kapsamı uyarısı seçilen moda ve aktif filtrelere göre hesaplanır. Fulltext arama yalnız `FtsIndexedAt`, semantic arama yalnız `IndexedAt`, hybrid ve RAG ise iki indeksi birlikte değerlendirir. Böylece yalnız semantic indeksi bekleyen bir makale Full‑Text sonuçlarında gereksiz uyarı oluşturmaz; filtre kapsamı dışındaki makaleler de mevcut aramayı eksikmiş gibi göstermez. Güncel olmayan semantic indekslerde eski embedding'ler geçici olarak hizmet vermeye devam edebileceği için mesaj, sonuçların "eksik veya eski" olabileceğini açıkça belirtir.
 
-Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics`, `/api/search/storage-status` ve `/api/search/rag-observability` endpoint'leriyle arama altyapısını izleyebilir. `/settings/search` ekranındaki **Eksik/takılan indeksleri onar** işlemi yalnız indeksi eksik makalelerin missing, gecikmiş retry, terminal-hatalı veya lease süresi geçmiş kuyruk işlerini yeniden açar; sağlıklı makaleleri yeniden indekslemez ve aktif lease'leri kesmez. Aynı işlem `POST /api/search/repair-indexing` ile çağrılabilir. Tüm korpusu yeniden indeksleyen `/api/search/reindex` ise yalnız planlı bakım için kullanılmalıdır.
+Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics`, `/api/search/storage-status` ve `/api/search/rag-observability` endpoint'leriyle arama altyapısını izleyebilir. Embedding status aktif `chunkingVersion` ve model/boyut/chunk ayarlarından türetilen `semanticIndexProfile` değerini de döndürür. `/settings/search` ekranındaki **Eksik/takılan indeksleri onar** işlemi yalnız indeksi eksik makalelerin missing, gecikmiş retry, terminal-hatalı veya lease süresi geçmiş kuyruk işlerini yeniden açar; sağlıklı makaleleri yeniden indekslemez ve aktif lease'leri kesmez. Aynı işlem `POST /api/search/repair-indexing` ile çağrılabilir. Tüm korpusu yeniden indeksleyen `/api/search/reindex` ise yalnız planlı bakım için kullanılmalıdır.

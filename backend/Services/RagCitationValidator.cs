@@ -6,7 +6,8 @@ namespace KnowledgePortal.Api.Services;
 
 public record RagClaim(string Text, List<string> SourceIds);
 public record RagEvidence(string SourceId, string ArticleId, string Title, string Slug, string SourceType,
-    string? AttachmentId, string? SourceName, string? SourceLocation, string Passage, double Score);
+    string? AttachmentId, string? SourceName, string? SourceLocation, string Passage, double Score,
+    string? ChunkId = null, string? CanonicalUrl = null, int? PageNumber = null);
 public record ValidatedRagAnswer(string Answer, List<RagClaim> Claims, bool InsufficientContext,
     double CitationCoverage, double ClaimSupportCoverage, string GroundingStatus, List<string> Warnings);
 

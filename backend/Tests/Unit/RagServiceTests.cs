@@ -40,7 +40,8 @@ public class RagServiceTests
             {
                 var a = await db.Articles.FirstOrDefaultAsync(x => x.Id == r.ArticleId, ct);
                 var text = a == null ? "" : ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
-                chunks.Add(new VectorChunkResult(r.ArticleId, r.ChunkIndex, r.Score, text));
+                chunks.Add(new VectorChunkResult(r.ArticleId, r.ChunkIndex, r.Score, text,
+                    ChunkId: $"embedding-{r.ArticleId}-{r.ChunkIndex}"));
             }
             return chunks.Take(maxChunks).ToList();
         }
@@ -113,7 +114,18 @@ public class RagServiceTests
         Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Single(result.Sources);
         Assert.Equal("Vpn Kurulum Rehberi", result.Sources[0].Title);
+        var evidence = Assert.Single(result.Evidence);
+        Assert.Equal("embedding-a1-0", evidence.ChunkId);
+        Assert.Equal("/api/articles/vpn-kurulum-rehberi-a1", evidence.CanonicalUrl);
+        Assert.Null(evidence.PageNumber);
     }
+
+    [Theory]
+    [InlineData("page:12:chunk:0", 12)]
+    [InlineData("section:VPN", null)]
+    [InlineData(null, null)]
+    public void ParsePageNumber_ReadsOnlyPageProvenance(string? location, int? expected)
+        => Assert.Equal(expected, RagService.ParsePageNumber(location));
 
     [Fact]
     public async Task AskAsync_EmptyRetrieval_RefusesWithoutSources()

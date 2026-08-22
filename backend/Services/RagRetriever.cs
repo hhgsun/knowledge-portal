@@ -58,6 +58,11 @@ public sealed class HybridRagRetriever(
     private readonly double _lexicalWeight = Math.Clamp(config.GetValue("Ollama:RagLexicalWeight", .4), 0, 1);
     private readonly double _semanticWeight = Math.Clamp(config.GetValue("Ollama:RagSemanticWeight", .6), 0, 1);
     private readonly double _duplicateThreshold = Math.Clamp(config.GetValue("Ollama:RagDuplicateThreshold", .88), .5, 1);
+    private readonly int _chunkTargetWords = Math.Clamp(
+        config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
+    private readonly int _chunkOverlapWords = Math.Clamp(
+        config.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0,
+        Math.Clamp(config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000) - 1);
 
     public async Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
         int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default)
@@ -104,7 +109,7 @@ public sealed class HybridRagRetriever(
             var text = ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
             var syntheticCandidates = new List<VectorChunkResult>
             {
-                new(articleId, -1, 0, text, "article", SourceName: a.Title, SourceLocation: "article")
+                SyntheticChunk(articleId, -1, text, "article", null, a.Title, "article")
             };
             var syntheticIndex = -2;
             foreach (var attachment in lexicalAttachments.Where(x => x.ArticleId == articleId))
@@ -118,9 +123,10 @@ public sealed class HybridRagRetriever(
                 catch (JsonException) { /* Fall back to the combined extracted text. */ }
                 segments ??= [new(attachment.ExtractedText!, "extracted")];
                 foreach (var segment in segments)
-                foreach (var passage in EmbeddingService.ChunkText(segment.Text))
-                    syntheticCandidates.Add(new(articleId, syntheticIndex--, 0, passage, "attachment",
-                        attachment.Id, attachment.FileName, segment.Location));
+                foreach (var passage in KnowledgeChunker.ChunkText(segment.Text, _chunkTargetWords,
+                    _chunkOverlapWords, segment.Location))
+                    syntheticCandidates.Add(SyntheticChunk(articleId, syntheticIndex--, passage.Content,
+                        "attachment", attachment.Id, attachment.FileName, passage.Location));
             }
 
             foreach (var synthetic in syntheticCandidates
@@ -166,6 +172,14 @@ public sealed class HybridRagRetriever(
     }
 
     private static string Key(VectorChunkResult x) => $"{x.ArticleId}:{x.SourceType}:{x.AttachmentId}:{x.ChunkIndex}";
+    private static VectorChunkResult SyntheticChunk(string articleId, int chunkIndex, string content,
+        string sourceType, string? attachmentId, string? sourceName, string? sourceLocation)
+    {
+        var identity = $"{articleId}|{sourceType}|{attachmentId}|{sourceLocation}|{content}";
+        var chunkId = $"lex_{ContentExtractor.ComputeHash(identity)[..21]}";
+        return new(articleId, chunkIndex, 0, content, sourceType, attachmentId, sourceName,
+            sourceLocation, chunkId);
+    }
     private static HashSet<string> Tokens(string text) => SlugHelper.Transliterate(text).ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
     private static double Jaccard(HashSet<string> a, HashSet<string> b) => a.Count == 0 && b.Count == 0 ? 1 : a.Intersect(b).Count() / (double)a.Union(b).Count();
 }

@@ -55,4 +55,76 @@ public class EmbeddingChunkTests
             .ToHashSet();
         Assert.All(words, w => Assert.Contains(w, covered));
     }
+
+    [Fact]
+    public void ChunkMarkdown_PreservesHeadingBoundariesAndLocations()
+    {
+        const string markdown = """
+            # VPN Kurulumu
+
+            İstemci profili güvenli portaldan indirilir ve kurulum başlatılır.
+
+            ## Sertifika Yenileme
+
+            Süresi dolan sertifika yenileme ekranından değiştirilir.
+            """;
+
+        var chunks = KnowledgeChunker.ChunkMarkdown("Uzak Erişim", "Operasyon rehberi", markdown, 50, 5);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Contains("VPN Kurulumu", chunks[0].Content);
+        Assert.DoesNotContain("Sertifika Yenileme", chunks[0].Content);
+        Assert.Contains("Sertifika Yenileme", chunks[1].Content);
+        Assert.StartsWith("section:VPN Kurulumu:chunk:", chunks[0].Location);
+        Assert.StartsWith("section:Sertifika Yenileme:chunk:", chunks[1].Location);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_KeepsTableAndCodeContentSearchable()
+    {
+        const string markdown = """
+            ## Hata Kodları
+
+            | Kod | Açıklama |
+            | --- | --- |
+            | ERR42 | Sertifika geçersiz |
+
+            ```powershell
+            Test-NetConnection vpn.internal
+            ```
+            """;
+
+        var chunk = Assert.Single(KnowledgeChunker.ChunkMarkdown("VPN", null, markdown, 100, 10));
+
+        Assert.Contains("ERR42", chunk.Content);
+        Assert.Contains("Sertifika geçersiz", chunk.Content);
+        Assert.Contains("Test-NetConnection", chunk.Content);
+    }
+
+    [Fact]
+    public void ChunkText_PreservesTechnicalIdentifierCharacters()
+    {
+        const string text = "error_code ERR_42 service_name vpn_gateway";
+
+        var chunk = Assert.Single(KnowledgeChunker.ChunkText(text, 100, 10));
+
+        Assert.Equal(text, chunk.Content);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_DoesNotCreateMetadataOnlyChunkForLongSection()
+    {
+        var body = string.Join(' ', Enumerable.Range(0, 80).Select(i => $"body{i}"));
+
+        var chunks = KnowledgeChunker.ChunkMarkdown("Long Document", "Summary", $"# Operations\n\n{body}", 20, 3);
+
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, chunk =>
+        {
+            Assert.Contains("Long Document", chunk.Content);
+            Assert.Contains("Operations", chunk.Content);
+            Assert.Contains("body", chunk.Content);
+            Assert.True(chunk.Content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 20);
+        });
+    }
 }

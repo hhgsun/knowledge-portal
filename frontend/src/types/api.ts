@@ -235,7 +235,7 @@ export interface RagResponse {
   indexingPending?: boolean;
   indexCoverage?: SearchIndexCoverage;
   claims?: { text: string; sourceIds: string[] }[];
-  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number }[];
+  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number; chunkId?: string | null; canonicalUrl?: string | null; pageNumber?: number | null }[];
   citationCoverage?: number;
   claimSupportCoverage?: number;
   groundingStatus?: "lexically_grounded" | "partially_grounded" | "rejected_unsupported" |

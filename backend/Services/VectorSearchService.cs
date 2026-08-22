@@ -11,7 +11,7 @@ public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex)
 /// <summary>A single matched chunk with its stored text — used by RAG to build prompt context.</summary>
 public record VectorChunkResult(string ArticleId, int ChunkIndex, double Score, string ChunkText,
     string SourceType = "article", string? AttachmentId = null, string? SourceName = null,
-    string? SourceLocation = null);
+    string? SourceLocation = null, string? ChunkId = null);
 
 /// <summary>
 /// pgvector-backed semantic retrieval. Abstracted so RAG (and its tests) can depend on
@@ -154,12 +154,12 @@ public sealed class VectorSearchService(
         var rows = await QueryWithEfSearchAsync(db, rowLimit, () => db.Database
             .SqlQueryRaw<PgvectorChunkRow>(
                 $$"""
-                SELECT r."ArticleId", r."ChunkIndex", r."Content", r."SourceType", r."AttachmentId",
+                SELECT r."Id", r."ArticleId", r."ChunkIndex", r."Content", r."SourceType", r."AttachmentId",
                     r."SourceName", r."SourceLocation", r."Distance"
                 FROM (
                     SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c."ArticleId" ORDER BY c."Distance") AS rn
                     FROM (
-                        SELECT e."ArticleId", e."ChunkIndex", e."Content", e."SourceType", e."AttachmentId",
+                        SELECT e."Id", e."ArticleId", e."ChunkIndex", e."Content", e."SourceType", e."AttachmentId",
                             e."SourceName", e."SourceLocation", e."Embedding" <=> {0}::vector AS "Distance"
                         FROM article_embeddings e
                         {{scanWhere}}
@@ -177,7 +177,7 @@ public sealed class VectorSearchService(
 
         return rows
             .Select(r => new VectorChunkResult(r.ArticleId, r.ChunkIndex, 1.0 - r.Distance, r.Content ?? "",
-                r.SourceType, r.AttachmentId, r.SourceName, r.SourceLocation))
+                r.SourceType, r.AttachmentId, r.SourceName, r.SourceLocation, r.Id))
             .ToList();
     }
 
@@ -199,12 +199,13 @@ public sealed class VectorSearchService(
     /// scripts/hnsw_recall_benchmark.sql to match — it probes these exact shapes, and a probe of
     /// a shape the application no longer emits raises false alarms about the behaviour it guards.
     /// </summary>
-    private static string ScanPredicate(ArticleFilter? filter, List<object> args)
+    private string ScanPredicate(ArticleFilter? filter, List<object> args)
     {
         var filterSql = ArticleFilterSql.Build(filter, args, "e", idColumn: "ArticleId", tagArrayColumn: "TagSlugs");
-        // Build emits " AND ..." fragments; "WHERE true" saves trimming the first one, and the
-        // planner folds the constant away.
-        return filterSql.Length == 0 ? "" : $"WHERE true{filterSql}";
+        var model = ArticleFilterSql.Placeholder(args, _modelName);
+        // Never mix vectors from different embedding models. During a rolling model transition,
+        // old rows stay stored for safe replacement/rollback but cannot enter retrieval.
+        return $"WHERE e.\"ModelName\" = {model}{filterSql}";
     }
 
     /// <summary>Cosine distance ceiling equivalent to the effective minimum similarity score.</summary>
@@ -280,6 +281,7 @@ public sealed class VectorSearchService(
 
     private class PgvectorChunkRow
     {
+        public string Id { get; set; } = null!;
         public string ArticleId { get; set; } = null!;
         public int ChunkIndex { get; set; }
         public string? Content { get; set; }

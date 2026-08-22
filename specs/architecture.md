@@ -170,7 +170,7 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 ## Key Design Decisions
 
 1. **Shared service layer** — Controllers retain routing, authorization scoping, and response shaping; reusable domain behavior lives in `backend/Services/`.
-2. **Provider-aware hybrid retrieval** — PostgreSQL FTS and pgvector supply lexical and semantic candidates; Ollama provides optional embeddings/chat. When Ollama is unavailable, lexical search remains available and semantic modes report an explicit fallback warning.
+2. **Provider-aware hybrid retrieval** — PostgreSQL FTS and pgvector supply lexical and semantic candidates; Ollama provides optional embeddings/chat. Structure-aware chunking preserves Markdown sections and parser page/sheet/slide provenance, with configurable target/overlap/version settings. When Ollama is unavailable, lexical search remains available and semantic modes report an explicit fallback warning.
 3. **Centralized DTOs** — Request/response shapes are C# records defined in `backend/Models/Dtos.cs`.
 4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for a single-database deployment.
 5. **Cascade deletes** — Deleting an article cascades to versions, tags, feedback, and views. Deleting a user cascades to API keys. API key deletion sets `created_via_api_key_id` to null on articles.
