@@ -49,9 +49,9 @@ public class RagServiceTests
 
     private sealed class FakeRagRetriever(FakeVectorSearch vectors) : IRagRetriever
     {
-        public async Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+        public async Task<List<RagRetrievalChunk>> RetrieveAsync(RagQueryPlan plan, int limit, double minSemanticScore,
             int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default) =>
-            (await vectors.SearchChunksAsync(query, limit, ct, minSemanticScore, maxPerArticle, filter))
+            (await vectors.SearchChunksAsync(plan.RewrittenQuery, limit, ct, minSemanticScore, maxPerArticle, filter))
                 .Select(x => new RagRetrievalChunk(x, x.Score, "semantic")).ToList();
     }
 
@@ -74,13 +74,16 @@ public class RagServiceTests
         chat.ResponseOverride = responseOverride;
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         var metrics = new PortalMetrics(scopeFactory);
+        var config = new ConfigurationBuilder().Build();
         var rag = new RagService(
             chat,
             new FakeRagRetriever(new FakeVectorSearch(scopeFactory, vectorResults)),
             scopeFactory,
-            new ConfigurationBuilder().Build(),
-            new RagResilienceService(new ConfigurationBuilder().Build(), metrics, NullLogger<RagResilienceService>.Instance),
+            config,
+            new RagResilienceService(config, metrics, NullLogger<RagResilienceService>.Instance),
             new RagContextBuilder(),
+            new RagQueryUnderstandingService(config),
+            new RagContextExpansionService(config),
             metrics,
             NullLogger<RagService>.Instance);
 

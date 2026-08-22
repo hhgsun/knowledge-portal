@@ -260,15 +260,16 @@ public class SearchController(
             var allIds = rrfScores.Keys.ToList();
             var hybridMergeQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => allIds.Contains(a.Id)), filter);
             var allArticles = await hybridMergeQuery
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
+                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, a.ApprovedAt })
                 .ToListAsync();
 
             var hybridAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, allArticles.Select(a => a.Id).ToList()) : null;
             var hybridEnrichment = await articleService.GetEnrichmentAsync(allArticles.Select(a => a.Id));
             var reranked = reranker.Rerank(searchQuery, allArticles.Select(a => new RerankCandidate(
-                a.Id, a.Title, a.Excerpt, a.Content, rrfScores[a.Id].Score)).ToList());
+                a.Id, a.Title, a.Excerpt, a.Content, rrfScores[a.Id].Score,
+                a.UpdatedAt, a.ApprovedAt, a.ContentType)).ToList());
             var hybridResults = reranked.Take(limit)
-                .Select(hit => { var a = allArticles.FirstOrDefault(a => a.Id == hit.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(hit.Score, 4), rrfScores[hit.ArticleId].MatchType); })
+                .Select(hit => { var a = allArticles.FirstOrDefault(a => a.Id == hit.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt.ToString("o"), includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(hit.Score, 4), rrfScores[hit.ArticleId].MatchType); })
                 .Where(r => r != null).ToList();
 
             sw.Stop();
@@ -405,8 +406,28 @@ public class SearchController(
         metricsEndpoint = "/metrics",
         activitySource = PortalMetrics.ActivitySourceName,
         metricPrefix = "kp_rag_",
+        retrieval = new
+        {
+            queryRewriteEnabled = config.GetValue("Ollama:QueryUnderstanding:RewriteEnabled", true),
+            decompositionEnabled = config.GetValue("Ollama:QueryUnderstanding:DecompositionEnabled", true),
+            contextExpansionEnabled = config.GetValue("Ollama:ContextExpansion:Enabled", true),
+            externalRerankerEnabled = config.GetValue("Reranking:External:Enabled", false)
+        },
         privacy = "Raw questions are not logged or used as metric labels; traces contain a short SHA-256 fingerprint and query length."
     });
+
+    [HttpGet("rag-debug")]
+    [RequirePermission(Permissions.UsersManage)]
+    [RequireSessionAuth]
+    public async Task<IActionResult> RagDebug([FromQuery] string? q, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+            return BadRequest(new { error = "Query parameter 'q' is required" });
+        if (!config.GetValue("Ollama:Enabled", false)
+            || HttpContext.RequestServices.GetService<RagService>() is not { } rag)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "RAG service is not available" });
+        return Ok(await rag.DebugAsync(q.Trim(), null, ct));
+    }
 
     [HttpGet("storage-status")]
     [RequirePermission(Permissions.UsersManage)]
@@ -473,6 +494,10 @@ public class SearchController(
             ResponseTimeMs = (int)elapsedMs,
             RagTraceId = ragResult == null ? null : Activity.Current?.TraceId.ToString(),
             RagPromptVersion = ragResult == null ? null : RagService.PromptVersion,
+            RagRetrievalVersion = ragResult == null ? null : RagService.RetrievalVersion,
+            RagReranker = ragResult == null ? null : config.GetValue("Reranking:External:Enabled", false)
+                ? $"external:{config["Reranking:External:Model"] ?? "unspecified"}"
+                : "local-deterministic-v1",
             RagIndexProfile = ragResult == null ? null : EmbeddingService.ComputeIndexProfile(config),
             RagGroundingStatus = ragResult?.GroundingStatus,
             RagAnswerHash = ragResult == null ? null : Convert.ToHexString(

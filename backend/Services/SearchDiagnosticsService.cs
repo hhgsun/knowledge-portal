@@ -202,6 +202,13 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
         settings.Add(Setting("Ollama:ChunkBatchSize", 16));
         settings.Add(new SearchSettingDto("Ollama:MinSimilarityScore",
             config.GetValue("Ollama:MinSimilarityScore", 0.5).ToString("0.##"), "Uygulama"));
+        settings.Add(Setting("Ollama:QueryUnderstanding:MaxQueries", 3));
+        settings.Add(Setting("Ollama:ContextExpansion:NeighborCount", 1));
+        settings.Add(Setting("Ollama:ContextExpansion:MinSeedScore", .55));
+        settings.Add(Setting("Ollama:Ranking:FreshnessWeight", .05));
+        settings.Add(Setting("Ollama:Ranking:AuthorityWeight", .05));
+        settings.Add(new SearchSettingDto("Reranking:External:Enabled",
+            config.GetValue("Reranking:External:Enabled", false).ToString(), "Uygulama"));
 
         // What the HNSW build needs to keep the whole graph in memory. Past this point pgvector
         // builds in passes and the resulting index loses recall permanently, with no error.

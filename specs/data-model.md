@@ -272,6 +272,8 @@ erDiagram
 | ResponseTimeMs | `int?` | `response_time_ms` | — | `null` |
 | RagTraceId | `string?` | `rag_trace_id` | Max 64; RAG only | `null` |
 | RagPromptVersion | `string?` | `rag_prompt_version` | Max 100; RAG only | `null` |
+| RagRetrievalVersion | `string?` | `rag_retrieval_version` | Max 100; query/retrieval/ranking contract | `null` |
+| RagReranker | `string?` | `rag_reranker` | Max 100; local or external model identity | `null` |
 | RagIndexProfile | `string?` | `rag_index_profile` | Max 64; RAG only | `null` |
 | RagGroundingStatus | `string?` | `rag_grounding_status` | Max 40; RAG only | `null` |
 | RagAnswerHash | `string?` | `rag_answer_hash` | SHA-256; avoids duplicating generated text | `null` |

@@ -11,6 +11,8 @@ public class SearchQuery
     public int? ResponseTimeMs { get; set; }
     public string? RagTraceId { get; set; }
     public string? RagPromptVersion { get; set; }
+    public string? RagRetrievalVersion { get; set; }
+    public string? RagReranker { get; set; }
     public string? RagIndexProfile { get; set; }
     public string? RagGroundingStatus { get; set; }
     public string? RagAnswerHash { get; set; }

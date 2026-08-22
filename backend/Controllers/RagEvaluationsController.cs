@@ -95,6 +95,40 @@ public class RagEvaluationsController(AppDbContext db, IServiceProvider services
         return run == null ? NotFound(new { error = "Evaluation run not found" }) : Ok(RunDto(run));
     }
 
+    [HttpGet("feedback-summary")]
+    public async Task<IActionResult> FeedbackSummary([FromQuery] int days = 30)
+    {
+        days = Math.Clamp(days, 1, 365);
+        var since = DateTime.UtcNow.AddDays(-days);
+        var rows = await db.SearchQueries.AsNoTracking()
+            .Where(x => x.SearchType == "rag" && x.RagFeedbackAt >= since && x.RagFeedback != null)
+            .Select(x => new { x.RagFeedback, x.RagFeedbackReason, x.RagGroundingStatus,
+                x.RagPromptVersion, x.RagRetrievalVersion, x.RagReranker, x.RagIndexProfile, x.ResponseTimeMs })
+            .ToListAsync();
+        var helpful = rows.Count(x => x.RagFeedback == "helpful");
+        return Ok(new
+        {
+            days,
+            total = rows.Count,
+            helpful,
+            notHelpful = rows.Count - helpful,
+            helpfulRate = rows.Count == 0 ? 0 : helpful / (double)rows.Count,
+            averageResponseTimeMs = rows.Count == 0 ? 0 : rows.Average(x => x.ResponseTimeMs ?? 0),
+            reasons = rows.Where(x => x.RagFeedback == "not_helpful")
+                .GroupBy(x => x.RagFeedbackReason ?? "unspecified")
+                .Select(x => new { reason = x.Key, count = x.Count() }).OrderByDescending(x => x.count),
+            grounding = rows.GroupBy(x => x.RagGroundingStatus ?? "unknown")
+                .Select(x => new { status = x.Key, count = x.Count(),
+                    helpfulRate = x.Count(y => y.RagFeedback == "helpful") / (double)x.Count() })
+                .OrderByDescending(x => x.count),
+            configurations = rows.GroupBy(x => new { x.RagPromptVersion, x.RagRetrievalVersion, x.RagReranker, x.RagIndexProfile })
+                .Select(x => new { promptVersion = x.Key.RagPromptVersion, indexProfile = x.Key.RagIndexProfile,
+                    retrievalVersion = x.Key.RagRetrievalVersion, reranker = x.Key.RagReranker,
+                    count = x.Count(), helpfulRate = x.Count(y => y.RagFeedback == "helpful") / (double)x.Count() })
+                .OrderByDescending(x => x.count).Take(10)
+        });
+    }
+
     private static object ToDataset(RagEvaluationDataset x) => new { x.Id, x.Name, x.Description, x.Version,
         cases = RagEvaluationService.ParseCases(x.CasesJson), thresholds = RagEvaluationService.ParseThresholds(x.ThresholdsJson), x.CreatedAt, x.UpdatedAt };
     private static object RunDto(RagEvaluationRun x) => new { x.Id, x.DatasetId, datasetName = x.Dataset?.Name, x.Status, x.TotalCases,

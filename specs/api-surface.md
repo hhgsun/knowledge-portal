@@ -742,7 +742,15 @@ Returns local `data/uploads` bytes/free space, extraction backlog/failures/trunc
 
 ### `POST /api/search/rag-feedback`
 
-Records feedback for an authenticated user's own RAG search. Body: `{ "searchQueryId": "...", "helpful": false, "reason": "incomplete" }`. Optional negative reason codes are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, and `other`. The search record retains trace, prompt, semantic-index profile, grounding status, and a SHA-256 answer fingerprint; it does not duplicate the generated answer text.
+Records feedback for an authenticated user's own RAG search. Body: `{ "searchQueryId": "...", "helpful": false, "reason": "incomplete" }`. Optional negative reason codes are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, and `other`. The search record retains trace, prompt/retrieval/reranker/semantic-index versions, grounding status, and a SHA-256 answer fingerprint; it does not duplicate the generated answer text.
+
+### `GET /api/search/rag-debug?q=...`
+
+Session-admin-only diagnostic path. Runs query understanding, hybrid/multi-query retrieval, reranking, ACL recheck, selective parent-neighbor expansion, deduplication and context budgeting without calling the chat model. Returns the rewritten/decomposed query plan, extracted filters, only post-authorization candidates, expansion details, and exact bounded context/evidence mapping.
+
+### `GET /api/admin/rag-evaluations/feedback-summary?days=30`
+
+Session-admin-only production-quality summary: helpful rate, negative-reason distribution, grounding-status helpful rates, latency, and prompt/retrieval/reranker/index-profile cohorts.
 
 ---
 

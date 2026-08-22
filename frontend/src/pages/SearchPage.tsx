@@ -53,6 +53,7 @@ export default function SearchPage() {
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexCoverage, setIndexCoverage] = useState<SearchIndexCoverage | null>(null);
   const [ragFeedback, setRagFeedback] = useState<"helpful" | "not_helpful" | null>(null);
+  const [ragFeedbackReason, setRagFeedbackReason] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const searchInFlightRef = useRef(false);
 
@@ -67,14 +68,14 @@ export default function SearchPage() {
     }
   };
 
-  const submitRagFeedback = async (helpful: boolean) => {
+  const submitRagFeedback = async (helpful: boolean, reason?: string) => {
     if (!searchQueryId || feedbackSubmitting) return;
     setFeedbackSubmitting(true);
     try {
       const response = await fetchWithAuth("/api/search/rag-feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ searchQueryId, helpful }),
+        body: JSON.stringify({ searchQueryId, helpful, reason: reason || null }),
       });
       if (!response.ok) throw new Error("feedback failed");
       setRagFeedback(helpful ? "helpful" : "not_helpful");
@@ -209,6 +210,7 @@ export default function SearchPage() {
     setActiveTags([]);
     setSearchQueryId(null);
     setRagFeedback(null);
+    setRagFeedbackReason("");
     setIndexCoverage(null);
     setWarning(null);
 
@@ -477,6 +479,7 @@ export default function SearchPage() {
                       aria-pressed={ragFeedback === "not_helpful"}
                       className={cn("rounded-md p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900", ragFeedback === "not_helpful" && "bg-blue-200 dark:bg-blue-800")}
                       aria-label="Yanıt yardımcı olmadı"><ThumbsDown size={14} /></button>
+                    {ragFeedback === "not_helpful" && <select value={ragFeedbackReason} onChange={e=>{setRagFeedbackReason(e.target.value); if(e.target.value) void submitRagFeedback(false,e.target.value);}} className="ml-1 rounded-md border border-blue-200 bg-transparent px-2 py-1 dark:border-blue-800" aria-label="Yararlı olmama nedeni"><option value="">Neden? (isteğe bağlı)</option><option value="incorrect">Yanlış</option><option value="incomplete">Eksik</option><option value="wrong_source">Yanlış kaynak</option><option value="outdated">Güncel değil</option><option value="no_answer">Bilgi bulunamadı</option><option value="other">Diğer</option></select>}
                   </div>
                 )}
               </div>

@@ -169,6 +169,8 @@ All critical issues have been resolved:
 |---|-------|--------|----------|
 | 5 | **JWT secret in appsettings.json** — signing key stored in plain text in config file | Secret exposure if config file is leaked | `appsettings.json` |
 | 6 | **localStorage for JWT** — tokens stored in localStorage are accessible to any JS on the page | XSS attacks can steal tokens (accepted trade-off for SPA) | `AuthContext.tsx` |
+
+External reranking is disabled by default. Enabling `Reranking:External` sends only bounded candidate passages after retrieval filtering to an explicitly configured HTTPS or loopback endpoint. The integration never sends authorization tokens, falls back locally on timeout/error/invalid output, and must be covered by the organization's provider privacy agreement. Parent/neighbor expansion reuses only stored chunks from the same authorized article, source/attachment, embedding model and derived parent section; it runs after the published/filter safety recheck.
 | 8 | **No CSRF protection** — SPA uses Bearer tokens (not cookies), but CORS is permissive | Mitigated by Bearer auth model | `Program.cs` |
 
 ### Resolved

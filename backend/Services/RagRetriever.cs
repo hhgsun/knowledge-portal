@@ -9,7 +9,7 @@ public record RagRetrievalChunk(VectorChunkResult Chunk, double Score, string Ma
 
 public interface IRagRetriever
 {
-    Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+    Task<List<RagRetrievalChunk>> RetrieveAsync(RagQueryPlan plan, int limit, double minSemanticScore,
         int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default);
 }
 
@@ -18,19 +18,21 @@ public record RagChunkCandidate(VectorChunkResult Chunk, string Title, string? E
 
 public interface IRagChunkReranker
 {
-    IReadOnlyList<RagRetrievalChunk> Rerank(string query, IReadOnlyList<RagChunkCandidate> candidates);
+    Task<IReadOnlyList<RagRetrievalChunk>> RerankAsync(string query,
+        IReadOnlyList<RagChunkCandidate> candidates, CancellationToken ct = default);
 }
 
 /// <summary>Local, deterministic second-stage chunk reranker. The contract can be replaced by a
 /// cross-encoder without changing RAG orchestration.</summary>
 public sealed class LocalRagChunkReranker : IRagChunkReranker
 {
-    public IReadOnlyList<RagRetrievalChunk> Rerank(string query, IReadOnlyList<RagChunkCandidate> candidates)
+    public Task<IReadOnlyList<RagRetrievalChunk>> RerankAsync(string query,
+        IReadOnlyList<RagChunkCandidate> candidates, CancellationToken ct = default)
     {
-        if (candidates.Count == 0) return [];
+        if (candidates.Count == 0) return Task.FromResult<IReadOnlyList<RagRetrievalChunk>>([]);
         var tokens = Fold(query).Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct().ToArray();
         var maxRetrieval = Math.Max(candidates.Max(x => x.RetrievalScore), double.Epsilon);
-        return candidates.Select(x =>
+        IReadOnlyList<RagRetrievalChunk> result = candidates.Select(x =>
         {
             var title = Fold(x.Title); var body = Fold(x.Chunk.ChunkText); var source = Fold(x.Chunk.SourceName ?? "");
             var haystack = $"{title} {source} {Fold(x.Excerpt ?? "")} {body}";
@@ -40,6 +42,7 @@ public sealed class LocalRagChunkReranker : IRagChunkReranker
             var score = .50 * (x.RetrievalScore / maxRetrieval) + .25 * coverage + .20 * titleCoverage + .05 * phrase;
             return new RagRetrievalChunk(x.Chunk, score, x.MatchType);
         }).OrderByDescending(x => x.Score).ThenBy(x => x.Chunk.ArticleId).ThenBy(x => x.Chunk.ChunkIndex).ToList();
+        return Task.FromResult(result);
     }
     private static string Fold(string value) => SlugHelper.Transliterate(value).ToLowerInvariant();
 }
@@ -64,8 +67,30 @@ public sealed class HybridRagRetriever(
         config.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0,
         Math.Clamp(config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000) - 1);
 
-    public async Task<List<RagRetrievalChunk>> RetrieveAsync(string query, int limit, double minSemanticScore,
+    public async Task<List<RagRetrievalChunk>> RetrieveAsync(RagQueryPlan plan, int limit, double minSemanticScore,
         int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default)
+    {
+        var perQuery = new List<List<RagRetrievalChunk>>();
+        foreach (var query in plan.Queries)
+            perQuery.Add(await RetrieveSingleAsync(query, limit, minSemanticScore, maxPerArticle,
+                plan.EffectiveFilter ?? filter, plan.PrefersFreshSources, ct));
+
+        if (perQuery.Count == 1) return perQuery[0];
+        var merged = perQuery.SelectMany(list => list.Select((item, rank) => new { item, rank }))
+            .GroupBy(x => Key(x.item.Chunk))
+            .Select(group =>
+            {
+                var best = group.OrderByDescending(x => x.item.Score).First().item;
+                var queryFusion = group.Sum(x => 1d / (_rrfK + x.rank + 1));
+                return best with { Score = best.Score + queryFusion };
+            })
+            .OrderByDescending(x => x.Score).ToList();
+        return InterleaveByArticle(merged, limit, maxPerArticle);
+    }
+
+    private async Task<List<RagRetrievalChunk>> RetrieveSingleAsync(string query, int limit,
+        double minSemanticScore, int maxPerArticle, ArticleFilter? filter, bool prefersFreshSources,
+        CancellationToken ct)
     {
         List<VectorChunkResult> semantic;
         try { semantic = await vectors.SearchChunksAsync(query, limit, ct, minSemanticScore, maxPerArticle, filter); }
@@ -88,7 +113,7 @@ public sealed class HybridRagRetriever(
         if (candidateIds.Count == 0) return [];
 
         var allowed = await ArticleService.ApplyFilter(db.Articles.WherePublished().Where(x => candidateIds.Contains(x.Id)), filter)
-            .Select(x => new { x.Id, x.Title, x.Excerpt, x.Content }).ToListAsync(ct);
+            .Select(x => new { x.Id, x.Title, x.Excerpt, x.Content, x.ContentType, x.UpdatedAt, x.ApprovedAt }).ToListAsync(ct);
         var metadata = allowed.ToDictionary(x => x.Id);
 
         var chunks = semantic.Where(x => metadata.ContainsKey(x.ArticleId)).ToList();
@@ -139,12 +164,21 @@ public sealed class HybridRagRetriever(
         var candidates = chunks.Select(chunk =>
         {
             var fused = fusion[chunk.ArticleId];
-            var retrieval = fused.Score + Math.Max(0, chunk.Score) * _semanticWeight;
             var a = metadata[chunk.ArticleId];
+            var ageDays = Math.Max(0, (DateTime.UtcNow - a.UpdatedAt).TotalDays);
+            var halfLife = Math.Max(1, config.GetValue("Ollama:Ranking:FreshnessHalfLifeDays", 365));
+            var freshness = Math.Pow(.5, ageDays / halfLife);
+            var authority = config.GetValue($"Ollama:Ranking:Authority:{a.ContentType}", 0.5)
+                + (a.ApprovedAt == null ? 0 : config.GetValue("Ollama:Ranking:ApprovedBoost", .2));
+            var freshnessWeight = config.GetValue("Ollama:Ranking:FreshnessWeight", .05)
+                * (prefersFreshSources ? config.GetValue("Ollama:Ranking:FreshnessIntentMultiplier", 3d) : 1d);
+            var authorityWeight = config.GetValue("Ollama:Ranking:AuthorityWeight", .05);
+            var retrieval = fused.Score + Math.Max(0, chunk.Score) * _semanticWeight
+                + freshnessWeight * freshness + authorityWeight * Math.Clamp(authority, 0, 1);
             return new RagChunkCandidate(chunk, a.Title, a.Excerpt, retrieval, fused.MatchType);
         }).ToList();
 
-        var ranked = reranker.Rerank(query, candidates);
+        var ranked = await reranker.RerankAsync(query, candidates, ct);
         var deduped = SuppressNearDuplicates(ranked);
         return InterleaveByArticle(deduped, limit, maxPerArticle);
     }

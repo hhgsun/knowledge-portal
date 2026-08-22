@@ -185,7 +185,11 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddScoped<RagService>();
     builder.Services.AddScoped<IRagRetriever, HybridRagRetriever>();
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
-    builder.Services.AddSingleton<IRagChunkReranker, LocalRagChunkReranker>();
+    builder.Services.AddSingleton<RagQueryUnderstandingService>();
+    builder.Services.AddSingleton<RagContextExpansionService>();
+    builder.Services.AddSingleton<LocalRagChunkReranker>();
+    builder.Services.AddHttpClient<ExternalRagChunkReranker>();
+    builder.Services.AddScoped<IRagChunkReranker>(sp => sp.GetRequiredService<ExternalRagChunkReranker>());
 }
 
 // ─── OpenAPI / Swagger ───────────────────────────────────────

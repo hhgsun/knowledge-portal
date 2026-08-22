@@ -221,6 +221,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.SearchType).IsRequired().HasDefaultValue("fulltext");
             e.Property(s => s.RagTraceId).HasMaxLength(64);
             e.Property(s => s.RagPromptVersion).HasMaxLength(100);
+            e.Property(s => s.RagRetrievalVersion).HasMaxLength(100);
+            e.Property(s => s.RagReranker).HasMaxLength(100);
             e.Property(s => s.RagIndexProfile).HasMaxLength(64);
             e.Property(s => s.RagGroundingStatus).HasMaxLength(40);
             e.Property(s => s.RagAnswerHash).HasMaxLength(64);

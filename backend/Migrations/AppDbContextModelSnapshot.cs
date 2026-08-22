@@ -748,6 +748,14 @@ namespace KnowledgePortal.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("RagReranker")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RagRetrievalVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("RagTraceId")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

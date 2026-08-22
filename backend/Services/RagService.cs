@@ -15,10 +15,13 @@ public class RagService(
     IConfiguration config,
     RagResilienceService resilience,
     IRagContextBuilder contextBuilder,
+    RagQueryUnderstandingService queryUnderstanding,
+    RagContextExpansionService contextExpansion,
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
     public const string PromptVersion = "2026-08-22.sentence-grounding-extractive-v4";
+    public const string RetrievalVersion = "2026-08-22.query-expansion-ranking-v1";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
@@ -124,6 +127,18 @@ public class RagService(
         double ClaimSupportCoverage, bool InsufficientContext, bool PartialResult, List<string> Warnings);
     public record RagSource(string ArticleId, string Title, string Slug, double Score);
     private record ArticleMeta(string Id, string Title, string Slug);
+    private sealed record PreparedRag(RagQueryPlan Plan, List<RagRetrievalChunk> Retrieved,
+        List<VectorChunkResult> AuthorizedChunks, RagExpansionResult Expansion,
+        Dictionary<string, ArticleMeta> Articles, bool AnyIndexed);
+    public sealed record RagDebugCandidate(int Rank, string ArticleId, string Title, string? ChunkId,
+        int ChunkIndex, string SourceType, string? SourceName, string? SourceLocation,
+        double Score, string MatchType, string Passage);
+    public sealed record RagDebugContext(string EvidenceId, string ArticleId, string? ChunkId,
+        string Title, string? SourceName, string? SourceLocation, int WordCount, string Passage);
+    public sealed record RagDebugSnapshot(RagQueryPlan QueryPlan, string Mode, int RetrievedCount,
+        int AuthorizedCount, int ExpandedNeighborCount, IReadOnlyList<string> ExpandedParents,
+        IReadOnlyList<RagDebugCandidate> Candidates, IReadOnlyList<RagDebugContext> SelectedContext,
+        int ContextWords, bool BudgetTruncated);
 
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null, CancellationToken ct = default)
     {
@@ -172,51 +187,80 @@ public class RagService(
         }
     }
 
+    public async Task<RagDebugSnapshot> DebugAsync(string question, ArticleFilter? filter = null,
+        CancellationToken ct = default)
+    {
+        var broad = IsBroadQuery(question);
+        var prepared = await PrepareAsync(question, filter, broad, ct);
+        var chunks = prepared.Expansion.Chunks;
+        var ids = EvidenceIds(chunks);
+        var selection = contextBuilder.Build(chunks,
+            prepared.Articles.ToDictionary(x => x.Key, x => x.Value.Title), ids,
+            _maxContextWords, broad ? int.MaxValue : _sourceLimit);
+        var retrievalMetadata = prepared.Retrieved.GroupBy(x => ChunkKey(x.Chunk))
+            .ToDictionary(x => x.Key, x => x.First());
+        var candidates = prepared.AuthorizedChunks.Select((chunk, index) =>
+        {
+            var retrieval = retrievalMetadata.GetValueOrDefault(ChunkKey(chunk));
+            return new RagDebugCandidate(index + 1, chunk.ArticleId,
+                prepared.Articles.GetValueOrDefault(chunk.ArticleId)?.Title ?? chunk.ArticleId,
+                chunk.ChunkId, chunk.ChunkIndex, chunk.SourceType, chunk.SourceName,
+                chunk.SourceLocation, chunk.Score, retrieval?.MatchType ?? "expanded", Preview(chunk.ChunkText));
+        }).ToList();
+        var selected = selection.Items.Select(x => new RagDebugContext(x.EvidenceId, x.Chunk.ArticleId,
+            x.Chunk.ChunkId, prepared.Articles.GetValueOrDefault(x.Chunk.ArticleId)?.Title ?? x.Chunk.ArticleId,
+            x.Chunk.SourceName, x.Chunk.SourceLocation, x.WordCount, x.Chunk.ChunkText)).ToList();
+        return new(prepared.Plan, broad ? "broad" : "narrow", prepared.Retrieved.Count,
+            prepared.AuthorizedChunks.Count, prepared.Expansion.AddedNeighbors,
+            prepared.Expansion.ExpandedParentLocations, candidates, selected,
+            selection.TotalWords, selection.BudgetTruncated);
+    }
+
     private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad, CancellationToken ct)
     {
-        // Retrieve a wide chunk-level candidate pool (multiple chunks per article) so long
-        // documents aren't reduced to a single window. The filter goes into the retrieval query
-        // so the pool isn't spent on articles that would be discarded straight afterwards.
-        var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
-            token => retriever.RetrieveAsync(question, broad ? _broadCandidateLimit : _candidateLimit,
-                _ragMinScore, _maxChunksPerArticle, filter, token), ct);
-        var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
-        metrics.RagCandidates.Record(chunks.Count, Tags("mode", broad ? "broad" : "narrow"));
-
-        using var scope = scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        if (chunks.Count == 0)
+        var prepared = await PrepareAsync(question, filter, broad, ct);
+        if (prepared.Retrieved.Count == 0)
         {
-            // Distinguish "index is empty" from "nothing relevant enough" — the two need
-            // different user actions (wait for indexing vs. rephrase the question)
-            var anyIndexed = await db.ArticleEmbeddings.AnyAsync(ct);
-            return EmptyResult(anyIndexed
+            return EmptyResult(prepared.AnyIndexed
                 ? "Sorunuzla yeterince ilgili bir makale bulunamadı. Soruyu farklı kelimelerle sormayı deneyin."
                 : "Henüz indexlenmiş makale bulunamadı. İndeksleme devam ediyor olabilir — lütfen daha sonra tekrar deneyin.");
         }
-
-        // Resolve titles/slugs, and re-enforce the filter (published + tag/author/contentType/
-        // onlyOwnContent) here as a safety net: retrieval already applied it, but this lookup has
-        // to happen anyway, and it keeps the guarantee independent of the IVectorSearchService
-        // implementation. Chunks whose article didn't survive are dropped, in retrieval order.
-        var articleIds = chunks.Select(c => c.ArticleId).Distinct().ToList();
-        var allowed = await ArticleService.ApplyFilter(
-                db.Articles.Where(a => articleIds.Contains(a.Id) && a.Status == "published"), filter)
-            .Select(a => new ArticleMeta(a.Id, a.Title, a.Slug))
-            .ToListAsync(ct);
-        var articles = allowed.ToDictionary(a => a.Id);
-
-        var usableChunks = chunks.Where(c => articles.ContainsKey(c.ArticleId)).ToList();
+        var usableChunks = prepared.Expansion.Chunks;
         if (usableChunks.Count == 0)
             return EmptyResult("Sorunuzla yeterince ilgili bir makale bulunamadı. Soruyu farklı kelimelerle sormayı deneyin.");
 
         var result = broad
-            ? await AnswerBroadAsync(question, usableChunks, articles, ct)
-            : await AnswerNarrowAsync(question, usableChunks, articles, ct);
+            ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, ct)
+            : await AnswerNarrowAsync(question, usableChunks, prepared.Articles, ct);
         logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
             QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
         return result;
+    }
+
+    private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
+        CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct);
+        var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
+            token => retriever.RetrieveAsync(plan, broad ? _broadCandidateLimit : _candidateLimit,
+                _ragMinScore, _maxChunksPerArticle, plan.EffectiveFilter, token), ct);
+        var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
+        metrics.RagCandidates.Record(chunks.Count, Tags("mode", broad ? "broad" : "narrow"));
+        var anyIndexed = chunks.Count > 0 || await db.ArticleEmbeddings.AnyAsync(ct);
+        if (chunks.Count == 0)
+            return new(plan, retrieved, [], new([], 0, []), [], anyIndexed);
+
+        var articleIds = chunks.Select(c => c.ArticleId).Distinct().ToList();
+        var allowed = await ArticleService.ApplyFilter(
+                db.Articles.Where(a => articleIds.Contains(a.Id) && a.Status == "published"), plan.EffectiveFilter)
+            .Select(a => new ArticleMeta(a.Id, a.Title, a.Slug)).ToListAsync(ct);
+        var articles = allowed.ToDictionary(a => a.Id);
+        var authorized = chunks.Where(c => articles.ContainsKey(c.ArticleId)).ToList();
+        var expansion = await contextExpansion.ExpandAsync(db, authorized,
+            articles.Keys.ToHashSet(StringComparer.Ordinal), ct);
+        return new(plan, retrieved, authorized, expansion, articles, anyIndexed);
     }
 
     /// <summary>Fast path: pack the top chunks (a few source articles, multiple chunks each) into
@@ -465,6 +509,7 @@ public class RagService(
     }
 
     private static int CountWords(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+    private static string Preview(string text) => text.Length <= 800 ? text : text[..800] + "…";
     private static string QueryFingerprint(string query) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(query)))[..12].ToLowerInvariant();
     private static KeyValuePair<string, object?>[] Tags(string key, object? value) => [new(key, value)];

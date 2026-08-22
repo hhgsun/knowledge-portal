@@ -450,7 +450,9 @@ public class McpToolExecutor
             var scores = RrfHelper.Merge(fulltextIds, semanticHits?.Select(h => h.ArticleId).ToList());
             var ids = scores.Keys.ToList();
             var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
-            var reranked = _reranker.Rerank(searchQuery, articles.Select(a => new RerankCandidate(a.Id, a.Title, a.Excerpt, a.Content, scores[a.Id].Score)).ToList()).Take(limit).ToList();
+            var reranked = _reranker.Rerank(searchQuery, articles.Select(a => new RerankCandidate(
+                a.Id, a.Title, a.Excerpt, a.Content, scores[a.Id].Score,
+                a.UpdatedAt, a.ApprovedAt, a.ContentType)).ToList()).Take(limit).ToList();
             var byId = articles.ToDictionary(a => a.Id);
             var ordered = reranked.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList();
             var results = await BuildSearchResultsAsync(ordered, includeContent, includeAttachments, snippetTokens,

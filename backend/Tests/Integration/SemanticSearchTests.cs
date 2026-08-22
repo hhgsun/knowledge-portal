@@ -176,8 +176,32 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("incomplete", record.RagFeedbackReason);
         Assert.NotNull(record.RagFeedbackAt);
         Assert.Equal(RagService.PromptVersion, record.RagPromptVersion);
+        Assert.Equal(RagService.RetrievalVersion, record.RagRetrievalVersion);
+        Assert.Equal("local-deterministic-v1", record.RagReranker);
         Assert.NotNull(record.RagIndexProfile);
         Assert.Equal(64, record.RagAnswerHash?.Length);
+
+        var summary = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/admin/rag-evaluations/feedback-summary?days=30");
+        Assert.True(summary.GetProperty("total").GetInt32() >= 1);
+        Assert.True(summary.GetProperty("notHelpful").GetInt32() >= 1);
+    }
+
+    [Fact]
+    public async Task RagDebug_ReturnsQueryPlanCandidatesAndExactSelectedContextWithoutGeneration()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await CreatePublishedArticleAsync("VPN Debug Kaynağı", "VPN sertifika yenileme adımları burada açıklanır.");
+
+        var response = await _client.GetAsync(
+            "/api/search/rag-debug?q=VPN%20kurulumu%20ve%20sertifika%20yenileme");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(body.GetProperty("queryPlan").GetProperty("isComplex").GetBoolean());
+        Assert.True(body.GetProperty("queryPlan").GetProperty("queries").GetArrayLength() >= 2);
+        Assert.True(body.GetProperty("candidates").GetArrayLength() >= 1);
+        Assert.True(body.GetProperty("selectedContext").GetArrayLength() >= 1);
     }
 
     [Fact]

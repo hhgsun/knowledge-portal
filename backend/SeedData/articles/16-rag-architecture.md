@@ -25,11 +25,13 @@ Makale + ekler
     ▼
 Dayanıklı indeks kuyruğu → chunk + embedding + FTS
                                    │
-Kullanıcı sorusu                   ▼
-    └──────────────→ lexical + semantic retrieval
+Kullanıcı sorusu → rewrite / filtre / seçici decomposition
+    └──────────────→ alt sorgu başına lexical + semantic retrieval
                               │
                               ▼
-                     RRF + rerank + dedupe
+                 query fusion + RRF + rerank + authority/freshness
+                              │
+                  seçici parent/komşu genişletme
                               │
                     dar soru ─┴─ geniş soru
                        │             │
@@ -76,6 +78,10 @@ Lexical eşleşmenin gerçek pasajı semantic sonuçta yoksa makale gövdesinden
 - `RagMaxChunksPerArticle` sınırı tek bir makalenin bağlamı ele geçirmesini önler.
 - Etiket, yazar, içerik türü ve `onlyOwnContent` filtreleri retrieval içinde uygulanır ve makale metadata lookup'ında tekrar doğrulanır.
 
+Sorgudan önce `RagQueryUnderstandingService`, LLM maliyeti oluşturmadan explicit `#/@/##` ile `tag:/author:/type:` filtrelerini ayırır, yapılandırılmış acronym/synonym sözlüğünü genişletir ve yalnız karşılaştırma/bileşik soruları bounded alt sorgulara böler. Her alt sorgu aynı ACL filtresiyle çalışır; sonuçlar yeniden fusion ile birleşir. Güncellik sinyali exponential half-life, otorite sinyali içerik türü ve onay durumu üzerinden merkezi ayarlardan gelir; relevance ana sinyal olmaya devam eder.
+
+Yüksek skorlu bir child chunk `section/page/sheet/...:chunk:N` provenance'ı taşıyorsa yapılandırılmış sayıdaki önceki/sonraki child aynı parent içinde eklenebilir. Genişletme published ve metadata-filter recheck'inden sonra çalışır; başka makaleye, eke, kaynağa veya parent'a geçmez. Varsayılan yerel reranker her zaman hazırdır. Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner.
+
 Varsayılan RAG semantic eşiği 0.3'tür. Bu değer liste tipi semantic aramadaki 0.5 eşiğinden daha düşüktür; çünkü genel soruların cosine skoru düşük olabilir ve nihai katman yetersiz kanıtta fail-closed davranır.
 
 ## 3. Dar ve Geniş Soru Yolları
@@ -86,10 +92,6 @@ Soru; özetleme, karşılaştırma, listeleme veya tüm corpus'u kapsama niyeti 
 
 Dar yol, en yüksek sıralı chunk'ları en fazla üç farklı kaynak makaleden ve varsayılan 8.000 kelimelik context bütçesi içinde tek LLM çağrısına paketler. `IRagContextBuilder` tam kopyaları bastırır, kaynak çeşitliliğini ve bütçeyi uygular, source delimiter/prompt-injection sınırlarını güçlendirir ve evidence kimliğini korur. Grounding'e verilen pasaj, LLM'e gerçekten gönderilen kırpılmış pasajla aynıdır. Bir makaleden birden fazla ilgili chunk kullanılabilir. Bu yol düşük gecikmeli, odaklı cevaplar içindir.
 
-## Kullanıcı Geri Bildirimi
-
-Arama ekranındaki yardımcı oldu/olmadı düğmeleri geri bildirimi yalnız kullanıcının kendi RAG `searchQueryId` kaydına bağlar. Kayıt; trace, prompt sürümü, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; karşılaştırma için yalnız SHA-256 fingerprint tutulur. Böylece kalite regresyonları yapılandırma sürümleriyle ilişkilendirilebilirken gereksiz hassas metin kopyası oluşmaz.
-
 ### Geniş Soru
 
 Geniş yol daha büyük aday havuzunu batch'lere böler:
@@ -99,6 +101,10 @@ Geniş yol daha büyük aday havuzunu batch'lere böler:
 3. Reduce çağrısı başarılı map notlarını tek yanıtta birleştirir ve mevcut `[S#]` atıflarını korur.
 
 Tekil map batch'leri veya reduce aşaması başarısız olursa başarılı parçalar kaybedilmez. Sonuç `partialResult=true` ve açıklayıcı uyarılarla dönebilir. İstek bütçesi nedeniyle adaylar kırpılırsa bu da uyarı olarak belirtilir.
+
+## Kullanıcı Geri Bildirimi
+
+Arama ekranındaki yardımcı oldu/olmadı düğmeleri ve isteğe bağlı negatif neden yalnız kullanıcının kendi RAG `searchQueryId` kaydına bağlanır. Kayıt; trace, prompt/retrieval sürümü, reranker kimliği, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; yalnız SHA-256 fingerprint tutulur. Evaluation ekranı son 30 günün helpful oranını, nedenlerini, grounding ve configuration cohort'larını golden dataset metriklerinin yanında gösterir.
 
 ## 4. Yapılandırılmış Üretim ve Fail-Closed Doğrulama
 
@@ -142,6 +148,7 @@ Desteklenen production topolojisi tek backend instance olduğu için bu state pr
 RAG istekleri privacy-safe query fingerprint ile loglanır; ham kullanıcı sorusu loglanmaz. `kp_rag_*` metrikleri istek sonucu, stage hataları/gecikmeleri, aday/context boyutu, LLM çağrıları, refusal, partial sonuç, citation coverage ve aktif istekleri kapsar. Trace'ler isteğe bağlı OTLP exporter üzerinden gönderilebilir.
 
 - Runtime görünümü: `GET /api/search/rag-observability`
+- Yetkili aday/context debug: `GET /api/search/rag-debug?q=...` (session-admin, LLM çağrısı yok)
 - Prometheus alarmları: `ops/prometheus/rag-alerts.yml`
 - Grafana dashboard: `ops/grafana/rag-overview.json`
 - Ölçülebilir hedefler: `specs/rag-slo.md`
@@ -157,6 +164,10 @@ Başlıca ayarlar `backend/appsettings.json` içindedir:
 - `Ollama:RagMapReduceBatchChunks` / `RagMaxOutputTokens`
 - `Ollama:RagRrfK` / `RagLexicalWeight` / `RagSemanticWeight`
 - `Ollama:RagDuplicateThreshold` / `RagMinSimilarityScore`
+- `Ollama:QueryUnderstanding:*` rewrite, synonym ve decomposition ayarları
+- `Ollama:ContextExpansion:*` parent-komşu genişletme sınırları
+- `Ollama:Ranking:*` freshness, approval ve content-type authority ağırlıkları
+- `Reranking:External:*` kapalı varsayılan external cross-encoder, timeout ve veri sınırları
 - `Ollama:ChunkTargetWords` / `ChunkOverlapWords` / `ChunkingVersion`
 - `RagResilience:*` timeout, budget, retry, parallelism ve circuit breaker ayarları
 

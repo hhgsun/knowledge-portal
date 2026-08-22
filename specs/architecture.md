@@ -53,6 +53,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 | **Services** | `backend/Services/` | Domain logic (ArticleService, TagService, ApiKeyService, UserService, StatsService) + AI/search (EmbeddingService, VectorSearchService, RagService, FullTextSearchService) + observability (PortalMetrics) |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
+| **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid multi-query fusion → rerank/ranking signals → ACL-safe parent-neighbor expansion → bounded evidence context |
 | **Domain** | `backend/Models/` | Entity classes, DTO records (`Models/Dtos.cs`) |
 | **Storage** | PostgreSQL + pgvector | Relational data + vector embeddings (FTS + semantic search) |
 

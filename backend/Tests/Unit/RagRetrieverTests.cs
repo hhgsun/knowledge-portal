@@ -18,7 +18,7 @@ public class RagRetrieverTests
     }
 
     [Fact]
-    public void ChunkReranker_PromotesExactTitleAndBodyEvidence()
+    public async Task ChunkReranker_PromotesExactTitleAndBodyEvidence()
     {
         var reranker = new LocalRagChunkReranker();
         var candidates = new[]
@@ -27,7 +27,7 @@ public class RagRetrieverTests
             new RagChunkCandidate(new VectorChunkResult("exact", 0, .70, "vpn sertifika kurulumu adımları"), "VPN Sertifika Kurulumu", null, .70, "both")
         };
 
-        var ranked = reranker.Rerank("vpn sertifika kurulumu", candidates);
+        var ranked = await reranker.RerankAsync("vpn sertifika kurulumu", candidates);
 
         Assert.Equal("exact", ranked[0].Chunk.ArticleId);
     }
@@ -59,7 +59,9 @@ public class RagRetrieverTests
         var vectors = new FakeVectors([new VectorChunkResult("semantic", 0, .8, "ERR42 için VPN genel bilgi")]);
         var retriever = new HybridRagRetriever(vectors, fts, db, new LocalRagChunkReranker(), config, NullLogger<HybridRagRetriever>.Instance);
 
-        var result = await retriever.RetrieveAsync("ERR42 VPN", 10, .3, 3);
+        var plan = new RagQueryPlan("ERR42 VPN", "ERR42 VPN", ["ERR42 VPN"],
+            new([], [], []), [], false, false, null);
+        var result = await retriever.RetrieveAsync(plan, 10, .3, 3);
 
         Assert.Contains(result, x => x.Chunk.ArticleId == "lexical");
         Assert.Contains(result, x => x.Chunk.ArticleId == "semantic" && x.MatchType == "both");
