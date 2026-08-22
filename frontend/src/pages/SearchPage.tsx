@@ -43,6 +43,7 @@ export default function SearchPage() {
   const [searchType, setSearchType] = useState<SearchType>(initialType);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [ragResponse, setRagResponse] = useState<RagResponse | null>(null);
+  const [expandedRagSources, setExpandedRagSources] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -56,6 +57,15 @@ export default function SearchPage() {
   const [ragFeedbackReason, setRagFeedbackReason] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const searchInFlightRef = useRef(false);
+
+  const toggleRagSource = (articleId: string) => {
+    setExpandedRagSources((current) => {
+      const next = new Set(current);
+      if (next.has(articleId)) next.delete(articleId);
+      else next.add(articleId);
+      return next;
+    });
+  };
 
   const copyRagAnswer = async () => {
     if (!ragResponse?.answer) return;
@@ -206,6 +216,7 @@ export default function SearchPage() {
     setLoading(true);
     setSearched(true);
     setRagResponse(null);
+    setExpandedRagSources(new Set());
     setResults([]);
     setActiveTags([]);
     setSearchQueryId(null);
@@ -504,35 +515,46 @@ export default function SearchPage() {
 
               {ragResponse.sources.length > 0 && (
                 <section aria-labelledby="rag-sources-heading">
-                  <details className="group rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-                    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:text-zinc-300 dark:hover:bg-zinc-900 [&::-webkit-details-marker]:hidden">
-                      <FileText size={15} className="shrink-0 text-blue-500" aria-hidden="true" />
-                      <span id="rag-sources-heading" className="font-medium">Kaynaklar ({ragResponse.sources.length})</span>
-                      <span className="font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
-                      <ChevronDown size={16} className="ml-auto shrink-0 text-zinc-400 transition-transform group-open:rotate-180" aria-hidden="true" />
-                    </summary>
-                    <div className="space-y-3 border-t border-zinc-200 p-3 dark:border-zinc-800">
-                      {ragResponse.sources.map((source: RagSource) => {
-                        const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
+                  <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Kaynaklar ({ragResponse.sources.length})
+                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {ragResponse.sources.map((source: RagSource) => {
+                      const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
+                      const isExpanded = expandedRagSources.has(source.articleId);
+                      const evidenceId = `rag-source-evidence-${source.articleId}`;
 
-                        return (
-                          <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                      return (
+                        <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                          <div className="flex items-stretch">
+                            <button
+                              type="button"
+                              onClick={() => toggleRagSource(source.articleId)}
+                              aria-expanded={isExpanded}
+                              aria-controls={evidenceId}
+                              className="flex min-w-0 flex-1 items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
+                            >
+                              <FileText size={14} className="shrink-0 text-blue-500" aria-hidden="true" />
+                              <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
+                              <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
+                              <ChevronDown size={15} className={cn("shrink-0 text-zinc-400 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
+                            </button>
                             <a
                               href={`/articles/${source.slug}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 px-4 py-3 text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
+                              className="flex shrink-0 items-center border-l border-zinc-200 px-3 text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:border-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-blue-400"
                               aria-label={`${source.title} kaynağını yeni sekmede aç`}
+                              title="Yeni sekmede aç"
                             >
-                              <FileText size={14} className="shrink-0 text-blue-500" />
-                              <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
-                              <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
-                              <span className="hidden text-xs text-zinc-500 sm:inline">Yeni sekmede aç</span>
-                              <ExternalLink size={12} className="shrink-0 text-zinc-400" aria-hidden="true" />
+                              <ExternalLink size={15} aria-hidden="true" />
                             </a>
-                            {sourceEvidence.length > 0 && (
-                              <div className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-                                {sourceEvidence.map(evidence => (
+                          </div>
+                          {isExpanded && (
+                            <div id={evidenceId} className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                              {sourceEvidence.length > 0 ? (
+                                sourceEvidence.map(evidence => (
                                   <div key={evidence.sourceId} className="border-l-2 border-blue-400 pl-3 text-xs">
                                     <div className="font-medium text-zinc-700 dark:text-zinc-300">
                                       <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
@@ -541,14 +563,16 @@ export default function SearchPage() {
                                     </div>
                                     <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </details>
+                                ))
+                              ) : (
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">Bu kaynak için kanıt pasajı bulunmuyor.</p>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
                 </section>
               )}
             </div>
