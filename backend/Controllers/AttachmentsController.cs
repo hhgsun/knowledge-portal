@@ -49,6 +49,10 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
                 a.ContentType,
                 a.SizeBytes,
                 AttachmentHelper.GetDownloadUrl(a.Id),
+                a.ExtractionStatus,
+                a.ExtractionTruncated,
+                a.ExtractedCharacters,
+                a.ExtractionCharacterLimit,
                 a.CreatedAt.ToString("o")))
             .ToArrayAsync();
 
@@ -117,6 +121,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             ContentType = file.ContentType,
             SizeBytes = file.Length,
             Sha256 = sha256,
+            ExtractionCharacterLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
+                AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000),
             UploadedById = userId
         };
 
@@ -139,6 +145,10 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             attachment.ContentType,
             attachment.SizeBytes,
             AttachmentHelper.GetDownloadUrl(attachment.Id),
+            attachment.ExtractionStatus,
+            attachment.ExtractionTruncated,
+            attachment.ExtractedCharacters,
+            attachment.ExtractionCharacterLimit,
             attachment.CreatedAt.ToString("o")));
     }
 

@@ -49,6 +49,7 @@ Makale yayınlandığında, içeriği değiştiğinde veya eki eklenip silindiğ
 Kanonik Markdown okunabilir düz metne çevrilir. Makale gövdesi ile metni çıkarılabilen her ek ayrı kaynak kabul edilir:
 
 - Makale Markdown'ı başlık/bölüm sınırları korunarak; ekler parser'ın page/sheet/slide konumları korunarak chunk'lara ayrılır. Paragraf, liste, tablo ve kod blokları hedef bütçeye sığıyorsa bölünmez; aşırı büyük tek bloklar kontrollü kayan pencereye düşer.
+- Eklerden çıkarılacak metin `FileStorage:MaxExtractedCharacters` ile sınırlandırılır. Sınır, çıkarılan karakter sayısı ve truncation durumu kalıcı metadata'dır; sınır değişince sonraki indeks geçişi cache'i yeniden üretir ve storage teşhisleri kırpılan dosyaları sayar.
 - Varsayılan hedef 500 kelime ve örtüşme 50 kelimedir; `ChunkTargetWords`, `ChunkOverlapWords` ve `ChunkingVersion` yapılandırılabilir. Chunking sürümü ve sınırlar içerik hash'ine katıldığı için değişiklik dayanıklı kuyruk üzerinden re-embedding tetikler.
 - Kaynak başına ve makale toplamında yapılandırılabilir chunk sınırları uygulanır.
 - Makale ve ek kaynakları round-robin interleave edilerek uzun bir kaynağın tüm bütçeyi tüketmesi önlenir.
@@ -83,7 +84,11 @@ Soru; özetleme, karşılaştırma, listeleme veya tüm corpus'u kapsama niyeti 
 
 ### Dar Soru
 
-Dar yol, en yüksek sıralı chunk'ları en fazla üç farklı kaynak makaleden ve varsayılan 8.000 kelimelik context bütçesi içinde tek LLM çağrısına paketler. Bir makaleden birden fazla ilgili chunk kullanılabilir. Bu yol düşük gecikmeli, odaklı cevaplar içindir.
+Dar yol, en yüksek sıralı chunk'ları en fazla üç farklı kaynak makaleden ve varsayılan 8.000 kelimelik context bütçesi içinde tek LLM çağrısına paketler. `IRagContextBuilder` tam kopyaları bastırır, kaynak çeşitliliğini ve bütçeyi uygular, source delimiter/prompt-injection sınırlarını güçlendirir ve evidence kimliğini korur. Grounding'e verilen pasaj, LLM'e gerçekten gönderilen kırpılmış pasajla aynıdır. Bir makaleden birden fazla ilgili chunk kullanılabilir. Bu yol düşük gecikmeli, odaklı cevaplar içindir.
+
+## Kullanıcı Geri Bildirimi
+
+Arama ekranındaki yardımcı oldu/olmadı düğmeleri geri bildirimi yalnız kullanıcının kendi RAG `searchQueryId` kaydına bağlar. Kayıt; trace, prompt sürümü, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; karşılaştırma için yalnız SHA-256 fingerprint tutulur. Böylece kalite regresyonları yapılandırma sürümleriyle ilişkilendirilebilirken gereksiz hassas metin kopyası oluşmaz.
 
 ### Geniş Soru
 

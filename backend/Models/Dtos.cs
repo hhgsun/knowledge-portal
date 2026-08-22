@@ -46,6 +46,7 @@ public record CommentRequest(string Comment);
 
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
+public record RagFeedbackRequest(string SearchQueryId, bool Helpful, string? Reason = null);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.
@@ -120,7 +121,9 @@ public record UpdateFeaturedLinkRequest(string Id, string? Label = null, string?
 public record FeaturedLinkDto(string Id, string Label, string LinkType, string Target, string? Icon, string? Color, int SortOrder, bool IsActive);
 
 // Attachments
-public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl, string CreatedAt);
+public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl,
+    string ExtractionStatus, bool ExtractionTruncated, int ExtractedCharacters,
+    int ExtractionCharacterLimit, string CreatedAt);
 public record AttachmentListResponse(AttachmentResponse[] Attachments, int Total);
 
 // Search diagnostics (admin ops screen). Read-only health report for the FTS and vector indexes.

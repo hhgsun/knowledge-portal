@@ -244,6 +244,7 @@ export interface RagResponse {
   insufficientContext?: boolean;
   partialResult?: boolean;
   warnings?: string[];
+  searchQueryId?: string;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────
@@ -408,6 +409,10 @@ export interface ArticleAttachment {
   contentType: string;
   sizeBytes: number;
   downloadUrl: string;
+  extractionStatus: "pending" | "completed" | "no_text" | "failed";
+  extractionTruncated: boolean;
+  extractedCharacters: number;
+  extractionCharacterLimit: number;
   createdAt: string;
 }
 

@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace KnowledgePortal.Api.Controllers;
 
@@ -161,7 +163,8 @@ public class SearchController(
             {
                 var ragResult = await ragService.AskAsync(searchQuery, filter, HttpContext.RequestAborted);
                 sw.Stop();
-                var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds);
+                var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds,
+                    ragResult);
                 return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),
                     claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
                     ragResult.GroundingStatus, ragResult.ClaimSupportCoverage, ragResult.InsufficientContext,
@@ -308,6 +311,30 @@ public class SearchController(
         return Ok(new { message = "Click recorded" });
     }
 
+    [HttpPost("rag-feedback")]
+    public async Task<IActionResult> RecordRagFeedback([FromBody] RagFeedbackRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.SearchQueryId))
+            return BadRequest(new { error = "searchQueryId is required" });
+
+        var record = await db.SearchQueries.FindAsync(req.SearchQueryId);
+        if (record == null || record.SearchType != "rag")
+            return NotFound(new { error = "RAG search query not found" });
+        if (record.UserId != User.GetUserId())
+            return StatusCode(403, new { error = "Cannot update another user's search query" });
+
+        var reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim().ToLowerInvariant();
+        string[] allowedReasons = ["incorrect", "incomplete", "wrong_source", "outdated", "no_answer", "other"];
+        if (reason != null && !allowedReasons.Contains(reason))
+            return BadRequest(new { error = "Invalid feedback reason" });
+
+        record.RagFeedback = req.Helpful ? "helpful" : "not_helpful";
+        record.RagFeedbackReason = reason;
+        record.RagFeedbackAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(new { message = "Feedback recorded" });
+    }
+
     [HttpPost("reindex")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]
@@ -434,7 +461,8 @@ public class SearchController(
         return Ok(authors);
     }
 
-    private async Task<SearchQuery> RecordSearchAsync(string query, int resultsCount, string searchType, long elapsedMs)
+    private async Task<SearchQuery> RecordSearchAsync(string query, int resultsCount, string searchType, long elapsedMs,
+        RagService.RagResult? ragResult = null)
     {
         var record = new SearchQuery
         {
@@ -442,7 +470,13 @@ public class SearchController(
             UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
             ResultsCount = resultsCount,
             SearchType = searchType,
-            ResponseTimeMs = (int)elapsedMs
+            ResponseTimeMs = (int)elapsedMs,
+            RagTraceId = ragResult == null ? null : Activity.Current?.TraceId.ToString(),
+            RagPromptVersion = ragResult == null ? null : RagService.PromptVersion,
+            RagIndexProfile = ragResult == null ? null : EmbeddingService.ComputeIndexProfile(config),
+            RagGroundingStatus = ragResult?.GroundingStatus,
+            RagAnswerHash = ragResult == null ? null : Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(ragResult.Answer))).ToLowerInvariant()
         };
         db.SearchQueries.Add(record);
         await db.SaveChangesAsync();

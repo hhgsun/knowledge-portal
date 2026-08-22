@@ -270,6 +270,14 @@ erDiagram
 | ClickedArticleId | `string?` | `clicked_article_id` | FK → articles.id | `null` |
 | SearchType | `string` | `search_type` | Required | `"fulltext"` |
 | ResponseTimeMs | `int?` | `response_time_ms` | — | `null` |
+| RagTraceId | `string?` | `rag_trace_id` | Max 64; RAG only | `null` |
+| RagPromptVersion | `string?` | `rag_prompt_version` | Max 100; RAG only | `null` |
+| RagIndexProfile | `string?` | `rag_index_profile` | Max 64; RAG only | `null` |
+| RagGroundingStatus | `string?` | `rag_grounding_status` | Max 40; RAG only | `null` |
+| RagAnswerHash | `string?` | `rag_answer_hash` | SHA-256; avoids duplicating generated text | `null` |
+| RagFeedback | `string?` | `rag_feedback` | `helpful` or `not_helpful` | `null` |
+| RagFeedbackReason | `string?` | `rag_feedback_reason` | Bounded reason code | `null` |
+| RagFeedbackAt | `DateTime?` | `rag_feedback_at` | — | `null` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
 ### ArticleAttachment
@@ -288,6 +296,9 @@ erDiagram
 | ExtractedAt | `DateTime?` | `extracted_at` | — | `null` |
 | ExtractedText | `string?` | `extracted_text` | Cached bounded plain text | `null` |
 | ExtractedSegmentsJson | `string?` | `extracted_segments_json` | Provenance segments | `null` |
+| ExtractionTruncated | `bool` | `extraction_truncated` | True when text exceeded the configured extraction cap | `false` |
+| ExtractedCharacters | `int` | `extracted_characters` | Persisted extracted character count | `0` |
+| ExtractionCharacterLimit | `int` | `extraction_character_limit` | Limit used for this extraction | `50000` |
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 

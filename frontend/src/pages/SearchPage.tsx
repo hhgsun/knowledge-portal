@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, ThumbsDown, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
@@ -52,6 +52,8 @@ export default function SearchPage() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexCoverage, setIndexCoverage] = useState<SearchIndexCoverage | null>(null);
+  const [ragFeedback, setRagFeedback] = useState<"helpful" | "not_helpful" | null>(null);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const searchInFlightRef = useRef(false);
 
   const copyRagAnswer = async () => {
@@ -62,6 +64,25 @@ export default function SearchPage() {
       toast.success("AI yanıtı kopyalandı");
     } catch {
       toast.error("Yanıt kopyalanamadı");
+    }
+  };
+
+  const submitRagFeedback = async (helpful: boolean) => {
+    if (!searchQueryId || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      const response = await fetchWithAuth("/api/search/rag-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ searchQueryId, helpful }),
+      });
+      if (!response.ok) throw new Error("feedback failed");
+      setRagFeedback(helpful ? "helpful" : "not_helpful");
+      toast.success("Geri bildiriminiz kaydedildi");
+    } catch {
+      toast.error("Geri bildirim kaydedilemedi");
+    } finally {
+      setFeedbackSubmitting(false);
     }
   };
   const [warning, setWarning] = useState<string | null>(null);
@@ -187,6 +208,7 @@ export default function SearchPage() {
     setResults([]);
     setActiveTags([]);
     setSearchQueryId(null);
+    setRagFeedback(null);
     setIndexCoverage(null);
     setWarning(null);
 
@@ -444,6 +466,19 @@ export default function SearchPage() {
                     {ragResponse.answer}
                   </ReactMarkdown>
                 </div>
+                {searchQueryId && (
+                  <div className="mt-4 flex items-center gap-2 border-t border-blue-200 pt-3 text-xs text-blue-700 dark:border-blue-800 dark:text-blue-300">
+                    <span>Bu yanıt yardımcı oldu mu?</span>
+                    <button type="button" disabled={feedbackSubmitting} onClick={() => submitRagFeedback(true)}
+                      aria-pressed={ragFeedback === "helpful"}
+                      className={cn("rounded-md p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900", ragFeedback === "helpful" && "bg-blue-200 dark:bg-blue-800")}
+                      aria-label="Yanıt yardımcı oldu"><ThumbsUp size={14} /></button>
+                    <button type="button" disabled={feedbackSubmitting} onClick={() => submitRagFeedback(false)}
+                      aria-pressed={ragFeedback === "not_helpful"}
+                      className={cn("rounded-md p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900", ragFeedback === "not_helpful" && "bg-blue-200 dark:bg-blue-800")}
+                      aria-label="Yanıt yardımcı olmadı"><ThumbsDown size={14} /></button>
+                  </div>
+                )}
               </div>
 
               {ragResponse.groundingStatus && (

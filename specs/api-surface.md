@@ -344,7 +344,7 @@ Removes the recorded approval without unpublishing the article.
 ```json
 {
   "attachments": [
-    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "createdAt": "2026-01-01T00:00:00Z" }
+    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "no_text", "extractionTruncated": false, "extractedCharacters": 0, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
   ],
   "total": 1
 }
@@ -357,7 +357,7 @@ Removes the recorded approval without unpublishing the article.
 
 **201 Response**:
 ```json
-{ "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "createdAt": "2026-01-01T00:00:00Z" }
+{ "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "pending", "extractionTruncated": false, "extractedCharacters": 0, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
 ```
 **400**: Empty file, invalid extension, MIME mismatch, max attachments reached.
 **403**: No edit permission.
@@ -738,7 +738,11 @@ Repairs only published articles whose full-text or semantic index marker is miss
 ### `GET /api/search/storage-status`
 **Auth**: Bearer (session only) · **Permission**: `users:manage`
 
-Returns local `data/uploads` bytes/free space, extraction backlog/failures, and a bounded checksum/missing-file sample.
+Returns local `data/uploads` bytes/free space, extraction backlog/failures/truncation count, and a bounded checksum/missing-file sample. `truncatedExtraction` identifies attachments whose searchable text reached `FileStorage:MaxExtractedCharacters`.
+
+### `POST /api/search/rag-feedback`
+
+Records feedback for an authenticated user's own RAG search. Body: `{ "searchQueryId": "...", "helpful": false, "reason": "incomplete" }`. Optional negative reason codes are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, and `other`. The search record retains trace, prompt, semantic-index profile, grounding status, and a SHA-256 answer fingerprint; it does not duplicate the generated answer text.
 
 ---
 

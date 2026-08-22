@@ -113,7 +113,10 @@ public static class AttachmentHelper
 
     public static AttachmentExtractionResult GetOrExtract(IConfiguration config, ArticleAttachment attachment)
     {
-        if (attachment.ExtractedAt != null && attachment.ExtractionStatus is "completed" or "no_text")
+        var extractionLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
+            AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000);
+        if (attachment.ExtractedAt != null && (attachment.ExtractionStatus is "completed" or "no_text")
+            && attachment.ExtractionCharacterLimit == extractionLimit)
         {
             try
             {
@@ -121,7 +124,8 @@ public static class AttachmentHelper
                     ? []
                     : JsonSerializer.Deserialize<List<AttachmentTextSegment>>(attachment.ExtractedSegmentsJson) ?? [];
                 return new(attachment.ExtractionStatus, attachment.ExtractedText ?? "", segments,
-                    attachment.ExtractionError);
+                    attachment.ExtractionError, attachment.ExtractionTruncated,
+                    attachment.ExtractedCharacters, attachment.ExtractionCharacterLimit);
             }
             catch (JsonException)
             {
@@ -130,11 +134,14 @@ public static class AttachmentHelper
         }
 
         var path = GetFilePath(config, attachment.ArticleId, attachment.StoredFileName);
-        var result = AttachmentTextExtractor.Extract(path, Path.GetExtension(attachment.FileName));
+        var result = AttachmentTextExtractor.Extract(path, Path.GetExtension(attachment.FileName), extractionLimit);
         attachment.ExtractionStatus = result.Status;
         attachment.ExtractionError = result.Error;
         attachment.ExtractedText = result.Text;
         attachment.ExtractedSegmentsJson = JsonSerializer.Serialize(result.Segments);
+        attachment.ExtractionTruncated = result.Truncated;
+        attachment.ExtractedCharacters = result.ExtractedCharacters;
+        attachment.ExtractionCharacterLimit = result.CharacterLimit;
         attachment.ExtractedAt = DateTime.UtcNow;
         return result;
     }
@@ -145,7 +152,8 @@ public static class AttachmentHelper
         var attachments = await db.ArticleAttachments
             .Where(a => articleIds.Contains(a.ArticleId))
             .OrderBy(a => a.CreatedAt)
-            .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes, a.CreatedAt })
+            .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes, a.CreatedAt,
+                a.ExtractionStatus, a.ExtractionTruncated, a.ExtractedCharacters, a.ExtractionCharacterLimit })
             .ToListAsync();
 
         return attachments.GroupBy(a => a.ArticleId).ToDictionary(
@@ -157,6 +165,10 @@ public static class AttachmentHelper
                 a.ContentType,
                 a.SizeBytes,
                 DownloadUrl = GetDownloadUrl(a.Id),
+                a.ExtractionStatus,
+                a.ExtractionTruncated,
+                a.ExtractedCharacters,
+                a.ExtractionCharacterLimit,
                 CreatedAt = a.CreatedAt.ToString("o")
             }).ToList());
     }

@@ -72,6 +72,35 @@ public class AttachmentTextExtractorTests : IDisposable
         Assert.Equal("failed", result.Status);
     }
 
+    [Fact]
+    public void Extract_LongText_TruncatesAtConfiguredLimitAndReportsIt()
+    {
+        var path = TempPath(".txt");
+        File.WriteAllText(path, new string('a', 1_500));
+
+        var result = AttachmentTextExtractor.Extract(path, ".txt", 1_000);
+
+        Assert.Equal("completed", result.Status);
+        Assert.True(result.Truncated);
+        Assert.Equal(1_000, result.Text.Length);
+        Assert.Equal(1_000, result.ExtractedCharacters);
+        Assert.Equal(1_000, result.CharacterLimit);
+    }
+
+    [Fact]
+    public void Extract_ShortText_ReportsCompleteWithoutTruncation()
+    {
+        var path = TempPath(".md");
+        File.WriteAllText(path, "# Başlık\n\nKısa içerik");
+
+        var result = AttachmentTextExtractor.Extract(path, ".md", 1_000);
+
+        Assert.Equal("completed", result.Status);
+        Assert.False(result.Truncated);
+        Assert.Equal(result.Text.Length, result.ExtractedCharacters);
+        Assert.Equal(1_000, result.CharacterLimit);
+    }
+
     private static void CreateXlsx(string path, string sharedString, string directString)
     {
         using var doc = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook);

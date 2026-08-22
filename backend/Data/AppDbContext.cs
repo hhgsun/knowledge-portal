@@ -174,6 +174,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.ExtractionError).HasMaxLength(2000);
             e.Property(a => a.ExtractedText).HasColumnType("text");
             e.Property(a => a.ExtractedSegmentsJson).HasColumnType("text");
+            e.Property(a => a.ExtractionTruncated).HasDefaultValue(false);
+            e.Property(a => a.ExtractedCharacters).HasDefaultValue(0);
+            e.Property(a => a.ExtractionCharacterLimit).HasDefaultValue(50_000);
             e.Property(a => a.UploadedById).IsRequired();
             e.Property(a => a.CreatedAt).IsRequired();
             e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);
@@ -216,6 +219,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.Query).IsRequired();
             e.Property(s => s.ResultsCount).HasDefaultValue(0);
             e.Property(s => s.SearchType).IsRequired().HasDefaultValue("fulltext");
+            e.Property(s => s.RagTraceId).HasMaxLength(64);
+            e.Property(s => s.RagPromptVersion).HasMaxLength(100);
+            e.Property(s => s.RagIndexProfile).HasMaxLength(64);
+            e.Property(s => s.RagGroundingStatus).HasMaxLength(40);
+            e.Property(s => s.RagAnswerHash).HasMaxLength(64);
+            e.Property(s => s.RagFeedback).HasMaxLength(20);
+            e.Property(s => s.RagFeedbackReason).HasMaxLength(40);
             e.Property(s => s.CreatedAt).IsRequired();
             e.HasOne(s => s.User).WithMany().HasForeignKey(s => s.UserId);
             e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId).OnDelete(DeleteBehavior.SetNull);

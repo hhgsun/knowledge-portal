@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace KnowledgePortal.Api.Services;
 
 public record AttachmentStorageHealthDto(long Files, long Bytes, long SampleMissingFiles,
-    long PendingExtraction, long FailedExtraction, int ChecksumsVerified, int ChecksumMismatches,
-    long FreeBytes, string RootPath);
+    long PendingExtraction, long FailedExtraction, long TruncatedExtraction,
+    int ChecksumsVerified, int ChecksumMismatches, long FreeBytes, string RootPath);
 
 /// <summary>Bounded, read-only integrity probe for the local data/uploads store.</summary>
 public class AttachmentStorageService(AppDbContext db, IConfiguration config)
@@ -21,7 +21,8 @@ public class AttachmentStorageService(AppDbContext db, IConfiguration config)
             Files = g.LongCount(),
             Bytes = g.Sum(x => x.SizeBytes),
             Pending = g.LongCount(x => x.ExtractionStatus == "pending"),
-            Failed = g.LongCount(x => x.ExtractionStatus == "failed")
+            Failed = g.LongCount(x => x.ExtractionStatus == "failed"),
+            Truncated = g.LongCount(x => x.ExtractionTruncated)
         }).SingleOrDefaultAsync(ct);
 
         var sampleSize = Math.Clamp(config.GetValue("FileStorage:IntegritySampleSize", 100), 0, 1000);
@@ -43,6 +44,7 @@ public class AttachmentStorageService(AppDbContext db, IConfiguration config)
 
         var drive = new DriveInfo(Path.GetPathRoot(root)!);
         return new AttachmentStorageHealthDto(stats?.Files ?? 0, stats?.Bytes ?? 0, missing,
-            stats?.Pending ?? 0, stats?.Failed ?? 0, verified, mismatches, drive.AvailableFreeSpace, root);
+            stats?.Pending ?? 0, stats?.Failed ?? 0, stats?.Truncated ?? 0,
+            verified, mismatches, drive.AvailableFreeSpace, root);
     }
 }

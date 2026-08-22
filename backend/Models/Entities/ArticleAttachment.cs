@@ -13,6 +13,9 @@ public class ArticleAttachment
     public string? ExtractionError { get; set; }
     public string? ExtractedText { get; set; }
     public string? ExtractedSegmentsJson { get; set; }
+    public bool ExtractionTruncated { get; set; }
+    public int ExtractedCharacters { get; set; }
+    public int ExtractionCharacterLimit { get; set; } = 50_000;
     public DateTime? ExtractedAt { get; set; }
     public string UploadedById { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

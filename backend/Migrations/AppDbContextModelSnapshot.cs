@@ -183,11 +183,21 @@ namespace KnowledgePortal.Api.Migrations
                     b.Property<DateTime?>("ExtractedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int>("ExtractedCharacters")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("ExtractedSegmentsJson")
                         .HasColumnType("text");
 
                     b.Property<string>("ExtractedText")
                         .HasColumnType("text");
+
+                    b.Property<int>("ExtractionCharacterLimit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(50000);
 
                     b.Property<string>("ExtractionError")
                         .HasMaxLength(2000)
@@ -197,6 +207,11 @@ namespace KnowledgePortal.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("ExtractionTruncated")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -705,6 +720,37 @@ namespace KnowledgePortal.Api.Migrations
                     b.Property<string>("Query")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("RagAnswerHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RagFeedback")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("RagFeedbackAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("RagFeedbackReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("RagGroundingStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("RagIndexProfile")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RagPromptVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RagTraceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<int?>("ResponseTimeMs")
                         .HasColumnType("integer");

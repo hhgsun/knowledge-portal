@@ -80,6 +80,7 @@ public class RagServiceTests
             scopeFactory,
             new ConfigurationBuilder().Build(),
             new RagResilienceService(new ConfigurationBuilder().Build(), metrics, NullLogger<RagResilienceService>.Instance),
+            new RagContextBuilder(),
             metrics,
             NullLogger<RagService>.Instance);
 

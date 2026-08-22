@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -148,6 +149,35 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         var metrics = await _client.GetStringAsync("/metrics");
         Assert.Contains("kp_rag_requests_total", metrics);
         Assert.Contains("kp_rag_duration_ms_milliseconds_bucket", metrics);
+    }
+
+    [Fact]
+    public async Task RagFeedback_IsBoundToOwnedRagQueryAndStoresReproducibilityMetadata()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await CreatePublishedArticleAsync("Rag Feedback Kaynağı " + Guid.NewGuid().ToString("N"));
+        var search = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/search?q=rag%20feedback%20kaynağı&type=rag");
+        var searchQueryId = search.GetProperty("searchQueryId").GetString()!;
+
+        var response = await _client.PostAsJsonAsync("/api/search/rag-feedback", new
+        {
+            searchQueryId,
+            helpful = false,
+            reason = "incomplete"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var record = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .SearchQueries.FindAsync(searchQueryId);
+        Assert.NotNull(record);
+        Assert.Equal("not_helpful", record.RagFeedback);
+        Assert.Equal("incomplete", record.RagFeedbackReason);
+        Assert.NotNull(record.RagFeedbackAt);
+        Assert.Equal(RagService.PromptVersion, record.RagPromptVersion);
+        Assert.NotNull(record.RagIndexProfile);
+        Assert.Equal(64, record.RagAnswerHash?.Length);
     }
 
     [Fact]

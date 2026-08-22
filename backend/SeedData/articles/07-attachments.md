@@ -27,6 +27,7 @@ Aşağıdaki uzantılara sahip dosyalar yüklenebilir:
 
 - **Maksimum dosya boyutu:** 20 MB
 - **Makale başına maksimum dosya:** 20 adet
+- **Çıkarılan metin sınırı:** Varsayılan 50.000 karakter; `FileStorage:MaxExtractedCharacters` ile 1.000–5.000.000 arasında yapılandırılır.
 - Uzantı whitelist dışındaki dosyalar reddedilir.
 
 ## Frontend'de Dosya Ekleme
@@ -73,10 +74,11 @@ DELETE /api/articles/{articleId}/attachments/{attachmentId}
 Metin içerikli dosyalar otomatik olarak arama indeksine dahil edilir:
 
 - **İndekslenen formatlar:** .pdf, .docx, .txt, .md, .csv, .json, .yaml
-- **Maksimum metin:** Her ek için en fazla 50.000 karakter çıkarılır.
-- Desteklenmeyen veya bozuk dosyalar sessizce atlanır.
+- **Maksimum metin:** Her ek için yapılandırılmış sınır kadar karakter çıkarılır. Kullanılan sınır, çıkarılan karakter sayısı ve truncation bilgisi ek metadata'sında saklanır.
+- Yapılandırılmış sınır değiştiğinde önbellekteki çıkarım bir sonraki indeks geçişinde dosyadan yeniden üretilir.
+- Desteklenmeyen metinsiz formatlar `no_text`, bozuk dosyalar `failed` durumuyla kaydedilir; sınırı aşanlar `/api/search/storage-status` içinde ayrıca sayılır.
 - Yayınlanmış makalelere ek ekleme/silme, PostgreSQL fulltext ve pgvector embedding indekslerinin yeniden oluşturulmasını tetikler.
 
 ## Depolama
 
-Dosyalar disk üzerinde data/uploads/{articleId}/ dizininde saklanır. Makale silindiğinde tüm fiziksel dosyalar ve veritabanı kayıtları cascade ile temizlenir.
+Dosyalar disk üzerinde data/uploads/{articleId}/ dizininde saklanır. Makale silindiğinde veritabanı kayıtları cascade ile temizlenir; fiziksel makale dizini kurtarılabilir `data/uploads/.trash` alanına taşınır.
