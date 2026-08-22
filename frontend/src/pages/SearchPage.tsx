@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, ThumbsDown, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, ThumbsDown, Key, Clock, X, Trash2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
@@ -504,46 +504,51 @@ export default function SearchPage() {
 
               {ragResponse.sources.length > 0 && (
                 <section aria-labelledby="rag-sources-heading">
-                  <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Kaynaklar ({ragResponse.sources.length})
-                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {ragResponse.sources.map((source: RagSource) => {
-                      const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
+                  <details className="group rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:text-zinc-300 dark:hover:bg-zinc-900 [&::-webkit-details-marker]:hidden">
+                      <FileText size={15} className="shrink-0 text-blue-500" aria-hidden="true" />
+                      <span id="rag-sources-heading" className="font-medium">Kaynaklar ({ragResponse.sources.length})</span>
+                      <span className="font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
+                      <ChevronDown size={16} className="ml-auto shrink-0 text-zinc-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+                    </summary>
+                    <div className="space-y-3 border-t border-zinc-200 p-3 dark:border-zinc-800">
+                      {ragResponse.sources.map((source: RagSource) => {
+                        const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
 
-                      return (
-                        <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-                          <a
-                            href={`/articles/${source.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-4 py-3 text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
-                            aria-label={`${source.title} kaynağını yeni sekmede aç`}
-                          >
-                            <FileText size={14} className="shrink-0 text-blue-500" />
-                            <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
-                            <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
-                            <ExternalLink size={12} className="shrink-0 text-zinc-400" aria-hidden="true" />
-                          </a>
-                          {sourceEvidence.length > 0 && (
-                            <div className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-                              {sourceEvidence.map(evidence => (
-                                <div key={evidence.sourceId} className="border-l-2 border-blue-400 pl-3 text-xs">
-                                  <div className="font-medium text-zinc-700 dark:text-zinc-300">
-                                    <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
-                                    {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
-                                    {evidence.pageNumber ? ` · sayfa ${evidence.pageNumber}` : ""}
+                        return (
+                          <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                            <a
+                              href={`/articles/${source.slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-4 py-3 text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
+                              aria-label={`${source.title} kaynağını yeni sekmede aç`}
+                            >
+                              <FileText size={14} className="shrink-0 text-blue-500" />
+                              <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
+                              <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
+                              <span className="hidden text-xs text-zinc-500 sm:inline">Yeni sekmede aç</span>
+                              <ExternalLink size={12} className="shrink-0 text-zinc-400" aria-hidden="true" />
+                            </a>
+                            {sourceEvidence.length > 0 && (
+                              <div className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                                {sourceEvidence.map(evidence => (
+                                  <div key={evidence.sourceId} className="border-l-2 border-blue-400 pl-3 text-xs">
+                                    <div className="font-medium text-zinc-700 dark:text-zinc-300">
+                                      <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
+                                      {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
+                                      {evidence.pageNumber ? ` · sayfa ${evidence.pageNumber}` : ""}
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
                                   </div>
-                                  <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </details>
                 </section>
               )}
             </div>
