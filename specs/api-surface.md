@@ -640,7 +640,9 @@ Ordered by version number descending.
 The chat request supplies an explicit JSON schema requiring `answer`, `claims` and
 `insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
 `answer` only from claims that pass known-evidence, lexical-overlap, numeric-consistency and
-negation-consistency checks. A complete contract-compliant JSON object may be recovered from a
+negation-consistency checks. Support is evaluated independently against local sentence and
+contrast-separated clause windows in each cited evidence item; cited chunks are not concatenated,
+so unrelated positive or negative statements cannot change a claim's polarity result. A complete contract-compliant JSON object may be recovered from a
 model-added code fence or text wrapper; that wrapper is ignored and never shown. If a provider
 ignores structured-output mode but returns prose with exact `[S1]`-style citations, the server
 deterministically converts only those cited passages into claims and runs the same validation; uncited

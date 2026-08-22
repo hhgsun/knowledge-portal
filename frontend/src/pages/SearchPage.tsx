@@ -447,12 +447,13 @@ export default function SearchPage() {
               </div>
 
               {ragResponse.groundingStatus && (
-                <div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                  ragResponse.groundingStatus === "citations_verified" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300" :
+                <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-xs",
+                  ragResponse.groundingStatus === "lexically_grounded" || ragResponse.groundingStatus === "citations_verified" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300" :
                   ragResponse.groundingStatus === "insufficient_context" ? "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300" :
                   "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300") }>
                   <ShieldCheck size={14}/><span>Grounding: {ragResponse.groundingStatus.replaceAll("_", " ")}</span>
-                  <span className="ml-auto">Citation coverage: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
+                  <span className="ml-auto">Citation IDs: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
+                  <span>Claim support: {((ragResponse.claimSupportCoverage ?? 0) * 100).toFixed(0)}%</span>
                 </div>
               )}
 

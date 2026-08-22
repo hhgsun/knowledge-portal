@@ -51,15 +51,22 @@ public static partial class RagCitationValidator
             if (ids.Count > 0) valid++;
             if (ids.Count == 0) continue;
 
-            var passage = string.Join(' ', ids.Select(id => evidenceById[id].Passage));
-            if (!IsLexicallySupported(claim.Text, passage))
+            // Validate against local sentence/clause windows from each cited item independently.
+            // Joining whole chunks lets an unrelated negative sentence in one source flip the
+            // polarity of an otherwise supported positive claim (and vice versa).
+            var supportingIds = ids
+                .Where(id => IsSupportedByEvidence(claim.Text, evidenceById[id].Passage))
+                .ToList();
+            if (supportingIds.Count == 0)
             {
                 warnings.Add($"Unsupported claim was removed: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
                 continue;
             }
+            if (supportingIds.Count != ids.Count)
+                warnings.Add($"Non-supporting evidence IDs were removed from claim: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
 
             supported++;
-            claims.Add(new RagClaim(claim.Text.Trim(), ids));
+            claims.Add(new RagClaim(claim.Text.Trim(), supportingIds));
         }
 
         var claimCount = (parsed.Claims ?? []).Count(x => !string.IsNullOrWhiteSpace(x.Text));
@@ -83,13 +90,13 @@ public static partial class RagCitationValidator
     }
 
     public static ValidatedRagAnswer? TryBuildExtractiveFallback(string question,
-        IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4)
+        IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4, string? reason = null)
     {
         var queryTokens = SignificantTokens(question);
         if (queryTokens.Count == 0) return null;
 
         var candidates = evidence.SelectMany(item =>
-                Regex.Split(item.Passage, @"(?<=[.!?])\s+|\r?\n+")
+                EvidenceSentences(item.Passage)
                     .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
                     .Where(sentence => sentence.Length is >= 20 and <= 500)
                     .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
@@ -117,7 +124,7 @@ public static partial class RagCitationValidator
         var answer = string.Join("\n", candidates.Select(claim =>
             $"{claim.Text} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}"));
         return new ValidatedRagAnswer(answer, candidates, false, 1, 1, "extractive_fallback",
-            ["Structured model output failed; returning query-relevant passages extracted from verified evidence."]);
+            [$"{reason ?? "Structured model output failed"}; returning query-relevant passages extracted from verified evidence."]);
     }
 
     private static ModelOutput? TryParse(string raw)
@@ -208,21 +215,43 @@ public static partial class RagCitationValidator
         return claims.Count == 0 ? null : new ModelOutput(visible, claims, false, true);
     }
 
-    private static bool IsLexicallySupported(string claim, string passage)
+    private static bool IsSupportedByEvidence(string claim, string passage) =>
+        SupportWindows(passage).Any(window => IsLexicallySupported(claim, window));
+
+    private static IEnumerable<string> SupportWindows(string passage)
+    {
+        foreach (var sentence in EvidenceSentences(passage))
+        {
+            // Keep the full sentence for claims whose support spans adjacent clauses, then add
+            // contrast-separated clauses so an unrelated "ancak ... desteklenmez" predicate does
+            // not contaminate the polarity check for the matching clause.
+            yield return sentence;
+            foreach (var clause in ClauseBoundaryRegex().Split(sentence)
+                         .Select(x => x.Trim()).Where(x => x.Length >= 3 && x != sentence))
+                yield return clause;
+        }
+    }
+
+    private static IEnumerable<string> EvidenceSentences(string passage) =>
+        SentenceBoundaryRegex().Split(passage)
+            .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
+            .Where(sentence => !string.IsNullOrWhiteSpace(sentence));
+
+    private static bool IsLexicallySupported(string claim, string supportWindow)
     {
         var claimTokens = SignificantTokens(claim);
         if (claimTokens.Count == 0) return false;
-        var passageTokens = SignificantTokens(passage);
+        var passageTokens = SignificantTokens(supportWindow);
         if (claimTokens.Count(passageTokens.Contains) / (double)claimTokens.Count < MinimumLexicalSupport)
             return false;
 
         var claimNumbers = NumberRegex().Matches(claim).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
-        var passageNumbers = NumberRegex().Matches(passage).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        var passageNumbers = NumberRegex().Matches(supportWindow).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
         if (!claimNumbers.IsSubsetOf(passageNumbers)) return false;
 
         // A lexical overlap score alone treats "must" and "must not" as equivalent. Reject the
-        // claim when explicit English/Turkish negation polarity differs from its cited passage.
-        return HasNegation(claim) == HasNegation(passage);
+        // claim when explicit English/Turkish negation polarity differs from its local support.
+        return HasNegation(claim) == HasNegation(supportWindow);
     }
 
     private static bool HasNegation(string text) => NegationRegex().IsMatch(SlugHelper.Transliterate(text).ToLowerInvariant());
@@ -252,4 +281,8 @@ public static partial class RagCitationValidator
     private static partial Regex ThinkBlockRegex();
     [GeneratedRegex(@"^(?:#{1,6}\s+|[-*+>]\s+|\d+[.)]\s+)")]
     private static partial Regex MarkdownPrefixRegex();
+    [GeneratedRegex(@"(?<=[.!?])\s+|\r?\n+")]
+    private static partial Regex SentenceBoundaryRegex();
+    [GeneratedRegex(@"\s*(?:;|\b(?:ama|ancak|fakat|lakin|but|however)\b)\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex ClauseBoundaryRegex();
 }

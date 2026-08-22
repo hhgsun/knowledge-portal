@@ -288,6 +288,29 @@ public class RagServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_UnsupportedModelClaims_ReturnsExtractiveEvidenceFallback()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "MCP Entegrasyonu",
+                    bodyText: "Knowledge Portal Model Context Protocol desteği sunar. MCP araçlarına REST API üzerinden erişilir."));
+                db.SaveChanges();
+            },
+            responseOverride: """{"answer":"MCP bütün araçları otomatik çalıştırır [S1].","claims":[{"text":"MCP bütün araçları otomatik çalıştırır.","sourceIds":["S1"]}],"insufficientContext":false}""");
+
+        var result = await h.Rag.AskAsync("MCP nedir ve nasıl entegre edilir?");
+
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.True(result.PartialResult);
+        Assert.DoesNotContain("otomatik çalıştırır", result.Answer);
+        Assert.Contains("MCP araçlarına REST API üzerinden erişilir", result.Answer);
+        Assert.Contains(result.Warnings, x => x.Contains("did not pass grounding", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AskAsync_BroadQuestion_RunsMapReduceOverAllSources()
     {
         // 8 candidate articles + a broad-intent keyword ("özetle") → map-reduce:

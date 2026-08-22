@@ -16,7 +16,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-08-22.structured-schema-extractive-v3";
+    public const string PromptVersion = "2026-08-22.sentence-grounding-extractive-v4";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
@@ -433,20 +433,32 @@ public class RagService(
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
         var validated = RagCitationValidator.Validate(raw, evidence);
-        if (validated.GroundingStatus == "rejected_unstructured")
+        if (validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported")
         {
+            var rejected = validated;
             var trimmed = raw.Trim();
-            logger.LogWarning(
-                "RAG model output rejected as unstructured length={OutputLength} hasJsonObject={HasJsonObject} hasCitation={HasCitation} startsWithFence={StartsWithFence} hasThinkBlock={HasThinkBlock}",
-                raw.Length, trimmed.Contains('{') && trimmed.Contains('}'),
-                System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\[S\d+\]"),
-                trimmed.StartsWith("```", StringComparison.Ordinal),
-                trimmed.Contains("<think", StringComparison.OrdinalIgnoreCase));
+            if (rejected.GroundingStatus == "rejected_unstructured")
+                logger.LogWarning(
+                    "RAG model output rejected as unstructured length={OutputLength} hasJsonObject={HasJsonObject} hasCitation={HasCitation} startsWithFence={StartsWithFence} hasThinkBlock={HasThinkBlock}",
+                    raw.Length, trimmed.Contains('{') && trimmed.Contains('}'),
+                    System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\[S\d+\]"),
+                    trimmed.StartsWith("```", StringComparison.Ordinal),
+                    trimmed.Contains("<think", StringComparison.OrdinalIgnoreCase));
+            else
+                logger.LogWarning(
+                    "RAG model claims rejected as unsupported claimSupportCoverage={ClaimSupportCoverage} citationCoverage={CitationCoverage}",
+                    rejected.ClaimSupportCoverage, rejected.CitationCoverage);
 
-            var fallback = RagCitationValidator.TryBuildExtractiveFallback(question, evidence);
+            var reason = rejected.GroundingStatus == "rejected_unstructured"
+                ? "Structured model output failed"
+                : "Model claims did not pass grounding validation";
+            var fallback = RagCitationValidator.TryBuildExtractiveFallback(question, evidence, reason: reason);
             if (fallback != null)
             {
-                validated = fallback;
+                validated = fallback with
+                {
+                    Warnings = rejected.Warnings.Concat(fallback.Warnings).Distinct().ToList()
+                };
                 partialResult = true;
             }
         }

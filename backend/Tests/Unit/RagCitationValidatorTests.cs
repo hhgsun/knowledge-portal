@@ -191,4 +191,55 @@ public class RagCitationValidatorTests
         Assert.Equal("rejected_unsupported", result.GroundingStatus);
         Assert.Empty(result.Claims);
     }
+
+    [Fact]
+    public void Validate_IgnoresUnrelatedNegationInAnotherSentence()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Knowledge Portal, Model Context Protocol (MCP) desteği sunar. " +
+                      "Ayrı HTTP taşıması gerektiren 2024-11-05 sürümü desteklenmez."
+        };
+        const string raw = """{"answer":"MCP (Model Context Protocol) Entegrasyonu [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Single(result.Claims);
+        Assert.Equal(1, result.ClaimSupportCoverage);
+    }
+
+    [Fact]
+    public void Validate_UsesMatchingClauseInsteadOfUnrelatedContrastingClause()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Knowledge Portal MCP desteği sunar; ancak eski taşıma biçimi desteklenmez."
+        };
+        const string raw = """{"answer":"Knowledge Portal MCP desteği sunar [S1].","claims":[{"text":"Knowledge Portal MCP desteği sunar.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Single(result.Claims);
+    }
+
+    [Fact]
+    public void Validate_AcceptsSupportFromOneCitationWithoutCombiningOtherPolarity()
+    {
+        var unrelated = Evidence with { Passage = "Eski MCP taşıması desteklenmez." };
+        var supporting = Evidence with
+        {
+            SourceId = "S2",
+            Passage = "Knowledge Portal Model Context Protocol desteği sunar."
+        };
+        const string raw = """{"answer":"Knowledge Portal Model Context Protocol desteği sunar [S1] [S2].","claims":[{"text":"Knowledge Portal Model Context Protocol desteği sunar.","sourceIds":["S1","S2"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [unrelated, supporting]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Equal(["S2"], result.Claims.Single().SourceIds);
+        Assert.Contains(result.Warnings, x => x.Contains("Non-supporting evidence IDs", StringComparison.Ordinal));
+    }
 }

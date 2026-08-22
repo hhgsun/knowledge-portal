@@ -96,17 +96,17 @@ Tekil map batch'leri veya reduce aşaması başarısız olursa başarılı parç
 
 ## 4. Yapılandırılmış Üretim ve Fail-Closed Doğrulama
 
-Chat modeli `qwen2.5vl:7b`, temperature 0 ve alanları zorunlu kılan açık bir JSON şemasıyla çalışır. Modelden serbest metin yerine claim listesi, her claim için evidence kimlikleri ve yetersiz bağlam işareti istenir. Model JSON nesnesinin çevresine kod bloğu, kısa açıklama veya düşünme etiketi eklerse yalnızca içindeki eksiksiz ve sözleşmeye uygun JSON nesnesi alınır; çevre metni yok sayılır ve kullanıcıya gösterilmez. Sağlayıcı structured-output seçeneğini yok sayıp `[S1]` biçiminde kesin atıflar içeren düz metin döndürürse yalnızca atıflı bölümler deterministik olarak claim'e çevrilir ve normal kanıt kontrollerinden geçirilir; atıfsız serbest metin hiçbir zaman kurtarılmaz veya gösterilmez. Yapılandırılmış üretim tümüyle başarısız olduğunda ise sorgu terimleriyle örtüşen cümleler doğrudan secret/talimat güvenlik filtresinden geçmiş doğrulanabilir kanıt pasajlarından seçilir ve bilinen evidence kimlikleriyle, değiştirilmeden `extractive_fallback`/partial result olarak döndürülür. Cümleler kanıttan birebir alındığı için lexical, sayı ve negation desteği yapısal olarak korunur. İlgili güvenli cümle yoksa sistem yine fail-closed reddeder.
+Chat modeli `qwen2.5vl:7b`, temperature 0 ve alanları zorunlu kılan açık bir JSON şemasıyla çalışır. Modelden serbest metin yerine claim listesi, her claim için evidence kimlikleri ve yetersiz bağlam işareti istenir. Model JSON nesnesinin çevresine kod bloğu, kısa açıklama veya düşünme etiketi eklerse yalnızca içindeki eksiksiz ve sözleşmeye uygun JSON nesnesi alınır; çevre metni yok sayılır ve kullanıcıya gösterilmez. Sağlayıcı structured-output seçeneğini yok sayıp `[S1]` biçiminde kesin atıflar içeren düz metin döndürürse yalnızca atıflı bölümler deterministik olarak claim'e çevrilir ve normal kanıt kontrollerinden geçirilir; atıfsız serbest metin hiçbir zaman kurtarılmaz veya gösterilmez. Yapılandırılmış üretim tümüyle başarısız olduğunda veya modelin bütün claim'leri grounding kontrolünde elendiğinde sorgu terimleriyle örtüşen cümleler doğrudan secret/talimat güvenlik filtresinden geçmiş doğrulanabilir kanıt pasajlarından seçilir ve bilinen evidence kimlikleriyle, değiştirilmeden `extractive_fallback`/partial result olarak döndürülür. Cümleler kanıttan birebir alındığı için lexical, sayı ve negation desteği yapısal olarak korunur. İlgili güvenli cümle yoksa sistem yine fail-closed reddeder.
 
 Her kaynak bloğu sabit bir `[S1]`, `[S2]` benzeri kimlik taşır. Model çıktısı kullanıcıya doğrudan verilmez; `RagCitationValidator` şu kontrolleri uygular:
 
 - Evidence kimliği gerçekten sağlanan kaynaklar arasında mı?
-- Claim, atıf verilen pasajla yeterli lexical desteğe sahip mi?
+- Claim, her atıflı kanıttaki yerel cümle veya contrast-separated clause pencerelerinden en az biriyle yeterli lexical desteğe sahip mi? Kanıt pasajları tek metinde birleştirilmez; ilgisiz bir cümledeki olumsuzluk başka bir claim'in polarity sonucunu değiştiremez.
 - Claim'deki sayılar kanıtla uyumlu mu?
 - Claim ile kanıt arasında olumlu/olumsuz anlam çelişkisi var mı?
 - Atıfsız veya doğrulanamayan claim var mı?
 
-Kullanıcıya görünen yanıt yalnız doğrulamayı geçen claim'lerden yeniden oluşturulur. Böylece düzgün görünen fakat dayanağı olmayan model metni cevap içine sızamaz. Yanıt; `sources`, provenance-bearing `evidence`, citation coverage, claim support coverage, grounding durumu, partial/refusal bilgisi ve uyarıları birlikte taşır.
+Kullanıcıya görünen yanıt yalnız doğrulamayı geçen claim'lerden yeniden oluşturulur. Böylece düzgün görünen fakat dayanağı olmayan model metni cevap içine sızamaz. Yanıt; `sources`, provenance-bearing `evidence`, citation ID coverage, claim support coverage, grounding durumu, partial/refusal bilgisi ve uyarıları birlikte taşır. Arayüz citation kimliği geçerliliğini ve gerçek claim desteğini ayrı oranlar olarak gösterir.
 
 ## 5. İçerik Güvenliği
 

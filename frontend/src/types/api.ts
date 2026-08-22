@@ -238,7 +238,9 @@ export interface RagResponse {
   evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number }[];
   citationCoverage?: number;
   claimSupportCoverage?: number;
-  groundingStatus?: "citations_verified" | "partially_verified" | "failed" | "unverified" | "insufficient_context";
+  groundingStatus?: "lexically_grounded" | "partially_grounded" | "rejected_unsupported" |
+    "rejected_unstructured" | "extractive_fallback" | "insufficient_context" |
+    "citations_verified" | "partially_verified" | "failed" | "unverified";
   insufficientContext?: boolean;
   partialResult?: boolean;
   warnings?: string[];
