@@ -110,7 +110,8 @@ public class RagServiceTests
     {
         var h = BuildRag(
             [new VectorSearchResult("a1", Score: 0.9, ChunkIndex: 0)],
-            db => { db.Articles.Add(Article("a1", "Vpn Kurulum Rehberi")); db.SaveChanges(); });
+            db => { db.Articles.Add(Article("a1", "Vpn Kurulum Rehberi",
+                bodyText: "Vpn Kurulum Rehberi, kurumsal VPN bağlantısının nasıl kurulacağını açıklar.")); db.SaveChanges(); });
 
         var result = await h.Rag.AskAsync("vpn kurulum");
 
@@ -262,7 +263,8 @@ public class RagServiceTests
     {
         var h = BuildRag(
             [new VectorSearchResult("a1", 0.9, 0)],
-            db => { db.Articles.Add(Article("a1", "Vpn Kurulum")); db.SaveChanges(); });
+            db => { db.Articles.Add(Article("a1", "Vpn Kurulum",
+                bodyText: "VPN bağlantısı profil indirilerek ve kullanıcı sertifikası seçilerek kurulur.")); db.SaveChanges(); });
 
         var result = await h.Rag.AskAsync("vpn nasıl kurulur");
 
@@ -301,6 +303,27 @@ public class RagServiceTests
         Assert.Contains("MCP", result.Answer);
         Assert.NotEmpty(result.Claims);
         Assert.Equal(1, result.CitationCoverage);
+    }
+
+    [Fact]
+    public async Task AskAsync_TitleOnlyModelClaim_ReturnsDefinitionFromVerifiedEvidence()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "MCP (Model Context Protocol) Entegrasyonu",
+                    bodyText: "MCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür."));
+                db.SaveChanges();
+            },
+            responseOverride: """{"answer":"MCP (Model Context Protocol) Entegrasyonu [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu","sourceIds":["S1"]}],"insufficientContext":false}""");
+
+        var result = await h.Rag.AskAsync("MCP nedir?");
+
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Contains("protokoldür", result.Answer);
+        Assert.DoesNotContain("Entegrasyonu [S1]", result.Answer);
     }
 
     [Fact]

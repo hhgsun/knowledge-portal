@@ -645,7 +645,7 @@ and `pageNumber` is present only when PDF page provenance is available.
 The chat request supplies an explicit JSON schema requiring `answer`, `claims` and
 `insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
 `answer` only from claims that pass known-evidence, lexical-overlap, numeric-consistency and
-negation-consistency checks. Support is evaluated independently against local sentence and
+negation-consistency checks; repeating a document title as a standalone claim is rejected. Support is evaluated independently against local sentence and
 contrast-separated clause windows in each cited evidence item; cited chunks are not concatenated,
 so unrelated positive or negative statements cannot change a claim's polarity result. A complete contract-compliant JSON object may be recovered from a
 model-added code fence or text wrapper; that wrapper is ignored and never shown. If a provider

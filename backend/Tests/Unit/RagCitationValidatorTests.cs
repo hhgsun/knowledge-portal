@@ -150,6 +150,40 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_RejectsArticleTitleAsStandaloneClaim()
+    {
+        var evidence = Evidence with
+        {
+            Title = "MCP (Model Context Protocol) Entegrasyonu",
+            Passage = "MCP (Model Context Protocol) Entegrasyonu\nMCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür."
+        };
+        const string raw = """{"answer":"MCP (Model Context Protocol) Entegrasyonu [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.Empty(result.Claims);
+        Assert.True(result.InsufficientContext);
+    }
+
+    [Fact]
+    public void TryBuildExtractiveFallback_SkipsArticleTitleAndReturnsDefinition()
+    {
+        var evidence = Evidence with
+        {
+            Title = "MCP (Model Context Protocol) Entegrasyonu",
+            Passage = "MCP (Model Context Protocol) Entegrasyonu\nMCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür."
+        };
+
+        var result = RagCitationValidator.TryBuildExtractiveFallback("MCP nedir?", [evidence]);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Claims);
+        Assert.Contains("protokoldür", result.Answer);
+        Assert.DoesNotContain("Entegrasyonu [S1]", result.Answer);
+    }
+
+    [Fact]
     public void TryBuildExtractiveFallback_DoesNotReturnUnrelatedEvidence()
     {
         var result = RagCitationValidator.TryBuildExtractiveFallback("MCP entegrasyonu", [Evidence]);

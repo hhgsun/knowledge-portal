@@ -116,6 +116,7 @@ Her kaynak bloğu sabit bir `[S1]`, `[S2]` benzeri kimlik taşır. Model çıkt�
 - Claim, her atıflı kanıttaki yerel cümle veya contrast-separated clause pencerelerinden en az biriyle yeterli lexical desteğe sahip mi? Kanıt pasajları tek metinde birleştirilmez; ilgisiz bir cümledeki olumsuzluk başka bir claim'in polarity sonucunu değiştiremez.
 - Claim'deki sayılar kanıtla uyumlu mu?
 - Claim ile kanıt arasında olumlu/olumsuz anlam çelişkisi var mı?
+- Claim yalnız makale başlığını tekrar ederek gerçek bir önerme sunmadan cevap görünümü mü veriyor?
 - Atıfsız veya doğrulanamayan claim var mı?
 
 Kullanıcıya görünen yanıt yalnız doğrulamayı geçen claim'lerden yeniden oluşturulur. Böylece düzgün görünen fakat dayanağı olmayan model metni cevap içine sızamaz. Yanıt; `sources`, provenance-bearing `evidence`, citation ID coverage, claim support coverage, grounding durumu, partial/refusal bilgisi ve uyarıları birlikte taşır. Evidence, prompt içi `sourceId` yanında stabil `chunkId`, yetki kontrollü `canonicalUrl` ve PDF provenance'ı varsa `pageNumber` döndürür; lexical sentetik passage kimliği içerik ve provenance'dan deterministik üretilir. Arayüz citation kimliği geçerliliğini ve gerçek claim desteğini ayrı oranlar olarak gösterir.

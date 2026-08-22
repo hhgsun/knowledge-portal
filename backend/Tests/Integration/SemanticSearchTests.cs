@@ -127,7 +127,8 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
     public async Task Rag_EndToEnd_ReturnsAnswerAndSources()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
-        await CreatePublishedArticleAsync("Vpn Kurulum Rehberi Klmx");
+        await CreatePublishedArticleAsync("Vpn Kurulum Rehberi Klmx",
+            "Vpn Kurulum Rehberi Klmx, kurumsal VPN profilinin nasıl kurulacağını açıklar.");
 
         var response = await _client.GetAsync("/api/search?q=vpn%20kurulum%20klmx&type=rag");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

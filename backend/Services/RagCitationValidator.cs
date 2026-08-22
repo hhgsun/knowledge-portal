@@ -56,7 +56,8 @@ public static partial class RagCitationValidator
             // Joining whole chunks lets an unrelated negative sentence in one source flip the
             // polarity of an otherwise supported positive claim (and vice versa).
             var supportingIds = ids
-                .Where(id => IsSupportedByEvidence(claim.Text, evidenceById[id].Passage))
+                .Where(id => !IsTitleOnlyClaim(claim.Text, evidenceById[id])
+                    && IsSupportedByEvidence(claim.Text, evidenceById[id].Passage))
                 .ToList();
             if (supportingIds.Count == 0)
             {
@@ -100,6 +101,7 @@ public static partial class RagCitationValidator
                 EvidenceSentences(item.Passage)
                     .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
                     .Where(sentence => sentence.Length is >= 20 and <= 500)
+                    .Where(sentence => !SameNormalizedText(sentence, item.Title))
                     .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
                     .Select(sentence => new
                     {
@@ -218,6 +220,18 @@ public static partial class RagCitationValidator
 
     private static bool IsSupportedByEvidence(string claim, string passage) =>
         SupportWindows(passage).Any(window => IsLexicallySupported(claim, window));
+
+    private static bool IsTitleOnlyClaim(string claim, RagEvidence evidence) =>
+        SameNormalizedText(claim, evidence.Title);
+
+    private static bool SameNormalizedText(string left, string right) =>
+        NormalizeComparableText(left) == NormalizeComparableText(right);
+
+    private static string NormalizeComparableText(string value) => string.Join(' ',
+        SlugHelper.Transliterate(CitationRegex().Replace(MarkdownPrefixRegex().Replace(value.Trim(), ""), " "))
+            .ToLowerInvariant()
+            .Split(new[] { ' ', '\t', '\r', '\n', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '"', '\'' },
+                StringSplitOptions.RemoveEmptyEntries));
 
     private static IEnumerable<string> SupportWindows(string passage)
     {

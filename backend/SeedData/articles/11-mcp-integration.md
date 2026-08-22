@@ -14,7 +14,7 @@
 
 ## Genel Bakış
 
-Knowledge Portal, Model Context Protocol (MCP) desteği sunar. Cursor, VS Code Copilot ve özel header gönderebilen diğer MCP istemcileri Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir. Claude remote connector için aşağıdaki kimlik doğrulama sınırlamasına bakın.
+MCP (Model Context Protocol), yapay zekâ istemcilerinin harici bilgi kaynaklarını ve araçları standart bir protokol üzerinden keşfedip çağırmasını sağlayan bir entegrasyon protokolüdür. Knowledge Portal, MCP desteği sunar. Cursor, VS Code Copilot ve özel header gönderebilen diğer MCP istemcileri Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir. Claude remote connector için aşağıdaki kimlik doğrulama sınırlamasına bakın.
 
 MCP araçlarına REST API üzerinden erişim sağlanır. Endpoint: `POST /mcp`
 
