@@ -79,6 +79,32 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_ParsesCompleteJsonObjectInsideModelWrapper()
+    {
+        const string raw = """
+            <think>Yanıtı yalnızca verilen kaynağa dayandır.</think>
+            Sonuç:
+            {"answer":"VPN talebi portal üzerinden açılır [S1].","claims":[{"text":"VPN talebi portal üzerinden açılır.","sourceIds":["S1"]}],"insufficientContext":false}
+            """;
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Equal("VPN talebi portal üzerinden açılır. [S1]", result.Answer);
+    }
+
+    [Fact]
+    public void Validate_MissingRequiredContractField_IsRejectedFailClosed()
+    {
+        const string raw = """{"answer":"VPN talebi portal üzerinden açılır [S1].","claims":[]}""";
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("rejected_unstructured", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+    }
+
+    [Fact]
     public void Validate_RebuildsAnswerAndDropsUnclaimedFreeFormAssertions()
     {
         const string raw = """{"answer":"VPN talebi portal üzerinden açılır [S1]. Ayrıca tüm sunucular kapatılır.","claims":[{"text":"VPN talebi portal üzerinden açılır.","sourceIds":["S1"]}],"insufficientContext":false}""";

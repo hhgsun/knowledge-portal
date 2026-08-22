@@ -637,9 +637,12 @@ Ordered by version number descending.
 }
 ```
 
-The free-form model answer is never returned independently. The API rebuilds `answer` only from
-claims that pass known-evidence, lexical-overlap, numeric-consistency and negation-consistency
-checks. Malformed structured output or a response with no supported claims fails closed as an
+The chat request supplies an explicit JSON schema requiring `answer`, `claims` and
+`insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
+`answer` only from claims that pass known-evidence, lexical-overlap, numeric-consistency and
+negation-consistency checks. A complete contract-compliant JSON object may be recovered from a
+model-added code fence or text wrapper; that wrapper is ignored and never shown. Malformed
+structured output, missing required fields, or a response with no supported claims fails closed as an
 insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
 **503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
 

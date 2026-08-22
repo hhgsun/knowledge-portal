@@ -96,7 +96,7 @@ Tekil map batch'leri veya reduce aşaması başarısız olursa başarılı parç
 
 ## 4. Yapılandırılmış Üretim ve Fail-Closed Doğrulama
 
-Chat modeli `qwen2.5vl:7b`, temperature 0 ve JSON response formatıyla çalışır. Modelden serbest metin yerine claim listesi, her claim için evidence kimlikleri ve yetersiz bağlam işareti istenir.
+Chat modeli `qwen2.5vl:7b`, temperature 0 ve alanları zorunlu kılan açık bir JSON şemasıyla çalışır. Modelden serbest metin yerine claim listesi, her claim için evidence kimlikleri ve yetersiz bağlam işareti istenir. Model JSON nesnesinin çevresine kod bloğu, kısa açıklama veya düşünme etiketi eklerse yalnızca içindeki eksiksiz ve sözleşmeye uygun JSON nesnesi alınır; çevre metni yok sayılır ve kullanıcıya gösterilmez.
 
 Her kaynak bloğu sabit bir `[S1]`, `[S2]` benzeri kimlik taşır. Model çıktısı kullanıcıya doğrudan verilmez; `RagCitationValidator` şu kontrolleri uygular:
 

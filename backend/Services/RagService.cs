@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -15,7 +16,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-08-20.fail-closed-v1";
+    public const string PromptVersion = "2026-08-22.structured-schema-v2";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
@@ -43,6 +44,37 @@ public class RagService(
     ];
 
     private const string RefuseInsufficient = "Bu konuda yeterli bilgi bulamadım.";
+
+    private static readonly JsonElement ResponseSchema = JsonDocument.Parse("""
+        {
+          "type": "object",
+          "properties": {
+            "answer": { "type": "string" },
+            "claims": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "sourceIds": {
+                    "type": "array",
+                    "items": { "type": "string", "pattern": "^S[0-9]+$" }
+                  }
+                },
+                "required": ["text", "sourceIds"],
+                "additionalProperties": false
+              }
+            },
+            "insufficientContext": { "type": "boolean" }
+          },
+          "required": ["answer", "claims", "insufficientContext"],
+          "additionalProperties": false
+        }
+        """).RootElement.Clone();
+
+    private static readonly ChatResponseFormat StructuredResponseFormat =
+        ChatResponseFormat.ForJsonSchema(ResponseSchema, "rag_answer",
+            "Evidence-grounded answer with atomic claims and exact source identifiers.");
 
     private static readonly string SystemPrompt = """
         You are a Knowledge Portal assistant.
@@ -320,7 +352,7 @@ public class RagService(
             {
                 Temperature = 0,
                 MaxOutputTokens = _maxOutputTokens,
-                ResponseFormat = ChatResponseFormat.Json
+                ResponseFormat = StructuredResponseFormat
             }, token);
             return response.Text ?? "Yanıt oluşturulamadı.";
         }, ct);

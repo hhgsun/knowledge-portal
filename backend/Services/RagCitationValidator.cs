@@ -14,8 +14,12 @@ public static partial class RagCitationValidator
 {
     private const string RefuseInsufficient = "Bu konuda yeterli bilgi bulamadım.";
     private const double MinimumLexicalSupport = .65;
-    private sealed record ModelOutput(string? Answer, List<RagClaim>? Claims, bool InsufficientContext);
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private sealed record ModelOutput(string? Answer, List<RagClaim>? Claims, bool? InsufficientContext);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip
+    };
 
     public static ValidatedRagAnswer Validate(string raw, IReadOnlyCollection<RagEvidence> evidence)
     {
@@ -25,7 +29,7 @@ public static partial class RagCitationValidator
             return new(RefuseInsufficient, [], true, 0, 0, "rejected_unstructured",
                 ["Model output was rejected because it did not match the required structured JSON contract."]);
 
-        if (parsed.InsufficientContext)
+        if (parsed.InsufficientContext == true)
             return new(RefuseInsufficient, [], true, 1, 1, "insufficient_context", []);
 
         var allowed = evidence.Select(x => x.SourceId).ToHashSet(StringComparer.Ordinal);
@@ -76,13 +80,62 @@ public static partial class RagCitationValidator
 
     private static ModelOutput? TryParse(string raw)
     {
+        var text = raw.Trim();
+        if (text.StartsWith("```")) text = CodeFenceRegex().Replace(text, "").Trim();
+        if (TryDeserialize(text, out var parsed)) return parsed;
+
+        // Some local models prepend a short explanation or a thinking marker even when JSON mode
+        // is requested. Accept only a complete JSON object from such a wrapper; the answer is still
+        // rebuilt exclusively from evidence-bound claims below, so free text around it is ignored.
+        ModelOutput? extracted = null;
+        foreach (var candidate in ExtractJsonObjects(text))
+            if (TryDeserialize(candidate, out parsed)) extracted = parsed;
+        return extracted;
+    }
+
+    private static bool TryDeserialize(string text, out ModelOutput? parsed)
+    {
         try
         {
-            var text = raw.Trim();
-            if (text.StartsWith("```")) text = CodeFenceRegex().Replace(text, "").Trim();
-            return JsonSerializer.Deserialize<ModelOutput>(text, Json);
+            parsed = JsonSerializer.Deserialize<ModelOutput>(text, Json);
+            return parsed is { Answer: not null, Claims: not null, InsufficientContext: not null }
+                && parsed.Claims.All(x => x is { Text: not null, SourceIds: not null });
         }
-        catch (JsonException) { return null; }
+        catch (JsonException)
+        {
+            parsed = null;
+            return false;
+        }
+    }
+
+    private static IEnumerable<string> ExtractJsonObjects(string text)
+    {
+        for (var start = 0; start < text.Length; start++)
+        {
+            if (text[start] != '{') continue;
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            for (var i = start; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (inString)
+                {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+
+                if (c == '"') inString = true;
+                else if (c == '{') depth++;
+                else if (c == '}' && --depth == 0)
+                {
+                    yield return text[start..(i + 1)];
+                    break;
+                }
+            }
+        }
     }
 
     private static bool IsLexicallySupported(string claim, string passage)

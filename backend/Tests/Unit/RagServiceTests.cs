@@ -251,7 +251,13 @@ public class RagServiceTests
         Assert.False(result.InsufficientContext);
         Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Equal(1, h.Chat.CallCount); // one LLM call for a focused question
-        Assert.Same(ChatResponseFormat.Json, h.Chat.LastOptions?.ResponseFormat);
+        var responseFormat = Assert.IsType<ChatResponseFormatJson>(h.Chat.LastOptions?.ResponseFormat);
+        Assert.True(responseFormat.Schema.HasValue);
+        var required = responseFormat.Schema.Value.GetProperty("required")
+            .EnumerateArray().Select(x => x.GetString()).ToList();
+        Assert.Contains("answer", required);
+        Assert.Contains("claims", required);
+        Assert.Contains("insufficientContext", required);
         Assert.Equal(0, h.Chat.LastOptions?.Temperature);
         Assert.Equal(2048, h.Chat.LastOptions?.MaxOutputTokens);
     }
