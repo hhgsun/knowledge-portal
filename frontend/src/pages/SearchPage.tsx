@@ -463,33 +463,48 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {ragResponse.evidence && ragResponse.evidence.length > 0 && (
-                <details className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3">
-                  <summary className="cursor-pointer text-sm font-medium">Doğrulanabilir kanıtlar ({ragResponse.evidence.length})</summary>
-                  <div className="mt-3 space-y-3">{ragResponse.evidence.map(e => <div key={e.sourceId} className="text-xs border-l-2 border-blue-400 pl-3"><div className="font-medium"><span className="text-blue-600">{e.sourceId}</span> · {e.title}{e.sourceName ? ` — ${e.sourceName}` : ""}</div><p className="mt-1 text-zinc-500 whitespace-pre-wrap">{e.passage}</p></div>)}</div>
-                </details>
-              )}
-
               {ragResponse.sources.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Sources ({ragResponse.sources.length})</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {ragResponse.sources.map((source: RagSource) => (
-                      <a
-                        key={source.articleId}
-                        href={`/articles/${source.slug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                      >
-                        <FileText size={14} className="text-blue-500" />
-                        <span className="text-zinc-900 dark:text-zinc-100">{source.title}</span>
-                        <span className="text-xs text-purple-500 font-medium">{(source.score * 100).toFixed(0)}%</span>
-                        <ExternalLink size={12} className="text-zinc-400" aria-label="Yeni sekmede açılır" />
-                      </a>
-                    ))}
+                <section aria-labelledby="rag-sources-heading">
+                  <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Kaynaklar ({ragResponse.sources.length})
+                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {ragResponse.sources.map((source: RagSource) => {
+                      const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
+
+                      return (
+                        <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                          <a
+                            href={`/articles/${source.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-3 text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
+                            aria-label={`${source.title} kaynağını yeni sekmede aç`}
+                          >
+                            <FileText size={14} className="shrink-0 text-blue-500" />
+                            <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
+                            <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
+                            <ExternalLink size={12} className="shrink-0 text-zinc-400" aria-hidden="true" />
+                          </a>
+                          {sourceEvidence.length > 0 && (
+                            <div className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                              {sourceEvidence.map(evidence => (
+                                <div key={evidence.sourceId} className="border-l-2 border-blue-400 pl-3 text-xs">
+                                  <div className="font-medium text-zinc-700 dark:text-zinc-300">
+                                    <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
+                                    {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
                   </div>
-                </div>
+                </section>
               )}
             </div>
           ) : (
