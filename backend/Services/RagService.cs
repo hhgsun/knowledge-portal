@@ -16,7 +16,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-08-22.structured-schema-v2";
+    public const string PromptVersion = "2026-08-22.structured-schema-extractive-v3";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
     // Chunk-level candidate pool retrieved before intent routing.
@@ -252,7 +252,7 @@ public class RagService(
 
         var raw = await CompleteAsync("generation", resilience.GenerationTimeoutSeconds,
             SystemPrompt, BuildContextMessage(question, contextParts), ct);
-        return BuildValidatedResult(raw, selected, sourceScores, articles, evidenceIds);
+        return BuildValidatedResult(question, raw, selected, sourceScores, articles, evidenceIds);
     }
 
     /// <summary>Comprehensive path: summarize every batch of candidate chunks (map), then merge the
@@ -326,7 +326,7 @@ public class RagService(
         var extraWarnings = failures.Select(x => $"Map batch {x.index + 1} failed.").ToList();
         if (budgetTruncated) extraWarnings.Add("Candidate chunks were capped to fit the configured request budget.");
         if (reduceFailed) extraWarnings.Add("Reduce stage failed; response contains a partial map result.");
-        return BuildValidatedResult(finalAnswer, successfulChunks, sourceScores, articles, evidenceIds,
+        return BuildValidatedResult(question, finalAnswer, successfulChunks, sourceScores, articles, evidenceIds,
             failures.Count > 0 || reduceFailed, extraWarnings);
     }
 
@@ -427,12 +427,29 @@ public class RagService(
             .Select(kv => new RagSource(kv.Key, articles[kv.Key].Title, articles[kv.Key].Slug, kv.Value))
             .ToList();
 
-    private static RagResult BuildValidatedResult(string raw, List<VectorChunkResult> chunks,
+    private RagResult BuildValidatedResult(string question, string raw, List<VectorChunkResult> chunks,
         Dictionary<string, double> scores, Dictionary<string, ArticleMeta> articles,
         Dictionary<string, string> evidenceIds, bool partialResult = false, List<string>? extraWarnings = null)
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
         var validated = RagCitationValidator.Validate(raw, evidence);
+        if (validated.GroundingStatus == "rejected_unstructured")
+        {
+            var trimmed = raw.Trim();
+            logger.LogWarning(
+                "RAG model output rejected as unstructured length={OutputLength} hasJsonObject={HasJsonObject} hasCitation={HasCitation} startsWithFence={StartsWithFence} hasThinkBlock={HasThinkBlock}",
+                raw.Length, trimmed.Contains('{') && trimmed.Contains('}'),
+                System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\[S\d+\]"),
+                trimmed.StartsWith("```", StringComparison.Ordinal),
+                trimmed.Contains("<think", StringComparison.OrdinalIgnoreCase));
+
+            var fallback = RagCitationValidator.TryBuildExtractiveFallback(question, evidence);
+            if (fallback != null)
+            {
+                validated = fallback;
+                partialResult = true;
+            }
+        }
         var warnings = validated.Warnings.Concat(extraWarnings ?? []).Distinct().ToList();
         return new RagResult(validated.Answer, BuildSources(scores, articles), validated.Claims, evidence,
             validated.CitationCoverage, validated.GroundingStatus, validated.ClaimSupportCoverage,

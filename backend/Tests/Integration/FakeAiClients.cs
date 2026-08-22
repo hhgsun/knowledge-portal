@@ -146,6 +146,7 @@ public sealed class FakeChatClient : IChatClient
     /// <summary>Number of completion calls — lets tests distinguish single-pass from map-reduce.</summary>
     public int CallCount { get; private set; }
     private string? _lastGroundedResponse;
+    public string? ResponseOverride { get; set; }
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -155,7 +156,7 @@ public sealed class FakeChatClient : IChatClient
         LastMessages = messages.ToList();
         LastOptions = options;
         CallCount++;
-        var response = BuildResponse(LastMessages);
+        var response = ResponseOverride ?? BuildResponse(LastMessages);
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, response)));
     }
 

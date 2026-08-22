@@ -105,6 +105,59 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_RecoversCitedPlainTextAndStillValidatesGrounding()
+    {
+        const string raw = """
+            MCP yanıtı:
+            - VPN talebi portal üzerinden açılır. [S1]
+            """;
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Equal("VPN talebi portal üzerinden açılır. [S1]", result.Answer);
+        Assert.Contains(result.Warnings, x => x.Contains("cited text", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Validate_CitedPlainTextWithInventedSourceStillFailsClosed()
+    {
+        const string raw = "VPN talebi portal üzerinden açılır. [S99]";
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+        Assert.Empty(result.Claims);
+    }
+
+    [Fact]
+    public void TryBuildExtractiveFallback_ReturnsRelevantVerifiedEvidence()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Knowledge Portal, Model Context Protocol desteği sunar. MCP araçlarına REST API üzerinden erişilir. VPN talebi portal üzerinden açılır."
+        };
+
+        var result = RagCitationValidator.TryBuildExtractiveFallback("MCP nedir ve nasıl entegre edilir?", [evidence]);
+
+        Assert.NotNull(result);
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.All(result.Claims, claim => Assert.Equal(["S1"], claim.SourceIds));
+        Assert.Contains("MCP", result.Answer);
+        Assert.Contains(result.Warnings, x => x.Contains("Structured model output failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TryBuildExtractiveFallback_DoesNotReturnUnrelatedEvidence()
+    {
+        var result = RagCitationValidator.TryBuildExtractiveFallback("MCP entegrasyonu", [Evidence]);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void Validate_RebuildsAnswerAndDropsUnclaimedFreeFormAssertions()
     {
         const string raw = """{"answer":"VPN talebi portal üzerinden açılır [S1]. Ayrıca tüm sunucular kapatılır.","claims":[{"text":"VPN talebi portal üzerinden açılır.","sourceIds":["S1"]}],"insufficientContext":false}""";

@@ -14,7 +14,8 @@ public static partial class RagCitationValidator
 {
     private const string RefuseInsufficient = "Bu konuda yeterli bilgi bulamadım.";
     private const double MinimumLexicalSupport = .65;
-    private sealed record ModelOutput(string? Answer, List<RagClaim>? Claims, bool? InsufficientContext);
+    private sealed record ModelOutput(string? Answer, List<RagClaim>? Claims, bool? InsufficientContext,
+        bool RecoveredFromCitedText = false);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         AllowTrailingCommas = true,
@@ -29,8 +30,11 @@ public static partial class RagCitationValidator
             return new(RefuseInsufficient, [], true, 0, 0, "rejected_unstructured",
                 ["Model output was rejected because it did not match the required structured JSON contract."]);
 
+        if (parsed.RecoveredFromCitedText)
+            warnings.Add("Model returned cited text instead of JSON; evidence-bound claims were recovered and validated.");
+
         if (parsed.InsufficientContext == true)
-            return new(RefuseInsufficient, [], true, 1, 1, "insufficient_context", []);
+            return new(RefuseInsufficient, [], true, 1, 1, "insufficient_context", warnings);
 
         var allowed = evidence.Select(x => x.SourceId).ToHashSet(StringComparer.Ordinal);
         var evidenceById = evidence.ToDictionary(x => x.SourceId, StringComparer.Ordinal);
@@ -78,6 +82,44 @@ public static partial class RagCitationValidator
         return new(answer, claims, false, coverage, supportCoverage, status, warnings.Distinct().ToList());
     }
 
+    public static ValidatedRagAnswer? TryBuildExtractiveFallback(string question,
+        IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4)
+    {
+        var queryTokens = SignificantTokens(question);
+        if (queryTokens.Count == 0) return null;
+
+        var candidates = evidence.SelectMany(item =>
+                Regex.Split(item.Passage, @"(?<=[.!?])\s+|\r?\n+")
+                    .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
+                    .Where(sentence => sentence.Length is >= 20 and <= 500)
+                    .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
+                    .Select(sentence => new
+                    {
+                        item.SourceId,
+                        Text = sentence,
+                        Overlap = SignificantTokens(sentence).Count(queryTokens.Contains),
+                        item.Score
+                    }))
+            .Where(x => x.Overlap > 0)
+            .OrderByDescending(x => x.Overlap)
+            .ThenByDescending(x => x.Score)
+            .GroupBy(x => SlugHelper.Transliterate(x.Text).ToLowerInvariant(), StringComparer.Ordinal)
+            .Select(x => x.First())
+            .Take(Math.Clamp(maxClaims, 1, 8))
+            .Select(x => new RagClaim(x.Text, [x.SourceId]))
+            .ToList();
+
+        if (candidates.Count == 0) return null;
+
+        // These are verbatim, secret-redacted sentences selected from known evidence IDs, rather
+        // than model-authored paraphrases. Numeric and negation consistency therefore hold by
+        // construction, while the normal model path remains subject to the stricter validator.
+        var answer = string.Join("\n", candidates.Select(claim =>
+            $"{claim.Text} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}"));
+        return new ValidatedRagAnswer(answer, candidates, false, 1, 1, "extractive_fallback",
+            ["Structured model output failed; returning query-relevant passages extracted from verified evidence."]);
+    }
+
     private static ModelOutput? TryParse(string raw)
     {
         var text = raw.Trim();
@@ -88,9 +130,17 @@ public static partial class RagCitationValidator
         // is requested. Accept only a complete JSON object from such a wrapper; the answer is still
         // rebuilt exclusively from evidence-bound claims below, so free text around it is ignored.
         ModelOutput? extracted = null;
+        var containedJsonObject = false;
         foreach (var candidate in ExtractJsonObjects(text))
+        {
+            containedJsonObject = true;
             if (TryDeserialize(candidate, out parsed)) extracted = parsed;
-        return extracted;
+        }
+        if (extracted != null) return extracted;
+
+        // A JSON-looking response with a broken contract must not be reinterpreted as prose merely
+        // because a citation happens to occur inside one of its fields.
+        return containedJsonObject ? null : TryParseCitedText(text);
     }
 
     private static bool TryDeserialize(string text, out ModelOutput? parsed)
@@ -138,6 +188,26 @@ public static partial class RagCitationValidator
         }
     }
 
+    private static ModelOutput? TryParseCitedText(string text)
+    {
+        var visible = ThinkBlockRegex().Replace(text, " ");
+        var claims = new List<RagClaim>();
+        foreach (var part in visible.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var ids = CitationRegex().Matches(part).Select(x => x.Groups[1].Value)
+                .Distinct(StringComparer.Ordinal).ToList();
+            if (ids.Count == 0) continue;
+
+            var claim = CitationRegex().Replace(part, " ");
+            claim = MarkdownPrefixRegex().Replace(claim.Trim(), "").Trim();
+            if (!string.IsNullOrWhiteSpace(claim)) claims.Add(new RagClaim(claim, ids));
+        }
+
+        // Never recover uncited prose. A recovered claim still has to survive the same known-ID,
+        // lexical-overlap, number and negation checks as a schema-produced claim.
+        return claims.Count == 0 ? null : new ModelOutput(visible, claims, false, true);
+    }
+
     private static bool IsLexicallySupported(string claim, string passage)
     {
         var claimTokens = SignificantTokens(claim);
@@ -178,4 +248,8 @@ public static partial class RagCitationValidator
     private static partial Regex NegationRegex();
     [GeneratedRegex(@"^```(?:json)?\s*|\s*```$", RegexOptions.IgnoreCase)]
     private static partial Regex CodeFenceRegex();
+    [GeneratedRegex(@"<think\b[^>]*>.*?</think>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex ThinkBlockRegex();
+    [GeneratedRegex(@"^(?:#{1,6}\s+|[-*+>]\s+|\d+[.)]\s+)")]
+    private static partial Regex MarkdownPrefixRegex();
 }

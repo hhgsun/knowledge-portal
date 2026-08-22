@@ -58,7 +58,8 @@ public class RagServiceTests
 
     private sealed record Harness(RagService Rag, FakeChatClient Chat);
 
-    private static Harness BuildRag(List<VectorSearchResult> vectorResults, Action<AppDbContext> seed)
+    private static Harness BuildRag(List<VectorSearchResult> vectorResults, Action<AppDbContext> seed,
+        string? responseOverride = null)
     {
         var services = new ServiceCollection();
         var dbName = Guid.NewGuid().ToString("N");
@@ -69,6 +70,7 @@ public class RagServiceTests
             seed(scope.ServiceProvider.GetRequiredService<AppDbContext>());
 
         var chat = new FakeChatClient();
+        chat.ResponseOverride = responseOverride;
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         var metrics = new PortalMetrics(scopeFactory);
         var rag = new RagService(
@@ -260,6 +262,29 @@ public class RagServiceTests
         Assert.Contains("insufficientContext", required);
         Assert.Equal(0, h.Chat.LastOptions?.Temperature);
         Assert.Equal(2048, h.Chat.LastOptions?.MaxOutputTokens);
+    }
+
+    [Fact]
+    public async Task AskAsync_UnstructuredModelOutput_ReturnsExtractiveEvidenceFallback()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "MCP Entegrasyonu",
+                    bodyText: "Knowledge Portal Model Context Protocol desteği sunar. MCP araçlarına REST API üzerinden erişilir."));
+                db.SaveChanges();
+            },
+            responseOverride: "JSON olmayan ve atıf içermeyen model yanıtı");
+
+        var result = await h.Rag.AskAsync("MCP nedir ve nasıl entegre edilir?");
+
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.True(result.PartialResult);
+        Assert.Contains("MCP", result.Answer);
+        Assert.NotEmpty(result.Claims);
+        Assert.Equal(1, result.CitationCoverage);
     }
 
     [Fact]

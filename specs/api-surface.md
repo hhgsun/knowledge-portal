@@ -641,8 +641,16 @@ The chat request supplies an explicit JSON schema requiring `answer`, `claims` a
 `insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
 `answer` only from claims that pass known-evidence, lexical-overlap, numeric-consistency and
 negation-consistency checks. A complete contract-compliant JSON object may be recovered from a
-model-added code fence or text wrapper; that wrapper is ignored and never shown. Malformed
-structured output, missing required fields, or a response with no supported claims fails closed as an
+model-added code fence or text wrapper; that wrapper is ignored and never shown. If a provider
+ignores structured-output mode but returns prose with exact `[S1]`-style citations, the server
+deterministically converts only those cited passages into claims and runs the same validation; uncited
+prose is never recovered or displayed. Malformed structured output without recoverable cited claims,
+missing required fields, or a response with no supported claims triggers a bounded extractive
+fallback: query-overlapping sentences are selected directly from verified evidence, passed through
+secret/instruction safety filtering, returned verbatim with their known evidence IDs and
+`groundingStatus: "extractive_fallback"`, and marked as a partial result. Because fallback claims are
+verbatim evidence sentences, lexical, numeric and negation support hold by construction. If no safe
+relevant evidence sentence exists, the request fails closed as an
 insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
 **503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
 
