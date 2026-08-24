@@ -50,7 +50,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 |-------|----------|---------------|
 | **Presentation** | `frontend/src/` | React SPA — routing, state, UI rendering |
 | **API** | `backend/Controllers/` | HTTP endpoint mapping, request validation, auth scoping, response shaping |
-| **Services** | `backend/Services/` | Domain logic (ArticleService, TagService, ApiKeyService, UserService, StatsService) + AI/search (EmbeddingService, VectorSearchService, RagService, FullTextSearchService) + observability (PortalMetrics) |
+| **Services** | `backend/Services/` | Domain logic (`ArticleMutationService`, `ContentTypeService`, Article/Tag/API-key/User/Stats services) + shared REST/MCP search orchestration (`SearchExecutionService`) + AI/indexing + observability |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
 | **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid multi-query fusion → rerank/ranking signals → ACL-safe parent-neighbor expansion → bounded evidence context |
@@ -62,7 +62,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 Request processing order in ASP.NET Core:
 
 ```
-Request → ForwardedHeaders → HSTS (non-dev) → SecurityHeaders → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → JwtBearerAuth → RateLimiter → Authorization → Controller
+Request → ForwardedHeaders → HSTS (non-dev) → SecurityHeaders → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → JwtBearerAuth → UsageTrackingMiddleware → RateLimiter → Authorization → Controller
 ```
 
 1. **ForwardedHeaders** — rewrites client IP/scheme from `X-Forwarded-For`/`X-Forwarded-Proto` (trusted proxies via `ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy).
@@ -71,8 +71,9 @@ Request → ForwardedHeaders → HSTS (non-dev) → SecurityHeaders → GlobalEx
 4. **CORS** — configured origins with any header/method and credentials.
 5. **ApiKeyMiddleware** — intercepts `X-API-Key: kp_*` headers. Extracts the 8-char prefix after `kp_`, performs a prefix-indexed database lookup, BCrypt-verifies the raw key against matched candidates, and sets `HttpContext.User` with claims (including `source: "api-key"`). Non-matching requests pass through unmodified.
 6. **JWT Bearer Authentication** — validates standard JWT tokens against configured issuer, audience, and signing key.
-7. **RateLimiter** — partitioned fixed-window limiting (auth: 10/min, search: 30/min, mcp: 60/min; partition key = API key id > user id > client IP). Runs after auth so partitioning sees the principal. Returns 429 when exceeded.
-8. **Authorization** — enforces `[Authorize]`, `[RequirePermission("...")]`, and `[RequireSessionAuth]` attributes.
+7. **UsageTrackingMiddleware** — records authenticated REST usage outcome, latency, user/API-key identity and bounded operation metadata.
+8. **RateLimiter** — partitioned fixed-window limiting (auth: 10/min, search: 30/min, mcp: 60/min; partition key = API key id > user id > client IP). Runs after auth so partitioning sees the principal. Returns 429 when exceeded.
+9. **Authorization** — enforces `[Authorize]`, `[RequirePermission("...")]`, and `[RequireSessionAuth]` attributes.
 
 ## Authentication Model
 
@@ -133,29 +134,33 @@ React Router v7 with a single `<BrowserRouter>`:
 | `/search` | SearchPage | Protected |
 | `/profile` | ProfilePage | Protected |
 | `/analytics` | AnalyticsPage | Protected |
+| `/tags` | TagsPage | Protected (admin/editor) |
+| `/settings/bulk-transfer` | BulkTransferPage | Protected (admin/editor) |
+| `/articles/import` | KnowledgeImportPage | Protected |
 | `/admin/users` | AdminUsersPage | Protected |
 | `/admin/keys` | AdminApiKeysPage | Protected |
+| `/settings/lookups` | LookupsPage | Protected (admin/editor) |
+| `/settings/featured-links` | FeaturedLinksPage | Protected (admin) |
+| `/settings/logs` | LogsPage | Protected (admin) |
+| `/settings/search` | SearchDiagnosticsPage | Protected (admin) |
+| `/settings/rag-evaluations` | RagEvaluationsPage | Protected (admin) |
 
 Protected routes use a `<ProtectedRoute>` wrapper that redirects to `/login` if `user` is null.
 
 ### Layout
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Sidebar (left, sticky)  │  Header (top, sticky)     │
-│                         │───────────────────────────│
-│ • Home                  │  Search bar    🔔 👤 Exit │
-│ • Articles              │───────────────────────────│
-│   └ New Article         │                           │
-│ • Search                │  <Page Content>           │
-│ • Analytics             │  (via <Outlet/>)          │
-│ ─── Admin ───           │                           │
-│ • Users (admin only)    │                           │
-│ • API Keys (admin/ed.)  │                           │
-└─────────────────────────┴───────────────────────────┘
+┌──────────────────────────────────────────┐
+│ Sidebar (left, sticky) │ <Page Content>  │
+│                        │ (via <Outlet/>) │
+│ • Home                 │                 │
+│ • Articles / Import    │                 │
+│ • Search / Analytics   │                 │
+│ • Role-based settings  │                 │
+└────────────────────────┴─────────────────┘
 ```
 
-Auth pages (`/login`, `/register`) render without the sidebar/header shell.
+Auth pages (`/login`, `/register`) render only the outlet; protected pages render the sidebar plus outlet.
 
 ## Content Model
 

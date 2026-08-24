@@ -80,7 +80,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         // handles this per article; this covers rows that changed while the app was down. One
         // indexed statement, unlike the per-article work below.
         await db.Database.ExecuteSqlRawAsync(
-            """UPDATE articles SET search_vector = NULL, "FtsIndexedAt" = NULL WHERE "Status" <> 'published' AND search_vector IS NOT NULL""", ct);
+            """UPDATE articles SET search_vector = NULL, fts_indexed_at = NULL WHERE status <> 'published' AND search_vector IS NOT NULL""", ct);
 
         var missingOnly = onlyMissing ? "AND search_vector IS NULL" : "";
         var lastId = "";
@@ -94,9 +94,9 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
 #pragma warning disable EF1002
             var batchIds = await db.Database.SqlQueryRaw<string>(
                 $$"""
-                SELECT "Id" AS "Value" FROM articles
-                WHERE "Status" = 'published' AND "Id" > {0} {{missingOnly}}
-                ORDER BY "Id" LIMIT {1}
+                SELECT id AS "Value" FROM articles
+                WHERE status = 'published' AND id > {0} {{missingOnly}}
+                ORDER BY id LIMIT {1}
                 """,
                 lastId, IndexBatchSize).ToListAsync(ct);
 #pragma warning restore EF1002
@@ -178,8 +178,8 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
                 setweight(to_tsvector('{{TsConfig}}', COALESCE({0}, '')), 'A') ||
                 setweight(to_tsvector('{{TsConfig}}', COALESCE({1}, '')), 'B') ||
                 setweight(to_tsvector('{{TsConfig}}', COALESCE({2}, '')), 'C'),
-                "FtsIndexedAt" = {4}
-            WHERE "Id" = {3}
+                fts_indexed_at = {4}
+            WHERE id = {3}
             """,
             SlugHelper.Transliterate(title),
             SlugHelper.Transliterate(excerpt ?? ""),
@@ -195,7 +195,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
     {
         if (!db.Database.IsRelational()) return;
         await db.Database.ExecuteSqlRawAsync(
-            "UPDATE articles SET search_vector = NULL, \"FtsIndexedAt\" = NULL WHERE \"Id\" = {0}",
+            "UPDATE articles SET search_vector = NULL, fts_indexed_at = NULL WHERE id = {0}",
             [articleId], ct);
     }
 
@@ -241,15 +241,15 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var q = ArticleFilterSql.Placeholder(args, tsQuery);
         return new SearchStage(
             Match: $"a.search_vector @@ to_tsquery('{TsConfig}', {q})",
-            OrderBy: $"""ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', {q})) DESC, a."Id" """);
+            OrderBy: $"""ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', {q})) DESC, a.id """);
     }
 
     private static SearchStage LikeStage(List<object> args, string query)
     {
         var p = ArticleFilterSql.Placeholder(args, $"%{SlugHelper.EscapeLikePattern(query)}%");
         return new SearchStage(
-            Match: $"""(a."Title" ILIKE {p} OR a."Excerpt" ILIKE {p})""",
-            OrderBy: """a."UpdatedAt" DESC, a."Id" """);
+            Match: $"""(a.title ILIKE {p} OR a.excerpt ILIKE {p})""",
+            OrderBy: """a.updated_at DESC, a.id """);
     }
 
     /// <summary>
@@ -263,7 +263,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var stage = buildStage(args);
         var from = $"""
             FROM articles a
-            WHERE a."Status" = 'published' AND {stage.Match}{ArticleFilterSql.Build(filter, args)}
+            WHERE a.status = 'published' AND {stage.Match}{ArticleFilterSql.Build(filter, args)}
             """;
 
         // EF1002: the interpolated fragments are SQL skeletons assembled from compile-time
@@ -280,7 +280,7 @@ public class FullTextSearchService(AppDbContext db, IConfiguration config, ILogg
         var ids = await db.Database
             .SqlQueryRaw<string>(
                 $"""
-                SELECT a."Id" AS "Value" {from}
+                SELECT a.id AS "Value" {from}
                 ORDER BY {stage.OrderBy}
                 OFFSET {offset} LIMIT {take}
                 """,

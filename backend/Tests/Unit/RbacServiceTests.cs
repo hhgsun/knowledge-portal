@@ -37,7 +37,7 @@ public class RbacServiceTests
         var allPermissions = new[]
         {
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesEditAny,
-            Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
+            Permissions.ArticlesDeleteAny,
             Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
             Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView,
             Permissions.ApiKeysManage, Permissions.ApiKeysManageAny

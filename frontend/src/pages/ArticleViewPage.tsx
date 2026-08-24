@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Edit, Clock, User, Tag, Key, ThumbsUp, ThumbsDown, CheckCircle, XCircle, LoaderCircle, MessageSquare, FileText, Eye, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -19,14 +19,6 @@ export default function ArticleViewPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
 
-  /* const handleBack = () => {
-    const historyIdx = (window.history.state as { idx?: number } | null)?.idx;
-    if (historyIdx && historyIdx > 0) {
-      navigate(-1);
-    } else {
-      navigate('/articles');
-    }
-  }; */
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -39,7 +31,28 @@ export default function ArticleViewPage() {
 
   const isApprover = user?.role === "admin" || user?.role === "editor";
   const canEdit = user?.role === "admin" || (article && article.ownerId === user?.id);
-  const canDelete = user?.role === "admin";// || (article && article.ownerId === user?.id);
+  const canDelete = user?.role === "admin";
+
+  const loadVotes = useCallback((articleId: string) => {
+    fetchWithAuth(`/api/articles/${articleId}/votes`)
+      .then((res) => res.json())
+      .then((data) => { if (!data.error) setVotes(data); })
+      .catch(() => { });
+  }, [fetchWithAuth]);
+
+  const loadComments = useCallback((articleId: string) => {
+    fetchWithAuth(`/api/articles/${articleId}/comments`)
+      .then((res) => res.json())
+      .then((data) => { if (data.comments) setComments(data.comments); })
+      .catch(() => { });
+  }, [fetchWithAuth]);
+
+  const loadRelated = useCallback((articleId: string) => {
+    fetchWithAuth(`/api/articles/${articleId}/related?limit=2`)
+      .then((res) => res.json())
+      .then((data) => { if (data.articles) setRelatedArticles(data.articles); })
+      .catch(() => { });
+  }, [fetchWithAuth]);
 
   useEffect(() => {
     if (params.slug) {
@@ -58,7 +71,7 @@ export default function ArticleViewPage() {
         })
         .catch(() => setLoading(false));
     }
-  }, [params.slug, fetchWithAuth]);
+  }, [params.slug, fetchWithAuth, loadVotes, loadComments, loadRelated]);
 
   const handleVote = async (isHelpful: boolean) => {
     if (!article) return;
@@ -129,27 +142,6 @@ export default function ArticleViewPage() {
     }
   };
 
-  const loadVotes = (articleId: string) => {
-    fetchWithAuth(`/api/articles/${articleId}/votes`)
-      .then((res) => res.json())
-      .then((data) => { if (!data.error) setVotes(data); })
-      .catch(() => { });
-  };
-
-  const loadComments = (articleId: string) => {
-    fetchWithAuth(`/api/articles/${articleId}/comments`)
-      .then((res) => res.json())
-      .then((data) => { if (data.comments) setComments(data.comments); })
-      .catch(() => { });
-  };
-
-  const loadRelated = (articleId: string) => {
-    fetchWithAuth(`/api/articles/${articleId}/related?limit=2`)
-      .then((res) => res.json())
-      .then((data) => { if (data.articles) setRelatedArticles(data.articles); })
-      .catch(() => { });
-  };
-
   const handleApprove = async () => {
     if (!article) return;
     setActionLoading(true);
@@ -210,17 +202,15 @@ export default function ArticleViewPage() {
     );
   }
 
+  const nextReviewAt = article.lastReviewedAt
+    ? new Date(new Date(article.lastReviewedAt).getTime() + article.reviewIntervalDays * 86_400_000)
+    : null;
+  const reviewTitle = nextReviewAt
+    ? `Next review: ${nextReviewAt.toLocaleDateString()}`
+    : "No approval review has been recorded yet";
+
   return (
     <div className="max-w-5xl mx-auto">
-      {/* <div className="flex items-center gap-2 mb-6">
-        <button onClick={handleBack} className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-          <ArrowLeft size={14} />
-          Geri
-        </button>
-        <span className="text-zinc-300">/</span>
-        <span className="text-sm text-zinc-700 dark:text-zinc-300">{article.title}</span>
-      </div> */}
-
       <div className="mb-6">
         <div className="flex items-start justify-between">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mr-1">{article.title}</h1>
@@ -318,6 +308,10 @@ export default function ArticleViewPage() {
           <span className="flex items-center gap-1">
             <Clock size={14} />
             {new Date(article.updatedAt).toLocaleDateString()}
+          </span>
+          <span className="flex items-center gap-1" title={reviewTitle}>
+            <Clock size={14} />
+            Review every {article.reviewIntervalDays} days
           </span>
           {article.apiKeyName ? (
             <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">

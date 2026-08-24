@@ -107,7 +107,7 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 API-key principals (`source=api-key`) are capped independently of their owner's role:
 
 - **Effective role**: owner role capped at `editor` — an admin-owned key acts as editor (no `users:manage`, `articles:edit_any/delete_any`, `api_keys:manage_any`). Editor/viewer-owned keys keep their owner's role.
-- **Delete denial**: `articles:delete_own` / `articles:delete_any` are always denied for keys; `RbacService.CanDeleteArticle(principal)` is always false for keys.
+- **Delete denial**: the admin-only `articles:delete_any` permission is always denied for keys.
 - **Session-only DELETEs**: destructive DELETE endpoints (articles, attachments, comments, tags, lookups, featured-links) carry `[RequireSessionAuth]` as a second enforcement layer.
 - **Allowed**: all reads per effective role, article create/edit/publish/archive, tag create/rename + auto-create, own-vote removal.
 
@@ -157,6 +157,8 @@ Each client gets its own window. Returns `429 Too Many Requests` when exceeded.
 
 The following are documented security concerns in the current baseline:
 
+The tracked deployment connection/JWT values are an explicit controlled-deployment owner decision recorded in `AGENTS.md`; they are not listed as an open security defect unless that decision is reopened.
+
 ### Critical
 
 All critical issues have been resolved:
@@ -167,11 +169,10 @@ All critical issues have been resolved:
 
 | # | Issue | Impact | Location |
 |---|-------|--------|----------|
-| 5 | **JWT secret in appsettings.json** — signing key stored in plain text in config file | Secret exposure if config file is leaked | `appsettings.json` |
 | 6 | **localStorage for JWT** — tokens stored in localStorage are accessible to any JS on the page | XSS attacks can steal tokens (accepted trade-off for SPA) | `AuthContext.tsx` |
+| 8 | **No CSRF token** — SPA uses Authorization bearer tokens rather than authentication cookies | Mitigated by the bearer model and configured origin whitelist | `Program.cs` |
 
 External reranking is disabled by default. Enabling `Reranking:External` sends only bounded candidate passages after retrieval filtering to an explicitly configured HTTPS or loopback endpoint. The integration never sends authorization tokens, falls back locally on timeout/error/invalid output, and must be covered by the organization's provider privacy agreement. Parent/neighbor expansion reuses only stored chunks from the same authorized article, source/attachment, embedding model and derived parent section; it runs after the published/filter safety recheck.
-| 8 | **No CSRF protection** — SPA uses Bearer tokens (not cookies), but CORS is permissive | Mitigated by Bearer auth model | `Program.cs` |
 
 ### Resolved
 
@@ -208,10 +209,10 @@ External reranking is disabled by default. Enabling `Reranking:External` sends o
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| HTTPS enforcement | ✗ | No HSTS or redirect-to-HTTPS |
-| Content Security Policy | ✗ | No CSP headers |
-| Audit logging | ✗ | No structured security event logging |
+| HTTPS enforcement | Proxy-owned | TLS terminates at the trusted reverse proxy; non-development HTTPS responses emit HSTS |
+| Content Security Policy | ✓ nginx SPA | CSP is emitted by nginx; API responses use nosniff/DENY/referrer headers |
+| Audit logging | Partial | Structured MCP audit and authenticated REST usage events are persisted; this is not a general-purpose SIEM |
 | Account lockout | ✗ | No failed-login tracking or lockout |
 | Token revocation | ✗ | No JWT blacklist or refresh token rotation |
 | Input sanitization | Partial | Canonical Markdown is accepted as text; read views render through `react-markdown` rather than injecting raw HTML |
-| Test coverage | ✗ | No security tests |
+| Test coverage | ✓ backend | Authentication, RBAC/API-key caps, session-only routes, MCP security and input guards are covered by xUnit |

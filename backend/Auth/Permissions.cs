@@ -10,7 +10,6 @@ public static class Permissions
     public const string ArticlesCreate = "articles:create";
     public const string ArticlesEditOwn = "articles:edit_own";
     public const string ArticlesEditAny = "articles:edit_any";
-    public const string ArticlesDeleteOwn = "articles:delete_own";
     public const string ArticlesDeleteAny = "articles:delete_any";
     public const string ArticlesPublish = "articles:publish";
     public const string ArticlesArchive = "articles:archive";

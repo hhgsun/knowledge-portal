@@ -30,10 +30,9 @@ frontend/
 │   ├── ContentTypeBadge.tsx   # Colored badge with icon for content types (uses LookupValue color/icon)
 │   ├── lookup-pickers.tsx     # ColorPicker (20-color grid popup) + IconPicker (searchable all lucide icons)
 │   ├── layout/
-│   │   ├── app-shell.tsx      # Sidebar + Header + Outlet wrapper (skipped on auth pages)
+│   │   ├── app-shell.tsx      # Sidebar + Outlet wrapper (sidebar skipped on auth pages)
 │   │   ├── sidebar.tsx        # Left nav with role-based admin section
 │   │   ├── mcp-modal.tsx      # MCP connection info modal (endpoint, token/key copy, config snippets)
-│   │   └── header.tsx         # Top bar: search, notifications, profile, logout
 │   └── editor/
 │       ├── article-form.tsx   # Shared article form (title, metadata, editor, attachments slot)
 │       ├── milkdown-editor.tsx # Milkdown Crepe editor; Markdown updates + deferred image upload
@@ -43,7 +42,7 @@ frontend/
 │   └── file-upload-zone.tsx   # PendingFileList component for new articles (no articleId yet)
 └── pages/
     ├── LoginPage.tsx          # Email/password form → POST /api/auth/login
-    ├── RegisterPage.tsx       # Registration form → POST /api/auth/register
+    ├── RegisterPage.tsx       # Registration-disabled notice; API endpoint remains available
     ├── HomePage.tsx           # Dashboard stats + recent articles + top searches
     ├── ArticlesPage.tsx       # Article list with status badges
     ├── NewArticlePage.tsx     # Create article form with Milkdown editor
@@ -56,9 +55,13 @@ frontend/
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
     ├── TagsPage.tsx           # Tag management: list, edit, delete (admin/editor only)
     ├── ProfilePage.tsx        # Profile settings, tabbed (?tab=): Personal Info | Password | API Keys (api-keys-section)
-    ├── LookupsPage.tsx        # Lookup value management (content types, difficulties)
+    ├── LookupsPage.tsx        # Content-type lookup management
     ├── LogsPage.tsx           # System log viewer: date-based log files, view/delete (admin only)
-    ├── McpPage.tsx            # MCP integration guide: endpoint info, config snippets, API key shortcuts (admin only)
+    ├── BulkTransferPage.tsx   # Bulk import/export and templates (admin/editor)
+    ├── KnowledgeImportPage.tsx # Source-file analysis, Markdown preview and commit
+    ├── FeaturedLinksPage.tsx  # Sidebar featured-link management (admin)
+    ├── SearchDiagnosticsPage.tsx # Search/index diagnostics (admin)
+    ├── RagEvaluationsPage.tsx # Golden datasets, runs and feedback summary (admin)
     └── NotFoundPage.tsx       # 404 page for unmatched routes
 ```
 
@@ -75,14 +78,11 @@ graph TD
     App --> RegisterPage
 
     AppShell --> Sidebar
-    AppShell --> Header
     AppShell --> Outlet["<Outlet> (pages)"]
 
     ProtectedRoute --> useAuth
 
     Sidebar --> useAuth
-    Header --> useAuth
-    Header --> useNavigate
 
     HomePage --> useApi
     ArticlesPage --> useApi
@@ -120,9 +120,9 @@ graph TD
 
 | Path | Component | Auth | Layout | Role Restriction |
 |------|-----------|------|--------|-----------------|
-| `/login` | LoginPage | Public | AppShell (renders Outlet only, no Sidebar/Header) | — |
-| `/register` | RegisterPage | Public | AppShell (renders Outlet only, no Sidebar/Header) | — |
-| `/` | HomePage | Protected | AppShell (Sidebar + Header) | — |
+| `/login` | LoginPage | Public | AppShell (renders Outlet only, no Sidebar) | — |
+| `/register` | RegisterPage | Public | AppShell (renders Outlet only, no Sidebar) | — |
+| `/` | HomePage | Protected | AppShell (Sidebar + Outlet) | — |
 | `/articles` | ArticlesPage | Protected | AppShell | — |
 | `/articles/new` | NewArticlePage | Protected | AppShell | — |
 | `/articles/:slug` | ArticleViewPage | Protected | AppShell | — |
@@ -131,9 +131,17 @@ graph TD
 | `/search` | SearchPage | Protected | AppShell | — |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
+| `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |
+| `/settings/bulk-transfer` | BulkTransferPage | Protected | AppShell | admin, editor (RoleRoute) |
+| `/articles/import` | KnowledgeImportPage | Protected | AppShell | — |
 | `/admin/users` | AdminUsersPage | Protected | AppShell | admin (RoleRoute) |
 | `/admin/keys` | AdminApiKeysPage | Protected | AppShell | admin (RoleRoute) |
-| `/settings/keys` | → redirects to `/profile` | Protected | — | — |
+| `/settings/keys` | → redirects to `/profile?tab=api-keys` | Protected | — | — |
+| `/settings/lookups` | LookupsPage | Protected | AppShell | admin, editor (RoleRoute) |
+| `/settings/featured-links` | FeaturedLinksPage | Protected | AppShell | admin (RoleRoute) |
+| `/settings/logs` | LogsPage | Protected | AppShell | admin (RoleRoute) |
+| `/settings/search` | SearchDiagnosticsPage | Protected | AppShell | admin (RoleRoute) |
+| `/settings/rag-evaluations` | RagEvaluationsPage | Protected | AppShell | admin (RoleRoute) |
 | `*` | NotFoundPage | Public | — | — |
 
 ### ProtectedRoute
@@ -152,8 +160,9 @@ Shows loading state while auth is being validated. Redirects to `/login` if no u
 ### Navigation
 
 Sidebar navigation is **role-aware**:
-- All users see: Home, Articles (with "New Article" nested), Search, Analytics
-- Admin/editor users additionally see: **Admin** section with Users (admin only) and API Keys
+- All users see: Home, Articles (with "New Article" nested), Search, Profile and featured links.
+- Admin/editor users also see Analytics, Tags, Lookups and bulk-transfer/import operations.
+- Admins additionally see user/API-key administration, featured-link management, logs, search diagnostics and RAG evaluations.
 
 ## Global State
 
@@ -248,7 +257,7 @@ Tag picker with inline creation capability.
 | Page | API Endpoints Used |
 |------|-------------------|
 | LoginPage | `POST /api/auth/login` |
-| RegisterPage | `POST /api/auth/register` |
+| RegisterPage | No request; the UI intentionally shows that registration is disabled |
 | HomePage | `GET /api/dashboard` |
 | ArticlesPage | `GET /api/articles` |
 | NewArticlePage | `POST /api/articles`, `GET /api/tags`, `POST /api/tags` |

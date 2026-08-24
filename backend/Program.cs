@@ -75,7 +75,11 @@ telemetry.WithTracing(tracing =>
 // ─── Database ────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        o => o.UseVector()));
+        o =>
+        {
+            o.MigrationsHistoryTable("__ef_migrations_history");
+            o.UseVector();
+        }));
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
@@ -206,6 +210,9 @@ builder.Services.AddHostedService<EmbeddingBackgroundService>();
 
 // ─── Domain Services ─────────────────────────────────────────
 builder.Services.AddScoped<ArticleService>();
+builder.Services.AddScoped<ArticleMutationService>();
+builder.Services.AddScoped<ContentTypeService>();
+builder.Services.AddScoped<SearchExecutionService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
 builder.Services.AddScoped<UserService>();

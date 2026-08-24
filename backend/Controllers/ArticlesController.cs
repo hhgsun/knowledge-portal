@@ -15,13 +15,8 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/articles")]
 [Authorize]
 public class ArticlesController(AppDbContext db, IConfiguration config, ArticleService articleService,
-    ILogger<ArticlesController> logger) : ControllerBase
+    ArticleMutationService mutations, ILogger<ArticlesController> logger) : ControllerBase
 {
-    private static readonly HashSet<string> ValidStatuses = ["draft", "published", "archived"];
-
-    private async Task<HashSet<string>> GetValidContentTypesAsync()
-        => (await db.LookupValues.Where(l => l.Category == "content_type" && l.IsActive).Select(l => l.Value).ToListAsync()).ToHashSet();
-
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1,
@@ -65,11 +60,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
 
         if (!string.IsNullOrWhiteSpace(contentType))
         {
-            var validContentTypes = await GetValidContentTypesAsync();
-            var ctValues = contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(ct => validContentTypes.Contains(ct)).ToList();
-            if (ctValues.Count > 0)
-                query = query.WhereContentTypeIn(ctValues);
+            var ctValues = contentType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (ctValues.Length > 0) query = query.WhereContentTypeIn(ctValues);
         }
 
         if (tag is { Length: > 0 })
@@ -103,51 +95,12 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
     [RequirePermission(Permissions.ArticlesCreate)]
     public async Task<IActionResult> Create([FromBody] CreateArticleRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
-            return BadRequest(new { error = "Title is required (1-300 chars)" });
-
-        var validContentTypes = await GetValidContentTypesAsync();
-        if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
-            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
-
-        if (req.Status != null && !ValidStatuses.Contains(req.Status))
-            return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
-        if (req.ReviewIntervalDays is < 1 or > 3650)
-            return BadRequest(new { error = "reviewIntervalDays must be between 1 and 3650" });
-
-        var slug = await db.GenerateUniqueArticleSlugAsync(req.Title);
-
-        var userId = User.GetUserId();
-        var articleStatus = req.Status ?? "draft";
-
-        var article = new Article
-        {
-            Title = req.Title.Trim(),
-            Slug = slug,
-            Content = req.ContentMarkdown?.Trim(),
-            Excerpt = req.Excerpt?.Trim(),
-            Status = articleStatus,
-            OwnerId = userId,
-            ContentType = req.ContentType ?? "reference",
-            CreatedViaApiKeyId = User.GetApiKeyId(),
-            PublishedAt = articleStatus == "published" ? DateTime.UtcNow : null,
-            LastReviewedAt = null,
-            ReadTimeMinutes = ContentExtractor.CalculateReadTime(req.ContentMarkdown),
-            ReviewIntervalDays = req.ReviewIntervalDays ?? 90,
-        };
-
-        db.Articles.Add(article);
-
-        await articleService.AddVersionAsync(article.Id, article.Title, article.Content, userId, "Initial version");
-
-        if (req.Tags?.Length > 0)
-            await articleService.AttachTagsAsync(article.Id, req.Tags,
-                User.GetSource() == "api-key" || RbacService.HasPermission(User, Permissions.TagsManage));
-
-        await db.SaveChangesAsync();
-
-        // If published: queue semantic indexing and eagerly sync the local FTS index.
-        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
+        var result = await mutations.CreateAsync(
+            new CreateArticleCommand(req.Title, req.ContentMarkdown, req.Excerpt, req.Status,
+                req.ContentType, req.Tags, req.ReviewIntervalDays),
+            User, "Initial version", ct: HttpContext.RequestAborted);
+        if (result.Error != null) return result.Error.ToActionResult();
+        var article = result.Article!;
 
         return StatusCode(201, new { article.Id, article.Slug, article.Title });
     }
@@ -189,119 +142,19 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         var article = await db.Articles.FindAsync(id);
         if (article == null) return NotFound(new { error = "Article not found" });
 
-        var userId = User.GetUserId();
-
-        if (!RbacService.CanEditArticle(User, article.OwnerId == userId))
-            return StatusCode(403, new { error = "You do not have permission to edit this article" });
-
-        var validContentTypes = await GetValidContentTypesAsync();
-        if (req.ContentType != null && !validContentTypes.Contains(req.ContentType))
-            return BadRequest(new { error = $"Invalid contentType. Allowed: {string.Join(", ", validContentTypes)}" });
-
-        if (req.Status != null && !ValidStatuses.Contains(req.Status))
-            return BadRequest(new { error = $"Invalid status. Allowed: {string.Join(", ", ValidStatuses)}" });
-        if (req.ReviewIntervalDays is < 1 or > 3650)
-            return BadRequest(new { error = "reviewIntervalDays must be between 1 and 3650" });
-
-        var contentChanged = false;
-        var approvalInvalidated = false;
-        if (req.Title != null)
-        {
-            var title = req.Title.Trim();
-            if (title.Length is < 1 or > 300)
-                return BadRequest(new { error = "Title is required (1-300 chars)" });
-            approvalInvalidated |= title != article.Title;
-            article.Title = title;
-            article.Slug = await db.GenerateUniqueArticleSlugAsync(title, article.Id);
-        }
-        if (req.ContentMarkdown != null)
-        {
-            var content = req.ContentMarkdown.Trim();
-            contentChanged = content != article.Content;
-            article.Content = content;
-            article.ReadTimeMinutes = ContentExtractor.CalculateReadTime(article.Content);
-            approvalInvalidated |= contentChanged;
-        }
-        if (req.Excerpt != null)
-        {
-            var excerpt = req.Excerpt.Trim();
-            approvalInvalidated |= excerpt != article.Excerpt;
-            article.Excerpt = excerpt;
-        }
-        if (req.ContentType != null)
-        {
-            approvalInvalidated |= req.ContentType != article.ContentType;
-            article.ContentType = req.ContentType;
-        }
-        if (approvalInvalidated)
-            ArticleService.InvalidateApproval(article);
-        if (req.ReviewIntervalDays.HasValue) article.ReviewIntervalDays = req.ReviewIntervalDays.Value;
-        if (req.Status != null)
-        {
-            if (req.Status != article.Status)
-                ArticleService.InvalidateApproval(article);
-
-            // Archiving requires articles:archive permission
-            if (req.Status == "archived" && article.Status != "archived"
-                && !RbacService.HasPermission(User, Permissions.ArticlesArchive))
-                return StatusCode(403, new { error = "You do not have permission to archive articles" });
-
-            if (req.Status == "published" && article.Status != "published")
-            {
-                article.PublishedAt = DateTime.UtcNow;
-                article.IndexedAt = null; // Dirty flag: newly published → queue for embedding
-            }
-            // Unpublishing: remove embeddings
-            if (req.Status != "published" && article.Status == "published")
-            {
-                article.IndexedAt = null;
-                var embeddings = await db.ArticleEmbeddings.Where(e => e.ArticleId == id).ToListAsync();
-                if (embeddings.Count > 0)
-                    db.ArticleEmbeddings.RemoveRange(embeddings);
-            }
-
-            article.Status = req.Status;
-        }
-
-        article.UpdatedAt = DateTime.UtcNow;
-
-        // Dirty flag: content changed on published article → re-embed
-        if (contentChanged && article.Status == "published")
-            article.IndexedAt = null;
-
-        // Create version if content changed
-        if (contentChanged)
-            await articleService.AddVersionAsync(id, article.Title, article.Content, userId, req.ChangeSummary?.Trim());
-
-        if (req.Tags != null)
-        {
-            ArticleService.InvalidateApproval(article);
-            var existingTags = await db.ArticleTags.Where(at => at.ArticleId == id).ToListAsync();
-            db.ArticleTags.RemoveRange(existingTags);
-            await articleService.AttachTagsAsync(id, req.Tags,
-                User.GetSource() == "api-key" || RbacService.HasPermission(User, Permissions.TagsManage));
-        }
-
-        await db.SaveChangesAsync();
-
-        // Eager FTS provides immediate lexical visibility; the durable job still revalidates
-        // FTS and performs semantic indexing (including title/excerpt/status).
-        await articleService.QueueReindexAsync(article, HttpContext.RequestAborted);
+        var error = await mutations.UpdateAsync(article, req, User, HttpContext.RequestAborted);
+        if (error != null) return error.ToActionResult();
 
         return Ok(new { article.Id, article.Slug, article.Title });
     }
 
     [HttpDelete("{id}")]
+    [RequirePermission(Permissions.ArticlesDeleteAny)]
     [RequireSessionAuth] // destructive deletes are session-only — API keys cannot delete
     public async Task<IActionResult> Delete(string id)
     {
         var article = await db.Articles.FindAsync(id);
         if (article == null) return NotFound(new { error = "Article not found" });
-
-        var userId = User.GetUserId();
-
-        if (!RbacService.CanDeleteArticle(User, article.OwnerId == userId))
-            return StatusCode(403, new { error = "You do not have permission to delete this article" });
 
         // Remove from FTS index
         await articleService.RemoveFromIndexAsync(id);

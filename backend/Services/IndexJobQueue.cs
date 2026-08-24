@@ -21,20 +21,20 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         {
             await db.Database.ExecuteSqlRawAsync(
                 """
-                INSERT INTO index_jobs ("ArticleId", "Status", "Generation", "Priority", "AttemptCount",
-                    "AvailableAt", "CreatedAt", "UpdatedAt")
+                INSERT INTO index_jobs (article_id, status, generation, priority, attempt_count,
+                    available_at, created_at, updated_at)
                 VALUES ({0}, 'pending', 1, {1}, 0, {2}, {2}, {2})
-                ON CONFLICT ("ArticleId") DO UPDATE SET
-                    "Status" = 'pending',
-                    "Generation" = index_jobs."Generation" + 1,
-                    "Priority" = GREATEST(index_jobs."Priority", EXCLUDED."Priority"),
-                    "AttemptCount" = 0,
-                    "AvailableAt" = EXCLUDED."AvailableAt",
-                    "LockedAt" = NULL,
-                    "LockedBy" = NULL,
-                    "LastError" = NULL,
-                    "CompletedAt" = NULL,
-                    "UpdatedAt" = EXCLUDED."UpdatedAt"
+                ON CONFLICT (article_id) DO UPDATE SET
+                    status = 'pending',
+                    generation = index_jobs.generation + 1,
+                    priority = GREATEST(index_jobs.priority, EXCLUDED.priority),
+                    attempt_count = 0,
+                    available_at = EXCLUDED.available_at,
+                    locked_at = NULL,
+                    locked_by = NULL,
+                    last_error = NULL,
+                    completed_at = NULL,
+                    updated_at = EXCLUDED.updated_at
                 """, [articleId, priority, now], ct);
             return;
         }
@@ -67,34 +67,34 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         return await db.Database.SqlQueryRaw<IndexJobClaim>(
             """
             WITH picked AS (
-                SELECT "ArticleId" FROM index_jobs
-                WHERE (("Status" = 'pending' AND "AvailableAt" <= {0})
-                    OR ("Status" = 'processing' AND "LockedAt" < {1}))
-                ORDER BY "Priority" DESC, "AvailableAt", "CreatedAt"
+                SELECT article_id FROM index_jobs
+                WHERE ((status = 'pending' AND available_at <= {0})
+                    OR (status = 'processing' AND locked_at < {1}))
+                ORDER BY priority DESC, available_at, created_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT {2}
             )
             UPDATE index_jobs j SET
-                "Status" = 'processing', "LockedAt" = {0}, "LockedBy" = {3}, "UpdatedAt" = {0}
-            FROM picked WHERE j."ArticleId" = picked."ArticleId"
-            RETURNING j."ArticleId", j."Generation", j."LockedBy"
+                status = 'processing', locked_at = {0}, locked_by = {3}, updated_at = {0}
+            FROM picked WHERE j.article_id = picked.article_id
+            RETURNING j.article_id AS "ArticleId", j.generation AS "Generation", j.locked_by AS "LockedBy"
             """, now, expired, Math.Max(1, count), workerId).ToListAsync(ct);
 #pragma warning restore EF1002
     }
 
     public Task CompleteAsync(IndexJobClaim claim, CancellationToken ct) => db.Database.ExecuteSqlRawAsync(
         """
-        UPDATE index_jobs SET "Status" = 'completed', "CompletedAt" = {0}, "LockedAt" = NULL,
-            "LockedBy" = NULL, "LastError" = NULL, "UpdatedAt" = {0}
-        WHERE "ArticleId" = {1} AND "Generation" = {2} AND "Status" = 'processing'
-          AND "LockedBy" = {3}
+        UPDATE index_jobs SET status = 'completed', completed_at = {0}, locked_at = NULL,
+            locked_by = NULL, last_error = NULL, updated_at = {0}
+        WHERE article_id = {1} AND generation = {2} AND status = 'processing'
+          AND locked_by = {3}
         """, [DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
 
     public Task<int> RenewLeaseAsync(IndexJobClaim claim, CancellationToken ct) => db.Database.ExecuteSqlRawAsync(
         """
-        UPDATE index_jobs SET "LockedAt" = {0}, "UpdatedAt" = {0}
-        WHERE "ArticleId" = {1} AND "Generation" = {2} AND "Status" = 'processing'
-          AND "LockedBy" = {3}
+        UPDATE index_jobs SET locked_at = {0}, updated_at = {0}
+        WHERE article_id = {1} AND generation = {2} AND status = 'processing'
+          AND locked_by = {3}
         """, [DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
 
     public async Task FailAsync(IndexJobClaim claim, Exception error, CancellationToken ct)
@@ -111,9 +111,9 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         if (message.Length > 4000) message = message[..4000];
         await db.Database.ExecuteSqlRawAsync(
             """
-            UPDATE index_jobs SET "Status" = {0}, "AttemptCount" = {1}, "AvailableAt" = {2},
-                "LockedAt" = NULL, "LockedBy" = NULL, "LastError" = {3}, "UpdatedAt" = {4}
-            WHERE "ArticleId" = {5} AND "Generation" = {6} AND "LockedBy" = {7}
+            UPDATE index_jobs SET status = {0}, attempt_count = {1}, available_at = {2},
+                locked_at = NULL, locked_by = NULL, last_error = {3}, updated_at = {4}
+            WHERE article_id = {5} AND generation = {6} AND locked_by = {7}
             """,
             [terminal ? "failed" : "pending", attempt, DateTime.UtcNow.AddSeconds(delay), message,
              DateTime.UtcNow, claim.ArticleId, claim.Generation, claim.LockedBy], ct);
@@ -125,23 +125,17 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         var semanticEnabled = config.GetValue("Ollama:Enabled", false);
         return await db.Database.ExecuteSqlRawAsync(
             """
-            INSERT INTO index_jobs ("ArticleId", "Status", "Generation", "Priority", "AttemptCount",
-                "AvailableAt", "CreatedAt", "UpdatedAt")
-            SELECT a."Id", 'pending', 1, 10, 0, NOW(), NOW(), NOW()
+            INSERT INTO index_jobs (article_id, status, generation, priority, attempt_count,
+                available_at, created_at, updated_at)
+            SELECT a.id, 'pending', 1, 10, 0, NOW(), NOW(), NOW()
             FROM articles a
-            WHERE a."Status" = 'published'
-              AND (a."FtsIndexedAt" IS NULL OR ({0} AND a."IndexedAt" IS NULL))
-            ON CONFLICT ("ArticleId") DO UPDATE SET
-                "Status" = 'pending',
-                "Generation" = index_jobs."Generation" + 1,
-                "Priority" = GREATEST(index_jobs."Priority", 10),
-                "AttemptCount" = 0,
-                "AvailableAt" = NOW(),
-                "LockedAt" = NULL,
-                "LockedBy" = NULL,
-                "LastError" = NULL,
-                "CompletedAt" = NULL,
-                "UpdatedAt" = NOW()
+            WHERE a.status = 'published'
+              AND (a.fts_indexed_at IS NULL OR ({0} AND a.indexed_at IS NULL))
+            ON CONFLICT (article_id) DO UPDATE SET
+                status = 'pending', generation = index_jobs.generation + 1,
+                priority = GREATEST(index_jobs.priority, 10), attempt_count = 0,
+                available_at = NOW(), locked_at = NULL, locked_by = NULL,
+                last_error = NULL, completed_at = NULL, updated_at = NOW()
             """, [semanticEnabled], ct);
     }
 
@@ -158,24 +152,18 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         {
             return await db.Database.ExecuteSqlRawAsync(
                 """
-                INSERT INTO index_jobs ("ArticleId", "Status", "Generation", "Priority", "AttemptCount",
-                    "AvailableAt", "CreatedAt", "UpdatedAt")
-                SELECT a."Id", 'pending', 1, 10, 0, NOW(), NOW(), NOW()
+                INSERT INTO index_jobs (article_id, status, generation, priority, attempt_count,
+                    available_at, created_at, updated_at)
+                SELECT a.id, 'pending', 1, 10, 0, NOW(), NOW(), NOW()
                 FROM articles a
-                WHERE a."Status" = 'published'
-                  AND (a."FtsIndexedAt" IS NULL OR ({0} AND a."IndexedAt" IS NULL))
-                ON CONFLICT ("ArticleId") DO UPDATE SET
-                    "Status" = 'pending',
-                    "Generation" = index_jobs."Generation" + 1,
-                    "Priority" = GREATEST(index_jobs."Priority", 10),
-                    "AttemptCount" = 0,
-                    "AvailableAt" = NOW(),
-                    "LockedAt" = NULL,
-                    "LockedBy" = NULL,
-                    "LastError" = NULL,
-                    "CompletedAt" = NULL,
-                    "UpdatedAt" = NOW()
-                WHERE index_jobs."Status" = 'completed'
+                WHERE a.status = 'published'
+                  AND (a.fts_indexed_at IS NULL OR ({0} AND a.indexed_at IS NULL))
+                ON CONFLICT (article_id) DO UPDATE SET
+                    status = 'pending', generation = index_jobs.generation + 1,
+                    priority = GREATEST(index_jobs.priority, 10), attempt_count = 0,
+                    available_at = NOW(), locked_at = NULL, locked_by = NULL,
+                    last_error = NULL, completed_at = NULL, updated_at = NOW()
+                WHERE index_jobs.status = 'completed'
                 """, [semanticEnabled], ct);
         }
 
@@ -244,28 +232,22 @@ public class IndexJobQueue(AppDbContext db, IConfiguration config)
         {
             return await db.Database.ExecuteSqlRawAsync(
                 """
-                INSERT INTO index_jobs ("ArticleId", "Status", "Generation", "Priority", "AttemptCount",
-                    "AvailableAt", "CreatedAt", "UpdatedAt")
-                SELECT a."Id", 'pending', 1, 100, 0, {1}, {1}, {1}
+                INSERT INTO index_jobs (article_id, status, generation, priority, attempt_count,
+                    available_at, created_at, updated_at)
+                SELECT a.id, 'pending', 1, 100, 0, {1}, {1}, {1}
                 FROM articles a
-                WHERE a."Status" = 'published'
-                  AND (a."FtsIndexedAt" IS NULL OR ({0} AND a."IndexedAt" IS NULL))
-                ON CONFLICT ("ArticleId") DO UPDATE SET
-                    "Status" = 'pending',
-                    "Generation" = index_jobs."Generation" + 1,
-                    "Priority" = GREATEST(index_jobs."Priority", 100),
-                    "AttemptCount" = 0,
-                    "AvailableAt" = {1},
-                    "LockedAt" = NULL,
-                    "LockedBy" = NULL,
-                    "LastError" = NULL,
-                    "CompletedAt" = NULL,
-                    "UpdatedAt" = {1}
-                WHERE index_jobs."Status" IN ('completed', 'failed')
-                   OR (index_jobs."Status" = 'pending'
-                       AND (index_jobs."AttemptCount" > 0 OR index_jobs."AvailableAt" > {1}))
-                   OR (index_jobs."Status" = 'processing'
-                       AND (index_jobs."LockedAt" IS NULL OR index_jobs."LockedAt" < {2}))
+                WHERE a.status = 'published'
+                  AND (a.fts_indexed_at IS NULL OR ({0} AND a.indexed_at IS NULL))
+                ON CONFLICT (article_id) DO UPDATE SET
+                    status = 'pending', generation = index_jobs.generation + 1,
+                    priority = GREATEST(index_jobs.priority, 100), attempt_count = 0,
+                    available_at = {1}, locked_at = NULL, locked_by = NULL,
+                    last_error = NULL, completed_at = NULL, updated_at = {1}
+                WHERE index_jobs.status IN ('completed', 'failed')
+                   OR (index_jobs.status = 'pending'
+                       AND (index_jobs.attempt_count > 0 OR index_jobs.available_at > {1}))
+                   OR (index_jobs.status = 'processing'
+                       AND (index_jobs.locked_at IS NULL OR index_jobs.locked_at < {2}))
                 """, [semanticEnabled, now, expired], ct);
         }
 

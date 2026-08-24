@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2, ToggleLeft, ToggleRight, ArrowUp, ArrowDown, Pencil, ExternalLink } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -31,13 +31,13 @@ export default function FeaturedLinksPage() {
   const [editIcon, setEditIcon] = useState("");
   const [editColor, setEditColor] = useState("");
 
-  const loadLinks = async () => {
-    const res = await fetchWithAuth("/api/featured-links?includeEtkin değil=true");
+  const loadLinks = useCallback(async () => {
+    const res = await fetchWithAuth("/api/featured-links?includeInactive=true");
     if (res.ok) {
       setLinks(await res.json());
     }
     setLoading(false);
-  };
+  }, [fetchWithAuth]);
 
   useEffect(() => {
     loadLinks();
@@ -47,7 +47,7 @@ export default function FeaturedLinksPage() {
         if (Array.isArray(data)) setTags(data);
       })
       .catch(() => {});
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, loadLinks]);
 
   const afterMutation = () => {
     invalidateFeaturedLinksCache();

@@ -162,7 +162,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | Entity | Expected State |
 |--------|---------------|
 | Admin user | `admin@finagotech.com.tr` with role `admin` exists |
-| Default tags | 10 tags: getting-started, tutorial, troubleshooting, best-practices, api, deployment, security, performance, testing, monitoring |
+| Default tags | 11 tags: project-knowledge-portal, getting-started, tutorial, troubleshooting, best-practices, api, deployment, security, performance, testing, monitoring |
 
 ---
 
@@ -183,7 +183,7 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Command | Expected |
 |---------|----------|
-| `cd backend/Tests && dotnet test` | 145 tests pass — no Docker required (EF Core InMemory + in-process fakes) |
+| `cd backend/Tests && dotnet test` | 315 tests pass — no Docker required (EF Core InMemory + in-process fakes) |
 
 Also runs as the gating `Test` stage in `azure-pipelines.yml` before image build/deploy.
 

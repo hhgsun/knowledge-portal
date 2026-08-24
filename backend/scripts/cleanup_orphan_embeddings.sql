@@ -23,14 +23,14 @@
 
 \echo ''
 \echo '=== orphan chunks, by reason ================================================='
-SELECT CASE WHEN a."Id" IS NULL THEN 'article deleted'
-            ELSE 'article no longer published (' || a."Status" || ')'
+SELECT CASE WHEN a.id IS NULL THEN 'article deleted'
+            ELSE 'article no longer published (' || a.status || ')'
        END                              AS reason,
        count(*)                         AS chunks,
-       count(DISTINCT e."ArticleId")    AS articles
+       count(DISTINCT e.article_id)     AS articles
 FROM article_embeddings e
-LEFT JOIN articles a ON a."Id" = e."ArticleId"
-WHERE a."Id" IS NULL OR a."Status" <> 'published'
+LEFT JOIN articles a ON a.id = e.article_id
+WHERE a.id IS NULL OR a.status <> 'published'
 GROUP BY 1
 ORDER BY chunks DESC;
 
@@ -46,7 +46,7 @@ ORDER BY chunks DESC;
 DELETE FROM article_embeddings e
 WHERE NOT EXISTS (
     SELECT 1 FROM articles a
-    WHERE a."Id" = e."ArticleId" AND a."Status" = 'published'
+    WHERE a.id = e.article_id AND a.status = 'published'
 );
 
 \echo ''
@@ -55,7 +55,7 @@ SELECT count(*) AS remaining
 FROM article_embeddings e
 WHERE NOT EXISTS (
     SELECT 1 FROM articles a
-    WHERE a."Id" = e."ArticleId" AND a."Status" = 'published'
+    WHERE a.id = e.article_id AND a.status = 'published'
 );
 
 \echo ''

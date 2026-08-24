@@ -38,7 +38,7 @@
 | `Microsoft.EntityFrameworkCore.Design` | 10.0.8 | Migration CLI tooling |
 | `BCrypt.Net-Next` | 4.2.0 | Password hashing (cost 12) and API key verification |
 | `OllamaSharp` | 5.4.25 | Ollama client (implements IChatClient + IEmbeddingGenerator from Microsoft.Extensions.AI) |
-| `ModelContextProtocol.AspNetCore` | 2.0.0-preview.1 | MCP server over Streamable HTTP transport |
+| `ModelContextProtocol.AspNetCore` | 2.0.0 | MCP server over Streamable HTTP transport |
 | `UglyToad.PdfPig` | 1.7.0-custom-5 | PDF text extraction for attachment indexing |
 | `DocumentFormat.OpenXml` | 3.3.0 | DOCX/XLSX/PPTX text extraction and source import |
 | `Serilog.AspNetCore` | 9.0.0 | Structured logging: console + rolling daily JSON file (CompactJsonFormatter), retention limit |
@@ -80,7 +80,7 @@
 | Engine | PostgreSQL (remote, 192.168.84.21) |
 | Extensions | pgvector (vector similarity search) |
 | ORM strategy | Code-first with EF Core migrations |
-| Column naming | `snake_case` (configured in `OnModelCreating`) |
+| Database naming | Application schema uses `snake_case`; EF history table is `__ef_migrations_history` |
 | ID generation | 21-character truncated GUID (hex, lowercase) |
 
 ## External APIs & Services
@@ -97,7 +97,7 @@
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
 | Database (tests) | `Microsoft.EntityFrameworkCore.InMemory` | Whole suite is Docker-free: isolated in-memory database per test class. App degrades to `EnsureCreated` + LINQ FTS fallback on non-relational providers |
 | AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama; `FakeVectorSearchService` replaces pgvector search (`IVectorSearchService`) — no Docker, no network |
-| Test project | `backend/Tests/` | 245 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
+| Test project | `backend/Tests/` | 315 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
 
 Run tests: `cd backend/Tests && dotnet test` (no Docker required)
 

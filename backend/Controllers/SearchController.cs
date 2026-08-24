@@ -1,16 +1,12 @@
-using System.Diagnostics;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
-using KnowledgePortal.Api.Models;
-using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace KnowledgePortal.Api.Controllers;
 
@@ -18,279 +14,79 @@ namespace KnowledgePortal.Api.Controllers;
 [Route("api/search")]
 [Authorize]
 [EnableRateLimiting("search")]
-public class SearchController(
-    AppDbContext db,
-    IConfiguration config,
-    ArticleService articleService,
-    ISearchReranker reranker) : ControllerBase
+public class SearchController(AppDbContext db, IConfiguration config,
+    SearchExecutionService searchExecution) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Search(
-        [FromQuery] string? q,
-        [FromQuery] string type = "fulltext",
-        [FromQuery] int limit = 20,
-        [FromQuery] int page = 1,
-        [FromQuery] bool onlyOwnContent = false,
-        [FromQuery] bool includeContent = false,
-        [FromQuery] bool includeAttachments = false,
-        [FromQuery] List<string>? tag = null,
-        [FromQuery] List<string>? author = null,
-        [FromQuery] List<string>? contentType = null)
+        [FromQuery] string? q, [FromQuery] string type = "fulltext",
+        [FromQuery] int limit = 20, [FromQuery] int page = 1,
+        [FromQuery] bool onlyOwnContent = false, [FromQuery] bool includeContent = false,
+        [FromQuery] bool includeAttachments = false, [FromQuery] List<string>? tag = null,
+        [FromQuery] List<string>? author = null, [FromQuery] List<string>? contentType = null)
     {
-        if (string.IsNullOrWhiteSpace(q))
-            return BadRequest(new { error = "Query parameter 'q' is required" });
+        var execution = await searchExecution.ExecuteAsync(
+            new PortalSearchRequest(q ?? "", type, limit, page, onlyOwnContent,
+                includeContent, includeAttachments, tag, author, contentType),
+            User, HttpContext.RequestAborted);
+        if (execution.Error != null) return execution.Error.ToActionResult();
 
-        limit = Math.Clamp(limit, 1, 50);
-        page = Math.Max(1, page);
-        var sw = Stopwatch.StartNew();
-
-        // Parse inline syntax: ## → contentType, # → tag, @ → user
-        var tagSlugs = new List<string>();
-        var authorSlugs = new List<string>();
-        var contentTypeSlugs = new List<string>();
-        var searchQuery = q.Trim();
-        var words = searchQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var remainingWords = new List<string>();
-        foreach (var word in words)
+        var result = execution.Result!;
+        if (result.Failure != SearchFailureKind.None) return FailureResult(result);
+        if (result.Rag is { } rag)
         {
-            if (word.StartsWith("##") && word.Length > 2)
-                contentTypeSlugs.Add(word[2..]);
-            else if (word.StartsWith('#') && word.Length > 1)
-                tagSlugs.Add(word[1..]);
-            else if (word.StartsWith('@') && word.Length > 1)
-                authorSlugs.Add(word[1..]);
-            else
-                remainingWords.Add(word);
-        }
-        searchQuery = string.Join(' ', remainingWords).Trim();
-
-        // Merge query parameters with inline syntax
-        if (tag?.Count > 0)
-            tagSlugs.AddRange(tag.SelectMany(t => t.Split(',')).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()));
-        tagSlugs = tagSlugs.Distinct().ToList();
-
-        if (author?.Count > 0)
-            authorSlugs.AddRange(author.SelectMany(a => a.Split(',')).Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()));
-        authorSlugs = authorSlugs.Distinct().ToList();
-
-        // Resolve author slugs to IDs (OR logic — articles from any of these authors)
-        List<string>? authorFilterIds = authorSlugs.Count > 0
-            ? await db.ResolveAuthorIdsAsync(authorSlugs)
-            : null;
-
-        // Resolve contentType slugs (OR logic — merge with query param)
-        List<string>? contentTypeFilter = contentTypeSlugs.Count > 0 ? contentTypeSlugs.Distinct().ToList() : null;
-        if (contentType?.Count > 0)
-        {
-            contentTypeFilter ??= [];
-            foreach (var ct in contentType.SelectMany(c => c.Split(',')).Select(c => c.Trim()).Where(c => !string.IsNullOrWhiteSpace(c)))
+            return Ok(new
             {
-                if (!contentTypeFilter.Contains(ct))
-                    contentTypeFilter.Add(ct);
-            }
+                answer = rag.Answer,
+                sources = rag.Sources.Select(source => new
+                    { source.ArticleId, source.Title, source.Slug, source.Score }),
+                claims = rag.Claims,
+                evidence = rag.Evidence,
+                rag.CitationCoverage,
+                rag.GroundingStatus,
+                rag.ClaimSupportCoverage,
+                rag.InsufficientContext,
+                rag.PartialResult,
+                rag.Warnings,
+                result.Query, result.Type, result.ResponseTimeMs,
+                result.IndexingPending, result.IndexCoverage, result.SearchQueryId
+            });
         }
 
-        // API key scoping: when onlyOwnContent=true and request via API key, filter to that key's articles
-        var callerApiKeyId = User.FindFirst("apiKeyId")?.Value;
-        var scopedApiKeyId = onlyOwnContent && callerApiKeyId != null ? callerApiKeyId : null;
-
-        // Resolve every requested tag. Tag filters have AND semantics, so one unknown slug is
-        // necessarily a definite miss; silently dropping it would broaden the user's query.
-        List<string>? tagSlugFilter = null;
-        if (tagSlugs.Count > 0)
+        return Ok(new
         {
-            var tags = await db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync();
-            if (tags.Count != tagSlugs.Count)
-            {
-                sw.Stop();
-                // Record the miss too — zero-result searches feed content-gap analytics
-                var missRecord = await RecordSearchAsync(q, 0, "tag", sw.ElapsedMilliseconds);
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = 0, page = 1, totalPages = 0, searchQueryId = missRecord.Id });
-            }
+            results = result.Results,
+            result.Query, result.Type, result.Tags, result.ResponseTimeMs,
+            result.Total, result.Page, result.TotalPages, result.IndexingPending,
+            result.IndexCoverage, result.SearchQueryId, result.Warning
+        });
+    }
 
-            tagSlugFilter = tags;
-        }
-
-        // All resolved filters, applied uniformly to every search flavor below
-        var filter = new ArticleFilter(authorFilterIds, contentTypeFilter, scopedApiKeyId, TagSlugs: tagSlugFilter);
-
-        // Query terms used for match-context snippets in the result list
-        var snippetTokens = searchQuery.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-
-        // Tag-only search (no remaining query text or explicit tag type)
-        if (tagSlugs.Count > 0 && string.IsNullOrWhiteSpace(searchQuery))
+    private IActionResult FailureResult(PortalSearchResult result)
+    {
+        var payload = new
         {
-            var tagQuery = ArticleService.ApplyFilter(db.Articles.WherePublished(), filter);
-
-            var tagTotal = await tagQuery.CountAsync();
-            var tagResultsRaw = await tagQuery.OrderByDescending(a => a.UpdatedAt)
-                .Skip((page - 1) * limit).Take(limit)
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
-                .ToListAsync();
-            var tagAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, tagResultsRaw.Select(a => a.Id).ToList()) : null;
-            var tagEnrichment = await articleService.GetEnrichmentAsync(tagResultsRaw.Select(a => a.Id));
-            var tagResults = tagResultsRaw.Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, tagAttachmentMap, tagEnrichment.GetValueOrDefault(a.Id))).ToList();
-
-            sw.Stop();
-            var tagSearchRecord = await RecordSearchAsync(q, tagTotal, "tag", sw.ElapsedMilliseconds);
-            return Ok(new { results = tagResults, query = q, type = "tag", tags = tagSlugs, responseTimeMs = sw.ElapsedMilliseconds, total = tagTotal, page, totalPages = (int)Math.Ceiling(tagTotal / (double)limit), searchQueryId = tagSearchRecord.Id });
-        }
-
-        // Resolve AI services
-        var ollamaEnabled = config.GetValue("Ollama:Enabled", false);
-        var vectorSearch = ollamaEnabled ? HttpContext.RequestServices.GetService<IVectorSearchService>() : null;
-        var indexCoverage = await articleService.GetSearchIndexCoverageAsync(
-            type, filter, HttpContext.RequestAborted);
-        var indexingPending = indexCoverage.RelevantPending > 0;
-
-        // ═══ RAG ═══
-        if (type == "rag")
+            results = result.Results,
+            result.Query, result.Type, result.ResponseTimeMs, result.Total,
+            result.Page, result.TotalPages, result.IndexingPending,
+            result.IndexCoverage, result.SearchQueryId, result.Warning
+        };
+        return result.Failure switch
         {
-            if (!ollamaEnabled || vectorSearch == null)
-            {
-                sw.Stop();
-                return Ok(new { answer = "AI arama şu anda kullanılamıyor. Ollama servisi aktif değil.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage });
-            }
+            SearchFailureKind.RagBusy => WithRetryAfter(429, "5", "RAG capacity is full. Please retry shortly."),
+            SearchFailureKind.RagCircuitOpen => WithRetryAfter(503, "30", "RAG generation is temporarily unavailable."),
+            SearchFailureKind.RagTimeout => StatusCode(504,
+                new { error = "RAG request exceeded its processing deadline.", result.SearchQueryId }),
+            SearchFailureKind.AiFailed when result.Type == "rag" => StatusCode(500,
+                new { error = "AI yanıtı oluşturulurken bir hata oluştu.", result.SearchQueryId }),
+            _ => Ok(payload)
+        };
+    }
 
-            var ragService = HttpContext.RequestServices.GetService<RagService>();
-            if (ragService == null)
-            {
-                sw.Stop();
-                return Ok(new { answer = "RAG servisi kullanılamıyor.", sources = Array.Empty<object>(), query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage });
-            }
-
-            try
-            {
-                var ragResult = await ragService.AskAsync(searchQuery, filter, HttpContext.RequestAborted);
-                sw.Stop();
-                var ragRecord = await RecordSearchAsync(q, ragResult.Sources.Count, "rag", sw.ElapsedMilliseconds,
-                    ragResult);
-                return Ok(new { answer = ragResult.Answer, sources = ragResult.Sources.Select(s => new { s.ArticleId, s.Title, s.Slug, s.Score }),
-                    claims = ragResult.Claims, evidence = ragResult.Evidence, ragResult.CitationCoverage,
-                    ragResult.GroundingStatus, ragResult.ClaimSupportCoverage, ragResult.InsufficientContext,
-                    ragResult.PartialResult, ragResult.Warnings,
-                    query = q, type = "rag", responseTimeMs = sw.ElapsedMilliseconds, indexingPending, indexCoverage, searchQueryId = ragRecord.Id });
-            }
-            catch (RagBusyException)
-            {
-                Response.Headers.RetryAfter = "5";
-                return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "RAG capacity is full. Please retry shortly." });
-            }
-            catch (RagCircuitOpenException)
-            {
-                Response.Headers.RetryAfter = "30";
-                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "RAG generation is temporarily unavailable." });
-            }
-            catch (RagStageTimeoutException)
-            {
-                return StatusCode(StatusCodes.Status504GatewayTimeout, new { error = "RAG request exceeded its processing deadline." });
-            }
-            catch (Exception ex)
-            {
-                sw.Stop();
-                HttpContext.RequestServices.GetRequiredService<ILogger<SearchController>>().LogError(ex, "RAG request failed");
-                return StatusCode(StatusCodes.Status500InternalServerError, new { error = "AI yanıtı oluşturulurken bir hata oluştu." });
-            }
-        }
-
-        // ═══ SEMANTIC ═══
-        if (type == "semantic")
-        {
-            if (!ollamaEnabled || vectorSearch == null)
-            {
-                sw.Stop();
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, indexCoverage, warning = "Semantic search unavailable — Ollama disabled" });
-            }
-
-            try
-            {
-                // The filter is part of the vector query itself, so no over-fetch is needed to
-                // survive it. It is re-applied below only as a cheap safety net — that lookup
-                // has to run anyway to resolve titles/slugs.
-                var semanticResults = await vectorSearch.SearchAsync(searchQuery, limit, filter: filter);
-                var articleIds = semanticResults.Select(r => r.ArticleId).ToList();
-                var semQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => articleIds.Contains(a.Id)), filter);
-                var articles = await semQuery
-                    .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, UpdatedAt = a.UpdatedAt.ToString("o") })
-                    .ToListAsync();
-
-                var semAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, articles.Select(a => a.Id).ToList()) : null;
-                var semEnrichment = await articleService.GetEnrichmentAsync(articles.Select(a => a.Id));
-                var scoredResults = semanticResults
-                    .Select(sr => { var a = articles.FirstOrDefault(a => a.Id == sr.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, includeContent, snippetTokens, semAttachmentMap, semEnrichment.GetValueOrDefault(a.Id), Math.Round(sr.Score, 4)); })
-                    .Where(r => r != null).Take(limit).ToList();
-
-                sw.Stop();
-                var semRecord = await RecordSearchAsync(q, scoredResults.Count, "semantic", sw.ElapsedMilliseconds);
-                return Ok(new { results = scoredResults, query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = scoredResults.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, searchQueryId = semRecord.Id });
-            }
-            catch
-            {
-                sw.Stop();
-                return Ok(new { results = Array.Empty<object>(), query = q, type = "semantic", responseTimeMs = sw.ElapsedMilliseconds, total = 0, indexingPending, indexCoverage, warning = "Semantic search failed" });
-            }
-        }
-
-        // ═══ HYBRID (full-text + semantic via RRF) ═══
-        if (type == "hybrid")
-        {
-            // Each leg over-fetches so RRF fuses a wide candidate pool and the final
-            // Take(limit) is applied after merging + filtering
-            var candidateLimit = Math.Clamp(config.GetValue("Search:HybridCandidateLimit", 200), limit, 500);
-
-            // Full-text leg (rank order + LIKE fallback handled by the service)
-            var fulltextResults = (await articleService.SearchPublishedAsync(searchQuery, candidateLimit, filter))
-                .Select(a => a.Id)
-                .ToList();
-
-            List<VectorSearchResult>? semanticHits = null;
-            if (ollamaEnabled && vectorSearch != null)
-            {
-                // candidateLimit is the RRF fusion pool, not filter headroom — the filter runs
-                // inside the vector query, so every candidate here is already eligible.
-                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit, filter: filter); }
-                catch { /* semantic unavailable — fulltext only */ }
-            }
-
-            // RRF merge (weights/k documented in RrfHelper)
-            var rrfScores = RrfHelper.Merge(
-                fulltextResults,
-                semanticHits?.Select(h => h.ArticleId).ToList());
-
-            var allIds = rrfScores.Keys.ToList();
-            var hybridMergeQuery = ArticleService.ApplyFilter(db.Articles.WherePublished().Where(a => allIds.Contains(a.Id)), filter);
-            var allArticles = await hybridMergeQuery
-                .Select(a => new { a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt, a.ApprovedAt })
-                .ToListAsync();
-
-            var hybridAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, allArticles.Select(a => a.Id).ToList()) : null;
-            var hybridEnrichment = await articleService.GetEnrichmentAsync(allArticles.Select(a => a.Id));
-            var reranked = reranker.Rerank(searchQuery, allArticles.Select(a => new RerankCandidate(
-                a.Id, a.Title, a.Excerpt, a.Content, rrfScores[a.Id].Score,
-                a.UpdatedAt, a.ApprovedAt, a.ContentType)).ToList());
-            var hybridResults = reranked.Take(limit)
-                .Select(hit => { var a = allArticles.FirstOrDefault(a => a.Id == hit.ArticleId); return a == null ? null : BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt.ToString("o"), includeContent, snippetTokens, hybridAttachmentMap, hybridEnrichment.GetValueOrDefault(a.Id), Math.Round(hit.Score, 4), rrfScores[hit.ArticleId].MatchType); })
-                .Where(r => r != null).ToList();
-
-            sw.Stop();
-            var hybridRecord = await RecordSearchAsync(q, hybridResults.Count, "hybrid", sw.ElapsedMilliseconds);
-
-            var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : (string?)null;
-            return Ok(new { results = hybridResults, query = q, type = "hybrid", responseTimeMs = sw.ElapsedMilliseconds, total = hybridResults.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, searchQueryId = hybridRecord.Id, warning });
-        }
-
-        // ═══ FULLTEXT (default) — rank order + LIKE fallback handled by the service ═══
-        var ftPage = await articleService.SearchPublishedPagedAsync(searchQuery, page, limit, filter);
-        var ftArticles = ftPage.Articles;
-        var ftAttachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, ftArticles.Select(a => a.Id).ToList()) : null;
-        var ftEnrichment = await articleService.GetEnrichmentAsync(ftArticles.Select(a => a.Id));
-        var ftFinalResults = ftArticles
-            .Select(a => BuildResult(a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.Content, a.UpdatedAt.ToString("o"), includeContent, snippetTokens, ftAttachmentMap, ftEnrichment.GetValueOrDefault(a.Id)))
-            .ToList();
-
-        sw.Stop();
-        var ftRecord = await RecordSearchAsync(q, ftPage.Total, "fulltext", sw.ElapsedMilliseconds);
-        return Ok(new { results = ftFinalResults, query = q, type = "fulltext", responseTimeMs = sw.ElapsedMilliseconds, total = ftPage.Total, page, totalPages = (int)Math.Ceiling(ftPage.Total / (double)limit), indexingPending, indexCoverage, searchQueryId = ftRecord.Id });
+    private IActionResult WithRetryAfter(int status, string retryAfter, string error)
+    {
+        Response.Headers.RetryAfter = retryAfter;
+        return StatusCode(status, new { error });
     }
 
     [HttpPost("click")]
@@ -298,15 +94,10 @@ public class SearchController(
     {
         if (string.IsNullOrWhiteSpace(req.SearchQueryId) || string.IsNullOrWhiteSpace(req.ArticleId))
             return BadRequest(new { error = "searchQueryId and articleId are required" });
-
         var searchQuery = await db.SearchQueries.FindAsync(req.SearchQueryId);
-        if (searchQuery == null)
-            return NotFound(new { error = "Search query not found" });
-
-        var userId = User.GetUserId();
-        if (searchQuery.UserId != userId)
+        if (searchQuery == null) return NotFound(new { error = "Search query not found" });
+        if (searchQuery.UserId != User.GetUserId())
             return StatusCode(403, new { error = "Cannot update another user's search query" });
-
         searchQuery.ClickedArticleId = req.ArticleId;
         await db.SaveChangesAsync();
         return Ok(new { message = "Click recorded" });
@@ -317,18 +108,15 @@ public class SearchController(
     {
         if (string.IsNullOrWhiteSpace(req.SearchQueryId))
             return BadRequest(new { error = "searchQueryId is required" });
-
         var record = await db.SearchQueries.FindAsync(req.SearchQueryId);
         if (record == null || record.SearchType != "rag")
             return NotFound(new { error = "RAG search query not found" });
         if (record.UserId != User.GetUserId())
             return StatusCode(403, new { error = "Cannot update another user's search query" });
-
         var reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim().ToLowerInvariant();
         string[] allowedReasons = ["incorrect", "incomplete", "wrong_source", "outdated", "no_answer", "other"];
         if (reason != null && !allowedReasons.Contains(reason))
             return BadRequest(new { error = "Invalid feedback reason" });
-
         record.RagFeedback = req.Helpful ? "helpful" : "not_helpful";
         record.RagFeedbackReason = reason;
         record.RagFeedbackAt = DateTime.UtcNow;
@@ -343,32 +131,15 @@ public class SearchController(
     {
         if (!config.GetValue("Ollama:Enabled", false))
             return StatusCode(503, new { error = "Ollama is not enabled" });
-
-        // Invalidate rather than delete. Dropping every chunk up front left semantic search
-        // blind for the whole re-embed, which on a large corpus is days. Clearing the stored
-        // text hash of each article's first chunk defeats the up-to-date check in
-        // EmbeddingService.EmbedArticleAsync, so each article re-embeds on its turn and replaces
-        // its own chunks in a single transaction — results go stale gradually instead of
-        // vanishing. Hashes first, then IndexedAt: the other order lets a worker claim an
-        // article and short-circuit before its hash was cleared.
-        await db.ArticleEmbeddings
-            .Where(e => e.ChunkIndex == 0)
-            .ExecuteUpdateAsync(s => s.SetProperty(e => e.TextHash, ""));
-
+        await db.ArticleEmbeddings.Where(embedding => embedding.ChunkIndex == 0)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(embedding => embedding.TextHash, ""));
         var count = await db.Articles.WherePublished()
-            .ExecuteUpdateAsync(s => s.SetProperty(a => a.IndexedAt, (DateTime?)null));
-
-        // Durable jobs rebuild FTS and embeddings together; restart-safe and observable.
+            .ExecuteUpdateAsync(setters => setters.SetProperty(article => article.IndexedAt, (DateTime?)null));
         await HttpContext.RequestServices.GetRequiredService<IndexJobQueue>()
             .BackfillDirtyArticlesAsync(HttpContext.RequestAborted);
-
         return Ok(new { message = "Reindex queued", articlesQueued = count });
     }
 
-    /// <summary>
-    /// Repairs only missing or stuck index jobs. Current indexes and actively leased work are left
-    /// untouched; unlike a full reindex this is safe for routine operational recovery.
-    /// </summary>
     [HttpPost("repair-indexing")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]
@@ -377,20 +148,14 @@ public class SearchController(
         var repaired = await HttpContext.RequestServices.GetRequiredService<IndexJobQueue>()
             .RepairDirtyArticlesAsync(ct);
         var pending = await db.IndexJobs.CountAsync(
-            j => j.Status == "pending" || j.Status == "processing", ct);
-
+            job => job.Status == "pending" || job.Status == "processing", ct);
         return Ok(new
         {
             message = repaired > 0 ? "Missing or stuck index jobs repaired" : "No repairable index jobs found",
-            articlesRepaired = repaired,
-            pendingCount = pending,
+            articlesRepaired = repaired, pendingCount = pending
         });
     }
 
-    /// <summary>
-    /// Read-only health report for both search indexes: coverage, sizes, effective settings and
-    /// EXPLAIN probes of the real query shapes. Nothing here executes a plan or writes anything.
-    /// </summary>
     [HttpGet("diagnostics")]
     [RequirePermission(Permissions.UsersManage)]
     [RequireSessionAuth]
@@ -402,10 +167,8 @@ public class SearchController(
     [RequireSessionAuth]
     public IActionResult RagObservability([FromServices] RagResilienceService resilience) => Ok(new
     {
-        runtime = resilience.Snapshot(),
-        metricsEndpoint = "/metrics",
-        activitySource = PortalMetrics.ActivitySourceName,
-        metricPrefix = "kp_rag_",
+        runtime = resilience.Snapshot(), metricsEndpoint = "/metrics",
+        activitySource = PortalMetrics.ActivitySourceName, metricPrefix = "kp_rag_",
         retrieval = new
         {
             queryRewriteEnabled = config.GetValue("Ollama:QueryUnderstanding:RewriteEnabled", true),
@@ -425,7 +188,7 @@ public class SearchController(
             return BadRequest(new { error = "Query parameter 'q' is required" });
         if (!config.GetValue("Ollama:Enabled", false)
             || HttpContext.RequestServices.GetService<RagService>() is not { } rag)
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "RAG service is not available" });
+            return StatusCode(503, new { error = "RAG service is not available" });
         return Ok(await rag.DebugAsync(q.Trim(), null, ct));
     }
 
@@ -440,83 +203,34 @@ public class SearchController(
     [RequireSessionAuth]
     public async Task<IActionResult> EmbeddingStatus()
     {
-        var totalPublished = await db.Articles.CountAsync(a => a.Status == "published");
+        var totalPublished = await db.Articles.CountAsync(article => article.Status == "published");
         var semanticEnabled = config.GetValue("Ollama:Enabled", false);
-        var totalFtsIndexed = await db.Articles.CountAsync(a => a.Status == "published" && a.FtsIndexedAt != null);
+        var totalFtsIndexed = await db.Articles.CountAsync(article => article.Status == "published" && article.FtsIndexedAt != null);
         var totalSemanticIndexed = semanticEnabled
-            ? await db.Articles.CountAsync(a => a.Status == "published" && a.IndexedAt != null)
-            : 0;
-        var failedJobs = await db.IndexJobs.Where(j => j.Status == "failed")
-            .OrderByDescending(j => j.AttemptCount).Take(20).ToListAsync();
-
+            ? await db.Articles.CountAsync(article => article.Status == "published" && article.IndexedAt != null) : 0;
+        var failedJobs = await db.IndexJobs.Where(job => job.Status == "failed")
+            .OrderByDescending(job => job.AttemptCount).Take(20).ToListAsync();
         return Ok(new
         {
-            totalPublished,
-            totalIndexed = semanticEnabled ? totalSemanticIndexed : totalFtsIndexed,
-            totalFtsIndexed,
-            totalSemanticIndexed,
-            pendingCount = await db.IndexJobs.CountAsync(j => j.Status == "pending" || j.Status == "processing"),
-            failedCount = await db.IndexJobs.CountAsync(j => j.Status == "failed"),
-            ollamaEnabled = config.GetValue("Ollama:Enabled", false),
+            totalPublished, totalIndexed = semanticEnabled ? totalSemanticIndexed : totalFtsIndexed,
+            totalFtsIndexed, totalSemanticIndexed,
+            pendingCount = await db.IndexJobs.CountAsync(job => job.Status == "pending" || job.Status == "processing"),
+            failedCount = await db.IndexJobs.CountAsync(job => job.Status == "failed"),
+            ollamaEnabled = semanticEnabled,
             modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3",
             configuredDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024),
             chunkingVersion = config["Ollama:ChunkingVersion"] ?? "markdown-structure-v1",
             semanticIndexProfile = EmbeddingService.ComputeIndexProfile(config),
-            failedArticles = failedJobs.Select(j => new
-                {
-                    articleId = j.ArticleId,
-                    failureCount = j.AttemptCount,
-                    nextRetryAt = j.AvailableAt.ToString("o"),
-                    error = j.LastError
-                }).ToList()
+            failedArticles = failedJobs.Select(job => new
+            {
+                articleId = job.ArticleId, failureCount = job.AttemptCount,
+                nextRetryAt = job.AvailableAt.ToString("o"), error = job.LastError
+            }).ToList()
         });
     }
 
     [HttpGet("authors")]
     public async Task<IActionResult> Authors()
-    {
-        var authors = await db.Users
-            .Select(u => new { u.Id, u.Name, u.Slug })
-            .OrderBy(u => u.Name)
-            .ToListAsync();
-        return Ok(authors);
-    }
-
-    private async Task<SearchQuery> RecordSearchAsync(string query, int resultsCount, string searchType, long elapsedMs,
-        RagService.RagResult? ragResult = null)
-    {
-        var record = new SearchQuery
-        {
-            Query = query.Trim(),
-            UserId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null,
-            ResultsCount = resultsCount,
-            SearchType = searchType,
-            ResponseTimeMs = (int)elapsedMs,
-            RagTraceId = ragResult == null ? null : Activity.Current?.TraceId.ToString(),
-            RagPromptVersion = ragResult == null ? null : RagService.PromptVersion,
-            RagRetrievalVersion = ragResult == null ? null : RagService.RetrievalVersion,
-            RagReranker = ragResult == null ? null : config.GetValue("Reranking:External:Enabled", false)
-                ? $"external:{config["Reranking:External:Model"] ?? "unspecified"}"
-                : "local-deterministic-v1",
-            RagIndexProfile = ragResult == null ? null : EmbeddingService.ComputeIndexProfile(config),
-            RagGroundingStatus = ragResult?.GroundingStatus,
-            RagAnswerHash = ragResult == null ? null : Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(ragResult.Answer))).ToLowerInvariant()
-        };
-        db.SearchQueries.Add(record);
-        await db.SaveChangesAsync();
-        return record;
-    }
-
-    private static ArticleSummaryDto BuildResult(string id, string title, string slug, string? excerpt, string contentType, string? content, string updatedAt, bool includeContent, string[] snippetTokens, Dictionary<string, List<object>>? attachmentMap, ArticleEnrichment? enrichment, double? score = null, string? matchType = null)
-    {
-        var plainText = includeContent || snippetTokens.Length > 0 ? ContentExtractor.ExtractPlainText(content) : null;
-        return ArticleService.BuildSummary(
-            id, title, slug, excerpt, contentType, updatedAt, enrichment,
-            includeContent ? content : null,
-            attachmentMap?.GetValueOrDefault(id),
-            score, matchType,
-            SearchSnippetHelper.Build(plainText, snippetTokens));
-    }
+        => Ok(await db.Users.Select(user => new { user.Id, user.Name, user.Slug })
+            .OrderBy(user => user.Name).ToListAsync());
 }
-

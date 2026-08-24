@@ -192,7 +192,7 @@ Behavior:
 |-------|------|----------|-------------|
 | `name` | string | No | Min 1 char, trimmed. Rejected (400) for Azure AD users — managed by Microsoft account |
 | `email` | string | No | Valid email, unique. Rejected (400) for Azure AD users — managed by Microsoft account |
-| `currentPassword` | string | No | Required if changing password (not required for Azure users setting password first time) |
+| `currentPassword` | string | No | Required for local users changing password; Azure-linked users may omit it whenever setting/replacing the local password |
 | `newPassword` | string | No | 8–128 characters |
 
 **200 Response**: `{ "id", "name", "email", "role" }`
@@ -218,7 +218,7 @@ Behavior:
 | `dateFrom` | string | — | Filter articles updated on or after this date |
 | `dateTo` | string | — | Filter articles updated before this date (+1 day) |
 | `onlyOwnContent` | bool | false | When true + API key auth → filters to articles created by that API key |
-| `includeContent` | bool | false | When true → includes article content as plain text in results |
+| `includeContent` | bool | false | When true → includes canonical Markdown as the string field `contentMarkdown` |
 | `includeAttachments` | bool | false | When true → includes attachment metadata per article in results |
 
 **Visibility rules**:
@@ -236,7 +236,7 @@ Behavior:
       "tags": [{ "id": "...", "name": "...", "slug": "..." }],
       "viewCount": 5, "wilsonScore": 0.72,
       "indexingStatus": { "state": "indexed", "indexedAt": "2026-08-21T10:30:00Z" },
-      "content": "plain text (only if includeContent=true)",
+      "contentMarkdown": "## Canonical Markdown (only if includeContent=true)",
       "attachments": [{ "id": "...", "fileName": "...", "contentType": "...", "sizeBytes": 1024, "downloadUrl": "/api/attachments/.../download" }]
     }
   ],
@@ -261,8 +261,9 @@ operational field.
 | `contentMarkdown` | string | No | Canonical CommonMark/GFM Markdown edited with Milkdown |
 | `excerpt` | string | No | — |
 | `status` | string | No | Default: `"draft"` |
-| `contentType` | string | No | Default: `"reference"` |
+| `contentType` | string | No | Active DB lookup value; default: `"reference"` |
 | `tags` | string[] | No | Array of tag ID, name, or slug (resolved in that priority) |
+| `reviewIntervalDays` | int | No | 1–3650, default 90 |
 
 **Side effects**: Creates version 1, durably queues semantic/index recovery, and best-effort refreshes PostgreSQL FTS before returning. The worker still revalidates FTS before asynchronous embedding.
 **201 Response**: `{ "id", "slug", "title" }`
@@ -275,7 +276,7 @@ operational field.
 Accepts both article ID and slug for lookup.
 
 **Side effects**: Records an `ArticleView` entry (deduplicated: same user+article within 15 minutes counts as 1 view).
-**200 Response**: Full article object with canonical `contentMarkdown`, derived `contentText`, and attachment metadata. Editor/admin responses also include the revision-aware `indexingStatus` described above.
+**200 Response**: Full article object with canonical `contentMarkdown`, derived `contentText`, `reviewIntervalDays`, and attachment metadata. Editor/admin responses also include the revision-aware `indexingStatus` described above.
 **404**: Article not found.
 
 ---
@@ -290,9 +291,10 @@ Accepts both article ID and slug for lookup.
 | `contentMarkdown` | string | No | Canonical CommonMark/GFM Markdown |
 | `excerpt` | string | No | — |
 | `status` | string | No | Requires `articles:publish` for "published", `articles:archive` for "archived" |
-| `contentType` | string | No | — |
+| `contentType` | string | No | Must be an active DB lookup value |
 | `changeSummary` | string | No | Stored in version record |
 | `tags` | string[] | No | Array of tag ID, name, or slug (replaces all existing tags) |
+| `reviewIntervalDays` | int | No | 1–3650; per-article governance review interval |
 
 **Side effects**: If content changes, creates a new `ArticleVersion` with incremented version number. Every mutation durably queues index recovery and best-effort refreshes PostgreSQL FTS before returning; semantic embedding remains asynchronous.
 **200 Response**: `{ "id", "slug", "title" }`
@@ -301,11 +303,11 @@ Accepts both article ID and slug for lookup.
 ---
 
 ### `DELETE /api/articles/{id}`
-**Auth**: Bearer (JWT or API Key)
-**Permission**: Owner of the article, OR `articles:delete_any`
+**Auth**: Bearer JWT session only
+**Permission**: `articles:delete_any` (admin only)
 
 **200 Response**: `{ "message": "Article deleted" }`
-**403**: Not owner and lacks `articles:delete_any`.
+**403**: Caller is not an admin session.
 
 ---
 
@@ -571,7 +573,7 @@ Ordered by version number descending.
 | `limit` | int | 20 | Max results per page (1–50) |
 | `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
-| `includeContent` | bool | false | Optional. When true → includes article content as plain text derived from Markdown in search results |
+| `includeContent` | bool | false | Optional. When true → includes canonical Markdown as the string field `contentMarkdown` |
 | `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article |
 | `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
 | `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |
@@ -929,6 +931,14 @@ Session-admin-only production-quality summary: helpful rate, negative-reason dis
 
 ---
 
+### `PUT /api/keys`
+**Auth**: Bearer (session only)
+**Permission**: `api_keys:manage`
+
+Body: `{ "id": "...", "name": "optional", "expiresInDays": 90 }`. The key must belong to the caller. Returns the updated key summary without raw key material.
+
+---
+
 ### `POST /api/keys/{id}/rotate`
 **Auth**: Bearer (session only)
 **Permission**: `api_keys:manage`
@@ -1046,6 +1056,51 @@ All-user API key management for admins. `api_keys:manage` is granted to every ro
 
 **200 Response**: `{ "message": "Log file 'log_20260707.log' deleted successfully" }`
 **400 Response**: `{ "error": "Cannot delete today's log file" }`
+
+---
+
+## Bulk Transfer and Source Import
+
+All endpoints require authentication. Bulk/source commit operations use the same `ArticleMutationService` invariants as ordinary article writes: active DB-driven content types, status/archive authorization, canonical Markdown storage, tags, versions and durable reindexing.
+
+| Endpoint | Method | Permission | Purpose |
+|----------|--------|------------|---------|
+| `/api/bulk/templates/{format}` | GET | — | Download `md`, `jsonl`, or `csv` import template |
+| `/api/bulk/import-schema` | GET | — | Return limits, active content types, statuses, fields, formats and conflict policies |
+| `/api/bulk/import` | POST multipart | `articles:create` | Validate or import up to 5,000 records; `dryRun` and `conflictPolicy=skip|update|duplicate` |
+| `/api/bulk/export` | GET | — | Export visible articles as JSONL, CSV or Markdown ZIP with optional filters |
+| `/api/source-imports/analyze` | POST multipart | `articles:create` | Convert supported source files to editable Markdown previews |
+| `/api/source-imports/commit` | POST multipart | `articles:create` | Create articles from the approved preview manifest and optionally retain originals as attachments |
+
+Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; unconvertible files are offered as attachments.
+
+---
+
+## Lookups and Featured Links
+
+| Endpoint | Method | Permission | Session-only |
+|----------|--------|------------|:------------:|
+| `/api/lookups` | GET | — | No |
+| `/api/lookups` | POST/PUT/DELETE | `tags:manage` | DELETE only |
+| `/api/featured-links` | GET | — | No |
+| `/api/featured-links` | POST/PUT/DELETE | `featured_links:manage` | DELETE only |
+
+Content-type selectors expose only active `lookup_values(category="content_type")` entries. Create, update, bulk import and source import all reject inactive/unknown values; omission resolves to the active `reference` value and fails if that default is inactive or missing.
+
+---
+
+## RAG Evaluation Administration
+
+All endpoints below require an admin JWT session and `users:manage`:
+
+- `GET/POST /api/admin/rag-evaluations/datasets`
+- `GET/PUT/DELETE /api/admin/rag-evaluations/datasets/{id}`
+- `POST /api/admin/rag-evaluations/datasets/{id}/runs`
+- `GET /api/admin/rag-evaluations/runs`
+- `GET /api/admin/rag-evaluations/runs/{runId}`
+- `GET /api/admin/rag-evaluations/feedback-summary?days=30`
+
+`GET /api/search/diagnostics` is likewise admin-session-only and returns coverage, index validity/size, query-plan probes, traffic percentiles, effective settings and actionable warnings.
 
 ---
 

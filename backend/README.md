@@ -26,6 +26,8 @@ dotnet ef database update
 dotnet run
 ```
 
+The migration history is intentionally squashed into the `InitialSnakeCaseSchema` baseline. Databases created from the legacy PascalCase migration chain are not upgraded in place; drop/recreate them before running this version. Seed content is restored automatically at startup.
+
 The API starts at `http://localhost:5174`; Swagger is available at `/swagger` in Development.
 
 On startup, the application applies relational migrations and seeds:
@@ -126,6 +128,7 @@ ForwardedHeaders
 → CORS
 → ApiKeyMiddleware
 → Authentication
+→ UsageTrackingMiddleware
 → RateLimiter
 → Authorization
 → Controllers
@@ -135,7 +138,7 @@ Authentication runs before rate limiting so partitions can use API-key or user i
 
 ## MCP
 
-The stateless JSON-RPC 2.0 endpoint is available at `/mcp` through GET and POST. It uses API-key or JWT authentication only—no OAuth—and is rate-limited per caller.
+The stateless JSON-RPC 2.0 endpoint accepts protocol traffic through `POST /mcp`. `GET /mcp` deliberately returns 405 with `Allow: POST`; there is no SSE transport. It uses API-key or JWT authentication only—no OAuth—and is rate-limited per caller.
 
 Clients discover capabilities with `initialize` and `tools/list`, then invoke tools with `tools/call`. Tools return an `outputSchema`, structured JSON in `structuredContent`, and compatibility text. Article/search output includes provenance and content-security assessment; known secret patterns are redacted.
 

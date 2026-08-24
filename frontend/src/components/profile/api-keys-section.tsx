@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Key, Plus, Trash2, Copy, Check, AlertTriangle, RotateCw, Pencil } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { toast } from "sonner";
@@ -19,16 +19,16 @@ export function ApiKeysSection() {
   const [editExpiresInDays, setEditExpiresInDays] = useState<number | "">("");
   const [editError, setEditError] = useState("");
 
-  const loadKeys = async () => {
+  const loadKeys = useCallback(async () => {
     const res = await fetchWithAuth("/api/keys");
     if (res.ok) {
       const data = await res.json();
       setKeys(data);
     }
     setLoading(false);
-  };
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadKeys(); }, []);
+  useEffect(() => { void loadKeys(); }, [loadKeys]);
 
   const handleCreate = async () => {
     if (!newKeyName.trim()) return;

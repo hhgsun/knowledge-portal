@@ -145,17 +145,17 @@ FROM generate_series(1, 256) g;
 -- The cast to vector(:dims) is required: hnsw cannot index a vector column with no
 -- declared dimension, and CREATE TABLE AS has nowhere else to put the typmod.
 --
--- ContentType/TagSlugs mirror the columns DenormalizeEmbeddingFilterColumns puts on the real
+-- content_type/tag_slugs mirror the denormalized filter columns on the real
 -- article_embeddings. They are what lets a filtered search stay single-table, so the corpus
 -- must carry them or section 4 would be measuring a query shape the application stopped
 -- emitting.
 CREATE TEMP TABLE bench_embeddings AS
-SELECT 'a' || c.article_no AS "ArticleId",
-       k                   AS "ChunkIndex",
-       l2_normalize(c.v + (n.v * s.noise))::vector(:dims) AS "Embedding",
-       (ARRAY['reference','tutorial','howto','faq'])[1 + (c.article_no % 4)] AS "ContentType",
-       'owner' || (c.article_no % 50)                                        AS "OwnerId",
-       ARRAY['tag' || (c.article_no % 20), 'tag-all']                        AS "TagSlugs"
+SELECT 'a' || c.article_no AS article_id,
+       k                   AS chunk_index,
+       l2_normalize(c.v + (n.v * s.noise))::vector(:dims) AS embedding,
+       (ARRAY['reference','tutorial','howto','faq'])[1 + (c.article_no % 4)] AS content_type,
+       'owner' || (c.article_no % 50)                                        AS owner_id,
+       ARRAY['tag' || (c.article_no % 20), 'tag-all']                        AS tag_slugs
 FROM bench_centroid c
 CROSS JOIN LATERAL generate_series(0, c.n_chunks - 1) AS k
 CROSS JOIN bench_scale s
@@ -164,13 +164,13 @@ JOIN bench_noise n ON n.noise_no = 1 + (abs(hashtext(c.article_no::text || ':' |
 -- Kept only so the pre-migration (join) shape can still be measured alongside the current one
 -- in section 4. The application no longer queries this way.
 CREATE TEMP TABLE bench_articles AS
-SELECT 'a' || g                                                        AS "Id",
-       'published'                                                     AS "Status",
-       'owner' || (g % 50)                                             AS "OwnerId",
-       (ARRAY['reference','tutorial','howto','faq'])[1 + (g % 4)]      AS "ContentType"
+SELECT 'a' || g                                                        AS id,
+       'published'                                                     AS status,
+       'owner' || (g % 50)                                             AS owner_id,
+       (ARRAY['reference','tutorial','howto','faq'])[1 + (g % 4)]      AS content_type
 FROM generate_series(1, :n_articles) g;
-CREATE INDEX ON bench_articles ("Id");
-CREATE INDEX ON bench_articles ("Status");
+CREATE INDEX ON bench_articles (id);
+CREATE INDEX ON bench_articles (status);
 
 ANALYZE bench_embeddings;
 ANALYZE bench_articles;
@@ -183,7 +183,7 @@ SHOW maintenance_work_mem;
 \echo '--- building HNSW index (this is the slow part) ---'
 \timing on
 CREATE INDEX bench_hnsw ON bench_embeddings
-USING hnsw ("Embedding" vector_cosine_ops) WITH (m = :m, ef_construction = :ef_construction);
+USING hnsw (embedding vector_cosine_ops) WITH (m = :m, ef_construction = :ef_construction);
 \timing off
 ANALYZE bench_embeddings;
 
@@ -202,8 +202,8 @@ FROM bench_centroid;
 -- rather than a vector that happens to already be in the index.
 CREATE TEMP TABLE bench_probe AS
 SELECT row_number() OVER () AS probe_no,
-       l2_normalize(e."Embedding" + (pg_temp.rand_unit_vector(:dims) * s.noise))::vector(:dims) AS v
-FROM (SELECT "Embedding" FROM bench_embeddings ORDER BY random() LIMIT :n_probes) e
+       l2_normalize(e.embedding + (pg_temp.rand_unit_vector(:dims) * s.noise))::vector(:dims) AS v
+FROM (SELECT embedding FROM bench_embeddings ORDER BY random() LIMIT :n_probes) e
 CROSS JOIN bench_scale s;
 
 \echo ''
@@ -212,12 +212,12 @@ SET enable_indexscan = off;
 SET enable_bitmapscan = off;
 \timing on
 CREATE TEMP TABLE bench_exact AS
-SELECT p.probe_no, e."ArticleId", e."ChunkIndex"
+SELECT p.probe_no, e.article_id, e.chunk_index
 FROM bench_probe p
 CROSS JOIN LATERAL (
-    SELECT b."ArticleId", b."ChunkIndex"
+    SELECT b.article_id, b.chunk_index
     FROM bench_embeddings b
-    ORDER BY b."Embedding" <=> p.v
+    ORDER BY b.embedding <=> p.v
     LIMIT :k
 ) e;
 \timing off
@@ -241,11 +241,11 @@ BEGIN
         FOR p IN SELECT probe_no, v FROM bench_probe ORDER BY probe_no LOOP
             t0 := clock_timestamp();
             SELECT count(*) INTO n_hits
-            FROM (SELECT b."ArticleId", b."ChunkIndex"
+            FROM (SELECT b.article_id, b.chunk_index
                   FROM bench_embeddings b
-                  ORDER BY b."Embedding" <=> p.v
+                  ORDER BY b.embedding <=> p.v
                   LIMIT k_target) h
-            JOIN bench_exact x USING ("ArticleId", "ChunkIndex")
+            JOIN bench_exact x USING (article_id, chunk_index)
             WHERE x.probe_no = p.probe_no;
 
             INSERT INTO bench_recall
@@ -283,9 +283,9 @@ BEGIN
                        greatest((SELECT max(x) FROM unnest(windows) x), 200)::text, false);
     FOREACH w IN ARRAY windows LOOP
         FOR p IN SELECT probe_no, v FROM bench_probe ORDER BY probe_no LOOP
-            SELECT count(DISTINCT c."ArticleId") INTO n
-            FROM (SELECT b."ArticleId" FROM bench_embeddings b
-                  ORDER BY b."Embedding" <=> p.v LIMIT w) c;
+            SELECT count(DISTINCT c.article_id) INTO n
+            FROM (SELECT b.article_id FROM bench_embeddings b
+                  ORDER BY b.embedding <=> p.v LIMIT w) c;
             INSERT INTO bench_yield VALUES (w, p.probe_no, n);
         END LOOP;
     END LOOP;
@@ -311,26 +311,26 @@ SET hnsw.ef_search = 400;
 
 \echo '--- unfiltered (the shape VectorSearchService uses when no filter is set) ---'
 EXPLAIN (COSTS OFF, SUMMARY OFF)
-SELECT b."ArticleId" FROM bench_embeddings b
-ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+SELECT b.article_id FROM bench_embeddings b
+ORDER BY b.embedding <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
 LIMIT 400;
 
 \echo '--- filtered, CURRENT shape (single table, denormalized filter columns) ---'
 EXPLAIN (COSTS OFF, SUMMARY OFF)
-SELECT b."ArticleId" FROM bench_embeddings b
-WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
-        AND b."TagSlugs" @> ARRAY['tag-all']
-ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+SELECT b.article_id FROM bench_embeddings b
+WHERE true AND b.content_type = ANY(ARRAY['reference'])
+        AND b.tag_slugs @> ARRAY['tag-all']
+ORDER BY b.embedding <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
 LIMIT 400;
 
 \echo '--- filtered, PRE-MIGRATION shape (joins articles) — comparison only ---'
 \echo '(this is what DenormalizeEmbeddingFilterColumns removed; expect the index to be dropped)'
 EXPLAIN (COSTS OFF, SUMMARY OFF)
-SELECT b."ArticleId" FROM bench_embeddings b
+SELECT b.article_id FROM bench_embeddings b
 WHERE EXISTS (SELECT 1 FROM bench_articles a
-              WHERE a."Id" = b."ArticleId" AND a."Status" = 'published'
-                AND a."ContentType" = 'reference')
-ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+              WHERE a.id = b.article_id AND a.status = 'published'
+                AND a.content_type = 'reference')
+ORDER BY b.embedding <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
 LIMIT 400;
 
 \echo ''
@@ -340,19 +340,19 @@ LIMIT 400;
 \echo ' so on a sequential plan both numbers come back at 400 and mean nothing.)'
 SET hnsw.iterative_scan = off;
 SELECT count(*) AS rows_without_iterative_scan FROM (
-    SELECT b."ArticleId" FROM bench_embeddings b
-    WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
-            AND b."TagSlugs" @> ARRAY['tag-all']
-    ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+    SELECT b.article_id FROM bench_embeddings b
+    WHERE true AND b.content_type = ANY(ARRAY['reference'])
+            AND b.tag_slugs @> ARRAY['tag-all']
+    ORDER BY b.embedding <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
     LIMIT 400
 ) s;
 
 SET hnsw.iterative_scan = relaxed_order;
 SELECT count(*) AS rows_with_iterative_scan FROM (
-    SELECT b."ArticleId" FROM bench_embeddings b
-    WHERE true AND b."ContentType" = ANY(ARRAY['reference'])
-            AND b."TagSlugs" @> ARRAY['tag-all']
-    ORDER BY b."Embedding" <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
+    SELECT b.article_id FROM bench_embeddings b
+    WHERE true AND b.content_type = ANY(ARRAY['reference'])
+            AND b.tag_slugs @> ARRAY['tag-all']
+    ORDER BY b.embedding <=> (SELECT v FROM bench_probe WHERE probe_no = 1)
     LIMIT 400
 ) s;
 RESET hnsw.iterative_scan;
@@ -376,14 +376,14 @@ FROM generate_series(1, :fts_paragraph_pool) g;
 -- The ordering key must depend on BOTH the document and the paragraph. Hashing the document
 -- alone is constant within the subquery, so every document would receive the same paragraphs.
 CREATE TEMP TABLE bench_fts AS
-SELECT a."Id", a."Status", a."OwnerId", a."ContentType",
+SELECT a.id, a.status, a.owner_id, a.content_type,
        (SELECT string_agg(pp.body, ' ')
         FROM (SELECT bp.body FROM bench_paragraph bp
               ORDER BY abs(hashtext(g::text || ':' || bp.para_no::text))
               LIMIT :fts_paragraphs_per_doc) pp)
        || ' marker' || g AS body
 FROM generate_series(1, :n_articles) g
-JOIN bench_articles a ON a."Id" = 'a' || g;
+JOIN bench_articles a ON a.id = 'a' || g;
 
 ALTER TABLE bench_fts ADD COLUMN search_vector tsvector;
 UPDATE bench_fts SET search_vector = to_tsvector('simple', body);
@@ -442,32 +442,32 @@ BEGIN
         -- 1. the exact COUNT SearchPagedAsync runs for every search
         t0 := clock_timestamp();
         SELECT count(*) INTO n FROM bench_fts a
-        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t);
+        WHERE a.status = 'published' AND a.search_vector @@ to_tsquery('simple', t);
         c_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
 
         -- 2. first ranked page: ts_rank_cd is computed for every match, then sorted
         t0 := clock_timestamp();
-        PERFORM a."Id" FROM bench_fts a
-        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
-        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        PERFORM a.id FROM bench_fts a
+        WHERE a.status = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a.id
         LIMIT 20;
         p_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
 
         -- 3. a deep page — unreachable at all under the old 1000-candidate cap
         t0 := clock_timestamp();
-        PERFORM a."Id" FROM bench_fts a
-        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
-        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        PERFORM a.id FROM bench_fts a
+        WHERE a.status = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a.id
         OFFSET 5000 LIMIT 20;
         d_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
 
         -- 4. the filtered shape ArticleFilterSql emits: filter inside the ranked query
         t0 := clock_timestamp();
-        PERFORM a."Id" FROM bench_fts a
-        WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', t)
-          AND a."ContentType" = ANY(ARRAY['reference'])
-          AND a."OwnerId" = ANY(ARRAY['owner1', 'owner2'])
-        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a."Id"
+        PERFORM a.id FROM bench_fts a
+        WHERE a.status = 'published' AND a.search_vector @@ to_tsquery('simple', t)
+          AND a.content_type = ANY(ARRAY['reference'])
+          AND a.owner_id = ANY(ARRAY['owner1', 'owner2'])
+        ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', t)) DESC, a.id
         LIMIT 20;
         f_ms := round(extract(epoch FROM clock_timestamp() - t0)::numeric * 1000, 2);
 
@@ -489,9 +489,9 @@ ORDER BY matches DESC;
 \echo ' the correct plan, so probing with it would prove nothing either way)'
 SELECT word AS selective_term FROM bench_fts_term WHERE role = 'selective' \gset fts_
 EXPLAIN (COSTS OFF, SUMMARY OFF)
-SELECT a."Id" FROM bench_fts a
-WHERE a."Status" = 'published' AND a.search_vector @@ to_tsquery('simple', :'fts_selective_term')
-ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', :'fts_selective_term')) DESC, a."Id"
+SELECT a.id FROM bench_fts a
+WHERE a.status = 'published' AND a.search_vector @@ to_tsquery('simple', :'fts_selective_term')
+ORDER BY ts_rank_cd(a.search_vector, to_tsquery('simple', :'fts_selective_term')) DESC, a.id
 LIMIT 20;
 
 \echo ''
@@ -514,10 +514,10 @@ BEGIN
                        greatest((SELECT max(x) FROM unnest(windows) x), 200)::text, false);
     FOREACH w IN ARRAY windows LOOP
         FOR p IN SELECT probe_no, v FROM bench_probe ORDER BY probe_no LOOP
-            SELECT count(DISTINCT c."ArticleId") INTO n
-            FROM (SELECT b."ArticleId" FROM bench_embeddings b
-                  WHERE b."ChunkIndex" < cap
-                  ORDER BY b."Embedding" <=> p.v LIMIT w) c;
+            SELECT count(DISTINCT c.article_id) INTO n
+            FROM (SELECT b.article_id FROM bench_embeddings b
+                  WHERE b.chunk_index < cap
+                  ORDER BY b.embedding <=> p.v LIMIT w) c;
             INSERT INTO bench_yield_capped VALUES (w, p.probe_no, n);
         END LOOP;
     END LOOP;

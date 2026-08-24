@@ -120,13 +120,13 @@ Parametreler:
 - `tags` (string) — Etiket slug'larına göre filtrele, virgülle ayrılmış (AND mantığı)
 - `authors` (string) — Yazar slug'larına göre filtrele, virgülle ayrılmış (OR mantığı)
 - `content_type` (string) — İçerik türüne göre filtrele, virgülle ayrılmış (OR mantığı)
-- `include_content` (boolean) — Makale içeriğini düz metin olarak sonuçlara dahil et (varsayılan false)
+- `include_content` (boolean) — Kanonik Markdown string'ini `contentMarkdown` alanında sonuçlara dahil et (varsayılan false)
 - `include_attachments` (boolean) — Ek dosya metadatasını sonuçlara dahil et (varsayılan false)
 - `only_own_content` (boolean) — API key ile çağrıldığında yalnızca o anahtarla oluşturulan içerikleri döndürür
 
 ### get_article
 
-ID veya slug ile belirli bir makalenin tüm detaylarını getirir. İçerik düz metin olarak, ekler metadata olarak döner.
+ID veya slug ile belirli bir makalenin tüm detaylarını getirir. Kanonik içerik `contentMarkdown`, türetilmiş düz metin `contentText`, ekler metadata olarak döner.
 
 Parametreler:
 

@@ -241,7 +241,7 @@ public class EmbeddingService(
     private async Task<long?> GetArticleXminAsync(string articleId, CancellationToken ct)
     {
         var rows = await db.Database
-            .SqlQueryRaw<long>("""SELECT xmin::text::bigint AS "Value" FROM articles WHERE "Id" = {0}""", articleId)
+            .SqlQueryRaw<long>("""SELECT xmin::text::bigint AS "Value" FROM articles WHERE id = {0}""", articleId)
             .ToListAsync(ct);
         return rows.Count > 0 ? rows[0] : null;
     }
@@ -254,7 +254,7 @@ public class EmbeddingService(
     private async Task<bool> TryClaimIndexedAsync(string articleId, long xmin, CancellationToken ct)
     {
         var claimed = await db.Database.ExecuteSqlRawAsync(
-            """UPDATE articles SET "IndexedAt" = {0} WHERE "Id" = {1} AND xmin::text::bigint = {2}""",
+            """UPDATE articles SET indexed_at = {0} WHERE id = {1} AND xmin::text::bigint = {2}""",
             [DateTime.UtcNow, articleId, xmin], ct);
 
         if (claimed == 0)

@@ -18,5 +18,13 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Data-loading effects and icon-registry lookups are intentional in this SPA.
+      // The registry returns module-level Lucide components; it does not construct them.
+      // Context modules intentionally co-locate their provider and consumer hook exports.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/static-components': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

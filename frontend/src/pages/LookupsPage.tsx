@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2, ToggleLeft, ToggleRight, Palette } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -21,15 +21,15 @@ export default function LookupsPage() {
   const [newIcon, setNewIcon] = useState("file-text");
   const [newAuthorityWeight, setNewAuthorityWeight] = useState(50);
 
-  const loadLookups = async () => {
+  const loadLookups = useCallback(async () => {
     const res = await fetchWithAuth("/api/lookups");
     if (res.ok) {
       setLookups(await res.json());
     }
     setLoading(false);
-  };
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadLookups(); }, [fetchWithAuth]);
+  useEffect(() => { void loadLookups(); }, [loadLookups]);
 
   const handleAdd = async () => {
     if (!newValue.trim() || !newLabel.trim()) {

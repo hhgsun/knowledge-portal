@@ -119,7 +119,12 @@ export default function LogsPage() {
   const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
   const formatTime = (value?: string) => value ? new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 }).format(new Date(value)) : "Zaman yok";
   const shortSource = (value?: string) => value?.split(".").slice(-2).join(".");
-  const toggleExpanded = (line: number) => setExpanded((current) => { const next = new Set(current); next.has(line) ? next.delete(line) : next.add(line); return next; });
+  const toggleExpanded = (line: number) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(line)) next.delete(line);
+    else next.add(line);
+    return next;
+  });
 
   const handleDelete = async (fileName: string) => {
     if (!confirm(`"${fileName}" dosyası silinecek. Emin misiniz?`)) return;

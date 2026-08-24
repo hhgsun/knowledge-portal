@@ -22,24 +22,20 @@ public class McpToolExecutor
     private readonly AppDbContext _db;
     private readonly ArticleService _articleService;
     private readonly TagService _tagService;
-    private readonly IConfiguration _config;
-    private readonly IServiceProvider _services;
-    private readonly ISearchReranker _reranker;
+    private readonly SearchExecutionService _searchExecution;
     private readonly ContentGovernanceService _governance;
     private readonly ILogger<McpToolExecutor> _logger;
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
 
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
-        IConfiguration config, IServiceProvider services, ISearchReranker reranker, ContentGovernanceService governance,
+        SearchExecutionService searchExecution, ContentGovernanceService governance,
         ILogger<McpToolExecutor> logger)
     {
         _db = db;
         _articleService = articleService;
         _tagService = tagService;
-        _config = config;
-        _services = services;
-        _reranker = reranker;
+        _searchExecution = searchExecution;
         _governance = governance;
         _logger = logger;
     }
@@ -310,160 +306,77 @@ public class McpToolExecutor
         if (string.IsNullOrWhiteSpace(query))
             return ErrorResult("Parameter 'query' is required");
 
-        var type = (GetString(args, "type") ?? "fulltext").ToLowerInvariant();
-        if (type is not ("fulltext" or "semantic" or "hybrid" or "rag"))
-            return ErrorResult("Parameter 'type' must be one of: fulltext, semantic, hybrid, rag");
+        var principalValue = principal ?? new ClaimsPrincipal();
+        var execution = await _searchExecution.ExecuteAsync(new PortalSearchRequest(
+            query,
+            GetString(args, "type") ?? "fulltext",
+            GetInt(args, "limit", 20),
+            GetInt(args, "page", 1),
+            GetBool(args, "only_own_content"),
+            GetBool(args, "include_content"),
+            GetBool(args, "include_attachments"),
+            SplitCsv(GetString(args, "tags")),
+            SplitCsv(GetString(args, "authors")),
+            SplitCsv(GetString(args, "content_type"))), principalValue, ct);
+        if (execution.Error != null) return ErrorResult(execution.Error.Message);
 
-        var page = Math.Max(1, GetInt(args, "page", 1));
-        var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
-        var includeContent = GetBool(args, "include_content");
-        var includeAttachments = GetBool(args, "include_attachments");
-        var onlyOwnContent = GetBool(args, "only_own_content");
-        var sw = Stopwatch.StartNew();
-
-        // Same inline syntax as REST: ##content-type, #tag, @author.
-        var tagSlugs = SplitCsv(GetString(args, "tags"));
-        var authorSlugs = SplitCsv(GetString(args, "authors"));
-        var contentTypes = SplitCsv(GetString(args, "content_type"));
-        var remainingWords = new List<string>();
-        foreach (var word in query.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        var result = execution.Result!;
+        if (result.Failure != SearchFailureKind.None)
         {
-            if (word.StartsWith("##") && word.Length > 2) contentTypes.Add(word[2..]);
-            else if (word.StartsWith('#') && word.Length > 1) tagSlugs.Add(word[1..]);
-            else if (word.StartsWith('@') && word.Length > 1) authorSlugs.Add(word[1..]);
-            else remainingWords.Add(word);
-        }
-        tagSlugs = tagSlugs.Distinct().ToList();
-        authorSlugs = authorSlugs.Distinct().ToList();
-        contentTypes = contentTypes.Distinct().ToList();
-        var searchQuery = string.Join(' ', remainingWords).Trim();
-
-        var authorIds = authorSlugs.Count > 0
-            ? await _db.ResolveAuthorIdsAsync(authorSlugs)
-            : null;
-
-        // Match REST semantics: tag filters are ANDed, so any unknown tag is a definite miss.
-        // An unknown author also remains restrictive instead of widening to every author.
-        List<string>? resolvedTags = null;
-        if (tagSlugs.Count > 0)
-        {
-            resolvedTags = await _db.Tags.Where(t => tagSlugs.Contains(t.Slug)).Select(t => t.Slug).ToListAsync(ct);
-            if (resolvedTags.Count != tagSlugs.Count)
-                return await SearchResultAsync(new { results = Array.Empty<object>(), query, type = "tag", tags = tagSlugs, total = 0, page = 1, totalPages = 0 }, query, 0, "tag", sw, principal, ct);
-        }
-
-        var apiKeyId = onlyOwnContent ? principal?.FindFirst("apiKeyId")?.Value : null;
-
-        var filter = new ArticleFilter(
-            OwnerIds: authorSlugs.Count > 0 ? authorIds : null,
-            ContentTypes: contentTypes.Count > 0 ? contentTypes : null,
-            ApiKeyId: apiKeyId,
-            TagSlugs: resolvedTags);
-        var snippetTokens = searchQuery.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-
-        if (tagSlugs.Count > 0 && string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var tagQuery = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter);
-            var total = await tagQuery.CountAsync(ct);
-            var articles = await tagQuery.OrderByDescending(a => a.UpdatedAt).Skip((page - 1) * limit).Take(limit).ToListAsync(ct);
-            var results = await BuildSearchResultsAsync(articles, includeContent, includeAttachments, snippetTokens);
-            return await SearchResultAsync(new { results, query, type = "tag", tags = tagSlugs, total, page, totalPages = (int)Math.Ceiling(total / (double)limit) }, query, total, "tag", sw, principal, ct);
-        }
-
-        var ollamaEnabled = _config.GetValue("Ollama:Enabled", false);
-        var indexCoverage = await _articleService.GetSearchIndexCoverageAsync(type, filter, ct);
-        var indexingPending = indexCoverage.RelevantPending > 0;
-        var vectorSearch = ollamaEnabled ? _services.GetService<IVectorSearchService>() : null;
-
-        if (type == "rag")
-        {
-            if (!ollamaEnabled || vectorSearch == null)
-                return McpResilienceService.ResilienceError("ai_unavailable",
-                    "AI search is unavailable because Ollama is disabled.", true, 30);
-
-            var ragService = _services.GetService<RagService>();
-            if (ragService == null)
-                return McpResilienceService.ResilienceError("ai_unavailable",
-                    "RAG service is unavailable.", true, 30);
-
-            try
+            return result.Failure switch
             {
-                var rag = await ragService.AskAsync(searchQuery, filter, ct);
-                return await SearchResultAsync(new
+                SearchFailureKind.AiUnavailable => McpResilienceService.ResilienceError(
+                    "ai_unavailable", result.Warning ?? "AI search is unavailable.", true, 30),
+                SearchFailureKind.RagBusy => McpResilienceService.ResilienceError(
+                    "capacity_full", "RAG capacity is full.", true, 5),
+                SearchFailureKind.RagCircuitOpen => McpResilienceService.ResilienceError(
+                    "circuit_open", "RAG generation is temporarily unavailable.", true, 30),
+                SearchFailureKind.RagTimeout => McpResilienceService.ResilienceError(
+                    "deadline_exceeded", "RAG request exceeded its processing deadline.", true, 10),
+                _ => McpResilienceService.ResilienceError(
+                    "ai_search_failed", result.Warning ?? "AI search failed.", true, 10)
+            };
+        }
+
+        object payload;
+        if (result.Rag is { } rag)
+        {
+            payload = new
+            {
+                answer = rag.Answer,
+                sources = rag.Sources.Select(source => new
                 {
-                    answer = rag.Answer,
-                    sources = rag.Sources.Select(s => new
-                    {
-                        s.ArticleId, s.Title, s.Slug, s.Score,
-                        canonicalUrl = $"/api/articles/{s.Slug}",
-                        sourceType = "article"
-                    }),
-                    claims = rag.Claims,
-                    evidence = rag.Evidence.Select(e => new { e.SourceId, e.ArticleId, e.Title, e.Slug,
-                        canonicalUrl = $"/api/articles/{e.Slug}", e.SourceType, e.AttachmentId, e.SourceName,
-                        e.SourceLocation, e.Passage, e.Score }),
-                    rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
-                    rag.InsufficientContext, rag.PartialResult, rag.Warnings,
-                    query, type, indexingPending, indexCoverage
-                }, query, rag.Sources.Count, type, sw, principal, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "MCP RAG search failed");
-                return McpResilienceService.ResilienceError("ai_search_failed",
-                    "RAG search failed.", true, 10);
-            }
+                    source.ArticleId, source.Title, source.Slug, source.Score,
+                    canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
+                }),
+                claims = rag.Claims,
+                evidence = rag.Evidence.Select(evidence => new
+                {
+                    evidence.SourceId, evidence.ArticleId, evidence.Title, evidence.Slug,
+                    canonicalUrl = $"/api/articles/{evidence.Slug}", evidence.SourceType,
+                    evidence.AttachmentId, evidence.SourceName, evidence.SourceLocation,
+                    evidence.Passage, evidence.Score
+                }),
+                rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
+                rag.InsufficientContext, rag.PartialResult, rag.Warnings,
+                result.Query, result.Type, result.ResponseTimeMs, result.IndexingPending,
+                result.IndexCoverage, result.SearchQueryId
+            };
         }
-
-        if (type == "semantic")
+        else
         {
-            if (!ollamaEnabled || vectorSearch == null)
-                return McpResilienceService.ResilienceError("ai_unavailable",
-                    "Semantic search is unavailable because Ollama is disabled.", true, 30);
-            try
+            payload = new
             {
-                var hits = await vectorSearch.SearchAsync(searchQuery, limit, ct, filter: filter);
-                var ids = hits.Select(h => h.ArticleId).ToList();
-                var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
-                var byId = articles.ToDictionary(a => a.Id);
-                var results = await BuildSearchResultsAsync(hits.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList(), includeContent, includeAttachments, snippetTokens, hits.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)));
-                return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, indexCoverage }, query, results.Count, type, sw, principal, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "MCP semantic search failed");
-                return McpResilienceService.ResilienceError("ai_search_failed",
-                    "Semantic search failed.", true, 10);
-            }
+                results = result.Results, result.Query, result.Type, result.Tags,
+                result.Total, result.Page, result.TotalPages, result.ResponseTimeMs,
+                result.IndexingPending, result.IndexCoverage, result.SearchQueryId, result.Warning
+            };
         }
 
-        if (type == "hybrid")
-        {
-            var candidateLimit = Math.Clamp(_config.GetValue("Search:HybridCandidateLimit", 200), limit, 500);
-            var fulltextIds = (await _articleService.SearchPublishedAsync(searchQuery, candidateLimit, filter)).Select(a => a.Id).ToList();
-            List<VectorSearchResult>? semanticHits = null;
-            if (ollamaEnabled && vectorSearch != null)
-            {
-                try { semanticHits = await vectorSearch.SearchAsync(searchQuery, candidateLimit, ct, filter: filter); }
-                catch (Exception ex) { _logger.LogWarning(ex, "MCP hybrid semantic leg failed"); }
-            }
-            var scores = RrfHelper.Merge(fulltextIds, semanticHits?.Select(h => h.ArticleId).ToList());
-            var ids = scores.Keys.ToList();
-            var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished().Where(a => ids.Contains(a.Id)), filter).ToListAsync(ct);
-            var reranked = _reranker.Rerank(searchQuery, articles.Select(a => new RerankCandidate(
-                a.Id, a.Title, a.Excerpt, a.Content, scores[a.Id].Score,
-                a.UpdatedAt, a.ApprovedAt, a.ContentType)).ToList()).Take(limit).ToList();
-            var byId = articles.ToDictionary(a => a.Id);
-            var ordered = reranked.Where(h => byId.ContainsKey(h.ArticleId)).Select(h => byId[h.ArticleId]).ToList();
-            var results = await BuildSearchResultsAsync(ordered, includeContent, includeAttachments, snippetTokens,
-                reranked.ToDictionary(h => h.ArticleId, h => Math.Round(h.Score, 4)), scores.ToDictionary(s => s.Key, s => s.Value.MatchType));
-            var warning = semanticHits == null && ollamaEnabled ? "Semantic search unavailable — using fulltext only" : null;
-            return await SearchResultAsync(new { results, query, type, total = results.Count, page = 1, totalPages = 1, indexingPending, indexCoverage, warning }, query, results.Count, type, sw, principal, ct);
-        }
-
-        var pageResult = await _articleService.SearchPublishedPagedAsync(searchQuery, page, limit, filter);
-        var fulltextResults = await BuildSearchResultsAsync(pageResult.Articles, includeContent, includeAttachments, snippetTokens);
-        return await SearchResultAsync(new { results = fulltextResults, query, type, total = pageResult.Total, page, totalPages = (int)Math.Ceiling(pageResult.Total / (double)limit), indexingPending, indexCoverage }, query, pageResult.Total, type, sw, principal, ct);
+        var json = JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject();
+        await AddGovernanceAsync(json, ct);
+        AddEvidence(json);
+        return StructuredResult(json);
     }
 
     private async Task<McpToolCallResult> GetArticleAsync(JsonElement? args)

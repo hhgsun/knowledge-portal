@@ -37,11 +37,11 @@ src/
 ├── hooks/
 │   └── useApi.ts        # Fetch wrapper (auto-JWT, auto-logout on 401)
 ├── components/
-│   ├── layout/          # AppShell, Sidebar, Header
+│   ├── layout/          # AppShell, Sidebar, MCP connection modal
 │   ├── editor/          # Milkdown editor and shared article form
 │   ├── error-boundary.tsx
 │   └── toast-provider.tsx
-├── pages/               # 13 flat page components
+├── pages/               # Flat route page components
 │   ├── LoginPage.tsx
 │   ├── RegisterPage.tsx
 │   ├── HomePage.tsx

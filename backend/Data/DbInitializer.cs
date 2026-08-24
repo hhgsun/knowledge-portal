@@ -96,6 +96,11 @@ public static class DbInitializer
 
         var admin = await db.Users.FirstAsync(u => u.Email == "admin@finagotech.com.tr");
         var allTags = await db.Tags.ToListAsync();
+        var activeContentTypes = (await db.LookupValues
+                .Where(value => value.Category == "content_type" && value.IsActive)
+                .Select(value => value.Value)
+                .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var files = Directory.GetFiles(seedPath, "*.md").OrderBy(f => f);
 
@@ -104,7 +109,24 @@ public static class DbInitializer
             var source = await File.ReadAllTextAsync(file);
             var (metadata, contentMarkdown) = ParseMarkdownSeed(source, file);
 
-            var title = metadata.Title;
+            var title = metadata.Title.Trim();
+            if (title.Length > 300)
+                throw new InvalidDataException($"Seed article '{file}' title exceeds 300 characters.");
+            if (!activeContentTypes.Contains(metadata.ContentType))
+                throw new InvalidDataException(
+                    $"Seed article '{file}' uses inactive or unknown contentType '{metadata.ContentType}'.");
+            if (metadata.Status is not ("draft" or "published" or "archived"))
+                throw new InvalidDataException($"Seed article '{file}' has invalid status '{metadata.Status}'.");
+
+            var distinctTags = metadata.Tags.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var unknownTags = distinctTags
+                .Where(tagSlug => allTags.All(tag => !tag.Slug.Equals(tagSlug, StringComparison.OrdinalIgnoreCase)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (unknownTags.Length > 0)
+                throw new InvalidDataException(
+                    $"Seed article '{file}' references unknown tags: {string.Join(", ", unknownTags)}.");
+
             var slug = await db.GenerateUniqueArticleSlugAsync(title);
 
             var article = new Article
@@ -135,17 +157,14 @@ public static class DbInitializer
             await db.SaveChangesAsync();
 
             // Assign tags
-            foreach (var tagSlug in metadata.Tags)
+            foreach (var tagSlug in distinctTags)
             {
-                var tag = allTags.FirstOrDefault(t => t.Slug == tagSlug);
-                if (tag != null)
+                var tag = allTags.First(t => t.Slug.Equals(tagSlug, StringComparison.OrdinalIgnoreCase));
+                db.ArticleTags.Add(new ArticleTag
                 {
-                    db.ArticleTags.Add(new ArticleTag
-                    {
-                        ArticleId = article.Id,
-                        TagId = tag.Id
-                    });
-                }
+                    ArticleId = article.Id,
+                    TagId = tag.Id
+                });
             }
             await db.SaveChangesAsync();
         }

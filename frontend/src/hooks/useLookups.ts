@@ -24,7 +24,10 @@ export function useLookups() {
   }, [fetchWithAuth]);
 
   // Memoized so consumers can safely use contentTypes as an effect dependency
-  const contentTypes = useMemo(() => lookups.filter((l) => l.category === "content_type"), [lookups]);
+  const contentTypes = useMemo(
+    () => lookups.filter((lookup) => lookup.category === "content_type" && lookup.isActive),
+    [lookups],
+  );
 
   const invalidateCache = () => {
     cache = null;

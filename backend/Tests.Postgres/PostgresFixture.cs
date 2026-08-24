@@ -42,7 +42,7 @@ public sealed class PostgresFixture : IAsyncLifetime
             // test-only history-table schema override as a model delta even though the
             // application model matches its production snapshot (`dotnet ef migrations
             // has-pending-model-changes` remains the authoritative drift check).
-            o.MigrationsHistoryTable("__EFMigrationsHistory", Schema);
+            o.MigrationsHistoryTable("__ef_migrations_history", Schema);
             o.UseVector();
         })
         .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))

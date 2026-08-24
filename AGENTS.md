@@ -26,14 +26,15 @@ The following items are explicit owner decisions and are not open findings unles
 - **Tracked deployment secrets**: The real connection/JWT values in `backend/appsettings.json` are intentionally stored in the repository for this controlled deployment. Do not remove, rotate, relocate, redact, or report them as a defect by default.
 - **Single backend instance**: The supported production topology has exactly one backend instance. Distributed bulkheads, shared circuit-breaker state, cross-instance AI concurrency controls, and horizontal-scaling work are out of scope; do not report their absence as a defect.
 - **Embedding-time data governance**: Pre-embedding secret/PII redaction and related embedding-provider governance are intentionally deferred. Keep prompt-time/output redaction intact, but do not change or report the embedding-time behavior unless this decision is explicitly reopened.
+- **Azure local-password reset**: An authenticated Azure-linked user may set or replace a local password without supplying the current local password. This is not limited to the first set.
 
 ## Conventions
 
 ### Backend (`backend/`)
 
 - **Language**: C# 13, .NET 10, nullable enabled
-- **Pattern**: Controllers → Services → EF Core DbContext → PostgreSQL. Shared domain logic lives in `Services/` (ArticleService, TagService, ApiKeyService, UserService, StatsService) — controllers keep only routing, auth scoping, and response shaping. **No duplicated logic across controllers**; if two endpoints need the same behavior, extract it into a service (or a `Helpers/` static for pure functions). Service failures return `ServiceError` (mapped via `ToActionResult()`).
-- **Naming**: PascalCase for C# code, snake_case for DB columns (configured in `AppDbContext.OnModelCreating`)
+- **Pattern**: Controllers → Services → EF Core DbContext → PostgreSQL. Shared domain logic lives in `Services/`; `ArticleMutationService` owns article write invariants, `ContentTypeService` owns active content-type resolution, and `SearchExecutionService` is the shared REST/MCP search pipeline. Controllers keep only routing, auth scoping, and response shaping. **No duplicated logic across controllers**; if two endpoints need the same behavior, extract it into a service (or a `Helpers/` static for pure functions). Service failures return `ServiceError` (mapped via `ToActionResult()`).
+- **Naming**: PascalCase for C# code; `snake_case` for application-owned PostgreSQL tables, columns, keys, indexes and foreign keys (configured in `AppDbContext.OnModelCreating`). The EF migration-history table is named `__ef_migrations_history`; its two provider-owned columns retain EF's standard names.
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
@@ -42,7 +43,7 @@ The following items are explicit owner decisions and are not open findings unles
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 11 default tags + content types + project documentation articles
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
-- **Middleware pipeline**: ForwardedHeaders → HSTS (non-dev) → SecurityHeaders (nosniff/DENY/Referrer-Policy) → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → Authentication → RateLimiter → Authorization → Controllers. RateLimiter runs after auth so partitioning sees the principal; ForwardedHeaders first so everything sees real client IP/scheme (`ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy — no in-app HTTPS redirect)
+- **Middleware pipeline**: ForwardedHeaders → HSTS (non-dev) → SecurityHeaders (nosniff/DENY/Referrer-Policy) → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → Authentication → UsageTrackingMiddleware → RateLimiter → Authorization → Controllers. RateLimiter runs after auth so partitioning sees the principal; ForwardedHeaders first so everything sees real client IP/scheme (`ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy — no in-app HTTPS redirect)
 - **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: bge-m3 (1024 dims; dimension guard before persistence). Chat model: qwen2.5vl:7b. PostgreSQL-backed durable `index_jobs` queue coalesces edits by article with a generation counter; backend workers claim at most their available parallelism via `FOR UPDATE SKIP LOCKED`, use leases, a configurable per-article timeout (`Indexing:JobTimeoutSeconds`, default 600), exponential retry, and terminal failure tracking. Article writes enqueue the durable job first, then best-effort refresh PostgreSQL FTS in the request path for immediate lexical visibility; semantic embedding remains asynchronous. Each worker job still re-synchronizes FTS before semantic indexing, preserving retry and concurrent-edit recovery. Admins can repair only missing/stuck jobs through `/api/search/repair-indexing`; it does not invalidate healthy indexes or interrupt active leases. Article body and each attachment are embedded as separate provenance-bearing sources, fairly interleaved under per-source/total chunk caps. Structure-aware chunking preserves Markdown sections and attachment page/sheet/slide provenance; target words, overlap, and chunking version are configurable and included in the embedding freshness hash. Hybrid search retrieves a configurable 200-candidate pool, merges with RRF, then applies `ISearchReranker` (`LocalSearchReranker` by default). pgvector HNSW and PostgreSQL GIN/tsvector provide vector and lexical retrieval.
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
 - **Success response shapes**: List endpoints return `{ articles[], total }` or `{ users[], total }`, mutations return `{ id, slug, title }` or `{ message }`, auth returns `{ token, user }`
@@ -53,7 +54,7 @@ The following items are explicit owner decisions and are not open findings unles
 - **State**: React Context (`AuthContext`, `ThemeContext`) — no Redux/Zustand
 - **API calls**: `useApi` hook (`src/hooks/useApi.ts`) — auto-attaches JWT, auto-logout on 401
 - **Routing**: React Router v7, `ProtectedRoute` + `RoleRoute` wrappers in `App.tsx`
-- **Components**: `src/components/layout/` (AppShell, Sidebar, Header), `src/components/editor/` (Milkdown Crepe)
+- **Components**: `src/components/layout/` (AppShell, Sidebar), `src/components/editor/` (Milkdown Crepe)
 - **Types**: `src/types/api.ts` — shared TypeScript interfaces for all API responses
 - **Notifications**: `sonner` toast library — use `toast.success()` / `toast.error()` for user feedback
 - **Error Boundary**: `src/components/error-boundary.tsx` wraps the app
@@ -78,7 +79,7 @@ backend/
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
 │   └── Entities/         # EF Core entity classes (includes durable IndexJob and RAG evaluation models)
-├── Migrations/           # EF Core migrations
+├── Migrations/           # Squashed snake_case EF Core schema; legacy databases must be recreated
 ├── Program.cs            # App configuration & DI
 └── appsettings.json      # Connection strings, JWT config, RateLimiting
 
@@ -88,7 +89,7 @@ backend/Tests/
 
 frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
-├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types & difficulties)
+├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
 ├── src/pages/            # Flat page components
@@ -154,9 +155,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `articles:create` | ✓ | ✓ | ✓ |
 | `articles:edit_own` | ✓ | ✓ | ✓ |
 | `articles:edit_any` | ✓ | | |
-| `articles:delete_own` | ✓ | ✓ | ✓ |
 | `articles:delete_any` | ✓ | | |
-| `articles:publish` | ✓ | ✓ | |
+| `articles:publish` | ✓ | ✓ | ✓ |
 | `articles:archive` | ✓ | ✓ | |
 | `articles:approve` | ✓ | ✓ | |
 | `tags:manage` | ✓ | ✓ | |
@@ -166,7 +166,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `api_keys:manage_any` | ✓ | | |
 | `featured_links:manage` | ✓ | | |
 
-**API key effective permissions**: a `source=api-key` principal carries at most **editor** authority — an admin-owned key acts as editor (no `users:manage`, `articles:edit_any/delete_any`, `api_keys:manage_any`); editor/viewer-owned keys keep their owner's role. On top of the cap, **all delete permissions are removed** (`articles:delete_own/any` always denied) and destructive DELETE endpoints are `[RequireSessionAuth]` (see matrix below). All view/read operations follow the effective role. Exception: `DELETE /api/articles/{id}/vote` (removing one's own vote) stays available to keys — it is an interaction toggle, not content deletion.
+**API key effective permissions**: a `source=api-key` principal carries at most **editor** authority — an admin-owned key acts as editor (no `users:manage`, `articles:edit_any/delete_any`, `api_keys:manage_any`); editor/viewer-owned keys keep their owner's role. On top of the cap, `articles:delete_any` is always denied and destructive DELETE endpoints are `[RequireSessionAuth]` (see matrix below). All view/read operations follow the effective role. Exception: `DELETE /api/articles/{id}/vote` (removing one's own vote) stays available to keys — it is an interaction toggle, not content deletion.
 
 ## Endpoint Authorization Matrix
 
@@ -184,7 +184,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/articles` | POST | ✓ | `articles:create` | ✗ |
 | `/api/articles/{idOrSlug}` | GET | ✓ | — | ✗ |
 | `/api/articles/{id}` | PUT | ✓ | `articles:edit_own` / `articles:edit_any` + `articles:publish` (for status→published) + `articles:archive` (for status→archived) | ✗ |
-| `/api/articles/{id}` | DELETE | ✓ | `articles:delete_own` / `articles:delete_any` | ✓ |
+| `/api/articles/{id}` | DELETE | ✓ | `articles:delete_any` (admin only) | ✓ |
 | `/api/articles/{id}/approve` | POST | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/approve` | DELETE | ✓ | `articles:approve` | ✗ |
 | `/api/articles/{id}/reject` | POST | ✓ | `articles:approve` | ✗ (legacy alias for removing approval) |
@@ -212,6 +212,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/search/rag-feedback` | POST | ✓ | — | ✗ |
 | `/api/search/reindex` | POST | ✓ | `users:manage` | ✓ |
 | `/api/search/repair-indexing` | POST | ✓ | `users:manage` | ✓ |
+| `/api/search/diagnostics` | GET | ✓ | `users:manage` | ✓ |
 | `/api/search/embedding-status` | GET | ✓ | `users:manage` | ✓ |
 | `/api/search/storage-status` | GET | ✓ | `users:manage` | ✓ |
 | `/api/search/rag-observability` | GET | ✓ | `users:manage` | ✓ |
@@ -230,6 +231,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/admin/rag-evaluations/feedback-summary` | GET | ✓ | `users:manage` | ✓ |
 | `/api/keys` | GET | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys` | POST | ✓ | `api_keys:manage` | ✓ |
+| `/api/keys` | PUT | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys/{id}/rotate` | POST | ✓ | `api_keys:manage` | ✓ |
 | `/api/keys?id={id}` | DELETE | ✓ | `api_keys:manage` | ✓ |
 | `/api/admin/keys` | GET | ✓ | `api_keys:manage_any` | ✓ |
@@ -247,7 +249,13 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/logs` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
-| `/mcp` | GET | ✓ | — | ✗ |
+| `/api/bulk/templates/{format}` | GET | ✓ | — | ✗ |
+| `/api/bulk/import-schema` | GET | ✓ | — | ✗ |
+| `/api/bulk/import` | POST | ✓ | `articles:create` | ✗ |
+| `/api/bulk/export` | GET | ✓ | — | ✗ |
+| `/api/source-imports/analyze` | POST | ✓ | `articles:create` | ✗ |
+| `/api/source-imports/commit` | POST | ✓ | `articles:create` | ✗ |
+| `/mcp` | GET | ✓ | — | ✗ (always 405; POST-only transport) |
 | `/mcp` | POST | ✓ | — | ✗ |
 
 ## Validation Rules
@@ -266,17 +274,17 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `search.limit` | 1 | 50 | Default 20 |
 | `search.page` | 1 | — | Default 1. Applies to fulltext + tag-browse; semantic/hybrid are top-N only |
 | `search.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
-| `search.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text (derived from canonical Markdown) in search results |
+| `search.includeContent` | — | — | Optional, boolean. When true → includes canonical CommonMark/GFM as the string field `contentMarkdown` |
 | `search.includeAttachments` | — | — | Optional, boolean. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article in search results |
 | `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `articles.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
-| `articles.includeContent` | — | — | Optional, boolean. When true → includes article content as plain text in list results |
+| `articles.includeContent` | — | — | Optional, boolean. When true → includes canonical CommonMark/GFM as the string field `contentMarkdown` |
 | `articles.includeAttachments` | — | — | Optional, boolean. When true → includes attachment metadata per article in list results |
 | `profile.name` | 1 | — | Required for profile update |
-| `profile.newPassword` | 8 | 128 | Optional, requires currentPassword (not required for Azure users first-time set) |
+| `profile.newPassword` | 8 | 128 | Optional; local users require currentPassword, Azure-linked users do not |
 | `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
 | `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .pptx, .yaml, .json, .csv, .svg |
 | `attachment.maxPerArticle` | — | 20 | Configurable via appsettings.json |
@@ -336,19 +344,19 @@ No known gaps at this time.
 - **Azure AD login**: Frontend uses MSAL.js v5 redirect-bridge popup flow → popup opens → Azure AD auth → popup calls `broadcastResponseToMainFrame()` via BroadcastChannel → parent receives auth code → PKCE exchange → gets access token → POST `/api/auth/azure-login` → backend validates via Microsoft Graph `/me` → finds/creates local user by AzureObjectId or email → returns local JWT. Popup callback page: `/auth-popup-callback.html` (Vite multi-page entry). If user has active Azure session, login page auto-attempts silent login.
 - **Azure AD logout**: `msalInstance.clearCache()` called on logout to prevent auto-silent re-login.
 - **Azure AD user linking**: First Azure login links by email if user exists, otherwise creates new viewer user. AzureObjectId stored for future logins. Profile name synced from Azure on each login.
-- **Azure AD password set**: Azure users can set a local password via PUT `/api/auth/profile` without providing `currentPassword` (first-time set). After setting, both Azure and email+password login work.
+- **Azure AD password set/reset**: An authenticated Azure-linked user can set or replace the local password via PUT `/api/auth/profile` without providing `currentPassword`. After setting, both Azure and email+password login work. This is an explicit owner-approved behavior, not a first-time-only exemption.
 - **`/api/auth/me` response**: Includes `isAzureUser` boolean field (true if user has AzureObjectId linked).
 - **API key source**: Claims include `source: "api-key"` — session-only endpoints check this
-- **API key permission cap**: RBAC checks are principal-aware (`RbacService.HasPermission(ClaimsPrincipal, …)`, `CanEdit/CanDelete/CanViewArticle(ClaimsPrincipal, …)`). For `source=api-key`: effective role = owner role capped at editor (admin→editor), all delete permissions denied, `CanDeleteArticle` always false. Destructive DELETE endpoints additionally carry `[RequireSessionAuth]`. Vote removal (own vote) remains key-accessible.
+- **API key permission cap**: RBAC checks are principal-aware (`RbacService.HasPermission(ClaimsPrincipal, …)`, `CanEditArticle`/`CanViewArticle`). For `source=api-key`: effective role = owner role capped at editor (admin→editor), and `articles:delete_any` is always denied. Article deletion is session-admin-only; other destructive DELETE endpoints additionally carry `[RequireSessionAuth]`. Vote removal (own vote) remains key-accessible.
 - **Article list tags**: GET /api/articles response includes `tags` array per article
 - **Tag input flexibility**: `Tags` array in create/update accepts tag ID, tag name, or tag slug — resolved in that priority order. Unknown tags are auto-created for API-key requests and session users with `tags:manage`; creation is deferred to the article save and committed in the same `SaveChanges` call, so abandoning the form cannot leave orphan tags.
 - **Search wildcard escaping**: `%` and `_` characters are escaped in LIKE queries
 - **Search query semantics**: Multi-word queries are joined with AND (all terms must match, precision-first). When AND yields nothing, the query retries with OR (any term), then falls back to ILIKE on title/excerpt. tsquery meta-characters are stripped from tokens.
 - **Search pagination**: `GET /api/search` accepts `page` (default 1). Fulltext and tag-browse responses return the true post-filter `total` plus `page`/`totalPages` (filters are applied to the full ranked candidate set — capped at 1000 FTS candidates — before paging, so filtered searches don't under-return). FTS ordering is deterministic (`rank DESC, Id` tiebreaker) so pages never overlap on rank ties. Semantic/hybrid remain top-N (`page`/`totalPages` fixed at 1, `total` = returned count).
 - **Search snippet**: Non-RAG search results include a `snippet` field — a ~240-char match-context window from the article body around the earliest query-term occurrence (accent/case-folded matching mirroring the FTS index, stem-prefix tolerant). `null` when no term occurs in the body (e.g. title-only match) — clients fall back to `excerpt`. Frontend highlights query terms in the snippet.
-- **Plain-text extraction scope**: `ContentExtractor` strips Markdown syntax while retaining readable headings, table cells, code, image alt text, and link labels. Link/image URLs and formatting syntax are excluded from read-time calculation, search indexes, embeddings, and `contentText`/`includeContent` output.
+- **Plain-text extraction scope**: `ContentExtractor` strips Markdown syntax while retaining readable headings, table cells, code, image alt text, and link labels. Link/image URLs and formatting syntax are excluded from read-time calculation, search indexes, embeddings, and the detail response's derived `contentText`. `includeContent` intentionally returns the canonical Markdown string in `contentMarkdown`.
 - **Search inline syntax**: `@user-slug` for author filter (OR, multiple), `#tag-slug` for tag filter (AND, multiple), `##content-type` for content type filter (OR, multiple). Parsed in order: `##` → `#` → `@` → remaining text. Example: `@ahmet #react ##guide nasıl yapılır`. Inline syntax and query parameters are merged.
-- **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes article content as extracted plain text in results), `includeAttachments` (boolean — includes attachment metadata array per article), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
+- **Search filters**: `GET /api/search` accepts optional query parameters: `onlyOwnContent` (boolean, API key auth only — filters to articles created by that API key), `includeContent` (boolean — includes canonical Markdown in `contentMarkdown`), `includeAttachments` (boolean — includes attachment metadata array per article), `tag` (repeatable, tag slugs), `author` (repeatable, user slugs), `contentType` (repeatable, content type values). Filters apply to all search types (fulltext, semantic, hybrid, rag). Tags from `#syntax` and `tag` param are merged. Authors from `@syntax` and `author` param are merged. Content types from `##syntax` and `contentType` param are merged. If only tags are specified without a text query, returns tag-browse results.
 - **Search click tracking**: Search responses include `searchQueryId` — clients POST `/api/search/click` with article clicked
 - **Search semantic**: pgvector cosine distance operator (`<=>`) on `vector(1024)` column in `article_embeddings` table, accelerated by an HNSW index (`ix_article_embeddings_embedding_hnsw`). Query over-fetches chunk rows (published-only via JOIN), best chunk per article is picked in memory (its index returned for RAG). MinSimilarityScore=0.5 (configurable via appsettings.json).
 - **Search hybrid**: Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60). Both legs over-fetch (limit×3, cap 50) so post-merge filters don't starve the final `Take(limit)`. Each result has `matchType` (fulltext/semantic/both). Falls back to fulltext-only if Ollama unavailable.
@@ -379,8 +387,9 @@ No known gaps at this time.
 - **Tag update**: PUT `/api/tags` renames tag and regenerates slug; returns 409 if new slug conflicts
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
-- **Publish/Archive enforcement**: Setting `status: "published"` requires `articles:publish` permission; `status: "archived"` requires `articles:archive`. Checked inline in ArticlesController PUT (not via attribute)
-- **RBAC enforcement patterns**: Two patterns coexist: (1) `[RequirePermission("...")]` attribute for simple checks, (2) inline `RbacService.HasPermission(User, …)` / `CanEditArticle(User, …)` for ownership-based or conditional checks (edit/delete/publish/archive). Both are principal-aware and apply the API-key permission cap; the string-based `(role, permission)` overloads remain as the core matrix (no cap — use only when no principal is available)
+- **Publish/Archive enforcement**: All roles carry `articles:publish`; `status: "archived"` requires `articles:archive`. `ArticleMutationService` applies the same rule to REST, bulk import, and source import.
+- **Content-type invariant**: Article writes accept only active `lookup_values` entries in category `content_type`; omitted values resolve to the active `reference` entry. `ContentTypeService` and `ArticleMutationService` apply this identically to REST, bulk import, and source import. Seed startup fails fast on unknown/inactive content types or tags instead of silently creating inconsistent documentation.
+- **RBAC enforcement patterns**: `[RequirePermission("...")]` handles simple endpoint checks; `ArticleMutationService` and `RbacService.CanEditArticle(User, …)` handle ownership-based or conditional article writes. Article deletion requires both session authentication and `articles:delete_any`, so it is admin-only.
 - **Attachment upload**: Files remain at `data/uploads/{articleId}/{storedFileName}`. Uploads are written to a same-volume temporary file, flushed, SHA-256 hashed, then atomically renamed. Metadata records checksum, extraction status, extracted character count, the configured extraction limit, and whether text was truncated. Deletes move files/directories to `data/uploads/.trash` for recoverability. `/api/search/storage-status` samples checksums and reports missing files, extraction failures/truncations, bytes, and free disk.
 - **Attachment deferred upload**: Frontend uses deferred upload pattern — files are queued locally and only uploaded when the article is saved. New files show "Kaydedilince yüklenecek" badge with green background.
 - **Attachment deferred delete**: In edit mode, deleting a file marks it with strikethrough + "Kaydedilince silinecek" badge. Undo is available. Actual API DELETE happens on save.
@@ -412,14 +421,6 @@ No known gaps at this time.
 - **Stateless execution**: Each request is independent; no session state is maintained between requests
 - **Rate limiting**: `/mcp` (GET + POST) is covered by the `mcp` fixed-window rate limit policy (default 60/min, `RateLimiting:McpLimit`)
 - **Tool access control**: Tools do not enforce RBAC beyond authentication. All authenticated users can access all tools. Tools only return published articles.
-
-## Placeholder Fields (Not Yet Active)
-
-These entity fields exist in the database but are not yet used in business logic:
-
-| Field | Entity | Purpose | Status |
-|-------|--------|---------|--------|
-| `ReviewIntervalDays` | Article | Configurable staleness threshold per article | Has DB default (90) but analytics uses hardcoded 90 days |
 
 ## Future Enhancements (Not Implemented)
 

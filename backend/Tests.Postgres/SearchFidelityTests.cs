@@ -256,7 +256,7 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
         await using var connection = new NpgsqlConnection(fixture.ConnectionString); await connection.OpenAsync();
         await using (var disableSeq = new NpgsqlCommand("SET enable_seqscan=off", connection)) await disableSeq.ExecuteNonQueryAsync();
         var queryVector = new Vector(Vector(1, 0)).ToString();
-        var plan = await Plan(connection, $"EXPLAIN (COSTS OFF) SELECT \"ArticleId\" FROM article_embeddings WHERE \"ModelName\" = 'fidelity' ORDER BY \"Embedding\" <=> '{queryVector}'::vector LIMIT 2");
+        var plan = await Plan(connection, $"EXPLAIN (COSTS OFF) SELECT article_id FROM article_embeddings WHERE model_name = 'fidelity' ORDER BY embedding <=> '{queryVector}'::vector LIMIT 2");
         Assert.Contains("ix_article_embeddings_embedding_hnsw", plan, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -278,7 +278,7 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
 
         await using var connection = new NpgsqlConnection(fixture.ConnectionString); await connection.OpenAsync();
         await using (var disableSeq = new NpgsqlCommand("SET enable_seqscan=off", connection)) await disableSeq.ExecuteNonQueryAsync();
-        var plan = await Plan(connection, "EXPLAIN (COSTS OFF) SELECT \"Id\" FROM articles WHERE search_vector @@ to_tsquery('turkish','baglanti')");
+        var plan = await Plan(connection, "EXPLAIN (COSTS OFF) SELECT id FROM articles WHERE search_vector @@ to_tsquery('turkish','baglanti')");
         Assert.Contains("idx_articles_search_vector", plan, StringComparison.OrdinalIgnoreCase);
     }
 

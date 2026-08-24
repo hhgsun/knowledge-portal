@@ -97,6 +97,7 @@ public record ArticleDetailDto(
     string UpdatedAt,
     string? PublishedAt,
     string? LastReviewedAt,
+    int ReviewIntervalDays,
     string? ApprovedAt,
     string? ApprovedBy,
     List<object>? Tags,

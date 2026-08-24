@@ -26,14 +26,12 @@ public class ApiKeyRbacTests
         Assert.Equal("admin", RbacService.GetEffectiveRole(Principal("admin", "session")));
     }
 
-    [Theory]
-    [InlineData(Permissions.ArticlesDeleteOwn)]
-    [InlineData(Permissions.ArticlesDeleteAny)]
-    public void ApiKey_DeletePermissions_AlwaysDenied(string permission)
+    [Fact]
+    public void ApiKey_ArticleDeletePermission_AlwaysDenied()
     {
-        Assert.False(RbacService.HasPermission(Principal("admin", "api-key"), permission));
-        Assert.False(RbacService.HasPermission(Principal("editor", "api-key"), permission));
-        Assert.False(RbacService.HasPermission(Principal("viewer", "api-key"), permission));
+        Assert.False(RbacService.HasPermission(Principal("admin", "api-key"), Permissions.ArticlesDeleteAny));
+        Assert.False(RbacService.HasPermission(Principal("editor", "api-key"), Permissions.ArticlesDeleteAny));
+        Assert.False(RbacService.HasPermission(Principal("viewer", "api-key"), Permissions.ArticlesDeleteAny));
     }
 
     [Theory]
@@ -58,18 +56,11 @@ public class ApiKeyRbacTests
     }
 
     [Fact]
-    public void SessionPrincipals_Unaffected()
+    public void SessionPrincipals_ArticleDeleteIsAdminOnly()
     {
         Assert.True(RbacService.HasPermission(Principal("admin", "session"), Permissions.ArticlesDeleteAny));
-        Assert.True(RbacService.HasPermission(Principal("editor", "session"), Permissions.ArticlesDeleteOwn));
-    }
-
-    [Fact]
-    public void CanDeleteArticle_ApiKey_AlwaysFalse()
-    {
-        Assert.False(RbacService.CanDeleteArticle(Principal("admin", "api-key"), isOwner: true));
-        Assert.False(RbacService.CanDeleteArticle(Principal("editor", "api-key"), isOwner: true));
-        Assert.True(RbacService.CanDeleteArticle(Principal("admin", "session"), isOwner: false));
+        Assert.False(RbacService.HasPermission(Principal("editor", "session"), Permissions.ArticlesDeleteAny));
+        Assert.False(RbacService.HasPermission(Principal("viewer", "session"), Permissions.ArticlesDeleteAny));
     }
 
     [Fact]

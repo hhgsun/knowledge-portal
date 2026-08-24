@@ -15,7 +15,7 @@ using S = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace KnowledgePortal.Api.Services;
 
-public class SourceImportService(AppDbContext db, ArticleService articleService, IConfiguration config,
+public class SourceImportService(AppDbContext db, ArticleService articleService, ArticleMutationService mutations, IConfiguration config,
     ILogger<SourceImportService> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -66,8 +66,6 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         ClaimsPrincipal user, CancellationToken ct)
     {
         var results = new List<SourceImportCommitItem>();
-        var validTypes = (await db.LookupValues.Where(x => x.Category == "content_type" && x.IsActive)
-            .Select(x => x.Value).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var maxSize = config.GetValue("FileStorage:MaxFileSizeMB", 20) * 1024L * 1024L;
         var allowed = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>() ?? [];
         foreach (var draft in request.Drafts)
@@ -81,29 +79,14 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             {
                 if (db.Database.IsRelational())
                     transaction = await db.Database.BeginTransactionAsync(ct);
-                if (title.Length is < 1 or > 300) throw new InvalidDataException("Title is required (1-300 chars)");
-                var contentType = draft.ContentType ?? "reference";
-                if (!validTypes.Contains(contentType)) throw new InvalidDataException($"Invalid content type: {contentType}");
-                var status = draft.Status ?? "draft";
-                if (status is not ("draft" or "published" or "archived")) throw new InvalidDataException("Invalid status");
-                if (user.GetRole() == "viewer" && status == "archived") status = "draft";
                 var contentMarkdown = draft.ContentMarkdown?.Trim() ?? "";
-                var article = new Article
-                {
-                    Title = title, Slug = await db.GenerateUniqueArticleSlugAsync(title), Content = contentMarkdown,
-                    Excerpt = draft.Excerpt?.Trim(), Status = status, ContentType = contentType,
-                    OwnerId = user.GetUserId(), CreatedViaApiKeyId = user.GetApiKeyId(),
-                    PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                    LastReviewedAt = null,
-                    ReadTimeMinutes = ContentExtractor.CalculateReadTime(contentMarkdown)
-                };
+                var create = await mutations.CreateAsync(
+                    new CreateArticleCommand(title, contentMarkdown, draft.Excerpt, draft.Status,
+                        draft.ContentType, draft.Tags),
+                    user, "Source import", queueReindex: false, ct: ct);
+                if (create.Error != null) throw new InvalidDataException(create.Error.Message);
+                var article = create.Article!;
                 articleId = article.Id;
-                db.Articles.Add(article);
-                await articleService.AddVersionAsync(article.Id, article.Title, article.Content, user.GetUserId(), "Source import");
-                if (draft.Tags is { Length: > 0 })
-                    await articleService.AttachTagsAsync(article.Id, draft.Tags,
-                        user.GetSource() == "api-key" || RbacService.HasPermission(user, Permissions.TagsManage));
-                await db.SaveChangesAsync(ct);
 
                 if (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count)
                     storedAttachment = await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed, user.GetUserId(), ct);

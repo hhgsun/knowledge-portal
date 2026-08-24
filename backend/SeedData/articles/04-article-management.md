@@ -35,13 +35,14 @@ Yeni makale oluştururken aşağıdaki alanlar kullanılabilir:
 - **title (zorunlu):** 1-300 karakter. Slug otomatik oluşturulur.
 - **contentMarkdown:** Milkdown tarafından düzenlenen CommonMark/GFM Markdown içerik.
 - **excerpt:** İsteğe bağlı kısa özet.
-- **contentType:** İçerik türü (reference, how-to, adr, runbook, faq, policy, onboarding).
+- **contentType:** `content_type` kategorisindeki aktif tanım değerlerinden biri. Varsayılan seed değerleri reference, how-to, adr, runbook, faq, policy ve onboarding'dir; pasif veya bilinmeyen değerler REST, bulk ve kaynak içe aktarma akışlarının tümünde reddedilir.
 - **tags:** Etiket dizisi — ID, isim veya slug kabul eder.
 - **status:** Başlangıç durumu (yetkilere göre kısıtlı).
+- **reviewIntervalDays:** İçerik yönetişiminde kullanılacak gözden geçirme aralığı (1-3650 gün, varsayılan 90). Detay yanıtında okunur ve oluşturma/düzenleme formundan değiştirilebilir.
 
 ## Versiyon Kontrolü
 
-Makale içeriği (content alanı) her değiştiğinde otomatik olarak yeni bir versiyon oluşturulur. Sadece başlık veya metadata değişikliklerinde versiyon oluşturulmaz.
+Makale içeriği (`contentMarkdown` alanı) her değiştiğinde otomatik olarak yeni bir versiyon oluşturulur. Sadece başlık veya metadata değişikliklerinde versiyon oluşturulmaz.
 
 ### Versiyon İşlemleri
 

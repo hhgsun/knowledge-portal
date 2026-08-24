@@ -26,6 +26,8 @@ export interface ArticleFormProps {
   onContentTypeChange: (v: string) => void;
   status: string;
   onStatusChange: (v: string) => void;
+  reviewIntervalDays: number;
+  onReviewIntervalDaysChange: (v: number) => void;
   tags: string[];
   onTagsChange: (v: string[]) => void;
   saving: boolean;
@@ -58,6 +60,8 @@ export function ArticleForm({
   onContentTypeChange,
   status,
   onStatusChange,
+  reviewIntervalDays,
+  onReviewIntervalDaysChange,
   tags,
   onTagsChange,
   saving,
@@ -154,6 +158,19 @@ export function ArticleForm({
               {STATUS_DESCRIPTIONS[status] ?? ""}
             </span>
           </div>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+            Gözden geçirme
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              value={reviewIntervalDays}
+              onChange={(event) => onReviewIntervalDaysChange(Number(event.target.value))}
+              aria-label="Gözden geçirme aralığı (gün)"
+              className="w-20 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            />
+            gün
+          </label>
           {statusIndicator}
         </div>
 

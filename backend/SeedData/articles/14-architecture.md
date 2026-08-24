@@ -43,11 +43,11 @@ Desteklenen production topolojisi tek backend instance'ıdır. TLS şirket rever
 - **Arka plan işleri:** PostgreSQL-backed dayanıklı indeks kuyruğu ve RAG kalite değerlendirme worker'ı.
 - **Gözlemlenebilirlik:** Serilog, OpenTelemetry trace/metric, Prometheus `/metrics`, RAG dashboard ve alarm kuralları.
 
-Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. Paylaşılan iş kuralları `Services/` katmanındadır; veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
+Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. `ArticleMutationService` normal, toplu ve kaynak içe aktarma yazma kurallarını; `ContentTypeService` aktif içerik türü invariant'ını; `SearchExecutionService` REST ve MCP arama akışını ortaklaştırır. Veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
 
 ## Middleware Sırası
 
-İstek hattı şu sırayı izler: Forwarded Headers → production HSTS → güvenlik header'ları → global exception handling → CORS → API Key middleware → Authentication → Rate Limiter → Authorization → Controllers.
+İstek hattı şu sırayı izler: Forwarded Headers → production HSTS → güvenlik header'ları → global exception handling → CORS → API Key middleware → Authentication → Usage Tracking → Rate Limiter → Authorization → Controllers.
 
 Rate limiter authentication'dan sonra çalıştığı için isteği API key kimliği, kullanıcı kimliği veya IP adresine göre partition edebilir.
 
@@ -74,7 +74,7 @@ Başlıca entity grupları:
 - **Dosya ve arama:** ArticleAttachment, ArticleEmbedding, IndexJob.
 - **RAG kalite yönetimi:** RagEvaluationDataset, RagEvaluationRun.
 
-Makale gövdesi kanonik CommonMark/GFM Markdown olarak saklanır. Arama, embedding, okuma süresi ve `includeContent` çıktısı için Markdown'dan okunabilir düz metin türetilir; URL ve biçim sözdizimi indekse taşınmaz.
+Makale gövdesi kanonik CommonMark/GFM Markdown olarak saklanır. `includeContent` yanıtı bu kanonik string'i `contentMarkdown` olarak döndürür. Arama, embedding, okuma süresi ve detay yanıtındaki `contentText` için ayrıca okunabilir düz metin türetilir; URL ve biçim sözdizimi indekse taşınmaz.
 
 ## Arama ve RAG
 
@@ -86,6 +86,7 @@ Ayrıntılı akış için **Arama Motoru — Fulltext, Semantic, Hybrid ve RAG**
 
 - **Markdown kanonik formattır:** Editör görünümü değil Markdown metni kalıcı sözleşmedir.
 - **PostgreSQL ortak veri katmanıdır:** Uygulama verisi, FTS, pgvector embedding'leri ve dayanıklı iş kuyrukları aynı ilişkisel sağlayıcıdadır.
+- **Şema adları:** Uygulamaya ait PostgreSQL tablo, kolon, indeks ve constraint adları `snake_case` kullanır. EF geçmiş tablosunun adı `__ef_migrations_history`'dir; bu tablodaki sağlayıcıya ait iki kolon EF'in standart adlarını korur. Migration geçmişi temiz başlangıç şemasına sıkıştırılmıştır; eski kurulumlar veritabanını yeniden oluşturur.
 - **Opsiyonel AI katmanı:** Ollama sorunu fulltext aramayı veya temel içerik yönetimini durdurmaz.
 - **Dayanıklı indeksleme:** Editler makale başına coalesce edilir; lease, bounded parallelism ve exponential retry ile işlenir.
 - **Deferred upload:** Frontend, yeni ekleri ve silmeleri makale kaydına kadar erteler.

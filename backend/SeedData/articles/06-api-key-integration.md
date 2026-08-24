@@ -75,7 +75,7 @@ API key ile makale oluşturulurken bilinmeyen etiketler otomatik olarak oluştur
 
 ### includeContent ve includeAttachments
 
-Hem arama hem de makale listesi endpoint'inde makale içeriğini (plain text olarak) ve ek dosya bilgilerini almak için:
+Hem arama hem de makale listesi endpoint'inde kanonik Markdown string'ini (`contentMarkdown`) ve ek dosya bilgilerini almak için:
 
 ```bash
 # Arama ile

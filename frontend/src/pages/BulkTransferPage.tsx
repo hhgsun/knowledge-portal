@@ -41,7 +41,7 @@ export default function BulkTransferPage() {
   const downloadResponse = async (response: Response, fallbackName: string) => {
     const blob = await response.blob();
     const disposition = response.headers.get("content-disposition") || "";
-    const name = disposition.match(/filename\*?=(?:UTF-8''|\")?([^\";]+)/i)?.[1] || fallbackName;
+    const name = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1] || fallbackName;
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); link.href = url; link.download = decodeURIComponent(name); link.click();
     URL.revokeObjectURL(url);

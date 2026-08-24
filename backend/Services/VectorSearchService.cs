@@ -108,10 +108,10 @@ public sealed class VectorSearchService(
                 FROM (
                     SELECT DISTINCT ON (c."ArticleId") c."ArticleId", c."ChunkIndex", c."Distance"
                     FROM (
-                        SELECT e."ArticleId", e."ChunkIndex", e."Embedding" <=> {0}::vector AS "Distance"
+                        SELECT e.article_id AS "ArticleId", e.chunk_index AS "ChunkIndex", e.embedding <=> {0}::vector AS "Distance"
                         FROM article_embeddings e
                         {{scanWhere}}
-                        ORDER BY e."Embedding" <=> {0}::vector
+                        ORDER BY e.embedding <=> {0}::vector
                         LIMIT {{rowLimitArg}}
                     ) c
                     ORDER BY c."ArticleId", c."Distance"
@@ -159,11 +159,13 @@ public sealed class VectorSearchService(
                 FROM (
                     SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c."ArticleId" ORDER BY c."Distance") AS rn
                     FROM (
-                        SELECT e."Id", e."ArticleId", e."ChunkIndex", e."Content", e."SourceType", e."AttachmentId",
-                            e."SourceName", e."SourceLocation", e."Embedding" <=> {0}::vector AS "Distance"
+                        SELECT e.id AS "Id", e.article_id AS "ArticleId", e.chunk_index AS "ChunkIndex",
+                            e.content AS "Content", e.source_type AS "SourceType", e.attachment_id AS "AttachmentId",
+                            e.source_name AS "SourceName", e.source_location AS "SourceLocation",
+                            e.embedding <=> {0}::vector AS "Distance"
                         FROM article_embeddings e
                         {{scanWhere}}
-                        ORDER BY e."Embedding" <=> {0}::vector
+                        ORDER BY e.embedding <=> {0}::vector
                         LIMIT {{rowLimitArg}}
                     ) c
                 ) r
@@ -201,11 +203,11 @@ public sealed class VectorSearchService(
     /// </summary>
     private string ScanPredicate(ArticleFilter? filter, List<object> args)
     {
-        var filterSql = ArticleFilterSql.Build(filter, args, "e", idColumn: "ArticleId", tagArrayColumn: "TagSlugs");
+        var filterSql = ArticleFilterSql.Build(filter, args, "e", idColumn: "article_id", tagArrayColumn: "tag_slugs");
         var model = ArticleFilterSql.Placeholder(args, _modelName);
         // Never mix vectors from different embedding models. During a rolling model transition,
         // old rows stay stored for safe replacement/rollback but cannot enter retrieval.
-        return $"WHERE e.\"ModelName\" = {model}{filterSql}";
+        return $"WHERE e.model_name = {model}{filterSql}";
     }
 
     /// <summary>Cosine distance ceiling equivalent to the effective minimum similarity score.</summary>

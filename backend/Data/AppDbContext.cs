@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using KnowledgePortal.Api.Models.Entities;
 
 namespace KnowledgePortal.Api.Data;
@@ -256,7 +257,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(ae => ae.Content).HasColumnType("text");
             e.Property(ae => ae.Dimensions).IsRequired();
             e.Property(ae => ae.CreatedAt).IsRequired();
+            // PostgreSQL triggers maintain these denormalized search-filter columns. Mapping
+            // them as shadow properties keeps the schema and migrations explicit while the
+            // application continues to treat them as database-owned values.
+            e.Property<string>("OwnerId");
+            e.Property<string>("ContentType");
+            e.Property<string>("CreatedViaApiKeyId");
+            e.Property<string[]>("TagSlugs").HasColumnType("text[]");
             e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();
+            e.HasIndex("OwnerId");
+            e.HasIndex("ContentType");
+            e.HasIndex("CreatedViaApiKeyId");
+            e.HasIndex("TagSlugs").HasMethod("gin");
             e.HasOne(ae => ae.Article).WithMany(a => a.ArticleEmbeddings).HasForeignKey(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(ae => ae.Attachment).WithMany().HasForeignKey(ae => ae.AttachmentId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -326,5 +338,58 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Dataset).WithMany(x => x.Runs).HasForeignKey(x => x.DatasetId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.RequestedBy).WithMany().HasForeignKey(x => x.RequestedById).OnDelete(DeleteBehavior.Restrict);
         });
+
+        ApplySnakeCaseNames(modelBuilder);
+    }
+
+    private static void ApplySnakeCaseNames(ModelBuilder modelBuilder)
+    {
+        foreach (var entity in modelBuilder.Model.GetEntityTypes())
+        {
+            var table = entity.GetTableName();
+            if (table == null) continue;
+
+            var tableId = StoreObjectIdentifier.Table(table, entity.GetSchema());
+            foreach (var property in entity.GetProperties())
+            {
+                var column = property.GetColumnName(tableId) ?? property.Name;
+                property.SetColumnName(ToSnakeCase(column));
+            }
+
+            foreach (var key in entity.GetKeys())
+                key.SetName(ToSnakeCase(key.GetDefaultName() ?? $"pk_{table}"));
+
+            foreach (var index in entity.GetIndexes())
+                index.SetDatabaseName(ToSnakeCase(index.GetDatabaseName() ?? $"ix_{table}"));
+
+            foreach (var foreignKey in entity.GetForeignKeys())
+                foreignKey.SetConstraintName(ToSnakeCase(
+                    foreignKey.GetDefaultName() ?? $"fk_{table}_{foreignKey.PrincipalEntityType.GetTableName()}"));
+        }
+    }
+
+    private static string ToSnakeCase(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+
+        var builder = new System.Text.StringBuilder(value.Length + 8);
+        for (var index = 0; index < value.Length; index++)
+        {
+            var current = value[index];
+            if (char.IsUpper(current))
+            {
+                var hasPrevious = index > 0;
+                var previousIsLowerOrDigit = hasPrevious && (char.IsLower(value[index - 1]) || char.IsDigit(value[index - 1]));
+                var nextIsLower = index + 1 < value.Length && char.IsLower(value[index + 1]);
+                if (hasPrevious && value[index - 1] != '_' && (previousIsLowerOrDigit || nextIsLower))
+                    builder.Append('_');
+                builder.Append(char.ToLowerInvariant(current));
+            }
+            else
+            {
+                builder.Append(current == '-' ? '_' : current);
+            }
+        }
+        return builder.ToString();
     }
 }

@@ -21,27 +21,27 @@ public static class ArticleFilterSql
     /// against <paramref name="alias"/>, appending the bound values to <paramref name="args"/>.
     /// </summary>
     /// <param name="alias">Alias the target table carries in the query.</param>
-    /// <param name="idColumn">Column holding the article id — "Id" on articles, "ArticleId" on
+    /// <param name="idColumn">Column holding the article id — "id" on articles, "article_id" on
     /// article_embeddings.</param>
     /// <param name="tagArrayColumn">Set when the target carries a denormalized text[] of tag
     /// slugs (article_embeddings), which turns the whole tag filter into one containment test.
     /// Left null for articles, where tags have to be reached through article_tags.</param>
     public static string Build(ArticleFilter? filter, List<object> args, string alias = "a",
-                               string idColumn = "Id", string? tagArrayColumn = null)
+                               string idColumn = "id", string? tagArrayColumn = null)
     {
         if (filter == null) return "";
         var sb = new StringBuilder();
 
         // Preserve an explicitly empty author set as a no-match filter.
         if (filter.OwnerIds is not null)
-            sb.Append($""" AND {alias}."OwnerId" = ANY({Placeholder(args, filter.OwnerIds.ToArray())})""");
+            sb.Append($""" AND {alias}.owner_id = ANY({Placeholder(args, filter.OwnerIds.ToArray())})""");
         if (filter.ContentTypes is { Count: > 0 })
-            sb.Append($""" AND {alias}."ContentType" = ANY({Placeholder(args, filter.ContentTypes.ToArray())})""");
+            sb.Append($""" AND {alias}.content_type = ANY({Placeholder(args, filter.ContentTypes.ToArray())})""");
         if (!string.IsNullOrWhiteSpace(filter.ApiKeyId))
-            sb.Append($""" AND {alias}."CreatedViaApiKeyId" = {Placeholder(args, filter.ApiKeyId)}""");
+            sb.Append($""" AND {alias}.created_via_api_key_id = {Placeholder(args, filter.ApiKeyId)}""");
         // Matches ApplyFilter: a non-null but empty ID list means "nothing matches"
         if (filter.ArticleIds != null)
-            sb.Append($""" AND {alias}."{idColumn}" = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
+            sb.Append($""" AND {alias}.{idColumn} = ANY({Placeholder(args, filter.ArticleIds.ToArray())})""");
 
         var tagSlugs = (filter.TagSlugs ?? []).ToArray();
         if (tagSlugs.Length > 0)
@@ -49,13 +49,13 @@ public static class ArticleFilterSql
             if (tagArrayColumn != null)
                 // @> is "contains all of", which is exactly the AND semantics — and it stays a
                 // plain filter on the row, so a vector scan keeps its index-ordered plan.
-                sb.Append($""" AND {alias}."{tagArrayColumn}" @> {Placeholder(args, tagSlugs)}""");
+                sb.Append($""" AND {alias}.{tagArrayColumn} @> {Placeholder(args, tagSlugs)}""");
             else
                 // AND logic: one EXISTS per slug, so the article must carry every requested tag
                 foreach (var slug in tagSlugs)
                     sb.Append($"""
-                         AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg."Id" = ats."TagId"
-                                     WHERE ats."ArticleId" = {alias}."{idColumn}" AND tg."Slug" = {Placeholder(args, slug)})
+                         AND EXISTS (SELECT 1 FROM article_tags ats JOIN tags tg ON tg.id = ats.tag_id
+                                     WHERE ats.article_id = {alias}.{idColumn} AND tg.slug = {Placeholder(args, slug)})
                         """);
         }
 

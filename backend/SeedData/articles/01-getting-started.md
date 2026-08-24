@@ -49,7 +49,7 @@ Sistemde üç temel rol bulunur:
 
 - **Admin:** Tüm yetkilere sahiptir. Kullanıcı yönetimi, API key yönetimi, herhangi bir makaleyi düzenleme/silme yapabilir.
 - **Editor:** Makale yayınlama, arşivleme, onaylama, etiket yönetimi ve analitik görüntüleme yetkisine sahiptir.
-- **Viewer:** Makale oluşturabilir, kendi makalelerini düzenleyebilir, yayınlayabilir ve silebilir. Arşivleme ve onaylama yetkisi yoktur.
+- **Viewer:** Makale oluşturabilir, kendi makalelerini düzenleyebilir ve yayınlayabilir. Arşivleme, onaylama ve makale silme yetkisi yoktur.
 
 ## Sonraki Adımlar
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Key, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X, Copy, Check, AlertTriangle } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { KeysListSkeleton } from "../components/ui/skeleton";
@@ -33,7 +33,7 @@ export default function AdminApiKeysPage() {
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const loadKeys = async (page = 1, q = "") => {
+  const loadKeys = useCallback(async (page = 1, q = "") => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: "50" });
     if (q) params.set("q", q);
@@ -47,17 +47,17 @@ export default function AdminApiKeysPage() {
       setError("You don't have permission to manage API keys");
     }
     setLoading(false);
-  };
+  }, [fetchWithAuth]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     const res = await fetchWithAuth("/api/admin/users?limit=100");
     if (res.ok) {
       const data = await res.json();
       setUsers(data.users);
     }
-  };
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadKeys(); loadUsers(); }, []);
+  useEffect(() => { void loadKeys(); void loadUsers(); }, [loadKeys, loadUsers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -12,11 +12,10 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace KnowledgePortal.Api.Services;
 
-public class BulkTransferService(AppDbContext db, ArticleService articleService)
+public class BulkTransferService(AppDbContext db, ArticleMutationService mutations)
 {
     public const int MaxRecords = 5_000;
     public const int MaxFileSizeMb = 100;
-    private static readonly HashSet<string> ValidStatuses = ["draft", "published", "archived"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static byte[] CreateJsonLinesTemplate()
@@ -73,23 +72,23 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         if (conflictPolicy is not ("skip" or "update" or "duplicate"))
             throw new InvalidDataException("conflictPolicy must be skip, update or duplicate");
 
-        var validContentTypes = (await db.LookupValues
-            .Where(x => x.Category == "content_type" && x.IsActive)
-            .Select(x => x.Value).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var errors = new List<BulkImportError>();
         var created = 0;
         var updated = 0;
         var skipped = 0;
         var userId = user.GetUserId();
-        var role = user.GetRole();
 
         for (var index = 0; index < items.Count; index++)
         {
             var item = items[index];
-            var error = Validate(item, validContentTypes, role);
-            if (error != null)
+            var command = new CreateArticleCommand(item.Title, item.ContentMarkdown, item.Excerpt,
+                item.Status, item.ContentType, item.Tags, ExternalId: item.ExternalId);
+            var validationError = item.ExternalId?.Trim().Length > 200
+                ? new ServiceError(400, "externalId may contain at most 200 characters")
+                : await mutations.ValidateAsync(command, user, ct);
+            if (validationError != null)
             {
-                errors.Add(new(index + 1, item.Title, error));
+                errors.Add(new(index + 1, item.Title, validationError.Message));
                 continue;
             }
 
@@ -126,61 +125,20 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
             try
             {
                 if (db.Database.IsRelational()) transaction = await db.Database.BeginTransactionAsync(ct);
-                var content = item.ContentMarkdown?.Trim();
-                var status = item.Status ?? "draft";
-
                 if (existing != null && conflictPolicy == "update")
                 {
-                    var contentChanged = existing.Content != content;
-                    var trustChanged = existing.Title != title
-                        || existing.Excerpt != item.Excerpt?.Trim()
-                        || existing.ContentType != (item.ContentType ?? "reference")
-                        || existing.Status != status
-                        || contentChanged
-                        || item.Tags != null;
-                    existing.Title = title;
-                    existing.Slug = await db.GenerateUniqueArticleSlugAsync(title, existing.Id);
-                    existing.Excerpt = item.Excerpt?.Trim();
-                    existing.Status = status;
-                    existing.ContentType = item.ContentType ?? "reference";
-                    existing.Content = content;
-                    existing.ExternalId ??= externalId;
-                    existing.UpdatedAt = DateTime.UtcNow;
-                    existing.ReadTimeMinutes = ContentExtractor.CalculateReadTime(content);
-                    if (status == "published") existing.PublishedAt ??= DateTime.UtcNow;
-                    if (trustChanged) ArticleService.InvalidateApproval(existing);
-                    if (contentChanged)
-                        await articleService.AddVersionAsync(existing.Id, existing.Title, content, userId, "Bulk import");
-                    db.ArticleTags.RemoveRange(existing.ArticleTags);
-                    if (item.Tags is { Length: > 0 })
-                        await articleService.AttachTagsAsync(existing.Id, item.Tags, CanCreateTags(user));
-                    await db.SaveChangesAsync(ct);
-                    await articleService.QueueReindexAsync(existing, ct);
+                    var updateError = await mutations.ReplaceFromImportAsync(existing, command, user, "Bulk import", ct);
+                    if (updateError != null) throw new InvalidDataException(updateError.Message);
                     didUpdate = true;
                 }
                 else
                 {
-                    var article = new Article
+                    var createCommand = command with
                     {
-                        Title = title,
-                        Slug = await db.GenerateUniqueArticleSlugAsync(title),
-                        Excerpt = item.Excerpt?.Trim(),
-                        Status = status,
-                        ContentType = item.ContentType ?? "reference",
-                        Content = content,
-                        OwnerId = userId,
-                        CreatedViaApiKeyId = user.GetApiKeyId(),
-                        ExternalId = existing != null && conflictPolicy == "duplicate" ? null : externalId,
-                        ReadTimeMinutes = ContentExtractor.CalculateReadTime(content),
-                        PublishedAt = status == "published" ? DateTime.UtcNow : null,
-                        LastReviewedAt = null
+                        ExternalId = existing != null && conflictPolicy == "duplicate" ? null : externalId
                     };
-                    db.Articles.Add(article);
-                    await articleService.AddVersionAsync(article.Id, article.Title, content, userId, "Bulk import");
-                    if (item.Tags is { Length: > 0 })
-                        await articleService.AttachTagsAsync(article.Id, item.Tags, CanCreateTags(user));
-                    await db.SaveChangesAsync(ct);
-                    await articleService.QueueReindexAsync(article, ct);
+                    var createResult = await mutations.CreateAsync(createCommand, user, "Bulk import", ct: ct);
+                    if (createResult.Error != null) throw new InvalidDataException(createResult.Error.Message);
                     didCreate = true;
                 }
                 if (transaction != null) await transaction.CommitAsync(ct);
@@ -264,20 +222,6 @@ public class BulkTransferService(AppDbContext db, ArticleService articleService)
         }
         return output.ToArray();
     }
-
-    private static string? Validate(BulkImportItem item, HashSet<string> contentTypes, string role)
-    {
-        if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Trim().Length > 300) return "Title is required (1-300 chars)";
-        if (item.ExternalId?.Trim().Length > 200) return "externalId may contain at most 200 characters";
-        var status = item.Status ?? "draft";
-        if (!ValidStatuses.Contains(status)) return $"Invalid status '{status}'";
-        if (status == "archived" && role is not ("admin" or "editor")) return "Archive permission is required";
-        if (item.ContentType != null && !contentTypes.Contains(item.ContentType)) return $"Invalid contentType '{item.ContentType}'";
-        return null;
-    }
-
-    private static bool CanCreateTags(ClaimsPrincipal user) =>
-        user.GetSource() == "api-key" || RbacService.HasPermission(user, Permissions.TagsManage);
 
     private static async Task<List<BulkImportItem>> ReadJsonLinesAsync(Stream stream, CancellationToken ct)
     {

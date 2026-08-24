@@ -77,7 +77,7 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
         var withVector = await db.Database
             .SqlQueryRaw<int>("""
                 SELECT count(*)::int AS "Value" FROM articles
-                WHERE "Status" = 'published' AND search_vector IS NOT NULL
+                WHERE status = 'published' AND search_vector IS NOT NULL
                 """)
             .SingleAsync(ct);
 
@@ -104,7 +104,7 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
             .SqlQueryRaw<bool>("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'article_embeddings' AND column_name = 'TagSlugs'
+                    WHERE table_name = 'article_embeddings' AND column_name = 'tag_slugs'
                 ) AS "Value"
                 """)
             .SingleAsync(ct);
@@ -159,14 +159,14 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
         // handles everywhere else in this codebase.
         var rows = await db.Database
             .SqlQueryRaw<TrafficRow>($"""
-                SELECT "SearchType"                                                                AS "SearchType",
+                SELECT search_type                                                                 AS "SearchType",
                        count(*)::int                                                               AS "Total",
-                       count(*) FILTER (WHERE "ResultsCount" = 0)::int                             AS "ZeroResults",
-                       COALESCE(percentile_disc(0.5) WITHIN GROUP (ORDER BY "ResponseTimeMs"), 0)  AS "P50Ms",
-                       COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY "ResponseTimeMs"), 0) AS "P95Ms"
+                       count(*) FILTER (WHERE results_count = 0)::int                               AS "ZeroResults",
+                       COALESCE(percentile_disc(0.5) WITHIN GROUP (ORDER BY response_time_ms), 0)   AS "P50Ms",
+                       COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY response_time_ms), 0)  AS "P95Ms"
                 FROM search_queries
-                WHERE "CreatedAt" >= now() - interval '{TrafficWindowDays} days'
-                GROUP BY "SearchType"
+                WHERE created_at >= now() - interval '{TrafficWindowDays} days'
+                GROUP BY search_type
                 ORDER BY count(*) DESC
                 """)
             .ToListAsync(ct);
@@ -240,10 +240,10 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
         {
             // Full-text first: it is the default search type, so it is the one most users hit.
             probes.Add(await ExplainAsync("Tam metin araması (varsayılan)", FtsIndexName, $"""
-                SELECT a."Id" FROM articles a
-                WHERE a."Status" = 'published'
+                SELECT a.id FROM articles a
+                WHERE a.status = 'published'
                   AND a.search_vector @@ to_tsquery('{TsConfig}', 'kpdiagnosticsprobe')
-                ORDER BY ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', 'kpdiagnosticsprobe')) DESC, a."Id"
+                ORDER BY ts_rank_cd(a.search_vector, to_tsquery('{TsConfig}', 'kpdiagnosticsprobe')) DESC, a.id
                 LIMIT 20
                 """, ct));
 
@@ -261,17 +261,17 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
 #pragma warning restore EF1002
 
             probes.Add(await ExplainAsync("Filtresiz vektör araması", HnswIndexName, """
-                SELECT e."ArticleId" FROM article_embeddings e
-                ORDER BY e."Embedding" <=> (SELECT "Embedding" FROM article_embeddings LIMIT 1)
+                SELECT e.article_id FROM article_embeddings e
+                ORDER BY e.embedding <=> (SELECT embedding FROM article_embeddings LIMIT 1)
                 LIMIT 100
                 """, ct));
 
             probes.Add(vector.DenormalizedFilterColumns
                 ? await ExplainAsync("Filtreli vektör araması (etiket + içerik tipi)", HnswIndexName, """
-                    SELECT e."ArticleId" FROM article_embeddings e
-                    WHERE true AND e."ContentType" = ANY(ARRAY['reference'])
-                            AND e."TagSlugs" @> ARRAY['__diagnostics__']
-                    ORDER BY e."Embedding" <=> (SELECT "Embedding" FROM article_embeddings LIMIT 1)
+                    SELECT e.article_id FROM article_embeddings e
+                    WHERE true AND e.content_type = ANY(ARRAY['reference'])
+                            AND e.tag_slugs @> ARRAY['__diagnostics__']
+                    ORDER BY e.embedding <=> (SELECT embedding FROM article_embeddings LIMIT 1)
                     LIMIT 100
                     """, ct)
                 : new PlanProbeDto("Filtreli vektör araması (etiket + içerik tipi)", false, "",

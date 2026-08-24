@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Users, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X, Cloud } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
@@ -33,7 +33,7 @@ export default function AdminUsersPage() {
   const [editPassword, setEditPassword] = useState("");
   const [editRole, setEditRole] = useState<string>("");
 
-  const loadUsers = async (page = 1, q = "") => {
+  const loadUsers = useCallback(async (page = 1, q = "") => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: "50" });
     if (q) params.set("q", q);
@@ -47,9 +47,9 @@ export default function AdminUsersPage() {
       setError("You don't have permission to manage users");
     }
     setLoading(false);
-  };
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -46,7 +46,7 @@ Kullanıcının aktif Azure oturumu varsa, login sayfası otomatik olarak sessiz
 
 ## Şifre Belirleme
 
-Azure AD ile oluşturulan kullanıcıların başlangıçta yerel şifresi yoktur. Profil sayfasından (PUT /api/auth/profile) ilk kez şifre belirlenebilir — bu durumda mevcut şifre (currentPassword) gerekmez. Şifre belirlendikten sonra hem Azure AD hem de e-posta + şifre ile giriş yapılabilir.
+Azure-linked kullanıcı için backend başlangıçta tahmin edilemez bir yerel parola hash'i üretir; kullanıcı bu değeri bilmez ve e-posta/parola ile giriş yapamaz. Kimliği doğrulanmış Azure kullanıcısı profil sayfasından (PUT /api/auth/profile) `currentPassword` vermeden yerel parolayı belirleyebilir veya daha sonra değiştirebilir. Bu davranış ilk ayarlamayla sınırlı değildir ve proje sahibinin kabul ettiği politikadır. Kullanıcı yerel parolayı belirledikten sonra hem Azure AD hem de e-posta + parola ile giriş yapabilir.
 
 ## Yapılandırma
 

@@ -189,9 +189,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             var allocatedVersions = await db.Database.SqlQueryRaw<int>(
                 """
                 UPDATE articles
-                SET "VersionCounter" = "VersionCounter" + 1
-                WHERE "Id" = {0}
-                RETURNING "VersionCounter" AS "Value"
+                SET version_counter = version_counter + 1
+                WHERE id = {0}
+                RETURNING version_counter AS "Value"
                 """,
                 articleId).ToListAsync();
             nextVersion = allocatedVersions.Single();
@@ -394,6 +394,7 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             article.ReadTimeMinutes,
             article.CreatedAt.ToString("o"), article.UpdatedAt.ToString("o"),
             article.PublishedAt?.ToString("o"), article.LastReviewedAt?.ToString("o"),
+            article.ReviewIntervalDays,
             article.ApprovedAt?.ToString("o"), approvedBy,
             article.ArticleTags.Select(at => (object)new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
             viewCount,

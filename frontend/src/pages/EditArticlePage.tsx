@@ -22,6 +22,7 @@ export default function EditArticlePage() {
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
   const [status, setStatus] = useState("draft");
+  const [reviewIntervalDays, setReviewIntervalDays] = useState(90);
   const [changeSummary, setChangeSummary] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -72,6 +73,7 @@ export default function EditArticlePage() {
             setExcerpt(data.excerpt || "");
             setContentType(data.contentType);
             setStatus(data.status);
+            setReviewIntervalDays(data.reviewIntervalDays ?? 90);
             setTags((data.tags || []).map((t: { id: string }) => t.id));
           }
           setLoading(false);
@@ -109,6 +111,7 @@ export default function EditArticlePage() {
           excerpt: excerpt.trim() || undefined,
           contentType,
           status,
+          reviewIntervalDays,
           changeSummary: changeSummary.trim() || undefined,
           tags,
         }),
@@ -169,6 +172,8 @@ export default function EditArticlePage() {
       onContentTypeChange={setContentType}
       status={status}
       onStatusChange={setStatus}
+      reviewIntervalDays={reviewIntervalDays}
+      onReviewIntervalDaysChange={setReviewIntervalDays}
       tags={tags}
       onTagsChange={setTags}
       saving={saving}

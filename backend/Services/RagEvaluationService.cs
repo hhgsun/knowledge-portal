@@ -78,20 +78,20 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
             var claimedIds = await db.Database.SqlQueryRaw<string>(
                 """
                 WITH picked AS (
-                    SELECT "Id" FROM rag_evaluation_runs
-                    WHERE "Status" = 'pending'
-                       OR ("Status" = 'running' AND ("LeaseExpiresAt" IS NULL OR "LeaseExpiresAt" < {0}))
-                    ORDER BY "CreatedAt"
+                    SELECT id FROM rag_evaluation_runs
+                    WHERE status = 'pending'
+                       OR (status = 'running' AND (lease_expires_at IS NULL OR lease_expires_at < {0}))
+                    ORDER BY created_at
                     FOR UPDATE SKIP LOCKED
                     LIMIT 1
                 )
                 UPDATE rag_evaluation_runs r SET
-                    "Status" = 'running', "StartedAt" = COALESCE(r."StartedAt", {0}),
-                    "WorkerId" = {1}, "LeaseExpiresAt" = {2}, "AttemptCount" = r."AttemptCount" + 1,
-                    "CompletedCases" = 0, "ResultsJson" = NULL, "MetricsJson" = NULL,
-                    "Error" = NULL, "CompletedAt" = NULL
-                FROM picked WHERE r."Id" = picked."Id"
-                RETURNING r."Id" AS "Value"
+                    status = 'running', started_at = COALESCE(r.started_at, {0}),
+                    worker_id = {1}, lease_expires_at = {2}, attempt_count = r.attempt_count + 1,
+                    completed_cases = 0, results_json = NULL, metrics_json = NULL,
+                    error = NULL, completed_at = NULL
+                FROM picked WHERE r.id = picked.id
+                RETURNING r.id AS "Value"
                 """, now, workerId, now.Add(lease)).ToListAsync(ct);
             return claimedIds.FirstOrDefault();
         }

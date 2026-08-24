@@ -241,6 +241,34 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
     }
 
+    [Theory]
+    [InlineData("editor")]
+    [InlineData("viewer")]
+    public async Task NonAdmin_CannotDeleteOwnArticle(string role)
+    {
+        var email = $"delete-{role}-{Guid.NewGuid():N}@example.com";
+        await RegisterAndGetToken(email);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Single(user => user.Email == email).Role = role;
+            await db.SaveChangesAsync();
+        }
+
+        var token = await LoginAndGetToken(email);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var created = await (await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Protected {role} article {Guid.NewGuid():N}"
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetString();
+
+        var deleteResponse = await _client.DeleteAsync($"/api/articles/{id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, deleteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/articles/{id}")).StatusCode);
+    }
+
     [Fact]
     public async Task Viewer_CanPublishWithoutApproval()
     {
@@ -307,6 +335,11 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
             password = "password123"
         });
 
+        return await LoginAndGetToken(email);
+    }
+
+    private async Task<string> LoginAndGetToken(string email)
+    {
         var loginResponse = await _client.PostAsJsonAsync("/api/auth/login", new
         {
             email,

@@ -17,6 +17,7 @@ export default function NewArticlePage() {
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
   const [status, setStatus] = useState("draft");
+  const [reviewIntervalDays, setReviewIntervalDays] = useState(90);
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +45,7 @@ export default function NewArticlePage() {
           excerpt: excerpt.trim() || undefined,
           contentType,
           status: "draft",
+          reviewIntervalDays,
           tags,
         }),
       });
@@ -62,6 +64,7 @@ export default function NewArticlePage() {
             excerpt: excerpt.trim() || undefined,
             contentType,
             status,
+            reviewIntervalDays,
             tags,
             changeSummary: "Finalized initial attachment uploads",
           }),
@@ -81,9 +84,15 @@ export default function NewArticlePage() {
         setSaving(false);
       }
     } catch (error) {
-      if (createdArticleId)
+      const message = error instanceof Error ? error.message : "An unexpected error occurred";
+      if (createdArticleId && user?.role === "admin")
         await fetchWithAuth(`/api/articles/${createdArticleId}`, { method: "DELETE" }).catch(() => undefined);
-      setError(error instanceof Error ? error.message : "An unexpected error occurred");
+      else if (createdArticleId) {
+        toast.error(`${message}. The recoverable draft was kept.`);
+        navigate(`/articles/${createdArticleId}/edit`);
+        return;
+      }
+      setError(message);
       setSaving(false);
     }
   };
@@ -101,6 +110,8 @@ export default function NewArticlePage() {
       onContentTypeChange={setContentType}
       status={status}
       onStatusChange={setStatus}
+      reviewIntervalDays={reviewIntervalDays}
+      onReviewIntervalDaysChange={setReviewIntervalDays}
       tags={tags}
       onTagsChange={setTags}
       saving={saving}

@@ -14,6 +14,7 @@ erDiagram
     User ||--o{ ArticleView : "records"
     User ||--o{ ArticleVersion : "changed_by"
     User ||--o{ SearchQuery : "performs"
+    User ||--o{ Article : "approves"
 
     Article ||--o{ ArticleVersion : "has"
     Article ||--o{ ArticleTag : "tagged"
@@ -49,9 +50,12 @@ erDiagram
         string owner_id FK
         string content_type "default: reference"
         string created_via_api_key_id FK "nullable, SetNull"
+        string external_id UK "nullable, bulk identity"
         int read_time_minutes "nullable"
         datetime published_at "nullable"
         datetime last_reviewed_at "nullable"
+        string approved_by_id FK "nullable, SetNull"
+        datetime approved_at "nullable"
         int review_interval_days "default: 90"
         datetime indexed_at "nullable"
         datetime created_at
@@ -146,8 +150,8 @@ erDiagram
 | Column | C# Type | DB Column | Constraints | Default |
 |--------|---------|-----------|-------------|---------|
 | Id | `string` | `id` | PK, 21 chars | Truncated GUID |
-| ExternalId | `string?` | `external_id` | Unique (nullable), max 200 | Stable bulk-import identity |
 | Name | `string` | `name` | Required | — |
+| Slug | `string` | `slug` | Required, Unique index | Auto-generated from name |
 | Email | `string` | `email` | Required, Unique index | — |
 | PasswordHash | `string` | `password_hash` | Required | BCrypt (cost 12) |
 | Role | `string` | `role` | Required | `"viewer"` |
@@ -170,9 +174,12 @@ erDiagram
 | OwnerId | `string` | `owner_id` | FK → users.id | — |
 | ContentType | `string` | `content_type` | Required | `"reference"` |
 | CreatedViaApiKeyId | `string?` | `created_via_api_key_id` | FK → api_keys.id (SetNull) | `null` |
+| ExternalId | `string?` | `external_id` | Unique (nullable), max 200 | Stable bulk-import identity |
 | ReadTimeMinutes | `int?` | `read_time_minutes` | — | `null` |
 | PublishedAt | `DateTime?` | `published_at` | — | `null` (set on first publish) |
 | LastReviewedAt | `DateTime?` | `last_reviewed_at` | — | `null` (set on approval; material changes clear it) |
+| ApprovedById | `string?` | `approved_by_id` | FK → users.id (SetNull) | `null` |
+| ApprovedAt | `DateTime?` | `approved_at` | — | `null` |
 | ReviewIntervalDays | `int` | `review_interval_days` | — | `90` |
 | VersionCounter | `int` | `version_counter` | Required | Atomic per-article version allocator |
 | FtsIndexedAt | `DateTime?` | `fts_indexed_at` | — | `null` (lexical index dirty marker) |
@@ -182,7 +189,6 @@ erDiagram
 
 **Valid statuses**: `draft`, `published`, `archived`
 **Valid content types**: DB-driven active values in `lookup_values` category `content_type`
-**Valid difficulties**: `beginner`, `intermediate`, `advanced`
 
 ### ArticleVersion
 
@@ -241,7 +247,6 @@ erDiagram
 | Id | `string` | `id` | PK | Truncated GUID |
 | ArticleId | `string` | `article_id` | FK (Cascade) | — |
 | UserId | `string?` | `user_id` | FK → users.id | `null` |
-
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
 ### ApiKey
@@ -318,12 +323,27 @@ erDiagram
 | Embedding | `Vector` | `embedding` | Required, vector(1024) | — |
 | ModelName | `string` | `model_name` | Required | — |
 | TextHash | `string` | `text_hash` | Required | — (SHA256 hex) |
+| Content | `string?` | `content` | Exact embedded chunk text | `null` |
 | Dimensions | `int` | `dimensions` | Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+The following database-owned shadow columns are maintained by triggers so filtered HNSW retrieval never needs to join `articles`: `owner_id`, `content_type`, `created_via_api_key_id`, and `tag_slugs text[]`. B-tree indexes cover scalar filters, a GIN index covers `tag_slugs`, and `ix_article_embeddings_embedding_hnsw` covers cosine vector search.
 
 ### IndexJob
 
 One durable, coalescing queue row per article. `Generation` increments on every edit; workers may complete only the generation they claimed. Status is `pending`, `processing`, `completed`, or `failed`; lease, retry, priority and error fields are persisted.
+
+### FeaturedLink
+
+Sidebar configuration stored in `featured_links`: `id`, `label`, `link_type`, `target`, optional `icon`/`color`, `sort_order`, `is_active`, and `created_at`. `link_type` is `content_type`, `tag`, or `custom`.
+
+### UsageEvent
+
+Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nullable `user_id`/`api_key_id`, `auth_source`, `channel`, `operation`, `http_method`, `outcome`, `status_code`, and `duration_ms`. Foreign keys use SetNull so historical analytics survive user/key deletion.
+
+### RagEvaluationDataset and RagEvaluationRun
+
+`rag_evaluation_datasets` stores named/versioned JSONB cases and thresholds plus timestamps. `rag_evaluation_runs` stores the requesting admin, durable lease/retry state, immutable dataset/config/runtime snapshots, progress, JSONB metrics/results, errors and lifecycle timestamps. Dataset deletion cascades to runs; deleting a requesting user is restricted while runs reference that user.
 
 ### LookupValue
 
@@ -336,6 +356,7 @@ One durable, coalescing queue row per article. `Generation` increments on every 
 | Color | `string?` | `color` | — | `null` (Tailwind color key) |
 | Icon | `string?` | `icon` | — | `null` (Lucide icon name) |
 | SortOrder | `int` | `sort_order` | Required | Sequential |
+| AuthorityWeight | `int` | `authority_weight` | 0–100 | `50` |
 | IsActive | `bool` | `is_active` | Required | `true` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
@@ -345,7 +366,12 @@ One durable, coalescing queue row per article. `Generation` increments on every 
 |-------|-----------|------|
 | `users` | `email` | Unique |
 | `articles` | `slug` | Unique |
+| `articles` | `external_id` | Unique (nullable) |
+| `articles` | `status`, `indexed_at` | Composite |
+| `articles` | `status`, `fts_indexed_at` | Composite |
 | `article_embeddings` | `article_id`, `chunk_index` | Unique (composite) |
+| `article_embeddings` | `embedding` | HNSW cosine |
+| `article_embeddings` | `tag_slugs` | GIN |
 | `tags` | `slug` | Unique |
 
 ## Cascade Behavior
@@ -362,6 +388,7 @@ One durable, coalescing queue row per article. `Generation` increments on every 
 | Article | ArticleAttachment | Cascade |
 | Article | ArticleEmbedding | Cascade |
 | ApiKey | Article.CreatedViaApiKeyId | SetNull |
+| User | Article.ApprovedById | SetNull |
 | Tag | ArticleTag | Cascade |
 
 ## Seed Data

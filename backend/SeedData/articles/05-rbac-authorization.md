@@ -31,7 +31,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 
 ### Editor
 
-İçerik editörü rolü. Kendi makalelerini tam kontrol eder, ek olarak:
+İçerik editörü rolü. Kendi makalelerini düzenler, ek olarak:
 
 - Makale yayınlama ve arşivleme
 - Yayınlanmış makalelere onay güven sinyali ekleme/kaldırma
@@ -43,7 +43,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 Temel kullanıcı rolü. Yeni kayıtlarda varsayılan rol:
 
 - Makale oluşturma ve kendi makalelerini yayınlama
-- Kendi makalelerini düzenleme ve silme
+- Kendi makalelerini düzenleme
 - Yayınlanmış makaleleri ve kendi makalelerini görüntüleme
 - Oy verme ve yorum yapma
 
@@ -54,15 +54,14 @@ Aşağıda tüm yetkiler ve hangi rollerin bunlara sahip olduğu listelenmiştir
 - `articles:create` — admin, editor, viewer
 - `articles:edit_own` — admin, editor, viewer
 - `articles:edit_any` — admin
-- `articles:delete_own` — admin, editor, viewer
 - `articles:delete_any` — admin
-- `articles:publish` — admin, editor
+- `articles:publish` — admin, editor, viewer
 - `articles:archive` — admin, editor
 - `articles:approve` — admin, editor
 - `tags:manage` — admin, editor
 - `users:manage` — admin
 - `analytics:view` — admin, editor
-- `api_keys:manage` — admin
+- `api_keys:manage` — admin, editor, viewer
 
 ## Uygulama Desenleri
 

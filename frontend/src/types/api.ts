@@ -119,6 +119,7 @@ export interface Article {
   readTimeMinutes: number | null;
   publishedAt: string | null;
   lastReviewedAt: string | null;
+  reviewIntervalDays: number;
   approvedAt: string | null;
   approvedBy: string | null;
   updatedAt: string;

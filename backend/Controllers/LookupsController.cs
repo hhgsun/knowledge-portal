@@ -37,11 +37,13 @@ public class LookupsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Category) || string.IsNullOrWhiteSpace(req.Value) || string.IsNullOrWhiteSpace(req.Label))
             return BadRequest(new { error = "Category, value, and label are required" });
 
+        var category = req.Category.Trim().ToLowerInvariant();
+        var value = req.Value.Trim().ToLowerInvariant();
         var allowedCategories = new[] { "content_type" };
-        if (!allowedCategories.Contains(req.Category))
+        if (!allowedCategories.Contains(category))
             return BadRequest(new { error = $"Invalid category. Allowed: {string.Join(", ", allowedCategories)}" });
 
-        var exists = await db.LookupValues.AnyAsync(l => l.Category == req.Category && l.Value == req.Value);
+        var exists = await db.LookupValues.AnyAsync(l => l.Category == category && l.Value == value);
         if (exists)
             return Conflict(new { error = "A lookup with this category and value already exists" });
 
@@ -54,8 +56,8 @@ public class LookupsController(AppDbContext db) : ControllerBase
 
         var lookup = new LookupValue
         {
-            Category = req.Category,
-            Value = req.Value.Trim().ToLowerInvariant(),
+            Category = category,
+            Value = value,
             Label = req.Label.Trim(),
             Color = req.Color?.Trim(),
             Icon = req.Icon?.Trim(),

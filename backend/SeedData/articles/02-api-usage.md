@@ -69,7 +69,7 @@ GET /api/articles/{idOrSlug}
 POST /api/articles
 {
   "title": "Yeni Makale",
-  "content": {"type": "doc", "content": [...]},
+  "contentMarkdown": "## Yeni Makale\n\nKanonik Markdown içerik.",
   "excerpt": "Kısa açıklama",
   "status": "draft",
   "contentType": "how-to",
@@ -80,12 +80,12 @@ POST /api/articles
 PUT /api/articles/{id}
 {
   "title": "Güncel Başlık",
-  "content": {"type": "doc", "content": [...]},
+  "contentMarkdown": "## Güncel Başlık\n\nGüncellenmiş Markdown içerik.",
   "status": "published",
   "changeSummary": "Başlık ve içerik güncellendi"
 }
 
-# Makale sil
+# Makale sil (yalnızca admin JWT oturumu)
 DELETE /api/articles/{id}
 ```
 

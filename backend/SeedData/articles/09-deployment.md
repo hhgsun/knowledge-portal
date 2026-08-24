@@ -40,6 +40,8 @@ npm run dev
 
 Backend ilişkisel sağlayıcıyla açıldığında migration'ları uygular ve seed veriyi yükler. Testlerin varsayılan paketi EF Core InMemory kullandığı için Docker gerektirmez.
 
+Migration geçmişi `InitialSnakeCaseSchema` adlı temiz `snake_case` başlangıcına sıkıştırılmıştır. Eski PascalCase migration zinciriyle oluşturulan veritabanları yerinde yükseltilmez; bu sürüme geçerken veritabanı drop/recreate edilmelidir. Başlangıçta admin, lookup, etiket ve ürün dokümantasyonu seed kayıtları otomatik geri yüklenir.
+
 ## Docker ile Çalıştırma
 
 Repository geliştirme ve test compose dosyaları içerir:

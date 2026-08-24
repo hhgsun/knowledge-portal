@@ -9,7 +9,7 @@ public static class RbacService
         ["admin"] =
         [
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesEditAny,
-            Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny,
+            Permissions.ArticlesDeleteAny,
             Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
             Permissions.TagsManage, Permissions.UsersManage, Permissions.AnalyticsView,
             Permissions.ApiKeysManage, Permissions.ApiKeysManageAny, Permissions.FeaturedLinksManage
@@ -17,12 +17,12 @@ public static class RbacService
         ["editor"] =
         [
             Permissions.ArticlesCreate, Permissions.ArticlesEditOwn,
-            Permissions.ArticlesDeleteOwn, Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
+            Permissions.ArticlesPublish, Permissions.ArticlesArchive, Permissions.ArticlesApprove,
             Permissions.TagsManage, Permissions.AnalyticsView, Permissions.ApiKeysManage
         ],
         ["viewer"] =
         [
-            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesDeleteOwn, Permissions.ArticlesPublish,
+            Permissions.ArticlesCreate, Permissions.ArticlesEditOwn, Permissions.ArticlesPublish,
             Permissions.ApiKeysManage
         ]
     };
@@ -34,7 +34,7 @@ public static class RbacService
     /// </summary>
     private static readonly HashSet<string> ApiKeyDeniedPermissions =
     [
-        Permissions.ArticlesDeleteOwn, Permissions.ArticlesDeleteAny
+        Permissions.ArticlesDeleteAny
     ];
 
     public static bool HasPermission(string role, string permission)
@@ -46,10 +46,6 @@ public static class RbacService
     public static bool CanEditArticle(string role, bool isOwner) =>
         HasPermission(role, Permissions.ArticlesEditAny)
         || (isOwner && HasPermission(role, Permissions.ArticlesEditOwn));
-
-    public static bool CanDeleteArticle(string role, bool isOwner) =>
-        HasPermission(role, Permissions.ArticlesDeleteAny)
-        || (isOwner && HasPermission(role, Permissions.ArticlesDeleteOwn));
 
     /// <summary>Viewers only see published articles or their own; other roles see everything.</summary>
     public static bool CanViewArticle(string role, string articleStatus, bool isOwner) =>
@@ -72,9 +68,6 @@ public static class RbacService
 
     public static bool CanEditArticle(ClaimsPrincipal user, bool isOwner) =>
         CanEditArticle(GetEffectiveRole(user), isOwner);
-
-    public static bool CanDeleteArticle(ClaimsPrincipal user, bool isOwner) =>
-        user.GetSource() != "api-key" && CanDeleteArticle(GetEffectiveRole(user), isOwner);
 
     public static bool CanViewArticle(ClaimsPrincipal user, string articleStatus, bool isOwner) =>
         CanViewArticle(GetEffectiveRole(user), articleStatus, isOwner);
