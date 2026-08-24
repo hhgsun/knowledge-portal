@@ -112,6 +112,8 @@ Chat modeli `qwen2.5vl:7b`, temperature 0 ve alanları zorunlu kılan açık bir
 
 Her kaynak bloğu sabit bir `[S1]`, `[S2]` benzeri kimlik taşır. Model çıktısı kullanıcıya doğrudan verilmez; `RagCitationValidator` şu kontrolleri uygular:
 
+- Model birden fazla cümleyi tek claim alanına koysa bile cümleler atomik olarak ayrılır; başlık veya özet, aynı claim içindeki destekli bir cevap cümlesine tutunarak doğrulamayı geçemez.
+- Saf tanım sorularında (`X nedir?`, `What is X?`) claim'in kaynaktaki X tanımını doğrudan vermesi gerekir. Doküman başlığı, bölüm adı veya rehberin ne anlattığını söyleyen katalog metni cevap kabul edilmez. Tanım portal kaynağından alınır; modelin genel bilgisiyle düzeltilmez.
 - Evidence kimliği gerçekten sağlanan kaynaklar arasında mı?
 - Claim, her atıflı kanıttaki yerel cümle veya contrast-separated clause pencerelerinden en az biriyle yeterli lexical desteğe sahip mi? Eşleşme Türkçe çekim ekleri için yalnız uzun ve baskın ortak kökü kontrollü biçimde kabul eder; sayı ve olumsuzluk kontrolleri ayrıca korunur. Kanıt pasajları tek metinde birleştirilmez; ilgisiz bir cümledeki olumsuzluk başka bir claim'in polarity sonucunu değiştiremez.
 - Claim'deki sayılar kanıtla uyumlu mu?

@@ -20,7 +20,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-08-24.grounding-repair-v6";
+    public const string PromptVersion = "2026-08-24.answer-alignment-v7";
     public const string RetrievalVersion = "2026-08-22.query-expansion-ranking-v1";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
@@ -94,6 +94,9 @@ public class RagService(
         - Return ONLY JSON: {"answer":"... [S1]","claims":[{"text":"atomic factual claim","sourceIds":["S1"]}],"insufficientContext":false}
         - Cite every factual statement with the exact source id in [S1] format. Never invent an id.
         - Each claim must be a complete, natural answer sentence in the order it should appear to the user.
+        - Answer the user's question itself. Never return a document title, heading, excerpt, or a
+          description of what a guide covers as the answer. For "X nedir?" / "What is X?", state
+          what X is according to the source, even when that definition differs from general knowledge.
         - The answer field must contain exactly those claim sentences with their citations; do not add uncited prose.
         - A document title or section heading alone is not an answer or a factual claim.
         - Respond in the same language as the question
@@ -109,6 +112,7 @@ public class RagService(
         - Correct the rejected draft instead of explaining the validation error.
         - Prefer wording close to the supporting source sentence while producing a concise, natural answer.
         - Every claim must be a complete factual answer sentence, not a document title or section heading.
+        - Answer the user's question itself; never substitute a document title, excerpt, or guide description.
         - Return ONLY JSON: {"answer":"... [S1]","claims":[{"text":"complete supported sentence","sourceIds":["S1"]}],"insufficientContext":false}
         - The answer field must contain exactly the claim sentences in order, each with its exact source citation.
         - Never invent a source id, fact, number, or negation. If no supported answer can be produced,
@@ -483,7 +487,7 @@ public class RagService(
         List<string>? extraWarnings = null)
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
-        var validated = RagCitationValidator.Validate(raw, evidence);
+        var validated = RagCitationValidator.Validate(raw, evidence, question);
         if (_groundingRepairEnabled &&
             validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported")
         {
@@ -493,7 +497,7 @@ public class RagService(
                 var repairedRaw = await CompleteAsync("grounding-repair", resilience.GenerationTimeoutSeconds,
                     GroundingRepairSystemPrompt,
                     BuildGroundingRepairMessage(question, repairContext, raw, initial), ct);
-                var repaired = RagCitationValidator.Validate(repairedRaw, evidence);
+                var repaired = RagCitationValidator.Validate(repairedRaw, evidence, question);
                 if (repaired.GroundingStatus is not ("rejected_unstructured" or "rejected_unsupported"))
                 {
                     logger.LogInformation(

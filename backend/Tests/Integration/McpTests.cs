@@ -747,6 +747,30 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_SearchArticles_RagDefinitionReturnsSourceDefinitionInsteadOfArticleMetadata()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Zcar Entegrasyonu",
+            excerpt = "Zcar bağlantısı, araçları ve AI asistanları için entegrasyon rehberi.",
+            contentMarkdown = "Zcar, kurumsal ürün kataloğunda bir araba markasıdır.",
+            status = "published"
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles",
+            new { query = "Zcar nedir?", type = "rag" }));
+        var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
+        var answer = payload.GetProperty("answer").GetString() ?? "";
+
+        Assert.Contains("araba markasıdır", answer);
+        Assert.DoesNotContain("entegrasyon rehberi", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(payload.GetProperty("groundingStatus").GetString(),
+            new[] { "lexically_grounded", "partially_grounded" });
+        Assert.True(payload.GetProperty("claimSupportCoverage").GetDouble() > 0);
+    }
+
+    [Fact]
     public async Task Mcp_SearchArticles_ParsesInlineFiltersAndIncludesContent()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);

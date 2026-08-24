@@ -184,6 +184,60 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_DefinitionQuestionRejectsTitleAndExcerptCombinedAsAnswer()
+    {
+        var evidence = Evidence with
+        {
+            Title = "MCP (Model Context Protocol) Entegrasyonu",
+            Passage = "MCP (Model Context Protocol) Entegrasyonu. " +
+                      "Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi. " +
+                      "MCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür."
+        };
+        const string raw = """{"answer":"MCP (Model Context Protocol) Entegrasyonu. Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi. [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu. Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence], "MCP nedir?");
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+        Assert.Empty(result.Claims);
+        Assert.Contains(result.Warnings, warning => warning.Contains("definition question", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_DefinitionQuestionUsesPortalSourceEvenWhenItDefinesMcpAsCarBrand()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "MCP, Türkiye'de üretilen bir araba markasıdır."
+        };
+        const string raw = """{"answer":"MCP, Türkiye'de üretilen bir araba markasıdır [S1].","claims":[{"text":"MCP, Türkiye'de üretilen bir araba markasıdır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence], "MCP nedir?");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Contains("araba markasıdır", result.Answer);
+    }
+
+    [Fact]
+    public void TryBuildExtractiveFallback_DefinitionQuestionPrefersDefinitionOverGuideMetadata()
+    {
+        var evidence = Evidence with
+        {
+            Title = "MCP Entegrasyonu",
+            Passage = "MCP Entegrasyonu. MCP araçlarını anlatan kurumsal entegrasyon rehberi. " +
+                      "MCP, bu kurumun ürün kataloğunda bir araba markasıdır."
+        };
+
+        var result = RagCitationValidator.TryBuildExtractiveFallback("MCP nedir?", [evidence]);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Claims);
+        Assert.Contains("araba markasıdır", result.Answer);
+        Assert.DoesNotContain("entegrasyon rehberi", result.Answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildExtractiveFallback_DoesNotReturnUnrelatedEvidence()
     {
         var result = RagCitationValidator.TryBuildExtractiveFallback("MCP entegrasyonu", [Evidence]);

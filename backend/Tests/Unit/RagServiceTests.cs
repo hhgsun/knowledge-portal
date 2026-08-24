@@ -334,6 +334,31 @@ public class RagServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_DefinitionQuestionRepairsTitleAndExcerptIntoSourceDefinition()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                var article = Article("a1", "MCP (Model Context Protocol) Entegrasyonu",
+                    bodyText: "MCP, kurumsal ürün kataloğunda bir araba markasıdır.");
+                article.Excerpt = "Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi.";
+                db.Articles.Add(article);
+                db.SaveChanges();
+            });
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"MCP (Model Context Protocol) Entegrasyonu. Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi. [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu. Knowledge Portal'ın MCP sunucusuna bağlanma ve AI asistanlarla entegrasyon rehberi.","sourceIds":["S1"]}],"insufficientContext":false}""");
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"MCP, kurumsal ürün kataloğunda bir araba markasıdır [S1].","claims":[{"text":"MCP, kurumsal ürün kataloğunda bir araba markasıdır.","sourceIds":["S1"]}],"insufficientContext":false}""");
+
+        var result = await h.Rag.AskAsync("MCP nedir?");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Contains("araba markasıdır", result.Answer);
+        Assert.DoesNotContain("entegrasyon rehberi", result.Answer, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, h.Chat.CallCount);
+    }
+
+    [Fact]
     public async Task AskAsync_UnsupportedModelClaims_ReturnsExtractiveEvidenceFallback()
     {
         var h = BuildRag(

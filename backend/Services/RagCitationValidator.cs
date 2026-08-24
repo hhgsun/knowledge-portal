@@ -23,7 +23,8 @@ public static partial class RagCitationValidator
         ReadCommentHandling = JsonCommentHandling.Skip
     };
 
-    public static ValidatedRagAnswer Validate(string raw, IReadOnlyCollection<RagEvidence> evidence)
+    public static ValidatedRagAnswer Validate(string raw, IReadOnlyCollection<RagEvidence> evidence,
+        string? question = null)
     {
         var warnings = new List<string>();
         var parsed = TryParse(raw);
@@ -39,25 +40,49 @@ public static partial class RagCitationValidator
 
         var allowed = evidence.Select(x => x.SourceId).ToHashSet(StringComparer.Ordinal);
         var evidenceById = evidence.ToDictionary(x => x.SourceId, StringComparer.Ordinal);
+        // Models occasionally put a document title, an excerpt, and the actual answer into one
+        // claim. Validate each sentence independently so supported answer text cannot smuggle an
+        // irrelevant catalogue-style sentence through the grounding check.
+        var candidateClaims = (parsed.Claims ?? [])
+            .Where(claim => !string.IsNullOrWhiteSpace(claim.Text))
+            .SelectMany(claim => EvidenceSentences(claim.Text)
+                .Select(sentence => new RagClaim(sentence, claim.SourceIds ?? [])))
+            .ToList();
         var claims = new List<RagClaim>();
         var valid = 0;
         var supported = 0;
-        foreach (var claim in parsed.Claims ?? [])
+        var claimCount = 0;
+        foreach (var claim in candidateClaims)
         {
-            if (string.IsNullOrWhiteSpace(claim.Text)) continue;
             var requestedIds = claim.SourceIds ?? [];
             var ids = requestedIds.Where(allowed.Contains).Distinct(StringComparer.Ordinal).ToList();
             if (ids.Count != requestedIds.Count)
                 warnings.Add($"Claim contained unknown evidence IDs: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
+
+            // A repeated document title is retrieval metadata, not an attempted factual answer.
+            // Drop it before coverage accounting. Other catalogue prose (for example an excerpt
+            // describing what a guide covers) is still counted and must pass question alignment.
+            if (ids.Any(id => IsTitleOnlyClaim(claim.Text, evidenceById[id])))
+            {
+                warnings.Add($"Document title was removed from the answer: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
+                continue;
+            }
+
+            claimCount++;
             if (ids.Count > 0) valid++;
             if (ids.Count == 0) continue;
+
+            if (!IsResponsiveToQuestion(question, claim.Text))
+            {
+                warnings.Add($"Claim was supported by source metadata but did not directly answer the definition question: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
+                continue;
+            }
 
             // Validate against local sentence/clause windows from each cited item independently.
             // Joining whole chunks lets an unrelated negative sentence in one source flip the
             // polarity of an otherwise supported positive claim (and vice versa).
             var supportingIds = ids
-                .Where(id => !IsTitleOnlyClaim(claim.Text, evidenceById[id])
-                    && IsSupportedByEvidence(claim.Text, evidenceById[id].Passage))
+                .Where(id => IsSupportedByEvidence(claim.Text, evidenceById[id].Passage))
                 .ToList();
             if (supportingIds.Count == 0)
             {
@@ -71,7 +96,6 @@ public static partial class RagCitationValidator
             claims.Add(new RagClaim(claim.Text.Trim(), supportingIds));
         }
 
-        var claimCount = (parsed.Claims ?? []).Count(x => !string.IsNullOrWhiteSpace(x.Text));
         var coverage = claimCount == 0 ? 0 : valid / (double)claimCount;
         var supportCoverage = claimCount == 0 ? 0 : supported / (double)claimCount;
 
@@ -102,6 +126,7 @@ public static partial class RagCitationValidator
                     .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
                     .Where(sentence => sentence.Length is >= 20 and <= 500)
                     .Where(sentence => !SameNormalizedText(sentence, item.Title))
+                    .Where(sentence => IsResponsiveToQuestion(question, sentence))
                     .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
                     .Select(sentence => new
                     {
@@ -224,6 +249,35 @@ public static partial class RagCitationValidator
     private static bool IsTitleOnlyClaim(string claim, RagEvidence evidence) =>
         SameNormalizedText(claim, evidence.Title);
 
+    /// <summary>
+    /// Grounding proves that words are supported by a source; it does not prove that they answer
+    /// the user's question. For a pure definition request ("MCP nedir?" / "What is MCP?"), require
+    /// a complete definitional proposition about the requested subject. This rejects document
+    /// titles and catalogue excerpts while remaining agnostic about the definition itself: if the
+    /// source says MCP is a car brand, that source-grounded definition is accepted.
+    /// Compound questions keep the normal relevance path because one sentence may answer a
+    /// different requested facet without being a definition.
+    /// </summary>
+    private static bool IsResponsiveToQuestion(string? question, string claim)
+    {
+        var subject = DefinitionSubject(question);
+        if (subject == null) return true;
+
+        var subjectTokens = SignificantTokens(subject);
+        var claimTokens = SignificantTokens(claim);
+        if (subjectTokens.Count == 0 || !subjectTokens.Any(claimTokens.Contains)) return false;
+
+        return DefinitionPredicateRegex().IsMatch(claim);
+    }
+
+    private static string? DefinitionSubject(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return null;
+        var match = TurkishDefinitionQuestionRegex().Match(question.Trim());
+        if (!match.Success) match = EnglishDefinitionQuestionRegex().Match(question.Trim());
+        return match.Success ? match.Groups["subject"].Value.Trim() : null;
+    }
+
     private static bool SameNormalizedText(string left, string right) =>
         NormalizeComparableText(left) == NormalizeComparableText(right);
 
@@ -315,4 +369,10 @@ public static partial class RagCitationValidator
     private static partial Regex SentenceBoundaryRegex();
     [GeneratedRegex(@"\s*(?:;|\b(?:ama|ancak|fakat|lakin|but|however)\b)\s*", RegexOptions.IgnoreCase)]
     private static partial Regex ClauseBoundaryRegex();
+    [GeneratedRegex(@"^\s*(?<subject>.+?)\s+(?:nedir|ne\s+demektir|ne\s+anlama\s+gelir)\s*[?!.]*\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex TurkishDefinitionQuestionRegex();
+    [GeneratedRegex(@"^\s*(?:what\s+is|what's|define)\s+(?<subject>.+?)\s*[?!.]*\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex EnglishDefinitionQuestionRegex();
+    [GeneratedRegex(@"\b(?:bir|olarak|anlamına\s+gelir|ifade\s+eder|kısaltmasıdır|is|means|refers\s+to|stands\s+for|denotes)\b|\p{L}{3,}(?:d[ıiuü]r|t[ıiuü]r)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex DefinitionPredicateRegex();
 }
