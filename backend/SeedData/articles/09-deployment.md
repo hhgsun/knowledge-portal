@@ -53,6 +53,8 @@ docker compose -f docker-compose.test.yml up --build
 
 Bu compose tanımları backend ve frontend container'larını çalıştırır; PostgreSQL ve Ollama bağlantıları deployment ortamının ağ/yapılandırmasıyla sağlanmalıdır.
 
+Frontend'in Geist ve Geist Mono fontları Vite çıktısına dahil edilir ve nginx tarafından aynı origin'den sunulur. Bu nedenle çalışma zamanında Google Fonts erişimi veya CSP'ye harici stil/font kaynağı eklenmesi gerekmez.
+
 ## Temel Yapılandırma
 
 ### JWT ve Rate Limiting

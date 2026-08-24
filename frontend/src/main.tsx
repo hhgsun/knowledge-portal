@@ -8,6 +8,8 @@ import { ErrorBoundary } from "./components/error-boundary";
 import { ToastProvider } from "./components/toast-provider";
 import { OfflineBanner } from "./components/layout/offline-banner";
 import App from "./App";
+import "@fontsource-variable/geist/wght.css";
+import "@fontsource-variable/geist-mono/wght.css";
 import "./index.css";
 
 const msalInstance = new PublicClientApplication(msalConfig);

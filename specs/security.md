@@ -151,7 +151,7 @@ Each client gets its own window. Returns `429 Too Many Requests` when exceeded.
 - `UseForwardedHeaders` (first middleware) honors `X-Forwarded-For`/`X-Forwarded-Proto` from proxies listed in `ForwardedHeaders:KnownProxies`/`KnownNetworks` config.
 - HSTS (365 days) is emitted in non-Development environments on https requests.
 - API responses carry `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
-- The SPA (nginx) adds the same headers plus a CSP (`default-src 'self'`; `style-src 'unsafe-inline'` for Milkdown/Crepe; MSAL endpoints allowed in `connect-src`/`frame-src`).
+- The SPA (nginx) adds the same headers plus a CSP (`default-src 'self'`; `style-src 'unsafe-inline'` for Milkdown/Crepe; MSAL endpoints allowed in `connect-src`/`frame-src`). Geist and Geist Mono are bundled with the SPA and served from the same origin; the frontend does not depend on Google Fonts or require external style/font CSP sources.
 
 ## Known Security Gaps
 
