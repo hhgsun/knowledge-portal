@@ -303,10 +303,11 @@ public class RagServiceTests
         Assert.Contains("MCP", result.Answer);
         Assert.NotEmpty(result.Claims);
         Assert.Equal(1, result.CitationCoverage);
+        Assert.Equal(2, h.Chat.CallCount);
     }
 
     [Fact]
-    public async Task AskAsync_TitleOnlyModelClaim_ReturnsDefinitionFromVerifiedEvidence()
+    public async Task AskAsync_TitleOnlyModelClaim_IsRepairedIntoGroundedNaturalAnswer()
     {
         var h = BuildRag(
             [new VectorSearchResult("a1", 0.9, 0)],
@@ -315,15 +316,21 @@ public class RagServiceTests
                 db.Articles.Add(Article("a1", "MCP (Model Context Protocol) Entegrasyonu",
                     bodyText: "MCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür."));
                 db.SaveChanges();
-            },
-            responseOverride: """{"answer":"MCP (Model Context Protocol) Entegrasyonu [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu","sourceIds":["S1"]}],"insufficientContext":false}""");
+            });
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"MCP (Model Context Protocol) Entegrasyonu [S1]","claims":[{"text":"MCP (Model Context Protocol) Entegrasyonu","sourceIds":["S1"]}],"insufficientContext":false}""");
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"MCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür [S1].","claims":[{"text":"MCP, yapay zekâ istemcilerinin araçları standart biçimde çağırmasını sağlayan bir protokoldür.","sourceIds":["S1"]}],"insufficientContext":false}""");
 
         var result = await h.Rag.AskAsync("MCP nedir?");
 
-        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.False(result.InsufficientContext);
+        Assert.False(result.PartialResult);
         Assert.Contains("protokoldür", result.Answer);
         Assert.DoesNotContain("Entegrasyonu [S1]", result.Answer);
+        Assert.Equal(2, h.Chat.CallCount);
+        Assert.Contains("rejected_unsupported", UserMessage(h.Chat));
+        Assert.Contains("Correct the rejected draft", h.Chat.LastMessages
+            .Single(x => x.Role == ChatRole.System).Text);
     }
 
     [Fact]
@@ -347,6 +354,7 @@ public class RagServiceTests
         Assert.DoesNotContain("otomatik çalıştırır", result.Answer);
         Assert.Contains("MCP araçlarına REST API üzerinden erişilir", result.Answer);
         Assert.Contains(result.Warnings, x => x.Contains("did not pass grounding", StringComparison.Ordinal));
+        Assert.Equal(2, h.Chat.CallCount);
     }
 
     [Fact]

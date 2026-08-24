@@ -257,7 +257,8 @@ public static partial class RagCitationValidator
         var claimTokens = SignificantTokens(claim);
         if (claimTokens.Count == 0) return false;
         var passageTokens = SignificantTokens(supportWindow);
-        if (claimTokens.Count(passageTokens.Contains) / (double)claimTokens.Count < MinimumLexicalSupport)
+        if (claimTokens.Count(claimToken => passageTokens.Any(passageToken =>
+                InflectionAwareTokenMatch(claimToken, passageToken))) / (double)claimTokens.Count < MinimumLexicalSupport)
             return false;
 
         var claimNumbers = NumberRegex().Matches(claim).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
@@ -267,6 +268,20 @@ public static partial class RagCitationValidator
         // A lexical overlap score alone treats "must" and "must not" as equivalent. Reject the
         // claim when explicit English/Turkish negation polarity differs from its local support.
         return HasNegation(claim) == HasNegation(supportWindow);
+    }
+
+    private static bool InflectionAwareTokenMatch(string left, string right)
+    {
+        if (left == right) return true;
+
+        // Turkish suffixes frequently turn a supported source word into a different surface token
+        // (for example "sağlayan"/"sağlar" or "çağırmayı"/"çağırmasını"). Accept only a long,
+        // dominant shared stem; number and negation consistency are still checked separately below.
+        var shorter = Math.Min(left.Length, right.Length);
+        if (shorter < 5) return false;
+        var common = 0;
+        while (common < shorter && left[common] == right[common]) common++;
+        return common >= 5 && common / (double)shorter >= .7;
     }
 
     private static bool HasNegation(string text) => NegationRegex().IsMatch(SlugHelper.Transliterate(text).ToLowerInvariant());

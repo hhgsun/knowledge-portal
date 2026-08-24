@@ -32,6 +32,18 @@ function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
   return `${count} makalenin semantic arama indeksi güncel değil. Sonuçlar geçici olarak eksik veya eski olabilir.`;
 }
 
+function getGroundingLabel(status: NonNullable<RagResponse["groundingStatus"]>) {
+  const labels: Partial<Record<NonNullable<RagResponse["groundingStatus"]>, string>> = {
+    lexically_grounded: "Kanıtla doğrulandı",
+    partially_grounded: "Kısmen doğrulandı",
+    extractive_fallback: "Doğrulanmış kaynak pasajı fallback'i",
+    insufficient_context: "Yetersiz bağlam",
+    rejected_unsupported: "Desteklenmeyen iddia",
+    rejected_unstructured: "Geçersiz model çıktısı",
+  };
+  return labels[status] ?? status.replaceAll("_", " ");
+}
+
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
   const { contentTypes } = useLookups();
@@ -500,15 +512,17 @@ export default function SearchPage() {
                   ragResponse.groundingStatus === "lexically_grounded" || ragResponse.groundingStatus === "citations_verified" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300" :
                   ragResponse.groundingStatus === "insufficient_context" ? "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300" :
                   "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300") }>
-                  <ShieldCheck size={14}/><span>Grounding: {ragResponse.groundingStatus.replaceAll("_", " ")}</span>
-                  <span className="ml-auto">Citation IDs: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
-                  <span>Claim support: {((ragResponse.claimSupportCoverage ?? 0) * 100).toFixed(0)}%</span>
+                  <ShieldCheck size={14}/><span>Grounding: {getGroundingLabel(ragResponse.groundingStatus)}</span>
+                  <span className="ml-auto">{ragResponse.groundingStatus === "extractive_fallback" ? "Fallback atıf desteği" : "Atıf kimlikleri"}: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
+                  <span>{ragResponse.groundingStatus === "extractive_fallback" ? "Fallback claim desteği" : "Claim desteği"}: {((ragResponse.claimSupportCoverage ?? 0) * 100).toFixed(0)}%</span>
                 </div>
               )}
 
               {(ragResponse.partialResult || (ragResponse.warnings?.length ?? 0) > 0) && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-                  {ragResponse.partialResult && <p className="font-medium">Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir.</p>}
+                  {ragResponse.partialResult && <p className="font-medium">{ragResponse.groundingStatus === "extractive_fallback"
+                    ? "LLM yanıtı grounding kontrolünden geçmedi; aşağıdaki içerik doğrulanmış kaynak pasajlarından oluşturuldu."
+                    : "Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir."}</p>}
                   {ragResponse.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
                 </div>
               )}

@@ -147,6 +147,7 @@ public sealed class FakeChatClient : IChatClient
     public int CallCount { get; private set; }
     private string? _lastGroundedResponse;
     public string? ResponseOverride { get; set; }
+    public Queue<string> ResponseOverrides { get; } = new();
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -156,7 +157,9 @@ public sealed class FakeChatClient : IChatClient
         LastMessages = messages.ToList();
         LastOptions = options;
         CallCount++;
-        var response = ResponseOverride ?? BuildResponse(LastMessages);
+        var response = ResponseOverrides.Count > 0
+            ? ResponseOverrides.Dequeue()
+            : ResponseOverride ?? BuildResponse(LastMessages);
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, response)));
     }
 

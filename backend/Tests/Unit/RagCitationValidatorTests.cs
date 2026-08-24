@@ -276,4 +276,19 @@ public class RagCitationValidatorTests
         Assert.Equal(["S2"], result.Claims.Single().SourceIds);
         Assert.Contains(result.Warnings, x => x.Contains("Non-supporting evidence IDs", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Validate_AcceptsTurkishInflectionVariantsWithoutWeakeningNumericOrNegationChecks()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "MCP araçları standart biçimde çağırmayı sağlayan bir protokoldür."
+        };
+        const string raw = """{"answer":"MCP araçları standart biçimde çağırmasını sağlar [S1].","claims":[{"text":"MCP araçları standart biçimde çağırmasını sağlar.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Equal(1, result.ClaimSupportCoverage);
+    }
 }
