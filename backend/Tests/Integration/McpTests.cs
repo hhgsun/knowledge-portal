@@ -15,15 +15,16 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     {
         _factory = factory;
         _client = factory.CreateClient();
+        McpTestClient.AddAcceptHeaders(_client);
     }
 
-    private Task<HttpResponseMessage> RpcAsync(object body) => _client.PostAsJsonAsync("/mcp", body);
+    private Task<HttpResponseMessage> RpcAsync(object body) => McpTestClient.SendAsync(_client, body);
 
     private async Task<JsonElement> RpcResultAsync(object body)
     {
         var response = await RpcAsync(body);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var json = await McpTestClient.ReadEnvelopeAsync(response);
         return json.GetProperty("result");
     }
 
@@ -86,10 +87,11 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         using var keyClient = _factory.CreateClient();
         keyClient.DefaultRequestHeaders.Add("X-API-Key", rawKey);
-        var response = await keyClient.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" });
+        McpTestClient.AddAcceptHeaders(keyClient);
+        var response = await McpTestClient.SendAsync(keyClient, new { jsonrpc = "2.0", id = 1, method = "tools/list" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await McpTestClient.ReadEnvelopeAsync(response);
         Assert.True(body.GetProperty("result").GetProperty("tools").GetArrayLength() > 0);
     }
 
@@ -161,7 +163,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         using var request = ModernRequest("server/discover", new Dictionary<string, object>());
 
         var response = await _client.SendAsync(request);
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         var result = envelope.GetProperty("result");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -183,7 +185,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         }, "list_tags");
 
         var response = await _client.SendAsync(request);
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         var result = envelope.GetProperty("result");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -309,7 +311,6 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
     [Theory]
     [InlineData("1999-01-01")]
-    [InlineData("2024-11-05")]
     public async Task Mcp_RejectsUnsupportedProtocolHeader(string protocolVersion)
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
@@ -324,15 +325,17 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
-    public async Task Mcp_AcceptsSupportedProtocolHeader()
+    [Theory]
+    [InlineData("2025-11-25")]
+    [InlineData("2024-11-05")]
+    public async Task Mcp_AcceptsSupportedProtocolHeader(string protocolVersion)
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
         {
             Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "ping" })
         };
-        request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+        request.Headers.Add("MCP-Protocol-Version", protocolVersion);
 
         var response = await _client.SendAsync(request);
 
@@ -362,7 +365,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
         var response = await RpcAsync(new { jsonrpc = "2.0", id = 1, method = "does/not/exist" });
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await McpTestClient.ReadEnvelopeAsync(response);
         Assert.Equal(-32601, body.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -418,7 +421,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         using var content = new StringContent("{not valid json", Encoding.UTF8, "application/json");
         var response = await _client.PostAsync("/mcp", content);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(-32700, body.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal(-32600, body.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -427,8 +430,9 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
         var response = await RpcAsync(new { jsonrpc = "2.0", id = 1, method = "tools/call" });
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(-32602, body.GetProperty("error").GetProperty("code").GetInt32());
+        var body = await McpTestClient.ReadEnvelopeAsync(response);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(-32020, body.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -437,7 +441,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
         var response = await RpcAsync(ToolCall("no_such_tool", new { }));
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         Assert.Equal(-32602, envelope.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -815,12 +819,13 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         using var keyClient = _factory.CreateClient();
         keyClient.DefaultRequestHeaders.Add("X-API-Key", keyBody.GetProperty("key").GetString());
+        McpTestClient.AddAcceptHeaders(keyClient);
         var create = await keyClient.PostAsJsonAsync("/api/articles", new { title = "MCP Kendi Qksp İçeriği", status = "published" });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
 
-        var response = await keyClient.PostAsJsonAsync("/mcp", ToolCall("search_articles",
+        var response = await McpTestClient.SendAsync(keyClient, ToolCall("search_articles",
             new { query = "qksp", only_own_content = true }));
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(envelope.GetProperty("result")));
         var titles = payload.GetProperty("results").EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
 
@@ -926,9 +931,10 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         var result = await RpcResultAsync(ToolCall("get_project_context",
             new { project_tag = "proje-zkpc" }));
-        var structured = result.GetProperty("structuredContent");
+        Assert.True(result.TryGetProperty("structuredContent", out var structured), result.GetRawText());
 
-        Assert.Equal("project_context", structured.GetProperty("taskContext").GetProperty("task").GetString());
+        Assert.True(structured.TryGetProperty("taskContext", out var taskContext), structured.GetRawText());
+        Assert.Equal("project_context", taskContext.GetProperty("task").GetString());
         Assert.Contains(structured.GetProperty("results").EnumerateArray(),
             article => article.GetProperty("title").GetString() == "MCP Proje Bağlamı Zkpc");
         Assert.True(structured.TryGetProperty("decisionSupport", out _));

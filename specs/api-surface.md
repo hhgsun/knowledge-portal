@@ -57,11 +57,11 @@ Prometheus text exposition: ASP.NET Core request metrics + `kp_pending_embedding
 ## MCP (Model Context Protocol)
 
 ### `POST /mcp`
-**Auth**: X-API-Key or Bearer token (required)  
-**Transport**: Streamable HTTP (stateless, JSON-RPC 2.0)  
-**Protocol Version**: modern `2026-07-28` plus initialize-based legacy `2025-11-25`, `2025-06-18`, and `2025-03-26`. Modern clients use `server/discover`, per-request `_meta`, and the `Mcp-Method`/`Mcp-Name` routing headers. Legacy `initialize` echoes a supported initialize-capable client version and otherwise returns `2025-11-25`. The separate HTTP+SSE transport required by `2024-11-05` is not supported.
+- **Auth**: X-API-Key or Bearer token (required)
+- **Transport**: Official `ModelContextProtocol.AspNetCore` v2 Streamable HTTP server (stateless, JSON-RPC 2.0)
+- **Protocol Version**: preferred modern `2026-07-28` plus the initialize-capable legacy revisions negotiated by the official SDK. Modern clients use `server/discover`, per-request `_meta`, and the `Mcp-Method`/`Mcp-Name` routing headers.
 
-POST requests require `Content-Type: application/json`. `MCP-Protocol-Version`, when supplied, must contain a supported version. Browser-originated requests are accepted only from the MCP endpoint's own host. JSON-RPC notifications return `202 Accepted` with no body; MCP JSON-RPC batch payloads are rejected.
+POST requests require `Content-Type: application/json`; clients advertise both `application/json` and `text/event-stream` in `Accept`. The official SDK owns JSON-RPC parsing, protocol/version negotiation, capability discovery, routing-header validation, JSON/SSE response framing and notification semantics. Browser-originated requests are accepted only from the MCP endpoint's own host, and the portal retains a 256 KiB request ceiling.
 
 Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code Copilot, and SDK clients that can attach a static API-key/Bearer header can connect directly. Claude remote custom connectors require a publicly reachable endpoint and the documented OAuth connector flow, so they cannot connect directly to this API-key-only endpoint.
 

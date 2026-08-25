@@ -16,9 +16,9 @@
 
 MCP (Model Context Protocol), yapay zekâ istemcilerinin harici bilgi kaynaklarını ve araçları standart bir protokol üzerinden keşfedip çağırmasını sağlayan bir entegrasyon protokolüdür. Knowledge Portal, MCP desteği sunar. Cursor, VS Code Copilot ve özel header gönderebilen diğer MCP istemcileri Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir. Claude remote connector için aşağıdaki kimlik doğrulama sınırlamasına bakın.
 
-MCP araçlarına REST API üzerinden erişim sağlanır. Endpoint: `POST /mcp`
+MCP araçlarına resmî `ModelContextProtocol.AspNetCore` v2 Streamable HTTP sunucusu üzerinden erişim sağlanır. Endpoint: `POST /mcp`. JSON-RPC ayrıştırma, protokol müzakeresi, discovery ve JSON/SSE yanıt çerçevelemesi SDK tarafından yapılır; portal yalnızca araç kataloğunu ve iş mantığını sağlar.
 
-Tercih edilen protokol versiyonu `2026-07-28`'dir. Modern istemciler `server/discover` ve istek başına `_meta` zarfını kullanır. Geriye uyumluluk için `initialize` tabanlı `2025-11-25`, `2025-06-18` ve `2025-03-26` sürümleri de desteklenir. Ayrı HTTP+SSE taşıması gerektiren `2024-11-05` desteklenmez.
+Tercih edilen protokol versiyonu `2026-07-28`'dir. Modern istemciler `server/discover` ve istek başına `_meta` zarfını kullanır. Initialize tabanlı eski sürümlerin müzakeresi resmî SDK'nın desteklediği sürümlerle uyumludur.
 
 ## Kimlik Doğrulama
 
@@ -94,7 +94,7 @@ Legacy 2025-era istemciler aşağıdaki sırayı kullanır:
 3. `tools/list` — Kullanılabilir araçları ve parametrelerini keşfeder
 4. `tools/call` — Bir aracı çalıştırır ve sonuç alır
 
-HTTP POST istekleri `Content-Type: application/json` kullanmalıdır. Legacy akışta istemci, `initialize` sonrasındaki isteklerde müzakere edilen sürümü `MCP-Protocol-Version` başlığında gönderir. Sunucu stateless çalışır; SSE ve server-initiated mesaj sunmadığı için `GET /mcp` çağrısı `405 Method Not Allowed` döner.
+HTTP POST istekleri `Content-Type: application/json` kullanmalı ve `Accept` içinde hem `application/json` hem `text/event-stream` bildirmelidir. Legacy akışta istemci, `initialize` sonrasındaki isteklerde müzakere edilen sürümü `MCP-Protocol-Version` başlığında gönderir. SDK, sürüme göre JSON veya SSE çerçeveli yanıt döndürebilir. Sunucu stateless çalışır; bağımsız server-initiated GET stream sunmadığı için `GET /mcp` çağrısı `405 Method Not Allowed` döner.
 
 ## Kullanılabilir Araçlar (Tools)
 
@@ -476,4 +476,4 @@ Invoke-McpTool -ToolName 'list_tags'
 - Her istek bağımsızdır — stateless çalışır, session tutulmaz.
 - Araç yanıtları MCP spec'e uygun `content[]` dizisi formatında döner.
 - RBAC uygulanmaz — kimlik doğrulaması yeterlidir, ek izin kontrolü yapılmaz.
-- Transport: Stateless Streamable HTTP. Modern `2026-07-28` ve initialize tabanlı 2025-era çağrılar aynı `POST /mcp` endpoint'ini kullanır; SSE stream kullanılmaz.
+- Transport: Resmî `ModelContextProtocol.AspNetCore` v2 ile stateless Streamable HTTP. Modern ve initialize tabanlı çağrılar aynı `POST /mcp` endpoint'ini kullanır; SDK yanıtı sürüme göre JSON veya SSE olarak çerçeveleyebilir, bağımsız server-initiated GET stream yoktur.

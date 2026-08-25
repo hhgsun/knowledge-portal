@@ -19,17 +19,18 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
     {
         _factory = factory;
         _client = factory.CreateClient();
+        McpTestClient.AddAcceptHeaders(_client);
     }
 
     private async Task<JsonElement> CallAsync(string tool, object arguments)
     {
-        var response = await _client.PostAsJsonAsync("/mcp", new
+        var response = await McpTestClient.SendAsync(_client, new
         {
             jsonrpc = "2.0", id = Guid.NewGuid().ToString("N"), method = "tools/call",
             @params = new { name = tool, arguments }
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         return envelope.GetProperty("result");
     }
 
@@ -42,7 +43,7 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         var db = scope.ServiceProvider.GetRequiredService<KnowledgePortal.Api.Data.AppDbContext>();
         var before = db.SearchQueries.Count();
 
-        var response = await _client.PostAsJsonAsync("/mcp", new
+        var response = await McpTestClient.SendAsync(_client, new
         {
             jsonrpc = "2.0", method = "tools/call",
             @params = new { name = "search_articles", arguments = new { query = "must-not-execute" } }
@@ -57,11 +58,11 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
     public async Task NonObjectParams_ReturnsInvalidParams()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
-        var response = await _client.PostAsJsonAsync("/mcp",
+        var response = await McpTestClient.SendAsync(_client,
             new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new[] { "bad" } });
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await McpTestClient.ReadEnvelopeAsync(response);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(-32602, body.GetProperty("error").GetProperty("code").GetInt32());
     }
 
@@ -70,8 +71,8 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
     public async Task EveryToolSchema_IsStructurallyCompleteAndClosedAtRoot()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
-        var response = await _client.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" });
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var response = await McpTestClient.SendAsync(_client, new { jsonrpc = "2.0", id = 1, method = "tools/list" });
+        var body = await McpTestClient.ReadEnvelopeAsync(response);
 
         foreach (var tool in body.GetProperty("result").GetProperty("tools").EnumerateArray())
         {
@@ -143,13 +144,15 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         await key1.PostAsJsonAsync("/api/articles", new { title = "Key One Isolation Qiso", status = "published" });
         await key2.PostAsJsonAsync("/api/articles", new { title = "Key Two Isolation Qiso", status = "published" });
 
-        var response = await key1.PostAsJsonAsync("/mcp", new
+        var response = await McpTestClient.SendAsync(key1, new
         {
             jsonrpc = "2.0", id = 1, method = "tools/call",
             @params = new { name = "search_articles", arguments = new { query = "qiso", only_own_content = true } }
         });
-        var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var titles = envelope.GetProperty("result").GetProperty("structuredContent").GetProperty("results")
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
+        Assert.True(envelope.TryGetProperty("result", out var result), envelope.GetRawText());
+        Assert.True(result.TryGetProperty("structuredContent", out var structured), result.GetRawText());
+        var titles = structured.GetProperty("results")
             .EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
 
         Assert.Contains("Key One Isolation Qiso", titles);
@@ -163,12 +166,12 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         var calls = Enumerable.Range(1, 20).Select(async id =>
         {
-            var response = await _client.PostAsJsonAsync("/mcp", new
+            var response = await McpTestClient.SendAsync(_client, new
             {
                 jsonrpc = "2.0", id, method = "tools/call",
                 @params = new { name = "list_tags", arguments = new { } }
             });
-            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await McpTestClient.ReadEnvelopeAsync(response);
             return (response, body);
         });
 
@@ -193,6 +196,7 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-API-Key", body.GetProperty("key").GetString());
+        McpTestClient.AddAcceptHeaders(client);
         return client;
     }
 

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Diagnostics;
 using System.Threading.RateLimiting;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
@@ -6,11 +7,14 @@ using KnowledgePortal.Api.Mcp;
 using KnowledgePortal.Api.Middleware;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.IdentityModel.Tokens;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OllamaSharp;
 using OpenTelemetry.Metrics;
@@ -200,8 +204,28 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
 builder.Services.AddOpenApi();
 
 // ─── MCP Server ──────────────────────────────────────────────
-// MCP tools are exposed via Streamable HTTP at /mcp
-// See McpController for implementation
+// The official MCP ASP.NET Core SDK owns JSON-RPC, protocol negotiation and
+// Streamable HTTP framing. Portal services provide tool discovery/execution.
+builder.Services.AddHttpContextAccessor();
+builder.Services
+    .AddMcpServer(options =>
+    {
+        options.ServerInfo = new Implementation
+        {
+            Name = KnowledgePortalMcpServer.ServerName,
+            Version = KnowledgePortalMcpServer.ServerVersion
+        };
+        options.ServerInstructions =
+            "Use project/team/module tags to narrow context before general search. " +
+            "Prefer approved and recently reviewed portal sources; cite returned articles.";
+    })
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
+    .WithListToolsHandler(KnowledgePortalMcpServer.ListToolsAsync)
+    .WithCallToolHandler(KnowledgePortalMcpServer.CallToolAsync)
+    .AddAuthorizationFilters();
 
 // ─── Full-Text Search ────────────────────────────────────────
 builder.Services.AddScoped<FullTextSearchService>();
@@ -251,6 +275,36 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// Transport-independent HTTP guards retained around the official MCP endpoint.
+// Kestrel enforces the endpoint metadata limit; the explicit Content-Length check
+// also keeps TestServer and alternate hosts deterministic.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.Equals("/mcp", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.Headers["X-Trace-Id"] = Activity.Current?.TraceId.ToString() ?? ctx.TraceIdentifier;
+
+        if (HttpMethods.IsPost(ctx.Request.Method) && ctx.Request.ContentLength > 262_144)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+
+        var originValue = ctx.Request.Headers.Origin.ToString();
+        if (!string.IsNullOrWhiteSpace(originValue)
+            && (!Uri.TryCreate(originValue, UriKind.Absolute, out var origin)
+                || !string.Equals(origin.Scheme, ctx.Request.Scheme, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(origin.Host, ctx.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+                || origin.Port != (ctx.Request.Host.Port ?? (ctx.Request.IsHttps ? 443 : 80))))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 if (app.Environment.IsDevelopment())
@@ -271,6 +325,11 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapMcp("/mcp")
+    .RequireAuthorization(new AuthorizeAttribute())
+    .RequireRateLimiting("mcp")
+    .WithMetadata(new RequestSizeLimitAttribute(262_144));
 
 // ─── Health Checks ───────────────────────────────────────────
 // Liveness: process is up, no dependencies probed

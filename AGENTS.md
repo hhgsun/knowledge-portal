@@ -17,7 +17,7 @@ Split monorepo: `backend/` (ASP.NET Core Web API) + `frontend/` (React SPA).
 | Frontend | React 19, Vite, React Router v7, Tailwind CSS v4 |
 | Editor | Milkdown Crepe (ProseMirror); canonical CommonMark/GFM Markdown |
 | Tests | xUnit + WebApplicationFactory (backend only). The default suite is **Docker-free** and runs on EF Core InMemory (isolated DB per test class) with deterministic fakes: `FakeEmbeddingGenerator`/`FakeChatClient` replace Ollama and `FakeVectorSearchService` replaces the pgvector search (`IVectorSearchService`). The app is provider-aware: on a non-relational provider it uses `EnsureCreated` (not migrations), FTS falls back to an in-memory accent-folded AND→OR substring search, and the embedding background service is removed in tests. `backend/Tests.Postgres` uses `RAG_FIDELITY_CONNECTION_STRING` against real PostgreSQL/pgvector to gate migrations, cosine ranking/filtering, Turkish stemming, and HNSW/GIN query plans. Local runs skip when that variable is absent, but CI treats the variable and fidelity gate as mandatory. CI also runs a mandatory live-Ollama golden-dataset evaluation through `backend/scripts/run-rag-live-quality-gate.ps1`. |
-| MCP | REST API at `/mcp` (JSON-RPC 2.0 spec-compliant, **NO OAuth**, API Key or JWT auth only, stateless, tool discovery via `initialize` + `tools/list`) |
+| MCP | Official `ModelContextProtocol.AspNetCore` v2 Streamable HTTP server at `/mcp` (**NO OAuth**, API Key or JWT auth only, stateless, modern discovery plus legacy initialize negotiation) |
 
 ## Accepted Operational Decisions (2026-08-20)
 
@@ -72,7 +72,7 @@ backend/
 ├── Data/                 # AppDbContext, DbInitializer, SlugQueries (unique slug generation)
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions, RrfHelper
-├── Mcp/                  # MCP types (McpTypes), tool executor (McpToolExecutor)
+├── Mcp/                  # Official-SDK adapter (KnowledgePortalMcpServer), internal tool DTOs, tool executor
 ├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, ServiceError
 │                         # AI/Search: EmbeddingService, VectorSearchService (IVectorSearchService), RagService, EmbeddingBackgroundService, IndexJobQueue, FullTextSearchService, SearchReranker
 │                         # Observability: PortalMetrics (OpenTelemetry meters)
@@ -401,11 +401,11 @@ No known gaps at this time.
 
 ## MCP Server Behaviors
 
-- **MCP protocol version**: preferred modern revision `2026-07-28`; initialize-based legacy revisions `2025-11-25`, `2025-06-18`, and `2025-03-26` remain supported. Modern requests use `server/discover`, per-request `_meta`, `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`) `Mcp-Name`. Legacy `initialize` echoes a supported initialize-capable version and otherwise answers with `2025-11-25`. `2024-11-05` is not advertised because its separate HTTP+SSE transport is not implemented.
+- **MCP implementation/protocol**: wire transport, JSON-RPC validation, capability discovery, version negotiation and response framing are owned by the official `ModelContextProtocol.AspNetCore` v2 SDK. Preferred revision is `2026-07-28`; the SDK also negotiates its supported initialize-capable legacy revisions. Modern requests use `server/discover`, per-request `_meta`, `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`) `Mcp-Name`.
 - **Server info**: name=`knowledge-portal`, version=`2.0.0`
 - **Supported methods**: modern `server/discover`; legacy `initialize`/`notifications/initialized`; common `tools/list`, `tools/call`, and `ping`
 - **Server discovery**: modern POST `/mcp` with `method: "server/discover"` returns the modern supported version and capabilities; legacy clients use `initialize`.
-- **Streamable HTTP transport**: POST `/mcp` requires JSON, validates supported response media types and `MCP-Protocol-Version` when present, rejects cross-origin browser requests and MCP batch payloads, and returns 202/no body for JSON-RPC notifications. Modern requests additionally validate the header/body protocol metadata and routing-header agreement. GET `/mcp` always returns **405** with `Allow: POST` because the server is stateless and provides no SSE/server-initiated messages.
+- **Streamable HTTP transport**: POST `/mcp` requires JSON and clients advertise both `application/json` and `text/event-stream` in `Accept`. The official SDK validates protocol metadata/routing headers, versions, request shapes and notification semantics; responses may use JSON or SSE framing according to the negotiated revision. Portal HTTP guards retain the 256 KiB ceiling and same-origin browser check. The server is stateless, has no standalone server-initiated GET stream, and GET `/mcp` returns **405**.
 - **Notifications**: `notifications/initialized` returns **202 Accepted** with empty body (Streamable HTTP spec for response-less messages)
 - **Tool discovery**: POST `/mcp` with `method: "tools/list"` returns all available tools with JSON Schema input definitions (queryable by clients)
 - **Tool execution**: POST `/mcp` with `method: "tools/call"` + `params: {name, arguments}` executes tool and returns MCP content array
