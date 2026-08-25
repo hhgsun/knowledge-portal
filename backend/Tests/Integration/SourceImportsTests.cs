@@ -27,6 +27,27 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Analyze_MultipleFiles_ReportsDamagedFileWithoutFailingOtherDrafts()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        using var body = FileBody("Usable source", "usable.txt");
+        var damaged = new ByteArrayContent(Encoding.UTF8.GetBytes("not an Open XML package"));
+        damaged.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        body.Add(damaged, "files", "damaged.docx");
+
+        var response = await client.PostAsync("/api/source-imports/analyze", body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var drafts = json.GetProperty("drafts");
+        Assert.Equal(2, drafts.GetArrayLength());
+        Assert.True(drafts[0].GetProperty("parsed").GetBoolean());
+        Assert.Equal("damaged.docx", drafts[1].GetProperty("fileName").GetString());
+        Assert.False(drafts[1].GetProperty("parsed").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(drafts[1].GetProperty("warning").GetString()));
+    }
+
+    [Fact]
     public async Task Commit_TextDraft_CreatesArticleAndOriginalAttachment()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
@@ -59,6 +80,9 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(1, result.GetProperty("failed").GetInt32());
+        var failedItem = result.GetProperty("items")[0];
+        Assert.Equal("source.exe", failedItem.GetProperty("fileName").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(failedItem.GetProperty("error").GetString()));
         var list = await client.GetStringAsync($"/api/articles?q={Uri.EscapeDataString(title)}");
         Assert.DoesNotContain(title, list);
     }

@@ -1074,7 +1074,7 @@ All endpoints require authentication. Bulk/source commit operations use the same
 | `/api/source-imports/analyze` | POST multipart | `articles:create` | Convert supported source files to editable Markdown previews |
 | `/api/source-imports/commit` | POST multipart | `articles:create` | Create articles from the approved preview manifest and optionally retain originals as attachments |
 
-Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; unconvertible files are offered as attachments.
+Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; unconvertible files are offered as attachments. Analyze responses retain one draft per source and report file-specific conversion warnings without aborting the remaining files. Commit response items include `sourceIndex`, `fileName`, article identity/title fields, and a file-specific `error` when that draft fails.
 
 ---
 

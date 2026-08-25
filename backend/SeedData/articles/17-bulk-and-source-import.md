@@ -49,6 +49,8 @@ Kaynak akışı iki aşamalıdır:
 
 PDF sayfaları, çalışma kitabı sheet'leri ve sunu kaynakları Markdown'da başlık/provenance sınırlarıyla korunur. Özgün dosya ek olarak tutulduğunda normal attachment boyut ve uzantı kuralları uygulanır.
 
+Birden fazla kaynak seçildiğinde ayrıştırılamayan dosya diğer taslakların analizini durdurmaz. İnceleme ekranı sorunlu her dosyanın adını ve neden dönüştürülemediğini toplu olarak gösterir, ilk sorunlu dosyayı seçer ve taslak listesinde uyarıyla işaretler. Commit aşamasındaki kısmi hatalar da dosya adı ve hata nedeni ile gösterilir; daha önce başarıyla oluşturulan makaleler geri alınmaz ve yalnızca başarısız taslaklar düzeltme/yeniden deneme için ekranda kalır.
+
 ## İçerik Türü ve Yetki Kuralları
 
 İçerik türü verilmezse aktif `reference` değeri kullanılır. `reference` pasif veya eksikse istek varsayılanı sessizce yazmaz; doğrulama hatası verir. Açıkça gönderilen tüm değerler de yalnızca aktif `lookup_values(category = "content_type")` kayıtlarından seçilebilir.

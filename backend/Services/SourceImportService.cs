@@ -56,9 +56,20 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             var excerpt = plain.Length <= 240 ? plain : plain[..240].TrimEnd() + "…";
             return new(index, file.FileName, title, excerpt, markdown, true, true, "content-and-attachment", null);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or JsonException)
+        catch (OperationCanceledException)
         {
-            return Preview(index, file.FileName, title, Doc(), false, "attachment", $"Could not parse the file: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Source file {FileName} could not be analyzed", file.FileName);
+            var reason = ex switch
+            {
+                IOException => $"The file could not be read: {ex.Message}",
+                InvalidDataException or JsonException => $"The file content could not be parsed: {ex.Message}",
+                _ => "The file could not be parsed. It may be damaged or its contents may not match the file extension."
+            };
+            return Preview(index, file.FileName, title, Doc(), false, "attachment", reason);
         }
     }
 
@@ -71,6 +82,9 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         foreach (var draft in request.Drafts)
         {
             var title = draft.Title?.Trim() ?? "";
+            var fileName = draft.SourceIndex >= 0 && draft.SourceIndex < files.Count
+                ? Path.GetFileName(files[draft.SourceIndex].FileName)
+                : $"Source #{draft.SourceIndex + 1}";
             IDbContextTransaction? transaction = null;
             string? storedAttachment = null;
             string? articleId = null;
@@ -93,7 +107,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 await articleService.QueueReindexAsync(article, ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
                 committed = true;
-                results.Add(new(draft.SourceIndex, article.Id, article.Slug, article.Title, null));
+                results.Add(new(draft.SourceIndex, fileName, article.Id, article.Slug, article.Title, null));
             }
             catch (OperationCanceledException)
             {
@@ -104,7 +118,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             {
                 await RollbackDraftAsync(transaction, articleId);
                 logger.LogWarning(ex, "Source import row {SourceIndex} was rolled back", draft.SourceIndex);
-                results.Add(new(draft.SourceIndex, null, null, title, ex.Message));
+                results.Add(new(draft.SourceIndex, fileName, null, null, title, ex.Message));
             }
             finally
             {

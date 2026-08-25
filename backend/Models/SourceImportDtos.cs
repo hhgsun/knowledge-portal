@@ -23,5 +23,5 @@ public record SourceImportDraft(
 
 public record SourceImportCommitRequest(SourceImportDraft[] Drafts);
 
-public record SourceImportCommitItem(int SourceIndex, string? ArticleId, string? Slug, string Title, string? Error);
+public record SourceImportCommitItem(int SourceIndex, string FileName, string? ArticleId, string? Slug, string Title, string? Error);
 public record SourceImportCommitResult(int Created, int Failed, SourceImportCommitItem[] Items);
