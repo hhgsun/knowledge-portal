@@ -503,6 +503,25 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("fulltext", properties.GetProperty("type").GetProperty("default").GetString());
         Assert.True(properties.TryGetProperty("include_attachments", out _));
         Assert.True(properties.TryGetProperty("only_own_content", out _));
+        var scope = properties.GetProperty("scope");
+        Assert.Equal("object", scope.GetProperty("type").GetString());
+        Assert.False(scope.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal("array", scope.GetProperty("properties").GetProperty("tags").GetProperty("type").GetString());
+        Assert.Equal("string", scope.GetProperty("properties").GetProperty("tags")
+            .GetProperty("items").GetProperty("type").GetString());
+        Assert.Equal("array", scope.GetProperty("properties").GetProperty("contentTypes").GetProperty("type").GetString());
+        var scopedTools = new[]
+        {
+            "search_articles", "list_articles", "get_project_context", "get_integration_guidance",
+            "find_authoritative_content", "compare_sources", "get_recent_changes"
+        };
+        foreach (var toolName in scopedTools)
+        {
+            var scopedTool = result.GetProperty("tools").EnumerateArray()
+                .First(tool => tool.GetProperty("name").GetString() == toolName);
+            Assert.True(scopedTool.GetProperty("inputSchema").GetProperty("properties")
+                .TryGetProperty("scope", out _), toolName);
+        }
         Assert.True(search.TryGetProperty("outputSchema", out var outputSchema));
         Assert.Equal("object", outputSchema.GetProperty("type").GetString());
 
@@ -887,6 +906,97 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_SearchArticles_SharedScope_UsesTagAndAndContentTypeOr()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        const string marker = "zscopefilter";
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Scope How To {marker}", status = "published", contentType = "how-to",
+            tags = new[] { "takim-zscope", "proje-zscope" }
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Scope ADR {marker}", status = "published", contentType = "adr",
+            tags = new[] { "takim-zscope", "proje-zscope" }
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Scope Missing Tag {marker}", status = "published", contentType = "how-to",
+            tags = new[] { "takim-zscope" }
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Scope Wrong Type {marker}", status = "published", contentType = "faq",
+            tags = new[] { "takim-zscope", "proje-zscope" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles", new
+        {
+            query = marker,
+            scope = new
+            {
+                tags = new[] { "takim-zscope", "proje-zscope" },
+                contentTypes = new[] { "how-to", "adr" }
+            }
+        }));
+        var structured = result.GetProperty("structuredContent");
+        var titles = structured.GetProperty("results").EnumerateArray()
+            .Select(article => article.GetProperty("title").GetString()).ToList();
+
+        Assert.Contains($"Scope How To {marker}", titles);
+        Assert.Contains($"Scope ADR {marker}", titles);
+        Assert.DoesNotContain($"Scope Missing Tag {marker}", titles);
+        Assert.DoesNotContain($"Scope Wrong Type {marker}", titles);
+        Assert.Equal(2, structured.GetProperty("scope").GetProperty("tags").GetArrayLength());
+        Assert.Equal(2, structured.GetProperty("scope").GetProperty("contentTypes").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Mcp_SearchArticles_UnknownScopedTag_FailsClosed()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        const string marker = "zscopeunknown";
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Scope Existing {marker}", status = "published", tags = new[] { "known-zscope" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("search_articles", new
+        {
+            query = marker,
+            scope = new { tags = new[] { "missing-zscope-tag" } }
+        }));
+        var structured = result.GetProperty("structuredContent");
+
+        Assert.Equal(0, structured.GetProperty("total").GetInt32());
+        Assert.Empty(structured.GetProperty("results").EnumerateArray());
+
+        var unknownTypeResult = await RpcResultAsync(ToolCall("search_articles", new
+        {
+            query = marker,
+            scope = new { contentTypes = new[] { "missing-zscope-type" } }
+        }));
+        var unknownTypeStructured = unknownTypeResult.GetProperty("structuredContent");
+        Assert.Equal(0, unknownTypeStructured.GetProperty("total").GetInt32());
+        Assert.Empty(unknownTypeStructured.GetProperty("results").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Mcp_Scope_RejectsUnknownNestedProperty()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("list_articles", new
+        {
+            scope = new { teams = new[] { "a" } }
+        }));
+
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains("Unknown property 'teams'", ToolText(result));
+    }
+
+    [Fact]
     public async Task Mcp_ListTags_ReturnsTags()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
@@ -935,9 +1045,45 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.True(structured.TryGetProperty("taskContext", out var taskContext), structured.GetRawText());
         Assert.Equal("project_context", taskContext.GetProperty("task").GetString());
+        Assert.Contains("proje-zkpc", taskContext.GetProperty("scope").GetProperty("tags")
+            .EnumerateArray().Select(tag => tag.GetString()));
         Assert.Contains(structured.GetProperty("results").EnumerateArray(),
             article => article.GetProperty("title").GetString() == "MCP Proje Bağlamı Zkpc");
         Assert.True(structured.TryGetProperty("decisionSupport", out _));
+    }
+
+    [Fact]
+    public async Task Mcp_GetProjectContext_AcceptsSharedScopeWithoutProjectPrefix()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Serbest Etiket HowTo Qscp", status = "published", contentType = "how-to",
+            tags = new[] { "a", "x", "y" }
+        });
+        await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Serbest Etiket FAQ Qscp", status = "published", contentType = "faq",
+            tags = new[] { "a", "x", "y" }
+        });
+
+        var result = await RpcResultAsync(ToolCall("get_project_context", new
+        {
+            scope = new
+            {
+                tags = new[] { "a", "x", "y" },
+                contentTypes = new[] { "how-to" }
+            }
+        }));
+        var structured = result.GetProperty("structuredContent");
+        var titles = structured.GetProperty("results").EnumerateArray()
+            .Select(article => article.GetProperty("title").GetString()).ToList();
+
+        Assert.Contains("MCP Serbest Etiket HowTo Qscp", titles);
+        Assert.DoesNotContain("MCP Serbest Etiket FAQ Qscp", titles);
+        Assert.Equal("project_context", structured.GetProperty("taskContext").GetProperty("task").GetString());
+        Assert.Equal(3, structured.GetProperty("taskContext").GetProperty("scope")
+            .GetProperty("tags").GetArrayLength());
     }
 
     [Fact]
@@ -953,13 +1099,16 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         var result = await RpcResultAsync(ToolCall("get_integration_guidance", new
         {
-            integration_query = "API anahtarı xkig", project_tag = "proje-xkig"
+            integration_query = "API anahtarı xkig",
+            scope = new { tags = new[] { "proje-xkig" } }
         }));
         var structured = result.GetProperty("structuredContent");
         var article = structured.GetProperty("results").EnumerateArray()
             .First(a => a.GetProperty("title").GetString() == "MCP Entegrasyon Kılavuzu Xkig");
 
         Assert.Equal("integration_guidance", structured.GetProperty("taskContext").GetProperty("task").GetString());
+        Assert.Contains("proje-xkig", structured.GetProperty("taskContext").GetProperty("scope")
+            .GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.True(article.GetProperty("evidenceAvailable").GetBoolean());
         Assert.True(article.TryGetProperty("governance", out _));
     }

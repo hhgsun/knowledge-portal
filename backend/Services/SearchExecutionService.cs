@@ -108,7 +108,8 @@ public sealed class SearchExecutionService(
             TagSlugs: resolvedTags);
         var snippetTokens = parsed.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
-        if (parsed.TagSlugs.Count > 0 && string.IsNullOrWhiteSpace(parsed.Text))
+        if ((parsed.TagSlugs.Count > 0 || parsed.ContentTypes.Count > 0 || parsed.AuthorSlugs.Count > 0)
+            && string.IsNullOrWhiteSpace(parsed.Text))
         {
             var query = ArticleService.ApplyFilter(db.Articles.WherePublished(), filter);
             var total = await query.CountAsync(ct);
@@ -116,7 +117,8 @@ public sealed class SearchExecutionService(
                 .Skip((page - 1) * limit).Take(limit).ToListAsync(ct);
             var results = await BuildResultsAsync(found, request.IncludeContent,
                 request.IncludeAttachments, snippetTokens, ct: ct);
-            return (await CompleteAsync(request.Query, "tag", results, total, page,
+            var filterType = parsed.ContentTypes.Count == 0 && parsed.AuthorSlugs.Count == 0 ? "tag" : "filter";
+            return (await CompleteAsync(request.Query, filterType, results, total, page,
                 (int)Math.Ceiling(total / (double)limit), stopwatch, principal, ct,
                 tags: parsed.TagSlugs), null);
         }

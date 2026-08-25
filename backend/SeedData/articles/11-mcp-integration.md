@@ -102,11 +102,26 @@ MCP sunucusu genel veri erişim araçlarına ek olarak görev odaklı araçlar s
 
 Görev odaklı araçlar:
 
-- `get_project_context` — proje etiketiyle yönetişim bilgili proje özeti
+- `get_project_context` — zorunlu tag/content-type kapsamıyla yönetişim bilgili özet (araç adı geriye uyumludur; tag'lere proje anlamı dayatmaz)
 - `get_integration_guidance` — entegrasyon hedefi için hybrid kaynak bulma
 - `find_authoritative_content` — karar konusu için güvenilirlik sıralamalı kaynaklar
 - `compare_sources` — 2-10 kaynağı canonical içerik ve governance ile yan yana karşılaştırma
-- `get_recent_changes` — isteğe bağlı proje kapsamıyla yakın dönem değişiklikleri
+- `get_recent_changes` — isteğe bağlı tag/content-type kapsamıyla yakın dönem değişiklikleri
+
+### Ortak kapsam modeli
+
+Birden fazla makale getiren arama, liste ve görev araçları aynı `scope` nesnesini kullanır:
+
+```json
+{
+  "scope": {
+    "tags": ["a", "x", "y"],
+    "contentTypes": ["how-to", "adr"]
+  }
+}
+```
+
+Etiketler serbest anlamlıdır; `project-`, `team-` veya benzeri bir ön ek zorunlu değildir. `tags` içindeki bütün değerler makalede bulunmalıdır (AND). `contentTypes` içindeki değerlerden herhangi birinin eşleşmesi yeterlidir (OR). İki boyut birlikte verilirse ikisi de uygulanır. `scope` verilmezse genel arama yapılır. Bilinmeyen bir değer kapsamı kaldırmaz veya genişletmez; sonuç kümesi boş kalır. Eski istemciler için düz `tags`, `content_type` ve `project_tag` alanları kabul edilmeye devam eder ve aynı kapsama birleştirilir. `get_project_context` etkili kapsamın boş olmamasını ister; diğer araçlarda kapsam isteğe bağlıdır.
 
 ### search_articles
 
@@ -117,9 +132,10 @@ Parametreler:
 - `query` (string, zorunlu) — Arama metni
 - `type` (string) — `fulltext`, `semantic`, `hybrid` veya `rag` (varsayılan `fulltext`)
 - `limit` (integer) — Maksimum sonuç sayısı (1-50, varsayılan 20)
-- `tags` (string) — Etiket slug'larına göre filtrele, virgülle ayrılmış (AND mantığı)
+- `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
+- `tags` (string) — Geriye uyumlu düz kapsam alanı; virgülle ayrılmış etiket slug'ları
 - `authors` (string) — Yazar slug'larına göre filtrele, virgülle ayrılmış (OR mantığı)
-- `content_type` (string) — İçerik türüne göre filtrele, virgülle ayrılmış (OR mantığı)
+- `content_type` (string) — Geriye uyumlu düz kapsam alanı; virgülle ayrılmış içerik türleri
 - `include_content` (boolean) — Kanonik Markdown string'ini `contentMarkdown` alanında sonuçlara dahil et (varsayılan false)
 - `include_attachments` (boolean) — Ek dosya metadatasını sonuçlara dahil et (varsayılan false)
 - `only_own_content` (boolean) — API key ile çağrıldığında yalnızca o anahtarla oluşturulan içerikleri döndürür
@@ -140,8 +156,9 @@ Parametreler:
 
 - `page` (integer) — Sayfa numarası, 1-tabanlı (varsayılan 1)
 - `limit` (integer) — Sayfa başına öğe sayısı (1-50, varsayılan 20)
-- `content_type` (string) — İçerik türüne göre filtrele
-- `tags` (string) — Etiket slug'larına göre filtrele, virgülle ayrılmış
+- `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
+- `content_type` (string) — Geriye uyumlu düz içerik türü kapsamı
+- `tags` (string) — Geriye uyumlu düz etiket kapsamı
 - `sort` (string) — Sıralama: newest, oldest, most_viewed (varsayılan newest)
 
 ### list_tags

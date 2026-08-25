@@ -28,6 +28,15 @@ public class McpToolExecutor
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
 
+    private sealed record McpScope(List<string> Tags, List<string> ContentTypes)
+    {
+        public bool IsEmpty => Tags.Count == 0 && ContentTypes.Count == 0;
+
+        public ArticleFilter ToArticleFilter() => new(
+            ContentTypes: ContentTypes.Count == 0 ? null : ContentTypes,
+            TagSlugs: Tags.Count == 0 ? null : Tags);
+    }
+
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
         SearchExecutionService searchExecution, ContentGovernanceService governance,
         ILogger<McpToolExecutor> logger)
@@ -51,7 +60,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "search_articles",
-                    Description = "Search published Knowledge Portal articles using full-text, semantic, hybrid, or RAG search. Supports the same filters and response behavior as GET /api/search.",
+                    Description = "Search published Knowledge Portal articles using full-text, semantic, hybrid, or RAG search. Uses the shared scope where tags are AND and content types are OR, with the same response behavior as GET /api/search.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
@@ -60,9 +69,10 @@ public class McpToolExecutor
                             ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid", "rag" }, Default = "fulltext" },
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
-                            ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated (AND logic)" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["tags"] = new() { Type = "string", Description = "Legacy scope field: tag slugs, comma-separated (AND logic)" },
                             ["authors"] = new() { Type = "string", Description = "Filter by author slugs, comma-separated (OR logic)" },
-                            ["content_type"] = new() { Type = "string", Description = "Filter by content type, comma-separated (OR logic)" },
+                            ["content_type"] = new() { Type = "string", Description = "Legacy scope field: content types, comma-separated (OR logic)" },
                             ["include_content"] = new() { Type = "boolean", Description = "Include full article content as plain text in results", Default = false },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata in results", Default = false },
                             ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict results to articles created by that key", Default = false }
@@ -88,15 +98,16 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "list_articles",
-                    Description = "List published articles with pagination and optional filtering by content type or tags.",
+                    Description = "List published articles with pagination and an optional shared scope. Scope tags use AND logic; content types use OR logic.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Items per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
-                            ["content_type"] = new() { Type = "string", Description = "Filter by content type" },
-                            ["tags"] = new() { Type = "string", Description = "Filter by tag slugs, comma-separated" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["content_type"] = new() { Type = "string", Description = "Legacy scope field: content types, comma-separated (OR logic)" },
+                            ["tags"] = new() { Type = "string", Description = "Legacy scope field: tag slugs, comma-separated (AND logic)" },
                             ["sort"] = new() { Type = "string", Description = "Sort order", Enum = new List<string> { "newest", "oldest", "most_viewed" }, Default = "newest" }
                         }
                     },
@@ -125,30 +136,31 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "get_project_context",
-                    Description = "Build a project briefing from articles tagged with the supplied project tag. Returns current published context, governance, evidence, and decision-support warnings.",
+                    Description = "Build a governed briefing from a required tag/content-type scope. Scope tags use AND logic; content types use OR logic.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["project_tag"] = new() { Type = "string", Description = "Project tag slug" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one project tag slug" },
                             ["limit"] = new() { Type = "integer", Description = "Maximum context articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["include_content"] = new() { Type = "boolean", Description = "Include canonical article content", Default = true },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
                         },
-                        Required = ["project_tag"]
                     },
                     OutputSchema = SearchOutputSchema()
                 },
                 new()
                 {
                     Name = "get_integration_guidance",
-                    Description = "Find implementation guidance for an integration task, optionally scoped to a project. Uses hybrid retrieval and returns full evidence/governance metadata.",
+                    Description = "Find implementation guidance for an integration task, optionally constrained by the shared tag/content-type scope. Uses hybrid retrieval and returns full evidence/governance metadata.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["integration_query"] = new() { Type = "string", Description = "Integration goal or question" },
-                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
                             ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
                         },
@@ -165,7 +177,8 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["query"] = new() { Type = "string", Description = "Decision topic" },
-                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
                             ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 }
                         },
                         Required = ["query"]
@@ -180,7 +193,8 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["article_ids"] = new() { Type = "string", Description = "Comma-separated article IDs or slugs (2-10)" }
+                            ["article_ids"] = new() { Type = "string", Description = "Comma-separated article IDs or slugs (2-10)" },
+                            ["scope"] = ScopePropertySchema()
                         },
                         Required = ["article_ids"]
                     },
@@ -189,12 +203,13 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "get_recent_changes",
-                    Description = "Get recently updated published knowledge, optionally scoped to a project tag, with governance and evidence metadata.",
+                    Description = "Get recently updated published knowledge, optionally constrained by the shared tag/content-type scope, with governance and evidence metadata.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["project_tag"] = new() { Type = "string", Description = "Optional project tag slug" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
                             ["days"] = new() { Type = "integer", Description = "Lookback window (1-3650 days)", Default = 30, Minimum = 1, Maximum = 3650 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 }
                         }
@@ -233,27 +248,63 @@ public class McpToolExecutor
             if (!tool.InputSchema.Properties.TryGetValue(argument.Key, out var schema))
                 return $"Unknown parameter '{argument.Key}'";
 
-            var validType = schema.Type switch
-            {
-                "string" => argument.Value.ValueKind == JsonValueKind.String,
-                "integer" => argument.Value.ValueKind == JsonValueKind.Number && argument.Value.TryGetInt32(out _),
-                "boolean" => argument.Value.ValueKind is JsonValueKind.True or JsonValueKind.False,
-                _ => true
-            };
-            if (!validType)
-                return $"Parameter '{argument.Key}' must be of type {schema.Type}";
+            var error = ValidateValue($"Parameter '{argument.Key}'", argument.Value, schema);
+            if (error != null) return error;
+        }
 
-            if (schema.Enum is { Count: > 0 }
-                && !schema.Enum.Contains(argument.Value.GetString()!, StringComparer.Ordinal))
-                return $"Parameter '{argument.Key}' must be one of: {string.Join(", ", schema.Enum)}";
+        return null;
+    }
 
-            if (schema.Type == "integer")
+    private static string? ValidateValue(string path, JsonElement value, McpPropertySchema schema)
+    {
+        var validType = schema.Type switch
+        {
+            "string" => value.ValueKind == JsonValueKind.String,
+            "integer" => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out _),
+            "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            "object" => value.ValueKind == JsonValueKind.Object,
+            "array" => value.ValueKind == JsonValueKind.Array,
+            _ => true
+        };
+        if (!validType) return $"{path} must be of type {schema.Type}";
+
+        if (schema.Enum is { Count: > 0 }
+            && !schema.Enum.Contains(value.GetString()!, StringComparer.Ordinal))
+            return $"{path} must be one of: {string.Join(", ", schema.Enum)}";
+
+        if (schema.Type == "integer")
+        {
+            var number = value.GetInt32();
+            if (schema.Minimum is { } minimum && number < minimum)
+                return $"{path} must be at least {minimum}";
+            if (schema.Maximum is { } maximum && number > maximum)
+                return $"{path} must be at most {maximum}";
+        }
+
+        if (schema.Type == "object" && schema.Properties != null)
+        {
+            foreach (var property in value.EnumerateObject())
             {
-                var number = argument.Value.GetInt32();
-                if (schema.Minimum is { } minimum && number < minimum)
-                    return $"Parameter '{argument.Key}' must be at least {minimum}";
-                if (schema.Maximum is { } maximum && number > maximum)
-                    return $"Parameter '{argument.Key}' must be at most {maximum}";
+                if (!schema.Properties.TryGetValue(property.Name, out var childSchema))
+                {
+                    if (schema.AdditionalProperties == false)
+                        return $"Unknown property '{property.Name}' in {path.ToLowerInvariant()}";
+                    continue;
+                }
+
+                var error = ValidateValue($"{path}.{property.Name}", property.Value, childSchema);
+                if (error != null) return error;
+            }
+        }
+
+        if (schema.Type == "array" && schema.Items != null)
+        {
+            var index = 0;
+            foreach (var item in value.EnumerateArray())
+            {
+                var error = ValidateValue($"{path}[{index}]", item, schema.Items);
+                if (error != null) return error;
+                index++;
             }
         }
 
@@ -306,6 +357,9 @@ public class McpToolExecutor
         if (string.IsNullOrWhiteSpace(query))
             return ErrorResult("Parameter 'query' is required");
 
+        var (scope, scopeError) = ParseScope(args, "tags", "content_type");
+        if (scopeError != null) return ErrorResult(scopeError);
+
         var principalValue = principal ?? new ClaimsPrincipal();
         var execution = await _searchExecution.ExecuteAsync(new PortalSearchRequest(
             query,
@@ -315,9 +369,9 @@ public class McpToolExecutor
             GetBool(args, "only_own_content"),
             GetBool(args, "include_content"),
             GetBool(args, "include_attachments"),
-            SplitCsv(GetString(args, "tags")),
+            scope.Tags,
             SplitCsv(GetString(args, "authors")),
-            SplitCsv(GetString(args, "content_type"))), principalValue, ct);
+            scope.ContentTypes), principalValue, ct);
         if (execution.Error != null) return ErrorResult(execution.Error.Message);
 
         var result = execution.Result!;
@@ -359,7 +413,7 @@ public class McpToolExecutor
                 }),
                 rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
                 rag.InsufficientContext, rag.PartialResult, rag.Warnings,
-                result.Query, result.Type, result.ResponseTimeMs, result.IndexingPending,
+                scope = ScopeNode(scope), result.Query, result.Type, result.ResponseTimeMs, result.IndexingPending,
                 result.IndexCoverage, result.SearchQueryId
             };
         }
@@ -367,7 +421,7 @@ public class McpToolExecutor
         {
             payload = new
             {
-                results = result.Results, result.Query, result.Type, result.Tags,
+                results = result.Results, scope = ScopeNode(scope), result.Query, result.Type, result.Tags,
                 result.Total, result.Page, result.TotalPages, result.ResponseTimeMs,
                 result.IndexingPending, result.IndexCoverage, result.SearchQueryId, result.Warning
             };
@@ -402,21 +456,18 @@ public class McpToolExecutor
     {
         var page = Math.Max(1, GetInt(args, "page", 1));
         var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
-        var contentType = GetString(args, "content_type");
-        var tags = GetString(args, "tags");
+        var (scope, scopeError) = ParseScope(args, "tags", "content_type");
+        if (scopeError != null) return ErrorResult(scopeError);
         var sort = GetString(args, "sort") ?? "newest";
         if (!AllowedSorts.Contains(sort))
             return ErrorResult($"Invalid sort '{sort}'. Allowed: {string.Join(", ", AllowedSorts)}");
 
         // Same filter + paging + summary pipeline as GET /api/articles
-        var filter = new ArticleFilter(
-            ContentTypes: string.IsNullOrWhiteSpace(contentType) ? null : [contentType],
-            TagSlugs: string.IsNullOrWhiteSpace(tags) ? null : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter);
+        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), scope.ToArticleFilter());
 
         var (articles, total) = await _articleService.ListAsync(query, page, limit, sort);
 
-        var result = new { articles, total, page, limit, totalPages = (int)Math.Ceiling((double)total / limit) };
+        var result = new { articles, scope = ScopeNode(scope), total, page, limit, totalPages = (int)Math.Ceiling((double)total / limit) };
         return TextResult(JsonSerializer.Serialize(result, _jsonOptions));
     }
 
@@ -462,64 +513,67 @@ public class McpToolExecutor
 
     private async Task<McpToolCallResult> GetProjectContextAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
     {
-        var projectTag = GetString(args, "project_tag")?.Trim();
-        if (string.IsNullOrWhiteSpace(projectTag)) return ErrorResult("Parameter 'project_tag' is required");
+        var (scope, scopeError) = ParseScope(args, legacyProjectTagProperty: "project_tag");
+        if (scopeError != null) return ErrorResult(scopeError);
+        if (scope.IsEmpty)
+            return ErrorResult("Parameter 'scope' must contain at least one tag or content type");
 
         var searchArgs = JsonSerializer.SerializeToElement(new
         {
-            query = $"#{projectTag}",
+            query = ScopeQuery(scope),
             type = "fulltext",
             limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50),
             include_content = GetBool(args, "include_content", true),
-            include_attachments = GetBool(args, "include_attachments", true)
+            include_attachments = GetBool(args, "include_attachments", true),
+            scope = ScopeNode(scope)
         });
         var result = await SearchArticlesAsync(searchArgs, principal, ct);
-        return DecorateTaskResult(result, "project_context", new JsonObject { ["projectTag"] = projectTag });
+        return DecorateTaskResult(result, "project_context", ScopeMetadata(scope));
     }
 
     private async Task<McpToolCallResult> GetIntegrationGuidanceAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
     {
         var integrationQuery = GetString(args, "integration_query")?.Trim();
         if (string.IsNullOrWhiteSpace(integrationQuery)) return ErrorResult("Parameter 'integration_query' is required");
-        var projectTag = GetString(args, "project_tag")?.Trim();
+        var (scope, scopeError) = ParseScope(args, legacyProjectTagProperty: "project_tag");
+        if (scopeError != null) return ErrorResult(scopeError);
 
         var searchArgs = JsonSerializer.SerializeToElement(new
         {
-            query = string.IsNullOrWhiteSpace(projectTag) ? integrationQuery : $"{integrationQuery} #{projectTag}",
+            query = integrationQuery,
             type = "hybrid",
             limit = Math.Clamp(GetInt(args, "limit", 10), 1, 50),
             include_content = true,
-            include_attachments = GetBool(args, "include_attachments", true)
+            include_attachments = GetBool(args, "include_attachments", true),
+            scope = ScopeNode(scope)
         });
         var result = await SearchArticlesAsync(searchArgs, principal, ct);
-        return DecorateTaskResult(result, "integration_guidance", new JsonObject
-        {
-            ["integrationQuery"] = integrationQuery,
-            ["projectTag"] = projectTag
-        });
+        var metadata = ScopeMetadata(scope);
+        metadata["integrationQuery"] = integrationQuery;
+        return DecorateTaskResult(result, "integration_guidance", metadata);
     }
 
     private async Task<McpToolCallResult> FindAuthoritativeContentAsync(JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
     {
         var query = GetString(args, "query")?.Trim();
         if (string.IsNullOrWhiteSpace(query)) return ErrorResult("Parameter 'query' is required");
-        var projectTag = GetString(args, "project_tag")?.Trim();
+        var (scope, scopeError) = ParseScope(args, legacyProjectTagProperty: "project_tag");
+        if (scopeError != null) return ErrorResult(scopeError);
 
         var searchArgs = JsonSerializer.SerializeToElement(new
         {
-            query = string.IsNullOrWhiteSpace(projectTag) ? query : $"{query} #{projectTag}",
+            query,
             type = "hybrid",
             limit = Math.Clamp(GetInt(args, "limit", 10), 1, 50),
             include_content = true,
-            include_attachments = false
+            include_attachments = false,
+            scope = ScopeNode(scope)
         });
         var result = await SearchArticlesAsync(searchArgs, principal, ct);
-        return DecorateTaskResult(result, "authoritative_content", new JsonObject
-        {
-            ["decisionTopic"] = query,
-            ["projectTag"] = projectTag,
-            ["rankingNote"] = "Use decisionSupport.recommendedArticleIds for governance order; results retain retrieval relevance order."
-        });
+        var metadata = ScopeMetadata(scope);
+        metadata["decisionTopic"] = query;
+        metadata["rankingNote"] = "Use decisionSupport.recommendedArticleIds for governance order; results retain retrieval relevance order.";
+        return DecorateTaskResult(result, "authoritative_content", metadata);
     }
 
     private async Task<McpToolCallResult> CompareSourcesAsync(JsonElement? args, CancellationToken ct)
@@ -528,11 +582,14 @@ public class McpToolExecutor
         if (references.Count is < 2 or > 10)
             return ErrorResult("Parameter 'article_ids' must contain 2-10 comma-separated IDs or slugs");
 
-        var articles = await _db.Articles.WherePublished()
+        var (scope, scopeError) = ParseScope(args);
+        if (scopeError != null) return ErrorResult(scopeError);
+
+        var articles = await ArticleService.ApplyFilter(_db.Articles.WherePublished(), scope.ToArticleFilter())
             .Where(a => references.Contains(a.Id) || references.Contains(a.Slug))
             .ToListAsync(ct);
         if (articles.Count != references.Distinct().Count())
-            return ErrorResult("One or more articles were not found or are not published");
+            return ErrorResult("One or more articles were not found, are not published, or are outside the requested scope");
 
         articles = references.Select(reference => articles.First(a => a.Id == reference || a.Slug == reference)).ToList();
         var governance = await _governance.BuildAsync(articles, ct);
@@ -551,6 +608,7 @@ public class McpToolExecutor
         return StructuredResult(new JsonObject
         {
             ["sources"] = sources,
+            ["scope"] = ScopeNode(scope),
             ["comparison"] = new JsonObject
             {
                 ["recommendedArticleIds"] = new JsonArray(ordered.Select(item => (JsonNode?)JsonValue.Create(item.Key)).ToArray()),
@@ -566,10 +624,10 @@ public class McpToolExecutor
     {
         var days = Math.Clamp(GetInt(args, "days", 30), 1, 3650);
         var limit = Math.Clamp(GetInt(args, "limit", 20), 1, 50);
-        var projectTag = GetString(args, "project_tag")?.Trim();
+        var (scope, scopeError) = ParseScope(args, legacyProjectTagProperty: "project_tag");
+        if (scopeError != null) return ErrorResult(scopeError);
         var since = DateTime.UtcNow.AddDays(-days);
-        var filter = new ArticleFilter(TagSlugs: string.IsNullOrWhiteSpace(projectTag) ? null : [projectTag]);
-        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), filter)
+        var query = ArticleService.ApplyFilter(_db.Articles.WherePublished(), scope.ToArticleFilter())
             .Where(a => a.UpdatedAt >= since).OrderByDescending(a => a.UpdatedAt);
         var total = await query.CountAsync(ct);
         var articles = await query.Take(limit).ToListAsync(ct);
@@ -578,17 +636,105 @@ public class McpToolExecutor
         var result = await SearchResultAsync(new
         {
             results,
-            query = string.IsNullOrWhiteSpace(projectTag) ? $"recent:{days}d" : $"recent:{days}d #{projectTag}",
+            scope = ScopeNode(scope),
+            query = scope.IsEmpty ? $"recent:{days}d" : $"recent:{days}d {ScopeQuery(scope)}",
             type = "recent_changes",
             since = since.ToString("o"),
             total,
             page = 1,
             totalPages = total == 0 ? 0 : 1
-        }, $"recent changes {days} days {projectTag}".Trim(), total, "recent_changes", sw, principal, ct);
-        return DecorateTaskResult(result, "recent_changes", new JsonObject { ["projectTag"] = projectTag, ["days"] = days });
+        }, $"recent changes {days} days {ScopeQuery(scope)}".Trim(), total, "recent_changes", sw, principal, ct);
+        var metadata = ScopeMetadata(scope);
+        metadata["days"] = days;
+        return DecorateTaskResult(result, "recent_changes", metadata);
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────
+
+    private static McpPropertySchema ScopePropertySchema() => new()
+    {
+        Type = "object",
+        Description = "Optional knowledge scope. All tags must match (AND); any listed content type may match (OR). Values are semantic tag slugs and active content-type values.",
+        AdditionalProperties = false,
+        Properties = new Dictionary<string, McpPropertySchema>
+        {
+            ["tags"] = new()
+            {
+                Type = "array",
+                Description = "Tag slugs; every tag must be present on the article (AND logic)",
+                Items = new McpPropertySchema { Type = "string" }
+            },
+            ["contentTypes"] = new()
+            {
+                Type = "array",
+                Description = "Content-type values; an article may match any supplied value (OR logic)",
+                Items = new McpPropertySchema { Type = "string" }
+            }
+        }
+    };
+
+    private static (McpScope Scope, string? Error) ParseScope(
+        JsonElement? args,
+        string? legacyTagsProperty = null,
+        string? legacyContentTypeProperty = null,
+        string? legacyProjectTagProperty = null)
+    {
+        var tags = new List<string>();
+        var contentTypes = new List<string>();
+
+        if (args is { ValueKind: JsonValueKind.Object }
+            && args.Value.TryGetProperty("scope", out var scopeElement))
+        {
+            if (scopeElement.TryGetProperty("tags", out var scopeTags))
+            {
+                foreach (var value in scopeTags.EnumerateArray())
+                {
+                    var item = value.GetString()?.Trim();
+                    if (string.IsNullOrWhiteSpace(item))
+                        return (new McpScope([], []), "Parameter 'scope.tags' cannot contain blank values");
+                    tags.Add(item);
+                }
+            }
+
+            if (scopeElement.TryGetProperty("contentTypes", out var scopeContentTypes))
+            {
+                foreach (var value in scopeContentTypes.EnumerateArray())
+                {
+                    var item = value.GetString()?.Trim();
+                    if (string.IsNullOrWhiteSpace(item))
+                        return (new McpScope([], []), "Parameter 'scope.contentTypes' cannot contain blank values");
+                    contentTypes.Add(item);
+                }
+            }
+        }
+
+        if (legacyTagsProperty != null)
+            tags.AddRange(SplitCsv(GetString(args, legacyTagsProperty)));
+        if (legacyContentTypeProperty != null)
+            contentTypes.AddRange(SplitCsv(GetString(args, legacyContentTypeProperty)));
+        if (legacyProjectTagProperty != null
+            && GetString(args, legacyProjectTagProperty)?.Trim() is { Length: > 0 } projectTag)
+            tags.Add(projectTag);
+
+        return (new McpScope(
+            tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            contentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList()), null);
+    }
+
+    private static JsonObject ScopeNode(McpScope scope) => new()
+    {
+        ["tags"] = new JsonArray(scope.Tags.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray()),
+        ["contentTypes"] = new JsonArray(scope.ContentTypes.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray())
+    };
+
+    private static JsonObject ScopeMetadata(McpScope scope) => new()
+    {
+        ["scope"] = ScopeNode(scope)
+    };
+
+    private static string ScopeQuery(McpScope scope) => string.Join(' ',
+        scope.Tags.Select(tag => $"#{tag}")
+            .Concat(scope.ContentTypes.Select(contentType => $"##{contentType}")));
 
     private async Task<List<ArticleSummaryDto>> BuildSearchResultsAsync(
         IReadOnlyList<Article> articles,

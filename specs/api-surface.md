@@ -68,16 +68,18 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 **Supported Methods**: `server/discover` (2026 era), `initialize` and `notifications/initialized` (2025 era), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Portal-equivalent search across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid|rag`, default `fulltext`), `page`, `limit`, `tags`, `authors`, `content_type`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and `##content-type` inline syntax. Full-text/tag searches are paged; semantic/hybrid/RAG use the same top-N/fallback behavior as `GET /api/search`.
+- `search_articles` — Portal-equivalent search across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid|rag`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`; legacy `tags` and `content_type` remain accepted. Supports `@author`, `#tag`, and `##content-type` inline syntax. Full-text/filter searches are paged; semantic/hybrid/RAG use the same top-N/fallback behavior as `GET /api/search`.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
-- `list_articles` — List published articles with pagination (params: page, limit, content_type, tags, sort — sort validated against `newest|oldest|most_viewed`)
+- `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
 - `get_portal_info` — Portal statistics (counts, content type distribution, recent articles)
-- `get_project_context` — Build a governed project briefing from a project tag
-- `get_integration_guidance` — Hybrid retrieval for an integration goal, optionally project-scoped
-- `find_authoritative_content` — Find decision sources and expose governance-recommended source ordering
-- `compare_sources` — Compare 2-10 published sources with canonical content and governance; contradiction status remains explicit
-- `get_recent_changes` — Recently updated published knowledge, optionally scoped to a project tag
+- `get_project_context` — Build a governed briefing from a required non-empty `scope` (legacy `project_tag` remains accepted)
+- `get_integration_guidance` — Hybrid retrieval for an integration goal, optionally constrained by `scope`
+- `find_authoritative_content` — Find decision sources, optionally constrained by `scope`, and expose governance-recommended source ordering
+- `compare_sources` — Compare 2-10 published sources, optionally requiring each source to fall inside `scope`, with canonical content and governance; contradiction status remains explicit
+- `get_recent_changes` — Recently updated published knowledge, optionally constrained by `scope`
+
+The shared scope shape is `{ "tags": ["a", "x", "y"], "contentTypes": ["how-to", "adr"] }`. Tags are free semantic tag slugs; prefixes such as `project-` or `team-` are not required. Every supplied tag must match (AND), while any supplied content type may match (OR); the two dimensions combine with AND. Omitting scope performs general retrieval. Unknown tags or content types produce no matches and never broaden the result set. `search_articles`, `list_articles`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, and `get_recent_changes` use this contract. Legacy `tags`, `content_type`, and `project_tag` values are merged and deduplicated into the same effective scope.
 
 **Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true`.
 
