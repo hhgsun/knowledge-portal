@@ -20,7 +20,8 @@ public record SourceImportDraft(
     string? ContentType,
     string? Status,
     string[]? Tags,
-    bool KeepOriginal = true);
+    bool KeepOriginal = true,
+    int[]? AdditionalAttachmentIndexes = null);
 
 public record SourceImportCommitRequest(SourceImportDraft[] Drafts);
 

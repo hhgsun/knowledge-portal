@@ -84,6 +84,75 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Commit_DamagedSourceWithManualContent_CreatesArticleAndOriginalAttachment()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Manual damaged source {Guid.NewGuid():N}";
+        using var body = FileBody("not an Open XML package", "damaged.docx");
+        body.Add(new StringContent(JsonSerializer.Serialize(new
+        {
+            drafts = new[] { new { sourceIndex = 0, title, contentMarkdown = "Manually entered content", contentType = "reference", status = "draft", tags = Array.Empty<string>(), keepOriginal = true } }
+        })), "manifest");
+
+        var response = await client.PostAsync("/api/source-imports/commit", body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, result.GetProperty("created").GetInt32());
+        Assert.Equal(0, result.GetProperty("failed").GetInt32());
+        var articleId = result.GetProperty("items")[0].GetProperty("articleId").GetString();
+        var article = await client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}");
+        Assert.Equal("Manually entered content", article.GetProperty("contentMarkdown").GetString());
+        var attachments = await client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}/attachments");
+        Assert.Equal("damaged.docx", attachments.GetProperty("attachments")[0].GetProperty("fileName").GetString());
+    }
+
+    [Fact]
+    public async Task Commit_DraftWithAdditionalAttachments_AssociatesEveryFileWithArticle()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        using var body = FileBody("Source content", "source.txt");
+        var diagram = new ByteArrayContent(Encoding.UTF8.GetBytes("diagram bytes"));
+        diagram.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        body.Add(diagram, "attachments", "diagram.png");
+        var notes = new ByteArrayContent(Encoding.UTF8.GetBytes("Supporting notes"));
+        notes.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+        body.Add(notes, "attachments", "notes.txt");
+        body.Add(new StringContent(JsonSerializer.Serialize(new
+        {
+            drafts = new[]
+            {
+                new
+                {
+                    sourceIndex = 0,
+                    title = $"Source with extra files {Guid.NewGuid():N}",
+                    contentMarkdown = "Source content",
+                    contentType = "reference",
+                    status = "draft",
+                    tags = Array.Empty<string>(),
+                    keepOriginal = true,
+                    additionalAttachmentIndexes = new[] { 0, 1 }
+                }
+            }
+        })), "manifest");
+
+        var response = await client.PostAsync("/api/source-imports/commit", body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, result.GetProperty("created").GetInt32());
+        var articleId = result.GetProperty("items")[0].GetProperty("articleId").GetString();
+        var attachments = await client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}/attachments");
+        var names = attachments.GetProperty("attachments").EnumerateArray()
+            .Select(item => item.GetProperty("fileName").GetString())
+            .ToArray();
+        Assert.Equal(3, attachments.GetProperty("total").GetInt32());
+        Assert.Contains("source.txt", names);
+        Assert.Contains("diagram.png", names);
+        Assert.Contains("notes.txt", names);
+    }
+
+    [Fact]
     public async Task Commit_InvalidOriginal_RollsBackArticle()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);

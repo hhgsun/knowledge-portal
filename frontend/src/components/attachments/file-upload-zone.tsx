@@ -21,9 +21,10 @@ interface PendingFileListProps {
   files: File[];
   onAdd: (files: File[]) => void;
   onRemove: (index: number) => void;
+  title?: string;
 }
 
-export function PendingFileList({ files, onAdd, onRemove }: PendingFileListProps) {
+export function PendingFileList({ files, onAdd, onRemove, title = "Attachments" }: PendingFileListProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,7 +42,7 @@ export function PendingFileList({ files, onAdd, onRemove }: PendingFileListProps
     >
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Attachments {files.length > 0 && `(${files.length})`}
+          {title} {files.length > 0 && `(${files.length})`}
         </h3>
         <label
           className={cn(

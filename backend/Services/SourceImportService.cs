@@ -76,10 +76,11 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
     }
 
     public async Task<SourceImportCommitResult> CommitAsync(SourceImportCommitRequest request, IReadOnlyList<IFormFile> files,
-        ClaimsPrincipal user, CancellationToken ct)
+        IReadOnlyList<IFormFile> attachments, ClaimsPrincipal user, CancellationToken ct)
     {
         var results = new List<SourceImportCommitItem>();
         var maxSize = config.GetValue("FileStorage:MaxFileSizeMB", 20) * 1024L * 1024L;
+        var maxAttachments = config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20);
         var allowed = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>() ?? [];
         foreach (var draft in request.Drafts)
         {
@@ -88,11 +89,21 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 ? Path.GetFileName(files[draft.SourceIndex].FileName)
                 : $"Source #{draft.SourceIndex + 1}";
             IDbContextTransaction? transaction = null;
-            string? storedAttachment = null;
+            var storedAttachments = new List<string>();
             string? articleId = null;
             var committed = false;
             try
             {
+                var additionalIndexes = draft.AdditionalAttachmentIndexes ?? [];
+                if (additionalIndexes.Distinct().Count() != additionalIndexes.Length)
+                    throw new InvalidDataException("Additional attachment indexes must be unique");
+                if (additionalIndexes.Any(index => index < 0 || index >= attachments.Count))
+                    throw new InvalidDataException("An additional attachment is missing from the request");
+                var attachmentCount = additionalIndexes.Length
+                    + (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count ? 1 : 0);
+                if (attachmentCount > maxAttachments)
+                    throw new InvalidDataException($"Maximum {maxAttachments} attachments per article reached");
+
                 if (db.Database.IsRelational())
                     transaction = await db.Database.BeginTransactionAsync(ct);
                 var contentMarkdown = draft.ContentMarkdown?.Trim() ?? "";
@@ -105,7 +116,11 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 articleId = article.Id;
 
                 if (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count)
-                    storedAttachment = await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed, user.GetUserId(), ct);
+                    storedAttachments.Add(await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed,
+                        user.GetUserId(), ct));
+                foreach (var attachmentIndex in additionalIndexes)
+                    storedAttachments.Add(await SaveAttachmentAsync(article, attachments[attachmentIndex], maxSize, allowed,
+                        user.GetUserId(), ct));
                 await articleService.QueueReindexAsync(article, ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
                 committed = true;
@@ -124,10 +139,13 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             }
             finally
             {
-                if (!committed && storedAttachment != null && articleId != null)
+                if (!committed && articleId != null)
                 {
-                    try { AttachmentHelper.MoveToTrash(config, articleId, storedAttachment); }
-                    catch (Exception ex) { logger.LogError(ex, "Failed to clean rolled-back source attachment {StoredFileName}", storedAttachment); }
+                    foreach (var storedAttachment in storedAttachments)
+                    {
+                        try { AttachmentHelper.MoveToTrash(config, articleId, storedAttachment); }
+                        catch (Exception ex) { logger.LogError(ex, "Failed to clean rolled-back source attachment {StoredFileName}", storedAttachment); }
+                    }
                 }
                 if (transaction != null) await transaction.DisposeAsync();
             }
@@ -148,7 +166,18 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         {
             await using (var input = file.OpenReadStream())
                 sha256 = await AttachmentHelper.SaveAtomicAsync(config, article.Id, stored, input, ct);
-            db.ArticleAttachments.Add(new ArticleAttachment { ArticleId = article.Id, FileName = Path.GetFileName(file.FileName), StoredFileName = stored, ContentType = file.ContentType, SizeBytes = file.Length, Sha256 = sha256, UploadedById = userId });
+            db.ArticleAttachments.Add(new ArticleAttachment
+            {
+                ArticleId = article.Id,
+                FileName = Path.GetFileName(file.FileName),
+                StoredFileName = stored,
+                ContentType = file.ContentType,
+                SizeBytes = file.Length,
+                Sha256 = sha256,
+                ExtractionCharacterLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
+                    AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000),
+                UploadedById = userId
+            });
             await db.SaveChangesAsync(ct);
             return stored;
         }

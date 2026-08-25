@@ -7,6 +7,7 @@ import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
+import { PendingFileList } from "../components/attachments/file-upload-zone";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
 
@@ -56,7 +57,7 @@ function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
     title,
     contentMarkdown: "",
     parsed: false,
-    keepOriginal: false,
+    keepOriginal: true,
     processingMode: "failed",
     analysisError: reason,
     contentType: "reference",
@@ -67,7 +68,7 @@ function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
 
 function issueMessage(items: ImportIssue[]) {
   const errorCount = items.filter(issue => issue.severity === "error").length;
-  if (errorCount) return `${errorCount} source file${errorCount === 1 ? "" : "s"} cannot be imported. Remove the failed article${errorCount === 1 ? "" : "s"} to continue.`;
+  if (errorCount) return `${errorCount} source file${errorCount === 1 ? "" : "s"} need manual content. Add content or remove the failed article${errorCount === 1 ? "" : "s"} to continue.`;
   return items.length ? `${items.length} source file${items.length === 1 ? "" : "s"} need attention.` : "";
 }
 
@@ -100,15 +101,18 @@ export default function KnowledgeImportPage() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [issues, setIssues] = useState<ImportIssue[]>([]);
+  const [additionalAttachments, setAdditionalAttachments] = useState<Record<number, File[]>>({});
   const current = drafts[selected];
-  const hasBlockingAnalysisErrors = drafts.some(draft => Boolean(draft.analysisError));
+  const currentAdditionalAttachments = current ? additionalAttachments[current.sourceIndex] ?? [] : [];
+  const currentAnalysisResolved = Boolean(current?.analysisError && current.contentMarkdown.trim());
+  const hasBlockingAnalysisErrors = drafts.some(draft => Boolean(draft.analysisError && !draft.contentMarkdown.trim()));
   const titleRef = useAutoResizeTextArea(current?.title ?? "");
   const excerptRef = useAutoResizeTextArea(current?.excerpt ?? "");
   const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
 
   const analyze = async () => {
     if (!files.length) return;
-    setBusy(true); setError(""); setIssues([]);
+    setBusy(true); setError(""); setIssues([]); setAdditionalAttachments({});
     try {
       const analyzedDrafts: Draft[] = [];
       for (const [sourceIndex, file] of files.entries()) {
@@ -148,7 +152,24 @@ export default function KnowledgeImportPage() {
     finally { setBusy(false); }
   };
 
-  const update = (changes: Partial<Draft>) => setDrafts(items => items.map((item, index) => index === selected ? { ...item, ...changes } : item));
+  const update = (changes: Partial<Draft>) => {
+    const nextDrafts = drafts.map((item, index) => index === selected ? { ...item, ...changes } : item);
+    setDrafts(nextDrafts);
+    if (changes.contentMarkdown !== undefined && current?.analysisError) {
+      const hasManualContent = Boolean(changes.contentMarkdown.trim());
+      const nextIssues = issues.map(issue => issue.sourceIndex === current.sourceIndex
+        ? {
+            ...issue,
+            severity: hasManualContent ? "warning" as const : "error" as const,
+            reason: hasManualContent
+              ? `Manual content provided; the original analysis failed: ${current.analysisError}`
+              : current.analysisError!,
+          }
+        : issue);
+      setIssues(nextIssues);
+      setError(issueMessage(nextIssues));
+    }
+  };
   const removeDraft = (draftIndex: number) => {
     const removedSourceIndex = drafts[draftIndex].sourceIndex;
     const remainingDrafts = drafts
@@ -158,6 +179,15 @@ export default function KnowledgeImportPage() {
       .filter(issue => issue.sourceIndex !== removedSourceIndex)
       .map(issue => issue.sourceIndex > removedSourceIndex ? { ...issue, sourceIndex: issue.sourceIndex - 1 } : issue);
     setFiles(items => items.filter((_, index) => index !== removedSourceIndex));
+    setAdditionalAttachments(items => {
+      const next: Record<number, File[]> = {};
+      for (const [sourceIndex, attachments] of Object.entries(items)) {
+        const numericIndex = Number(sourceIndex);
+        if (numericIndex === removedSourceIndex) continue;
+        next[numericIndex > removedSourceIndex ? numericIndex - 1 : numericIndex] = attachments;
+      }
+      return next;
+    });
     setDrafts(remainingDrafts);
     setIssues(remainingIssues);
     setError(issueMessage(remainingIssues));
@@ -185,7 +215,17 @@ export default function KnowledgeImportPage() {
     setBusy(true); setError(""); setIssues([]);
     try {
       const body = new FormData(); files.forEach(file => body.append("files", file));
-      body.append("manifest", JSON.stringify({ drafts: drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType, status, tags, keepOriginal }) => ({ sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined, contentType, status, tags, keepOriginal })) }));
+      const attachmentFiles: File[] = [];
+      const manifestDrafts = drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType, status, tags, keepOriginal }) => {
+        const additionalAttachmentIndexes = (additionalAttachments[sourceIndex] ?? []).map(file => {
+          const attachmentIndex = attachmentFiles.length;
+          attachmentFiles.push(file);
+          return attachmentIndex;
+        });
+        return { sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined, contentType, status, tags, keepOriginal, additionalAttachmentIndexes };
+      });
+      attachmentFiles.forEach(file => body.append("attachments", file));
+      body.append("manifest", JSON.stringify({ drafts: manifestDrafts }));
       const response = await fetchWithAuth("/api/source-imports/commit", { method: "POST", body, noRetry: true });
       const data = await response.json().catch(() => ({})) as CommitResponse;
       if (!response.ok) throw new Error(data.error || "Import failed");
@@ -201,6 +241,9 @@ export default function KnowledgeImportPage() {
         if (commitIssues.length) {
           const failedSourceIndexes = new Set(commitIssues.map(issue => issue.sourceIndex));
           setDrafts(items => items.filter(draft => failedSourceIndexes.has(draft.sourceIndex)));
+          setAdditionalAttachments(items => Object.fromEntries(
+            Object.entries(items).filter(([sourceIndex]) => failedSourceIndexes.has(Number(sourceIndex)))
+          ));
           setSelected(0);
         }
         toast.error("Some articles could not be imported");
@@ -219,7 +262,7 @@ export default function KnowledgeImportPage() {
     <div className="space-y-4">
       <label className="block rounded-xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 p-10 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-blue-950/10 transition-colors">
         <Upload className="mx-auto mb-3 text-blue-600" size={32}/><strong className="text-zinc-900 dark:text-zinc-100">Select source files</strong><p className="text-sm text-zinc-500 mt-2">TXT, Markdown, CSV, Excel, PDF and Office files are parsed. Other supported files remain attachments.</p>
-        <input multiple type="file" accept={accepted} className="hidden" onChange={event => { setFiles(Array.from(event.target.files ?? [])); setError(""); setIssues([]); }}/>
+        <input multiple type="file" accept={accepted} className="hidden" onChange={event => { setFiles(Array.from(event.target.files ?? [])); setError(""); setIssues([]); setAdditionalAttachments({}); }}/>
       </label>
       {files.length > 0 && <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-200 dark:divide-zinc-800">{files.map((file, index) => <div key={`${file.name}-${index}`} className="p-3 flex items-center gap-3"><FileText size={17} className="text-zinc-500"/><span className="flex-1 text-sm truncate">{file.name}</span><span className="text-xs text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(items => items.filter((_, itemIndex) => itemIndex !== index))} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"><X size={16}/></button></div>)}</div>}
       <div className="flex justify-end"><button disabled={!files.length || busy} onClick={analyze} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"><WandSparkles size={16}/>{busy ? "Analyzing..." : "Analyze Sources"}</button></div>
@@ -228,10 +271,10 @@ export default function KnowledgeImportPage() {
 
   return <div className="max-w-7xl mx-auto">
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-      <div className="flex items-center gap-3"><button type="button" onClick={() => { setDrafts([]); setError(""); setIssues([]); }} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft size={18}/></button><div><h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Review Import Drafts</h1><p className="text-sm text-zinc-500 mt-0.5">Review each article before importing.</p></div></div>
+      <div className="flex items-center gap-3"><button type="button" onClick={() => { setDrafts([]); setError(""); setIssues([]); setAdditionalAttachments({}); }} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft size={18}/></button><div><h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Review Import Drafts</h1><p className="text-sm text-zinc-500 mt-0.5">Review each article before importing.</p></div></div>
       <div className="flex flex-col items-end gap-1">
         <button disabled={busy || hasBlockingAnalysisErrors} onClick={commit} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"><Check size={16}/>{busy ? "Importing..." : `Import ${drafts.length} Article${drafts.length === 1 ? "" : "s"}`}</button>
-        {hasBlockingAnalysisErrors && <span className="text-xs font-medium text-red-600 dark:text-red-400">Remove failed articles to enable import.</span>}
+        {hasBlockingAnalysisErrors && <span className="text-xs font-medium text-red-600 dark:text-red-400">Add manual content or remove failed articles to enable import.</span>}
       </div>
     </div>
     <ImportFeedback message={error} issues={issues}/>
@@ -250,7 +293,8 @@ export default function KnowledgeImportPage() {
         </div>;
       })}</aside>
       {current && <section className="min-w-0">
-        {current.analysisError && <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"><span><strong className="block break-all">{current.fileName} could not be analyzed</strong><span className="mt-1 block">{current.analysisError}</span></span><button type="button" onClick={() => removeDraft(selected)} className="shrink-0 rounded-md border border-red-300 px-2.5 py-1.5 text-xs font-medium hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900/50">Remove article</button></div>}
+        {current.analysisError && !currentAnalysisResolved && <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"><span><strong className="block break-all">{current.fileName} could not be analyzed</strong><span className="mt-1 block">{current.analysisError}</span><span className="mt-1 block font-medium">Enter the article content manually below or remove this article.</span></span><button type="button" onClick={() => removeDraft(selected)} className="shrink-0 rounded-md border border-red-300 px-2.5 py-1.5 text-xs font-medium hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900/50">Remove article</button></div>}
+        {current.analysisError && currentAnalysisResolved && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"><strong className="block break-all">Manual content will be used for {current.fileName}</strong><span className="mt-1 block">The original analysis failed, but this draft is now ready to import. Keep the attachment option selected to retain the source file.</span></div>}
         {!current.analysisError && current.warning && <div className="p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm">{current.warning}</div>}
         <div className={current.analysisError || current.warning ? "mt-5 mb-6" : "mb-6"}>
           <textarea ref={titleRef} rows={1} value={current.title} onChange={event => update({ title: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Makale başlığı..." aria-label="Makale başlığı" maxLength={300} className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-zinc-900 outline-none placeholder:text-zinc-300 dark:text-zinc-100 dark:placeholder:text-zinc-600"/>
@@ -279,7 +323,20 @@ export default function KnowledgeImportPage() {
           <span className="min-w-0 text-sm text-zinc-700 dark:text-zinc-300">Orijinal <strong className="break-all">{current.fileName}</strong> dosyasını ek dosya olarak sakla</span>
         </label>
 
-        {current.parsed && <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-zinc-50 dark:bg-zinc-900"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense>}
+        <PendingFileList
+          title="Additional attachments"
+          files={currentAdditionalAttachments}
+          onAdd={newFiles => setAdditionalAttachments(items => ({
+            ...items,
+            [current.sourceIndex]: [...(items[current.sourceIndex] ?? []), ...newFiles],
+          }))}
+          onRemove={attachmentIndex => setAdditionalAttachments(items => ({
+            ...items,
+            [current.sourceIndex]: (items[current.sourceIndex] ?? []).filter((_, index) => index !== attachmentIndex),
+          }))}
+        />
+
+        <div className="mt-6"><Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-zinc-50 dark:bg-zinc-900"/>}><MilkdownEditor key={current.sourceIndex} contentMarkdown={current.contentMarkdown} onChange={contentMarkdown => update({ contentMarkdown })}/></Suspense></div>
       </section>}
     </div>
   </div>;

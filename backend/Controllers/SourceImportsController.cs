@@ -25,12 +25,13 @@ public class SourceImportsController(SourceImportService service) : ControllerBa
 
     [HttpPost("commit")]
     [RequestSizeLimit(104_857_600)]
-    public async Task<IActionResult> Commit([FromForm] string manifest, [FromForm] List<IFormFile> files, CancellationToken ct)
+    public async Task<IActionResult> Commit([FromForm] string manifest, [FromForm] List<IFormFile> files,
+        [FromForm] List<IFormFile> attachments, CancellationToken ct)
     {
         SourceImportCommitRequest? request;
         try { request = JsonSerializer.Deserialize<SourceImportCommitRequest>(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
         catch (JsonException) { return BadRequest(new { error = "Invalid import manifest" }); }
         if (request?.Drafts is not { Length: > 0 }) return BadRequest(new { error = "At least one draft is required" });
-        return Ok(await service.CommitAsync(request, files, User, ct));
+        return Ok(await service.CommitAsync(request, files, attachments, User, ct));
     }
 }
