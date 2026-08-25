@@ -47,14 +47,16 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 };
             }
             else
-                return Preview(index, file.FileName, title, Doc(), false, "attachment", "This file cannot be converted; it will be kept as an attachment.");
+                return Preview(index, file.FileName, title, Doc(), false, "attachment",
+                    warning: "This file cannot be converted; it will be kept as an attachment.");
 
             var markdown = content is string rawMarkdown ? rawMarkdown : ToMarkdown(JsonSerializer.SerializeToElement(content, JsonOptions));
             var plain = ContentExtractor.ExtractPlainText(markdown);
             if (string.IsNullOrWhiteSpace(plain))
-                return Preview(index, file.FileName, title, Doc(), false, "attachment", "No usable text was found; the original will be kept as an attachment.");
+                return Preview(index, file.FileName, title, Doc(), false, "attachment",
+                    warning: "No usable text was found; the original will be kept as an attachment.");
             var excerpt = plain.Length <= 240 ? plain : plain[..240].TrimEnd() + "…";
-            return new(index, file.FileName, title, excerpt, markdown, true, true, "content-and-attachment", null);
+            return new(index, file.FileName, title, excerpt, markdown, true, true, "content-and-attachment", null, null);
         }
         catch (OperationCanceledException)
         {
@@ -69,7 +71,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 InvalidDataException or JsonException => $"The file content could not be parsed: {ex.Message}",
                 _ => "The file could not be parsed. It may be damaged or its contents may not match the file extension."
             };
-            return Preview(index, file.FileName, title, Doc(), false, "attachment", reason);
+            return Preview(index, file.FileName, title, Doc(), false, "failed", analysisError: reason);
         }
     }
 
@@ -255,8 +257,10 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
     private static object Heading(string text, int level) => new { type = "heading", attrs = new { level }, content = new[] { new { type = "text", text } } };
     private static object Cell(string text, bool header) => new { type = header ? "tableHeader" : "tableCell", content = new[] { Paragraph(text) } };
     private static object CodeBlock(string text, string language) => new { type = "codeBlock", attrs = new { language }, content = new[] { new { type = "text", text } } };
-    private static SourceImportPreview Preview(int i, string file, string title, object content, bool parsed, string mode, string warning)
-        => new(i, file, title, null, ToMarkdown(JsonSerializer.SerializeToElement(content, JsonOptions)), parsed, true, mode, warning);
+    private static SourceImportPreview Preview(int i, string file, string title, object content, bool parsed, string mode,
+        string? warning = null, string? analysisError = null)
+        => new(i, file, title, null, ToMarkdown(JsonSerializer.SerializeToElement(content, JsonOptions)), parsed, true, mode,
+            warning, analysisError);
 
     private static string ToMarkdown(JsonElement node)
     {

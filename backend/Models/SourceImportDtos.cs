@@ -9,7 +9,8 @@ public record SourceImportPreview(
     bool Parsed,
     bool KeepOriginal,
     string ProcessingMode,
-    string? Warning);
+    string? Warning,
+    string? AnalysisError);
 
 public record SourceImportDraft(
     int SourceIndex,

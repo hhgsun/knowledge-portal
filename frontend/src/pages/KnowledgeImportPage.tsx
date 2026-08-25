@@ -18,6 +18,7 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
 type Draft = {
   sourceIndex: number; fileName: string; title: string; excerpt?: string; contentMarkdown: string;
   parsed: boolean; keepOriginal: boolean; processingMode: string; warning?: string;
+  analysisError?: string;
   contentType: string; status: string; tags: string[];
 };
 
@@ -28,13 +29,47 @@ type ImportIssue = {
   severity: "warning" | "error";
 };
 
-type AnalyzeResponse = { drafts?: Draft[]; error?: string };
+type AnalyzeResponse = {
+  drafts?: Draft[];
+  error?: string;
+  detail?: string;
+  title?: string;
+  errors?: Record<string, string[]>;
+};
 type CommitResponse = {
   created?: number;
   failed?: number;
   error?: string;
   items?: Array<{ sourceIndex: number; fileName?: string; title: string; error?: string | null }>;
 };
+
+function getResponseError(data: AnalyzeResponse, status: number) {
+  const validationError = Object.values(data.errors ?? {}).flat().find(Boolean);
+  return data.error || data.detail || validationError || data.title || `The source could not be analyzed (HTTP ${status}).`;
+}
+
+function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
+  const title = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || file.name;
+  return {
+    sourceIndex,
+    fileName: file.name,
+    title,
+    contentMarkdown: "",
+    parsed: false,
+    keepOriginal: false,
+    processingMode: "failed",
+    analysisError: reason,
+    contentType: "reference",
+    status: "draft",
+    tags: [],
+  };
+}
+
+function issueMessage(items: ImportIssue[]) {
+  const errorCount = items.filter(issue => issue.severity === "error").length;
+  if (errorCount) return `${errorCount} source file${errorCount === 1 ? "" : "s"} cannot be imported. Remove the failed article${errorCount === 1 ? "" : "s"} to continue.`;
+  return items.length ? `${items.length} source file${items.length === 1 ? "" : "s"} need attention.` : "";
+}
 
 function ImportFeedback({ message, issues }: { message: string; issues: ImportIssue[] }) {
   if (!message && !issues.length) return null;
@@ -66,6 +101,7 @@ export default function KnowledgeImportPage() {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState<ImportIssue[]>([]);
   const current = drafts[selected];
+  const hasBlockingAnalysisErrors = drafts.some(draft => Boolean(draft.analysisError));
   const titleRef = useAutoResizeTextArea(current?.title ?? "");
   const excerptRef = useAutoResizeTextArea(current?.excerpt ?? "");
   const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
@@ -74,31 +110,71 @@ export default function KnowledgeImportPage() {
     if (!files.length) return;
     setBusy(true); setError(""); setIssues([]);
     try {
-      const body = new FormData(); files.forEach(file => body.append("files", file));
-      const response = await fetchWithAuth("/api/source-imports/analyze", { method: "POST", body, noRetry: true });
-      const data = await response.json().catch(() => ({})) as AnalyzeResponse;
-      if (!response.ok) throw new Error(data.error || "Sources could not be analyzed");
-      const analyzedDrafts = data.drafts ?? [];
+      const analyzedDrafts: Draft[] = [];
+      for (const [sourceIndex, file] of files.entries()) {
+        try {
+          const body = new FormData(); body.append("files", file);
+          const response = await fetchWithAuth("/api/source-imports/analyze", { method: "POST", body, noRetry: true });
+          const data = await response.json().catch(() => ({})) as AnalyzeResponse;
+          if (!response.ok) {
+            analyzedDrafts.push(failedDraft(file, sourceIndex, getResponseError(data, response.status)));
+            continue;
+          }
+          const draft = data.drafts?.[0];
+          analyzedDrafts.push(draft
+            ? { ...draft, sourceIndex, fileName: file.name, contentType: "reference", status: "draft", tags: [] }
+            : failedDraft(file, sourceIndex, "The server returned no analysis result for this file."));
+        } catch (cause) {
+          analyzedDrafts.push(failedDraft(file, sourceIndex, cause instanceof Error ? cause.message : "The source could not be analyzed."));
+        }
+      }
       const analysisIssues = analyzedDrafts
-        .filter(draft => Boolean(draft.warning))
-        .map(draft => ({ sourceIndex: draft.sourceIndex, fileName: draft.fileName, reason: draft.warning!, severity: "warning" as const }));
-      setDrafts(analyzedDrafts.map(draft => ({ ...draft, contentType: "reference", status: "draft", tags: [] })));
+        .filter(draft => Boolean(draft.analysisError || draft.warning))
+        .map(draft => ({
+          sourceIndex: draft.sourceIndex,
+          fileName: draft.fileName,
+          reason: draft.analysisError || draft.warning!,
+          severity: draft.analysisError ? "error" as const : "warning" as const,
+        }));
+      const failedCount = analysisIssues.filter(issue => issue.severity === "error").length;
+      setDrafts(analyzedDrafts);
       setIssues(analysisIssues);
-      setError(analysisIssues.length ? `${analysisIssues.length} source file${analysisIssues.length === 1 ? "" : "s"} need attention.` : "");
+      setError(issueMessage(analysisIssues));
       setSelected(analysisIssues.length ? analyzedDrafts.findIndex(draft => draft.sourceIndex === analysisIssues[0].sourceIndex) : 0);
-      if (analysisIssues.length) toast.warning(`${analysisIssues.length} source file${analysisIssues.length === 1 ? "" : "s"} could not be converted`);
+      if (failedCount) toast.error(`${failedCount} source file${failedCount === 1 ? "" : "s"} could not be analyzed`);
+      else if (analysisIssues.length) toast.warning(`${analysisIssues.length} source file${analysisIssues.length === 1 ? "" : "s"} could not be converted`);
       else toast.success(`${analyzedDrafts.length} source${analyzedDrafts.length === 1 ? "" : "s"} analyzed`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Analysis failed"); setIssues([]); }
     finally { setBusy(false); }
   };
 
   const update = (changes: Partial<Draft>) => setDrafts(items => items.map((item, index) => index === selected ? { ...item, ...changes } : item));
+  const removeDraft = (draftIndex: number) => {
+    const removedSourceIndex = drafts[draftIndex].sourceIndex;
+    const remainingDrafts = drafts
+      .filter((_, index) => index !== draftIndex)
+      .map(draft => draft.sourceIndex > removedSourceIndex ? { ...draft, sourceIndex: draft.sourceIndex - 1 } : draft);
+    const remainingIssues = issues
+      .filter(issue => issue.sourceIndex !== removedSourceIndex)
+      .map(issue => issue.sourceIndex > removedSourceIndex ? { ...issue, sourceIndex: issue.sourceIndex - 1 } : issue);
+    setFiles(items => items.filter((_, index) => index !== removedSourceIndex));
+    setDrafts(remainingDrafts);
+    setIssues(remainingIssues);
+    setError(issueMessage(remainingIssues));
+    setSelected(currentIndex => currentIndex > draftIndex
+      ? currentIndex - 1
+      : Math.min(currentIndex, Math.max(remainingDrafts.length - 1, 0)));
+  };
   const applyBulk = () => {
     if (!bulkTags.length) return;
     setDrafts(items => items.map(item => ({ ...item, tags: [...new Set([...item.tags, ...bulkTags])] })));
     toast.success("Tags applied to all drafts");
   };
   const commit = async () => {
+    if (hasBlockingAnalysisErrors) {
+      setError(issueMessage(issues));
+      return;
+    }
     const invalidDraft = drafts.find(draft => !draft.title.trim());
     if (invalidDraft) {
       setSelected(drafts.indexOf(invalidDraft));
@@ -152,19 +228,31 @@ export default function KnowledgeImportPage() {
 
   return <div className="max-w-7xl mx-auto">
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-      <div className="flex items-center gap-3"><button type="button" onClick={() => setDrafts([])} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft size={18}/></button><div><h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Review Import Drafts</h1><p className="text-sm text-zinc-500 mt-0.5">Review each article before importing.</p></div></div>
-      <button disabled={busy} onClick={commit} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"><Check size={16}/>{busy ? "Importing..." : `Import ${drafts.length} Article${drafts.length === 1 ? "" : "s"}`}</button>
+      <div className="flex items-center gap-3"><button type="button" onClick={() => { setDrafts([]); setError(""); setIssues([]); }} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft size={18}/></button><div><h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Review Import Drafts</h1><p className="text-sm text-zinc-500 mt-0.5">Review each article before importing.</p></div></div>
+      <div className="flex flex-col items-end gap-1">
+        <button disabled={busy || hasBlockingAnalysisErrors} onClick={commit} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"><Check size={16}/>{busy ? "Importing..." : `Import ${drafts.length} Article${drafts.length === 1 ? "" : "s"}`}</button>
+        {hasBlockingAnalysisErrors && <span className="text-xs font-medium text-red-600 dark:text-red-400">Remove failed articles to enable import.</span>}
+      </div>
     </div>
     <ImportFeedback message={error} issues={issues}/>
     <div className="mb-5 p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl"><div className="flex flex-wrap items-end gap-3"><div className="min-w-56 flex-1"><label className="text-xs font-medium text-zinc-500 mb-1.5 block">Tags for all drafts</label><TagSelector selectedTags={bulkTags} onChange={setBulkTags}/></div><button type="button" onClick={applyBulk} disabled={!bulkTags.length} className="px-4 py-2 text-sm font-medium border border-zinc-300 dark:border-zinc-700 rounded-lg disabled:opacity-50 hover:bg-zinc-50 dark:hover:bg-zinc-800">Apply to All</button></div></div>
     <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
       <aside className="border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-200 dark:divide-zinc-800 h-fit overflow-hidden">{drafts.map((draft, index) => {
         const issue = issues.find(item => item.sourceIndex === draft.sourceIndex);
-        return <button key={`${draft.fileName}-${index}`} onClick={() => setSelected(index)} className={`w-full flex items-center gap-2 text-left p-3 transition-colors ${selected === index ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}><div className="min-w-0 flex-1"><p className="font-medium text-sm truncate">{draft.title || "Untitled article"}</p><p className="text-xs text-zinc-500 truncate">{draft.fileName}</p>{issue && <p className={`mt-1 flex items-center gap-1 text-xs ${issue.severity === "error" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}><AlertTriangle size={12} className="shrink-0"/><span className="truncate">{issue.reason}</span></p>}</div><ChevronRight size={15} className="shrink-0 text-zinc-400"/></button>;
+        const tone = issue?.severity === "error"
+          ? "bg-red-50 dark:bg-red-950/30"
+          : selected === index ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-900";
+        return <div key={`${draft.fileName}-${index}`} className={`flex items-stretch transition-colors ${tone}`}>
+          <button type="button" onClick={() => setSelected(index)} className="flex min-w-0 flex-1 items-center gap-2 p-3 text-left">
+            <div className="min-w-0 flex-1"><p className="font-medium text-sm truncate">{draft.title || "Untitled article"}</p><p className="text-xs text-zinc-500 truncate">{draft.fileName}</p>{issue && <p className={`mt-1 flex items-center gap-1 text-xs ${issue.severity === "error" ? "font-medium text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}><AlertTriangle size={12} className="shrink-0"/><span className="truncate">{issue.reason}</span></p>}</div><ChevronRight size={15} className="shrink-0 text-zinc-400"/>
+          </button>
+          <button type="button" aria-label={`Remove ${draft.fileName}`} title={`Remove ${draft.fileName}`} onClick={() => removeDraft(index)} className={`m-2 ml-0 self-center rounded p-1.5 ${issue?.severity === "error" ? "text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}><X size={16}/></button>
+        </div>;
       })}</aside>
       {current && <section className="min-w-0">
-        {current.warning && <div className="p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm">{current.warning}</div>}
-        <div className={current.warning ? "mt-5 mb-6" : "mb-6"}>
+        {current.analysisError && <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"><span><strong className="block break-all">{current.fileName} could not be analyzed</strong><span className="mt-1 block">{current.analysisError}</span></span><button type="button" onClick={() => removeDraft(selected)} className="shrink-0 rounded-md border border-red-300 px-2.5 py-1.5 text-xs font-medium hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900/50">Remove article</button></div>}
+        {!current.analysisError && current.warning && <div className="p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm">{current.warning}</div>}
+        <div className={current.analysisError || current.warning ? "mt-5 mb-6" : "mb-6"}>
           <textarea ref={titleRef} rows={1} value={current.title} onChange={event => update({ title: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Makale başlığı..." aria-label="Makale başlığı" maxLength={300} className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-zinc-900 outline-none placeholder:text-zinc-300 dark:text-zinc-100 dark:placeholder:text-zinc-600"/>
           <textarea ref={excerptRef} rows={1} value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Kısa açıklama (isteğe bağlı)..." aria-label="Kısa açıklama" className="mt-2 block w-full resize-none overflow-hidden bg-transparent text-base leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400 dark:text-zinc-400"/>
 

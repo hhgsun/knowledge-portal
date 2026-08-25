@@ -44,12 +44,12 @@ GET  /api/bulk/export              # jsonl, csv veya Markdown ZIP
 
 Kaynak akışı iki aşamalıdır:
 
-1. `POST /api/source-imports/analyze` dosyaları ayrıştırır ve Markdown taslakları döndürür. Ayrıştırılamayan veya kullanılabilir metin içermeyen dosya makale gövdesi yapılmaz; özgün ek olarak tutulması önerilir.
+1. `POST /api/source-imports/analyze` dosyaları ayrıştırır ve Markdown taslakları döndürür. Desteklenmeyen ancak geçerli bir dosya veya kullanılabilir metin içermeyen kaynak `warning` ile ek olarak korunabilir; bozuk ya da okunamayan kaynak ise `analysisError` ile başarısız olarak işaretlenir.
 2. `POST /api/source-imports/commit` onaylanan manifesti ve özgün dosyaları gönderir. Her taslak kendi transaction'ında oluşturulur; bir satırın başarısız olması diğer başarılı taslakları geri almaz.
 
 PDF sayfaları, çalışma kitabı sheet'leri ve sunu kaynakları Markdown'da başlık/provenance sınırlarıyla korunur. Özgün dosya ek olarak tutulduğunda normal attachment boyut ve uzantı kuralları uygulanır.
 
-Birden fazla kaynak seçildiğinde ayrıştırılamayan dosya diğer taslakların analizini durdurmaz. İnceleme ekranı sorunlu her dosyanın adını ve neden dönüştürülemediğini toplu olarak gösterir, ilk sorunlu dosyayı seçer ve taslak listesinde uyarıyla işaretler. Commit aşamasındaki kısmi hatalar da dosya adı ve hata nedeni ile gösterilir; daha önce başarıyla oluşturulan makaleler geri alınmaz ve yalnızca başarısız taslaklar düzeltme/yeniden deneme için ekranda kalır.
+Birden fazla kaynak seçildiğinde her dosya bağımsız analiz edilir; bir isteğin veya ayrıştırmanın başarısız olması diğer taslakları gizlemez. İnceleme ekranı sorunlu her dosyanın adını ve nedenini toplu hata alanında, kırmızı taslak satırında ve seçili makalenin hata panelinde gösterir. `analysisError` taşıyan bir taslak kaldığı sürece içe aktarma düğmesi kapalıdır; kullanıcı hatalı makaleyi listeden kaldırdığında, başka analiz hatası yoksa düğme hemen etkinleşir. Uyarı seviyesindeki ve ek olarak korunabilen kaynaklar içe aktarmayı engellemez. Commit aşamasındaki kısmi hatalar da dosya adı ve hata nedeni ile gösterilir; daha önce başarıyla oluşturulan makaleler geri alınmaz ve yalnızca başarısız taslaklar düzeltme/yeniden deneme için ekranda kalır.
 
 ## İçerik Türü ve Yetki Kuralları
 

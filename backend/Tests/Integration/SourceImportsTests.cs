@@ -24,6 +24,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         Assert.True(draft.GetProperty("keepOriginal").GetBoolean());
         Assert.Contains("Kurulum", draft.GetProperty("contentMarkdown").GetString());
         Assert.Contains("İkinci paragraf", draft.GetProperty("contentMarkdown").GetString());
+        Assert.Equal(JsonValueKind.Null, draft.GetProperty("analysisError").ValueKind);
     }
 
     [Fact]
@@ -44,7 +45,24 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         Assert.True(drafts[0].GetProperty("parsed").GetBoolean());
         Assert.Equal("damaged.docx", drafts[1].GetProperty("fileName").GetString());
         Assert.False(drafts[1].GetProperty("parsed").GetBoolean());
-        Assert.False(string.IsNullOrWhiteSpace(drafts[1].GetProperty("warning").GetString()));
+        Assert.Equal(JsonValueKind.Null, drafts[1].GetProperty("warning").ValueKind);
+        Assert.False(string.IsNullOrWhiteSpace(drafts[1].GetProperty("analysisError").GetString()));
+    }
+
+    [Fact]
+    public async Task Analyze_UnsupportedAttachment_ReturnsWarningInsteadOfBlockingError()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        using var body = FileBody("image bytes", "diagram.png");
+
+        var response = await client.PostAsync("/api/source-imports/analyze", body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var draft = json.GetProperty("drafts")[0];
+        Assert.False(draft.GetProperty("parsed").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(draft.GetProperty("warning").GetString()));
+        Assert.Equal(JsonValueKind.Null, draft.GetProperty("analysisError").ValueKind);
     }
 
     [Fact]
