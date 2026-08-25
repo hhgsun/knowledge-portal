@@ -148,7 +148,12 @@ export default function ArticleViewPage() {
     const res = await fetchWithAuth(`/api/articles/${article.id}/approve`, { method: "POST" });
     if (res.ok) {
       const data = await res.json();
-      setArticle({ ...article, approvedAt: data.approvedAt, approvedBy: user?.name ?? null });
+      setArticle({
+        ...article,
+        approvedAt: data.approvedAt,
+        approvedBy: user?.name ?? null,
+        lastReviewedAt: data.approvedAt,
+      });
       toast.success("Makale onaylandı");
     } else {
       const data = await res.json().catch(() => ({}));
@@ -205,9 +210,10 @@ export default function ArticleViewPage() {
   const nextReviewAt = article.lastReviewedAt
     ? new Date(new Date(article.lastReviewedAt).getTime() + article.reviewIntervalDays * 86_400_000)
     : null;
-  const reviewTitle = nextReviewAt
-    ? `Next review: ${nextReviewAt.toLocaleDateString()}`
-    : "No approval review has been recorded yet";
+  const reviewLabel = nextReviewAt
+    ? `Sonraki gözden geçirme: ${nextReviewAt.toLocaleDateString("tr-TR")}`
+    : "Henüz gözden geçirilmedi";
+  const reviewTitle = `Gözden geçirme aralığı: ${article.reviewIntervalDays} gün`;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -311,7 +317,7 @@ export default function ArticleViewPage() {
           </span>
           <span className="flex items-center gap-1" title={reviewTitle}>
             <Clock size={14} />
-            Review every {article.reviewIntervalDays} days
+            {reviewLabel}
           </span>
           {article.apiKeyName ? (
             <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
