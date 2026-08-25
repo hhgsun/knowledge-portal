@@ -23,19 +23,21 @@
 
 Önce `backend/appsettings.json` içindeki `ConnectionStrings:DefaultConnection` değerinin erişilebilir bir PostgreSQL sunucusunu gösterdiğini doğrulayın. Ardından:
 
+Bu bölümde `{site-url}` çalışan frontend'in tarayıcı adresini, `{api-url}` ise backend'in temel adresini ifade eder. Yayın ortamında reverse proxy kullanıldığında API çoğunlukla `{site-url}/api` altında aynı origin'den sunulur; yerel geliştirmede terminalde gösterilen frontend ve backend adreslerini kullanın.
+
 ```bash
 cd backend
 dotnet ef database update
 dotnet run
-# API: http://localhost:5174
-# Swagger (Development): http://localhost:5174/swagger
+# API: {api-url}
+# Swagger (Development): {api-url}/swagger
 
 # Ayrı terminal
 cd frontend
 npm install
 npm run dev
-# UI: http://localhost:5173
-# /api/* proxy: http://localhost:5174
+# UI: {site-url}
+# /api/* proxy hedefi: {api-url}
 ```
 
 Backend ilişkisel sağlayıcıyla açıldığında migration'ları uygular ve seed veriyi yükler. Testlerin varsayılan paketi EF Core InMemory kullandığı için Docker gerektirmez.

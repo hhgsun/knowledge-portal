@@ -16,6 +16,8 @@
 
 Knowledge Portal, tüm işlemler için RESTful bir API sunar. Tüm endpoint'ler /api/ prefix'i altında bulunur. API, JSON formatında istek ve yanıt kullanır.
 
+Bu makaledeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal adresini ifade eder (ör. `https://knowledge.example.com`). Değeri protokol (`https://`) dahil ve sonunda `/` olmadan kullanın.
+
 ## Kimlik Doğrulama
 
 API'ye erişmek için iki farklı kimlik doğrulama yöntemi desteklenir:
@@ -26,14 +28,14 @@ Login endpoint'i ile JWT token alın ve sonraki isteklerde Authorization header'
 
 ```bash
 # Login
-curl -X POST http://localhost:5174/api/auth/login \
+curl -X POST "{site-url}/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email": "kullanici@ornek.com", "password": "sifreniz"}'
 
 # Yanıt: {"token": "eyJ...", "user": {...}}
 
 # Token ile istek
-curl http://localhost:5174/api/articles \
+curl "{site-url}/api/articles" \
   -H "Authorization: Bearer eyJ..."
 ```
 
@@ -42,7 +44,7 @@ curl http://localhost:5174/api/articles \
 Otomasyon ve entegrasyon senaryoları için API key kullanılabilir. API key'ler 'kp_' prefix'i ile başlar ve X-API-Key header'ında gönderilir:
 
 ```bash
-curl http://localhost:5174/api/articles \
+curl "{site-url}/api/articles" \
   -H "X-API-Key: kp_your_api_key_here"
 ```
 

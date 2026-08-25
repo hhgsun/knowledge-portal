@@ -18,6 +18,8 @@ MCP (Model Context Protocol), yapay zekâ istemcilerinin harici bilgi kaynaklar�
 
 MCP araçlarına resmî `ModelContextProtocol.AspNetCore` v2 Streamable HTTP sunucusu üzerinden erişim sağlanır. Endpoint: `POST /mcp`. JSON-RPC ayrıştırma, protokol müzakeresi, discovery ve JSON/SSE yanıt çerçevelemesi SDK tarafından yapılır; portal yalnızca araç kataloğunu ve iş mantığını sağlar.
 
+Bu makaledeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal adresini ifade eder (ör. `https://knowledge.example.com`). Değeri protokol (`https://`) dahil ve sonunda `/` olmadan kullanın.
+
 Tercih edilen protokol versiyonu `2026-07-28`'dir. Modern istemciler `server/discover` ve istek başına `_meta` zarfını kullanır. Initialize tabanlı eski sürümlerin müzakeresi resmî SDK'nın desteklediği sürümlerle uyumludur.
 
 ## Kimlik Doğrulama
@@ -26,10 +28,10 @@ MCP endpoint'i, REST API ile aynı kimlik doğrulama mekanizmalarını kullanır
 
 ### API Key ile (Önerilen)
 
-Otomasyon ve AI entegrasyonları için API key kullanımı önerilir. API key oluşturmak için Admin paneli > API Keys bölümünü kullanın.
+Otomasyon ve AI entegrasyonları için API key kullanımı önerilir. Her rol kendi key'ini profil sayfasındaki **API Keys** sekmesinden oluşturabilir.
 
 ```bash
-curl -X POST http://localhost:5174/mcp \
+curl -X POST "{site-url}/mcp" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "X-API-Key: kp_your_api_key_here" \
@@ -55,7 +57,7 @@ curl -X POST http://localhost:5174/mcp \
 ### JWT Token ile
 
 ```bash
-curl -X POST http://localhost:5174/mcp \
+curl -X POST "{site-url}/mcp" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer eyJ..." \
@@ -239,7 +241,7 @@ Workspace kök dizininde `.vscode/mcp.json` dosyası oluşturun. Anahtarı dosya
   "servers": {
     "knowledge-portal": {
       "type": "http",
-      "url": "http://localhost:5174/mcp",
+      "url": "{site-url}/mcp",
       "headers": {
         "X-API-Key": "${input:knowledge-portal-key}"
       }
@@ -256,7 +258,7 @@ Workspace kökünde `.cursor/mcp.json` oluşturun. `KNOWLEDGE_PORTAL_API_KEY` or
 {
   "mcpServers": {
     "knowledge-portal": {
-      "url": "http://localhost:5174/mcp",
+      "url": "{site-url}/mcp",
       "headers": {
         "X-API-Key": "${env:KNOWLEDGE_PORTAL_API_KEY}"
       }
@@ -271,12 +273,12 @@ MCP için API key oluşturmak üzere REST API kullanın (admin veya api_keys:man
 
 ```bash
 # Önce JWT token al
-curl -X POST http://localhost:5174/api/auth/login \
+curl -X POST "{site-url}/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email": "kullanici@ornek.com", "password": "sifreniz"}'
 
 # API key oluştur
-curl -X POST http://localhost:5174/api/keys \
+curl -X POST "{site-url}/api/keys" \
   -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
   -d '{"name": "MCP Integration", "expiresInDays": 365}'
@@ -352,7 +354,7 @@ class KnowledgePortalMCP:
         return self.call_tool('get_portal_info')
 
 # Kullanım
-mcp = KnowledgePortalMCP('http://localhost:5174', 'kp_your_api_key_here')
+mcp = KnowledgePortalMCP('{site-url}', 'kp_your_api_key_here')
 results = mcp.search('deployment', limit=5)
 for article in results['results']:
     print(f"- {article['title']} ({article['slug']})")
@@ -429,7 +431,7 @@ class KnowledgePortalMCP {
 }
 
 // Kullanım
-const mcp = new KnowledgePortalMCP('http://localhost:5174', 'kp_your_api_key_here');
+const mcp = new KnowledgePortalMCP('{site-url}', 'kp_your_api_key_here');
 const results = await mcp.search('api deployment', 5);
 console.log(results);
 ```
@@ -437,7 +439,7 @@ console.log(results);
 ### PowerShell
 
 ```powershell
-$BaseUrl = 'http://localhost:5174'
+$BaseUrl = '{site-url}'
 $ApiKey = 'kp_your_api_key_here'
 
 function Invoke-McpTool {

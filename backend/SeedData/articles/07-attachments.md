@@ -53,9 +53,11 @@ Düzenleme modunda bir eki sildiğinizde, dosya hemen silinmez — üzeri çizil
 
 ## API ile Dosya İşlemleri
 
+Bu bölümdeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal adresidir (ör. `https://knowledge.example.com`); protokol dahil ve sonunda `/` olmadan yazılır.
+
 ```bash
 # Dosya yükleme (multipart/form-data)
-curl -X POST http://localhost:5174/api/articles/{articleId}/attachments \
+curl -X POST "{site-url}/api/articles/{articleId}/attachments" \
   -H "Authorization: Bearer {token}" \
   -F "file=@document.pdf"
 

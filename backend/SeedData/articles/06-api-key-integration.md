@@ -14,24 +14,26 @@
 
 ## API Key Nedir?
 
-API key'ler, otomasyon, CI/CD pipeline'ları ve harici sistem entegrasyonları için tasarlanmış kimlik doğrulama mekanizmasıdır. JWT token'ın aksine süresiz geçerlidir ve kullanıcı oturumu gerektirmez.
+API key'ler, otomasyon, CI/CD pipeline'ları ve harici sistem entegrasyonları için tasarlanmış kimlik doğrulama mekanizmasıdır. İstek sırasında kullanıcı oturumu gerektirmez; yeni key'ler varsayılan olarak 90 gün geçerlidir ve oluşturulurken 1-365 gün arasında bir süre seçilebilir.
+
+Bu makaledeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal adresini ifade eder (ör. `https://knowledge.example.com`). Değeri protokol (`https://`) dahil ve sonunda `/` olmadan kullanın.
 
 ## API Key Oluşturma
 
-API key yönetimi için admin rolü ve session-based kimlik doğrulama (JWT) gereklidir.
+Her rol kendi API key'lerini yönetebilir. Yönetim işlemleri API key ile değil, session-based kimlik doğrulama (JWT) ile yapılır.
 
-1. Admin panelinden 'API Keys' bölümüne gidin.
+1. Profil sayfasındaki **API Keys** sekmesine gidin.
 2. Yeni key oluştur butonuna tıklayın ve bir isim verin.
 3. Oluşturulan key sadece bir kez gösterilir — güvenli bir yere kaydedin.
 
 ```bash
 # API üzerinden key oluşturma
-curl -X POST http://localhost:5174/api/keys \
+curl -X POST "{site-url}/api/keys" \
   -H "Authorization: Bearer {jwt_token}" \
   -H "Content-Type: application/json" \
-  -d '{"name": "CI/CD Pipeline"}'
+  -d '{"name": "CI/CD Pipeline", "expiresInDays": 90}'
 
-# Yanıt: {"id": "...", "name": "CI/CD Pipeline", "key": "kp_abc123..."}
+# Yanıt: {"id": "...", "name": "CI/CD Pipeline", "key": "kp_abc123...", "expiresAt": "..."}
 ```
 
 ## API Key Kullanımı
@@ -40,18 +42,18 @@ API key'i X-API-Key header'ında gönderin:
 
 ```bash
 # Makale oluşturma
-curl -X POST http://localhost:5174/api/articles \
+curl -X POST "{site-url}/api/articles" \
   -H "X-API-Key: kp_your_key_here" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Otomatik Oluşturulan Makale",
-    "content": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "İçerik"}]}]},
+    "contentMarkdown": "## Otomatik Oluşturulan Makale\n\nİçerik **Markdown** formatındadır.",
     "tags": ["api", "automation"],
     "status": "draft"
   }'
 
 # Arama
-curl "http://localhost:5174/api/search?q=deployment&type=fulltext" \
+curl "{site-url}/api/search?q=deployment&type=fulltext" \
   -H "X-API-Key: kp_your_key_here"
 ```
 
@@ -90,7 +92,7 @@ GET /api/articles?includeContent=true&includeAttachments=true
 Güvenlik amacıyla key'leri periyodik olarak döndürmeniz önerilir. Döndürme işlemi eski key'i geçersiz kılar ve yeni bir key üretir:
 
 ```bash
-curl -X POST http://localhost:5174/api/keys/{keyId}/rotate \
+curl -X POST "{site-url}/api/keys/{keyId}/rotate" \
   -H "Authorization: Bearer {jwt_token}"
 
 # Yanıt: {"key": "kp_new_key_value..."}
@@ -98,13 +100,13 @@ curl -X POST http://localhost:5174/api/keys/{keyId}/rotate \
 
 ## Kısıtlamalar
 
-API key ile erişilemeyen (session-only) endpoint'ler:
+API key principal'ı, sahibi admin olsa bile en fazla editor yetkisi taşır. `articles:delete_any`, `users:manage`, `api_keys:manage_any` ve `featured_links:manage` gibi admin yetkilerini alamaz. Ayrıca hassas yönetim ve silme işlemleri session-only'dir. Başlıca örnekler:
 
-- /api/admin/users — Kullanıcı yönetimi
-- /api/analytics — Analitik verileri
-- /api/keys — API key yönetimi
-- /api/search/reindex — Arama indeksi yeniden oluşturma
-- /api/search/embedding-status — Embedding durumu
+- `/api/keys` ve `/api/admin/keys` — API key yönetimi
+- `/api/admin/users`, `/api/admin/rag-evaluations` ve `/api/logs` — yönetim işlemleri
+- `/api/analytics` — analitik verileri
+- `/api/search/reindex`, `/api/search/repair-indexing`, `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability` ve `/api/search/rag-debug` — ayrıcalıklı arama operasyonları
+- İçerik veya yapılandırma silen `DELETE` endpoint'leri. Kendi oyunu geri alan `DELETE /api/articles/{id}/vote` bu kuralın istisnasıdır.
 
 ## Güvenlik Önerileri
 

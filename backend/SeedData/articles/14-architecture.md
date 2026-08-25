@@ -14,7 +14,7 @@
 
 ## Genel Mimari
 
-Knowledge Portal split monorepo olarak düzenlenmiştir: React tabanlı SPA frontend, ASP.NET Core Web API backend ve PostgreSQL/pgvector veri katmanı. Geliştirme ortamında Vite, `/api/*` isteklerini `http://localhost:5174` adresindeki backend'e yönlendirir.
+Knowledge Portal split monorepo olarak düzenlenmiştir: React tabanlı SPA frontend, ASP.NET Core Web API backend ve PostgreSQL/pgvector veri katmanı. Geliştirme ortamında Vite, `/api/*` isteklerini `VITE_API_BASE_URL` ile yapılandırılan backend adresine yönlendirir; yayın ortamında frontend ve API reverse proxy üzerinden aynı site adresinde sunulur.
 
 ```text
 Kullanıcı / entegrasyon

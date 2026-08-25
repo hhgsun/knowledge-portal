@@ -25,7 +25,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 - Tüm makaleleri düzenleme ve silme
 - Makale yayınlama, arşivleme ve onaylama
 - Kullanıcı yönetimi (oluşturma, düzenleme, silme, rol atama)
-- API key yönetimi
+- Kendi API key'lerini ve tüm kullanıcıların API key'lerini yönetme
 - Etiket yönetimi
 - Analitik görüntüleme
 
@@ -37,6 +37,7 @@ Sistem yöneticisi rolü. Tüm yetkilere sahiptir:
 - Yayınlanmış makalelere onay güven sinyali ekleme/kaldırma
 - Etiket yönetimi
 - Analitik görüntüleme
+- Kendi API key'lerini yönetme
 
 ### Viewer
 
@@ -46,6 +47,7 @@ Temel kullanıcı rolü. Yeni kayıtlarda varsayılan rol:
 - Kendi makalelerini düzenleme
 - Yayınlanmış makaleleri ve kendi makalelerini görüntüleme
 - Oy verme ve yorum yapma
+- Kendi API key'lerini yönetme
 
 ## Yetki Matrisi
 
@@ -62,6 +64,8 @@ Aşağıda tüm yetkiler ve hangi rollerin bunlara sahip olduğu listelenmiştir
 - `users:manage` — admin
 - `analytics:view` — admin, editor
 - `api_keys:manage` — admin, editor, viewer
+- `api_keys:manage_any` — admin
+- `featured_links:manage` — admin
 
 ## Uygulama Desenleri
 
@@ -77,6 +81,11 @@ Bazı hassas endpoint'ler sadece JWT session ile erişilebilir, API key ile eri�
 - Admin kullanıcı yönetimi (/api/admin/users)
 - Analitik (/api/analytics)
 - API key yönetimi (/api/keys)
-- Arama reindex ve embedding durumu
+- Admin API key yönetimi (/api/admin/keys)
+- Arama reindex, onarım, teşhis, durum ve RAG gözlemlenebilirlik işlemleri
+- Sistem logları ve RAG kalite değerlendirmesi yönetimi
+- Kendi oyunu geri alma dışındaki silme endpoint'leri
 
 API key ile bu endpoint'lere erişim denendiğinde HTTP 403 yanıtı döner.
+
+API key principal'ı, sahibi admin olsa bile en fazla editor rolünün yetkilerini taşır. `articles:delete_any` her durumda reddedilir; admin-only `users:manage`, `api_keys:manage_any` ve `featured_links:manage` yetkileri key'e aktarılmaz.

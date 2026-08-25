@@ -52,10 +52,12 @@ Azure-linked kullanıcı için backend başlangıçta tahmin edilemez bir yerel 
 
 Azure AD entegrasyonu için gerekli yapılandırma:
 
+Bu bölümdeki `{site-url}`, kullanıcıların tarayıcıda açtığı mevcut Knowledge Portal adresidir (ör. `https://knowledge.example.com`); protokol dahil ve sonunda `/` olmadan yazılır.
+
 ### Azure Portal
 
 1. Azure Portal'da bir App Registration oluşturun.
-2. Redirect URI olarak http://localhost:5173/auth-popup-callback.html ekleyin (SPA tipi).
+2. Redirect URI olarak `{site-url}/auth-popup-callback.html` adresini ekleyin (SPA tipi). Ayrı bir geliştirme origin'i kullanılıyorsa onun callback adresini de ayrıca kaydedin.
 3. Application (client) ID ve Directory (tenant) ID'yi not edin.
 
 ### Frontend Ayarları

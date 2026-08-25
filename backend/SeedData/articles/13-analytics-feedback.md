@@ -54,7 +54,7 @@ Makalelere yorum bırakılabilir:
 ```bash
 # Yorum ekle
 POST /api/articles/{articleId}/comments
-{"content": "Bu makaleye X senaryosu da eklenebilir."}
+{"comment": "Bu makaleye X senaryosu da eklenebilir."}
 
 # Yorumları listele
 GET /api/articles/{articleId}/comments

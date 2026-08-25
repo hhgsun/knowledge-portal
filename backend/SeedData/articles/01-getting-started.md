@@ -47,9 +47,9 @@ Sisteme iki farklı yöntemle giriş yapabilirsiniz:
 
 Sistemde üç temel rol bulunur:
 
-- **Admin:** Tüm yetkilere sahiptir. Kullanıcı yönetimi, API key yönetimi, herhangi bir makaleyi düzenleme/silme yapabilir.
-- **Editor:** Makale yayınlama, arşivleme, onaylama, etiket yönetimi ve analitik görüntüleme yetkisine sahiptir.
-- **Viewer:** Makale oluşturabilir, kendi makalelerini düzenleyebilir ve yayınlayabilir. Arşivleme, onaylama ve makale silme yetkisi yoktur.
+- **Admin:** Tüm yetkilere sahiptir. Kullanıcıları ve tüm kullanıcıların API key'lerini yönetebilir; herhangi bir makaleyi düzenleyebilir veya silebilir.
+- **Editor:** Makale yayınlama, arşivleme, onaylama, etiket yönetimi, analitik görüntüleme ve kendi API key'lerini yönetme yetkisine sahiptir.
+- **Viewer:** Makale oluşturabilir, kendi makalelerini düzenleyip yayınlayabilir ve kendi API key'lerini yönetebilir. Arşivleme, onaylama ve makale silme yetkisi yoktur.
 
 ## Sonraki Adımlar
 
