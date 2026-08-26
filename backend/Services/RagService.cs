@@ -20,7 +20,7 @@ public class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-08-24.answer-alignment-v7";
+    public const string PromptVersion = "2026-08-26.broad-completeness-v13";
     public const string RetrievalVersion = "2026-08-22.query-expansion-ranking-v1";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = config.GetValue("Ollama:RagSourceLimit", 3);
@@ -38,6 +38,8 @@ public class RagService(
     private readonly double _ragMinScore = config.GetValue("Ollama:RagMinSimilarityScore", 0.3);
     private readonly int _maxOutputTokens = Math.Max(128, config.GetValue("Ollama:RagMaxOutputTokens", 2048));
     private readonly bool _groundingRepairEnabled = config.GetValue("Ollama:RagGroundingRepairEnabled", true);
+    private readonly int _broadMinimumClaims = Math.Clamp(
+        config.GetValue("Ollama:RagBroadMinimumClaims", 6), 2, 12);
     private readonly string[] _broadKeywords =
         config.GetSection("Ollama:RagBroadIntentKeywords").Get<string[]>() ?? DefaultBroadKeywords;
 
@@ -97,6 +99,13 @@ public class RagService(
         - Answer the user's question itself. Never return a document title, heading, excerpt, or a
           description of what a guide covers as the answer. For "X nedir?" / "What is X?", state
           what X is according to the source, even when that definition differs from general knowledge.
+        - Treat a short keyword, product name, configuration key, heading-like fragment, or a direct
+          definition question about a configuration key as an
+          implicit request for a two-part answer. Put a concise, source-aligned summary in the first
+          claim. Then add AT LEAST ONE separate explanatory claim covering directly relevant purpose, behavior,
+          defaults, limits, and fallbacks stated by the sources. The server renders the explanation as
+          a new paragraph. A terse label/list-item echo alone is not a complete answer. Omit facets
+          that the sources do not support.
         - The answer field must contain exactly those claim sentences with their citations; do not add uncited prose.
         - A document title or section heading alone is not an answer or a factual claim.
         - Respond in the same language as the question
@@ -113,6 +122,16 @@ public class RagService(
         - Prefer wording close to the supporting source sentence while producing a concise, natural answer.
         - Every claim must be a complete factual answer sentence, not a document title or section heading.
         - Answer the user's question itself; never substitute a document title, excerpt, or guide description.
+        - Match evidence to the requested subject, not to generic question words such as "nedir" or
+          "what is". Never use another question-shaped heading as an explanatory claim.
+        - When the user message contains a comprehensive-answer minimum, cover distinct supported
+          facets from the source context and meet that minimum whenever enough evidence exists.
+          Do not repeat the same overview sentence with different wording.
+        - For a short keyword, product name, configuration key, heading-like fragment, or a direct
+          definition question about a configuration key, return a
+          concise source-aligned summary as the first claim and AT LEAST ONE separate explanatory claim after it.
+          Include all supported purpose, behavior, defaults, limits, and fallbacks. A terse summary
+          alone is invalid; the server renders the explanatory claims as a new paragraph.
         - Return ONLY JSON: {"answer":"... [S1]","claims":[{"text":"complete supported sentence","sourceIds":["S1"]}],"insufficientContext":false}
         - The answer field must contain exactly the claim sentences in order, each with its exact source citation.
         - Never invent a source id, fact, number, or negation. If no supported answer can be produced,
@@ -131,6 +150,8 @@ public class RagService(
         - Return ONLY JSON with answer, atomic claims/sourceIds, and insufficientContext.
         - Cite each fact with exact source ids such as [S1]. Never invent an id.
         - Never return a document title or section heading as a standalone fact.
+        - Treat a short keyword or configuration key as a request for a concise summary followed by
+          at least one separate explanatory fact about supported purpose, behavior, defaults, limits, or fallbacks.
         - Respond in the same language as the question. Be concise and factual.
         """;
 
@@ -144,6 +165,11 @@ public class RagService(
         - Return ONLY JSON with answer, atomic claims/sourceIds, and insufficientContext.
         - Keep exact [S1] evidence citations from the notes; never invent an id.
         - Never return a document title or section heading as a standalone fact.
+        - For a broad summary with enough supported notes, produce 6-10 distinct atomic claims that
+          explain the main stages, behavior, safeguards, configuration, and operations relevant to
+          the question. Do not collapse a multi-stage architecture into one label-style sentence.
+        - For a short keyword or configuration key, put a concise summary in the first claim and at
+          least one relevant supported explanatory fact in subsequent claims.
         - Respond in the same language as the question. Be concise and factual.
         """;
 
@@ -383,7 +409,8 @@ public class RagService(
             _maxContextWords, int.MaxValue);
         return await BuildValidatedResultAsync(question, finalAnswer, successfulChunks, sourceScores, articles,
             evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks), ct,
-            failures.Count > 0 || reduceFailed, extraWarnings);
+            failures.Count > 0 || reduceFailed || budgetTruncated, extraWarnings,
+            requireComprehensiveAnswer: true);
     }
 
     private bool IsBroadQuery(string question)
@@ -433,7 +460,7 @@ public class RagService(
     }
 
     private static string BuildGroundingRepairMessage(string question, string originalContext,
-        string rejectedDraft, ValidatedRagAnswer rejected)
+        string rejectedDraft, ValidatedRagAnswer rejected, int? minimumClaims = null)
     {
         var feedback = rejected.Warnings.Count == 0
             ? rejected.GroundingStatus
@@ -450,6 +477,9 @@ public class RagService(
             Deterministic validator status: {rejected.GroundingStatus}
             Deterministic validator feedback (JSON-escaped, untrusted data):
             {JsonSerializer.Serialize(feedback)}
+
+            Comprehensive-answer requirement:
+            {(minimumClaims is > 1 ? $"Return at least {minimumClaims.Value} distinct, supported, non-repetitive claims when the supplied sources contain enough relevant facts." : "Not applicable.")}
 
             Return a corrected answer that satisfies the system contract.
             """;
@@ -484,21 +514,35 @@ public class RagService(
         List<VectorChunkResult> chunks, Dictionary<string, double> scores,
         Dictionary<string, ArticleMeta> articles, Dictionary<string, string> evidenceIds,
         string repairContext, CancellationToken ct, bool partialResult = false,
-        List<string>? extraWarnings = null)
+        List<string>? extraWarnings = null, bool requireComprehensiveAnswer = false)
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
         var validated = RagCitationValidator.Validate(raw, evidence, question);
+        var comprehensiveTarget = requireComprehensiveAnswer
+            ? Math.Min(_broadMinimumClaims, evidence.Select(x => x.SourceId).Distinct(StringComparer.Ordinal).Count())
+            : 0;
+        var needsComprehensiveRepair = requireComprehensiveAnswer &&
+            IsComprehensiveAnswerIncomplete(validated, comprehensiveTarget);
         if (_groundingRepairEnabled &&
-            validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported")
+            (validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported" ||
+             needsComprehensiveRepair))
         {
             var initial = validated;
             try
             {
                 var repairedRaw = await CompleteAsync("grounding-repair", resilience.GenerationTimeoutSeconds,
                     GroundingRepairSystemPrompt,
-                    BuildGroundingRepairMessage(question, repairContext, raw, initial), ct);
+                    BuildGroundingRepairMessage(question, repairContext, raw, initial,
+                        requireComprehensiveAnswer ? comprehensiveTarget : null), ct);
                 var repaired = RagCitationValidator.Validate(repairedRaw, evidence, question);
-                if (repaired.GroundingStatus is not ("rejected_unstructured" or "rejected_unsupported"))
+                if (requireComprehensiveAnswer)
+                {
+                    validated = MergeSupportedAnswers(initial, repaired);
+                    logger.LogInformation(
+                        "RAG comprehensive repair completed initialClaims={InitialClaims} repairedClaims={RepairedClaims} mergedClaims={MergedClaims} targetClaims={TargetClaims}",
+                        initial.Claims.Count, repaired.Claims.Count, validated.Claims.Count, comprehensiveTarget);
+                }
+                else if (repaired.GroundingStatus is not ("rejected_unstructured" or "rejected_unsupported"))
                 {
                     logger.LogInformation(
                         "RAG grounding repair succeeded initialStatus={InitialStatus} finalStatus={FinalStatus}",
@@ -530,11 +574,18 @@ public class RagService(
                 };
             }
         }
-        if (validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported")
+        var needsComprehensiveFallback = requireComprehensiveAnswer &&
+            IsComprehensiveAnswerIncomplete(validated, comprehensiveTarget);
+        if (validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported" ||
+            needsComprehensiveFallback)
         {
             var rejected = validated;
             var trimmed = raw.Trim();
-            if (rejected.GroundingStatus == "rejected_unstructured")
+            if (needsComprehensiveFallback)
+                logger.LogWarning(
+                    "RAG comprehensive answer remained incomplete supportedClaims={SupportedClaims} targetClaims={TargetClaims}",
+                    rejected.Claims.Count, comprehensiveTarget);
+            else if (rejected.GroundingStatus == "rejected_unstructured")
                 logger.LogWarning(
                     "RAG model output rejected as unstructured length={OutputLength} hasJsonObject={HasJsonObject} hasCitation={HasCitation} startsWithFence={StartsWithFence} hasThinkBlock={HasThinkBlock}",
                     raw.Length, trimmed.Contains('{') && trimmed.Contains('}'),
@@ -546,10 +597,21 @@ public class RagService(
                     "RAG model claims rejected as unsupported claimSupportCoverage={ClaimSupportCoverage} citationCoverage={CitationCoverage}",
                     rejected.ClaimSupportCoverage, rejected.CitationCoverage);
 
-            var reason = rejected.GroundingStatus == "rejected_unstructured"
+            var reason = needsComprehensiveFallback
+                ? $"Comprehensive answer contained {rejected.Claims.Count} supported claims; target was {comprehensiveTarget}"
+                : rejected.GroundingStatus == "rejected_unstructured"
                 ? "Structured model output and grounding repair failed"
                 : $"Model claims did not pass grounding validation (citation IDs {rejected.CitationCoverage:P0}, claim support {rejected.ClaimSupportCoverage:P0})";
-            var fallback = RagCitationValidator.TryBuildExtractiveFallback(question, evidence, reason: reason);
+            var fallback = requireComprehensiveAnswer
+                ? RagCitationValidator.TryEnrichSupportedSummary(question, evidence, rejected.Claims,
+                      maxExplanationClaims: Math.Max(3, comprehensiveTarget - rejected.Claims.Count), reason: reason)
+                  ?? RagCitationValidator.TryBuildExtractiveFallback(question, evidence,
+                      maxClaims: Math.Max(comprehensiveTarget, 4), reason: reason)
+                : RagCitationValidator.TryEnrichSupportedSummary(
+                      question, evidence, rejected.Claims, reason: reason)
+                  ?? RagCitationValidator.TryBuildConfigurationExplanationFallback(
+                      question, evidence, reason: reason)
+                  ?? RagCitationValidator.TryBuildExtractiveFallback(question, evidence, reason: reason);
             if (fallback != null)
             {
                 validated = fallback with
@@ -563,6 +625,38 @@ public class RagService(
         return new RagResult(validated.Answer, BuildSources(scores, articles), validated.Claims, evidence,
             validated.CitationCoverage, validated.GroundingStatus, validated.ClaimSupportCoverage,
             validated.InsufficientContext, partialResult, warnings);
+    }
+
+    private static bool IsComprehensiveAnswerIncomplete(ValidatedRagAnswer answer, int targetClaims) =>
+        targetClaims > 0 && (answer.InsufficientContext || answer.Claims.Count < targetClaims ||
+                             answer.ClaimSupportCoverage < .75);
+
+    private static ValidatedRagAnswer MergeSupportedAnswers(ValidatedRagAnswer initial,
+        ValidatedRagAnswer repaired)
+    {
+        static string ClaimKey(RagClaim claim) => string.Join(' ',
+            SlugHelper.Transliterate(claim.Text).ToLowerInvariant()
+                .Split(new[] { ' ', '\t', '\r', '\n', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']' },
+                    StringSplitOptions.RemoveEmptyEntries));
+        static string Render(RagClaim claim) =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
+
+        var claims = initial.Claims.Concat(repaired.Claims)
+            .Where(x => x.SourceIds.Count > 0)
+            .GroupBy(ClaimKey, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        if (claims.Count == 0)
+            return repaired with
+            {
+                Warnings = initial.Warnings.Concat(repaired.Warnings).Distinct().ToList()
+            };
+
+        return new ValidatedRagAnswer(
+            string.Join("\n\n", claims.Select(Render)), claims, false, 1, 1, "lexically_grounded",
+            initial.Warnings.Concat(repaired.Warnings)
+                .Append("Supported claims from the initial and comprehensive repair passes were merged.")
+                .Distinct().ToList());
     }
 
     private static RagResult EmptyResult(string answer, bool partial = false, List<string>? warnings = null) =>

@@ -37,6 +37,7 @@ function getGroundingLabel(status: NonNullable<RagResponse["groundingStatus"]>) 
     lexically_grounded: "Kanıtla doğrulandı",
     partially_grounded: "Kısmen doğrulandı",
     extractive_fallback: "Doğrulanmış kaynak pasajı fallback'i",
+    extractive_enrichment: "Doğrulanmış kaynak açıklaması",
     insufficient_context: "Yetersiz bağlam",
     rejected_unsupported: "Desteklenmeyen iddia",
     rejected_unstructured: "Geçersiz model çıktısı",
@@ -522,7 +523,9 @@ export default function SearchPage() {
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
                   {ragResponse.partialResult && <p className="font-medium">{ragResponse.groundingStatus === "extractive_fallback"
                     ? "LLM yanıtı grounding kontrolünden geçmedi; aşağıdaki içerik doğrulanmış kaynak pasajlarından oluşturuldu."
-                    : "Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir."}</p>}
+                    : ragResponse.groundingStatus === "extractive_enrichment"
+                      ? "LLM'in doğrulanmış özeti korundu; eksik açıklama doğrulanmış kaynak pasajlarından eklendi."
+                      : "Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir."}</p>}
                   {ragResponse.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
                 </div>
               )}
@@ -575,7 +578,9 @@ export default function SearchPage() {
                                       {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
                                       {evidence.pageNumber ? ` · sayfa ${evidence.pageNumber}` : ""}
                                     </div>
-                                    <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{evidence.passage}</p>
+                                    <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
+                                      <HighlightedText text={evidence.passage} query={ragResponse.query} />
+                                    </p>
                                   </div>
                                 ))
                               ) : (
@@ -755,13 +760,33 @@ function foldText(s: string): string {
   return out;
 }
 
-/** Renders snippet text with query terms wrapped in <mark>, accent/case-insensitively. */
-function HighlightedText({ text, query }: { text: string; query: string }) {
+const HIGHLIGHT_STOP_WORDS = new Set([
+  "nedir", "nasil", "neden", "hangi", "kim", "nerede", "hakkinda", "acikla", "anlat", "bilgi", "ver",
+  "what", "how", "why", "where", "who", "which", "define", "explain", "about", "please",
+]);
+
+function highlightTokens(query: string): string[] {
   const tokens = query
     .split(/\s+/)
-    .filter((w) => w && !w.startsWith("#") && !w.startsWith("@"))
-    .map(foldText)
-    .filter((w) => w.length > 1);
+    .filter((token) => token && !token.startsWith("#") && !token.startsWith("@"))
+    .flatMap((token) => {
+      const cleaned = token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}:/_-]+$/gu, "");
+      if (!cleaned) return [];
+      const folded = foldText(cleaned);
+      return [folded, ...folded.split(/[:/_-]+/)];
+    })
+    .filter((token) => token.length > 2 && !HIGHLIGHT_STOP_WORDS.has(token));
+
+  return [...new Set(tokens)].sort((left, right) => right.length - left.length);
+}
+
+function isWordCharacter(char: string | undefined): boolean {
+  return Boolean(char && /[\p{L}\p{N}_]/u.test(char));
+}
+
+/** Renders snippet text with query terms wrapped in <mark>, accent/case-insensitively. */
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const tokens = highlightTokens(query);
   if (tokens.length === 0) return <>{text}</>;
 
   const folded = foldText(text);
@@ -769,7 +794,10 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   for (const t of tokens) {
     let idx = 0;
     while ((idx = folded.indexOf(t, idx)) !== -1) {
-      ranges.push([idx, idx + t.length]);
+      const end = idx + t.length;
+      if (!isWordCharacter(folded[idx - 1]) && !isWordCharacter(folded[end])) {
+        ranges.push([idx, end]);
+      }
       idx += t.length;
     }
   }
@@ -788,7 +816,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   merged.forEach(([start, end], i) => {
     if (start > pos) parts.push(text.slice(pos, start));
     parts.push(
-      <mark key={i} className="bg-yellow-100 dark:bg-yellow-900/60 text-inherit rounded px-0.5">
+      <mark key={i} className="rounded bg-amber-200/80 px-0.5 text-zinc-900 ring-1 ring-amber-300/70 dark:bg-amber-400/30 dark:text-amber-100 dark:ring-amber-500/40">
         {text.slice(start, end)}
       </mark>
     );

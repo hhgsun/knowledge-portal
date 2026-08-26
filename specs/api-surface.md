@@ -647,9 +647,19 @@ its provenance and content. `canonicalUrl` points to the normal authenticated ar
 and `pageNumber` is present only when PDF page provenance is available.
 
 The chat request supplies an explicit JSON schema requiring `answer`, `claims` and
-`insufficientContext`. The free-form model answer is never returned independently. The API rebuilds
-`answer` only from claims that pass known-evidence, lexical-overlap, numeric-consistency and
-negation-consistency checks; repeating a document title as a standalone claim is rejected. Support is evaluated independently against local sentence and
+`insufficientContext`. A short keyword, product name, configuration key, or heading-like fragment is
+treated as an implicit request to explain that topic from all directly relevant evidence, including
+supported purpose, behavior, defaults, limits, and fallbacks. The free-form model answer is never
+returned independently. The API rebuilds `answer` only from claims that pass known-evidence,
+lexical-overlap, numeric-consistency and negation-consistency checks; repeating a document title as a
+standalone claim is rejected. For a bare-topic query, punctuation does not affect classification: the
+first supported claim is retained as the summary paragraph. The same rule applies to direct definition
+questions whose subject is a colon-delimited configuration path: compact source-native configuration
+descriptions are accepted as definitions even when they do not contain a grammatical `is`/`-dır`
+predicate. When the supplied evidence contains
+multiple distinct relevant facts, at least one additional supported explanatory claim must follow in a
+new paragraph. A single-claim answer is rejected only in that evidence-rich case. Rejected generation receives one bounded, evidence-bound grounding-repair attempt before the extractive
+fallback is considered. Support is evaluated independently against local sentence and
 contrast-separated clause windows in each cited evidence item; cited chunks are not concatenated,
 so unrelated positive or negative statements cannot change a claim's polarity result. A complete contract-compliant JSON object may be recovered from a
 model-added code fence or text wrapper; that wrapper is ignored and never shown. If a provider
@@ -664,6 +674,29 @@ verbatim evidence sentences, lexical, numeric and negation support hold by const
 relevant evidence sentence exists, the request fails closed as an
 insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
 **503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
+
+If a bare-topic/configuration definition produces a fully supported summary but both the initial and
+repair calls omit the required explanation, the server preserves that summary and appends up to three
+query-relevant, security-screened sentences from verified evidence as a second paragraph. This is
+returned with `groundingStatus: "extractive_enrichment"`, `partialResult: true`, and an explicit warning;
+unsupported model prose is never used for the enrichment. Definition question words such as `nedir`
+and `what is` are excluded from relevance scoring; question-shaped headings and unrelated document
+titles cannot become explanation claims. A follow-up configuration explanation must either mention
+the requested subject or continue from the same evidence item as the validated definition.
+
+For a colon-delimited configuration query whose model claims all fail grounding, the fallback can
+recover the exact configuration entry from a flattened evidence chunk up to the next configuration
+key and combine it with short, query-overlapping verified evidence sentences. The entry is shown as
+the first paragraph and explanatory passages as the second; this remains an
+`extractive_fallback`/partial result and never treats the mere existence of unrelated retrieval hits as
+sufficient evidence.
+
+Broad summary queries use a configurable completeness gate (`Ollama:RagBroadMinimumClaims`, default
+6). When map-reduce leaves fewer supported claims than the available-evidence target, or fewer than
+75% of attempted claims survive grounding, the server performs one bounded evidence-bound repair.
+Supported, distinct claims from the reduce and repair passes are merged. If the merged answer is
+still below the target, query-relevant verified evidence sentences complete the response as an
+`extractive_enrichment` partial result; unrelated retrieval hits are not added merely to reach a count.
 
 ---
 

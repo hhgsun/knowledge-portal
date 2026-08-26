@@ -48,6 +48,9 @@ public static partial class RagCitationValidator
             .SelectMany(claim => EvidenceSentences(claim.Text)
                 .Select(sentence => new RagClaim(sentence, claim.SourceIds ?? [])))
             .ToList();
+        var twoPartTopicQuery = IsBareTopicQuery(question) || IsConfigurationDefinitionQuery(question);
+        var requiresTopicExplanation = twoPartTopicQuery && HasMultipleRelevantEvidenceSentences(question!, evidence);
+        var configurationDefinitionSourceIds = new HashSet<string>(StringComparer.Ordinal);
         var claims = new List<RagClaim>();
         var valid = 0;
         var supported = 0;
@@ -72,7 +75,11 @@ public static partial class RagCitationValidator
             if (ids.Count > 0) valid++;
             if (ids.Count == 0) continue;
 
-            if (!IsResponsiveToQuestion(question, claim.Text))
+            var directlyResponsive = IsResponsiveToQuestion(question, claim.Text);
+            var responsiveConfigurationExplanation = IsConfigurationDefinitionQuery(question) &&
+                configurationDefinitionSourceIds.Count > 0 &&
+                IsRelevantConfigurationExplanation(question!, claim.Text, ids, configurationDefinitionSourceIds);
+            if (!directlyResponsive && !responsiveConfigurationExplanation)
             {
                 warnings.Add($"Claim was supported by source metadata but did not directly answer the definition question: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
                 continue;
@@ -94,6 +101,8 @@ public static partial class RagCitationValidator
 
             supported++;
             claims.Add(new RagClaim(claim.Text.Trim(), supportingIds));
+            if (directlyResponsive && IsConfigurationDefinitionQuery(question))
+                configurationDefinitionSourceIds.UnionWith(supportingIds);
         }
 
         var coverage = claimCount == 0 ? 0 : valid / (double)claimCount;
@@ -105,11 +114,28 @@ public static partial class RagCitationValidator
         if (claims.Count == 0)
             return new(RefuseInsufficient, [], true, coverage, supportCoverage, "rejected_unsupported", warnings.Distinct().ToList());
 
+        // Punctuation is deliberately irrelevant here. A local model may turn
+        // "Reranking:External: ..." into "Reranking:External, ..." and otherwise bypass a
+        // catalogue-echo check. A bare topic answer therefore needs at least two independently
+        // supported claims: the first is the retained summary, the rest form the explanation.
+        if (requiresTopicExplanation && claims.Count < 2)
+        {
+            warnings.Add("A bare topic answer with multiple relevant evidence facts requires a supported summary and at least one separate supported explanatory claim.");
+            // Preserve the independently grounded summary internally. The RAG service first asks
+            // the model to repair the incomplete answer; if the local model still returns only the
+            // summary, a verified evidence sentence can be appended as a transparent enrichment.
+            return new(RefuseInsufficient, claims, true, coverage, supportCoverage,
+                "rejected_unsupported", warnings.Distinct().ToList());
+        }
+
         // The model's prose is not trusted independently from its structured claims. Rebuild the
         // user-visible answer exclusively from claims that survived evidence-id and support checks,
         // so uncited sentences cannot bypass validation through the free-form answer field.
-        var answer = string.Join("\n", claims.Select(claim =>
-            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}"));
+        static string RenderClaim(RagClaim claim) =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
+        var answer = twoPartTopicQuery && claims.Count > 1
+            ? $"{RenderClaim(claims[0])}\n\n" + string.Join('\n', claims.Skip(1).Select(RenderClaim))
+            : string.Join('\n', claims.Select(RenderClaim));
 
         var status = coverage == 1 && supportCoverage == 1 ? "lexically_grounded" : "partially_grounded";
         return new(answer, claims, false, coverage, supportCoverage, status, warnings.Distinct().ToList());
@@ -153,6 +179,112 @@ public static partial class RagCitationValidator
             $"{claim.Text} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}"));
         return new ValidatedRagAnswer(answer, candidates, false, 1, 1, "extractive_fallback",
             [$"{reason ?? "Structured model output failed"}; returning query-relevant passages extracted from verified evidence."]);
+    }
+
+    public static ValidatedRagAnswer? TryEnrichSupportedSummary(string question,
+        IReadOnlyCollection<RagEvidence> evidence, IReadOnlyCollection<RagClaim> supportedSummary,
+        int maxExplanationClaims = 3, string? reason = null)
+    {
+        if (supportedSummary.Count == 0) return null;
+        var topic = ConfigurationSubject(question) ?? DefinitionSubject(question) ?? question;
+        var queryTokens = SignificantTokens(topic);
+        if (queryTokens.Count == 0) return null;
+        var summaryTexts = supportedSummary.Select(x => NormalizeComparableText(x.Text))
+            .ToHashSet(StringComparer.Ordinal);
+        var summarySourceIds = supportedSummary.SelectMany(x => x.SourceIds).ToHashSet(StringComparer.Ordinal);
+
+        var explanations = evidence.SelectMany(item =>
+                EvidenceSentences(item.Passage)
+                    .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
+                    .Where(sentence => sentence.Length is >= 20 and <= 500)
+                    .Where(sentence => !SameNormalizedText(sentence, item.Title))
+                    .Where(sentence => !summaryTexts.Contains(NormalizeComparableText(sentence)))
+                    .Where(IsDeclarativeExplanation)
+                    .Where(sentence => SignificantTokens(sentence).Any(queryTokens.Contains) ||
+                                       summarySourceIds.Contains(item.SourceId))
+                    .Where(sentence => !supportedSummary.Any(summary =>
+                        IsSupportedByEvidence(summary.Text, sentence)))
+                    .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
+                    .Select(sentence => new
+                    {
+                        item.SourceId,
+                        Text = sentence,
+                        Overlap = SignificantTokens(sentence).Count(queryTokens.Contains),
+                        item.Score
+                    }))
+            .Where(x => x.Overlap > 0)
+            .OrderByDescending(x => x.Overlap)
+            .ThenByDescending(x => x.Score)
+            .GroupBy(x => NormalizeComparableText(x.Text), StringComparer.Ordinal)
+            .Select(x => x.First())
+            .Take(Math.Clamp(maxExplanationClaims, 1, 6))
+            .Select(x => new RagClaim(x.Text, [x.SourceId]))
+            .ToList();
+        if (explanations.Count == 0) return null;
+
+        static string Render(RagClaim claim) =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
+        var summaries = supportedSummary.ToList();
+        var answer = $"{string.Join('\n', summaries.Select(Render))}\n\n" +
+                     string.Join('\n', explanations.Select(Render));
+        return new ValidatedRagAnswer(answer, summaries.Concat(explanations).ToList(), false,
+            1, 1, "extractive_enrichment",
+            [$"{reason ?? "The model returned only a supported summary"}; verified source passages were appended as an explanatory paragraph."]);
+    }
+
+    public static ValidatedRagAnswer? TryBuildConfigurationExplanationFallback(string question,
+        IReadOnlyCollection<RagEvidence> evidence, int maxExplanationClaims = 3, string? reason = null)
+    {
+        var subject = ConfigurationSubject(question);
+        if (subject == null) return null;
+        var subjectTokens = SignificantTokens(subject);
+        if (subjectTokens.Count == 0) return null;
+
+        var summary = evidence
+            .Select(item => new { Evidence = item, Text = ExtractConfigurationEntry(item.Passage, subject) })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Text))
+            .OrderByDescending(x => x.Evidence.Score)
+            .Select(x => new RagClaim(x.Text!, [x.Evidence.SourceId]))
+            .FirstOrDefault();
+        var summaryText = summary == null ? null : NormalizeComparableText(summary.Text);
+
+        var explanations = evidence.SelectMany(item =>
+                EvidenceSentences(item.Passage)
+                    .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
+                    .Where(sentence => sentence.Length is >= 20 and <= 500)
+                    .Where(sentence => !SameNormalizedText(sentence, item.Title))
+                    .Where(IsDeclarativeExplanation)
+                    // A flattened documentation sentence can contain the extracted configuration
+                    // entry plus neighbouring keys. It is not a separate explanation and must not
+                    // be repeated below the concise summary.
+                    .Where(sentence => summaryText == null ||
+                                       !NormalizeComparableText(sentence).Contains(summaryText, StringComparison.Ordinal))
+                    .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
+                    .Select(sentence => new
+                    {
+                        item.SourceId,
+                        Text = sentence,
+                        Overlap = SignificantTokens(sentence).Count(subjectTokens.Contains),
+                        item.Score
+                    }))
+            .Where(x => x.Overlap > 0)
+            .OrderByDescending(x => x.Overlap)
+            .ThenByDescending(x => x.Score)
+            .GroupBy(x => NormalizeComparableText(x.Text), StringComparer.Ordinal)
+            .Select(x => x.First())
+            .Take(Math.Clamp(maxExplanationClaims, 1, 6))
+            .Select(x => new RagClaim(x.Text, [x.SourceId]))
+            .ToList();
+        if (summary == null && explanations.Count == 0) return null;
+
+        static string Render(RagClaim claim) =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
+        var claims = summary == null ? explanations : [summary, .. explanations];
+        var answer = summary != null && explanations.Count > 0
+            ? $"{Render(summary)}\n\n{string.Join('\n', explanations.Select(Render))}"
+            : string.Join('\n', claims.Select(Render));
+        return new ValidatedRagAnswer(answer, claims, false, 1, 1, "extractive_fallback",
+            [$"{reason ?? "The model did not produce supported configuration claims"}; returning a query-focused configuration entry and verified explanatory passages."]);
     }
 
     private static ModelOutput? TryParse(string raw)
@@ -249,6 +381,81 @@ public static partial class RagCitationValidator
     private static bool IsTitleOnlyClaim(string claim, RagEvidence evidence) =>
         SameNormalizedText(claim, evidence.Title);
 
+    private static bool IsBareTopicQuery(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var topic = question.Trim();
+        return !topic.EndsWith('?') && topic.Length <= 160 &&
+               topic.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length <= 8;
+    }
+
+    private static bool IsConfigurationDefinitionQuery(string? question) =>
+        DefinitionSubject(question)?.Contains(':', StringComparison.Ordinal) == true;
+
+    private static bool IsRelevantConfigurationExplanation(string question, string claim,
+        IReadOnlyCollection<string> claimSourceIds, IReadOnlySet<string> definitionSourceIds)
+    {
+        if (!IsDeclarativeExplanation(claim)) return false;
+        var subject = DefinitionSubject(question);
+        if (subject == null) return false;
+        var subjectTokens = SignificantTokens(subject);
+        var claimTokens = SignificantTokens(claim);
+
+        // A follow-up explanation is relevant when it names part of the requested configuration
+        // subject (for example "external cross-encoder"), or continues in the same evidence item
+        // as the already validated compact definition. Merely sharing the question word "nedir"
+        // must never make an unrelated heading relevant.
+        return subjectTokens.Any(claimTokens.Contains) || claimSourceIds.Any(definitionSourceIds.Contains);
+    }
+
+    private static bool IsDeclarativeExplanation(string sentence)
+    {
+        var text = sentence.Trim();
+        if (text.Length == 0 || text.EndsWith('?')) return false;
+        return !TurkishDefinitionQuestionRegex().IsMatch(text) &&
+               !EnglishDefinitionQuestionRegex().IsMatch(text);
+    }
+
+    private static string? ConfigurationSubject(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return null;
+        var subject = DefinitionSubject(question) ?? question.Trim().TrimEnd('?', '!', '.');
+        return subject.Contains(':', StringComparison.Ordinal) &&
+               !subject.Any(char.IsWhiteSpace) ? subject : null;
+    }
+
+    private static string? ExtractConfigurationEntry(string passage, string subject)
+    {
+        var start = passage.IndexOf(subject, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return null;
+        var segment = passage[start..Math.Min(passage.Length, start + 500)];
+        var end = segment.Length;
+        var sentenceEnd = segment.IndexOfAny(['.', '!', '?'], subject.Length);
+        if (sentenceEnd >= 0) end = Math.Min(end, sentenceEnd + 1);
+        var nextKey = NextConfigurationKeyRegex().Match(segment, Math.Min(subject.Length + 1, segment.Length));
+        if (nextKey.Success) end = Math.Min(end, nextKey.Index);
+
+        var entry = segment[..end].Trim().TrimEnd(',', ';', ':', '-', '—');
+        if (entry.Length <= subject.Length + 3 || entry.Length > 500) return null;
+        return entry.EndsWith('.') ? entry : entry + ".";
+    }
+
+    private static bool HasMultipleRelevantEvidenceSentences(string question,
+        IReadOnlyCollection<RagEvidence> evidence)
+    {
+        var queryTokens = SignificantTokens(question);
+        if (queryTokens.Count == 0) return false;
+
+        return evidence.SelectMany(item => EvidenceSentences(item.Passage)
+                .Where(sentence => !SameNormalizedText(sentence, item.Title)))
+            .Where(sentence => SignificantTokens(sentence).Any(queryTokens.Contains))
+            .Select(NormalizeComparableText)
+            .Where(sentence => sentence.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .Count() == 2;
+    }
+
     /// <summary>
     /// Grounding proves that words are supported by a source; it does not prove that they answer
     /// the user's question. For a pure definition request ("MCP nedir?" / "What is MCP?"), require
@@ -267,7 +474,18 @@ public static partial class RagCitationValidator
         var claimTokens = SignificantTokens(claim);
         if (subjectTokens.Count == 0 || !subjectTokens.Any(claimTokens.Contains)) return false;
 
-        return DefinitionPredicateRegex().IsMatch(claim);
+        if (DefinitionPredicateRegex().IsMatch(claim)) return true;
+
+        // Configuration paths are commonly documented as compact catalogue entries rather than
+        // grammatical "X is Y" sentences (for example "Reranking:External, disabled external
+        // cross-encoder ..."). Accept that source-native definition only when the requested subject
+        // is itself a configuration path and the claim adds meaningful descriptive tokens. A title
+        // or a bare key still fails this check.
+        if (!subject.Contains(':', StringComparison.Ordinal)) return false;
+        var normalizedSubject = NormalizeComparableText(subject);
+        var normalizedClaim = NormalizeComparableText(claim);
+        if (!normalizedClaim.StartsWith(normalizedSubject + " ", StringComparison.Ordinal)) return false;
+        return claimTokens.Except(subjectTokens).Count() >= 3;
     }
 
     private static string? DefinitionSubject(string? question)
@@ -344,7 +562,8 @@ public static partial class RagCitationValidator
     {
         var stop = new HashSet<string>(StringComparer.Ordinal)
         {
-            "ve", "veya", "ile", "için", "bir", "bu", "şu", "da", "de", "the", "a", "an", "and", "or", "for", "to", "of", "is", "are"
+            "ve", "veya", "ile", "için", "bir", "bu", "şu", "da", "de", "nedir", "demektir", "anlama", "gelir",
+            "the", "a", "an", "and", "or", "for", "to", "of", "is", "are", "what", "define", "means"
         };
         return SlugHelper.Transliterate(text).ToLowerInvariant()
             .Split(new[] { ' ', '\t', '\r', '\n', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '"', '\'' },
@@ -375,4 +594,6 @@ public static partial class RagCitationValidator
     private static partial Regex EnglishDefinitionQuestionRegex();
     [GeneratedRegex(@"\b(?:bir|olarak|anlamına\s+gelir|ifade\s+eder|kısaltmasıdır|is|means|refers\s+to|stands\s+for|denotes)\b|\p{L}{3,}(?:d[ıiuü]r|t[ıiuü]r)\b", RegexOptions.IgnoreCase)]
     private static partial Regex DefinitionPredicateRegex();
+    [GeneratedRegex(@"\s+(?=[\p{L}][\p{L}\p{N}_]*(?::[\p{L}\p{N}_*]+)+)")]
+    private static partial Regex NextConfigurationKeyRegex();
 }

@@ -55,7 +55,7 @@ RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak do
 
 Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Her evidence öğesi ayrıca gerçek embedding satırının stabil `chunkId` değerini (lexical fallback için deterministik kimlik), yetki kontrollü canonical makale URL'sini ve varsa ayrıştırılmış PDF sayfa numarasını taşır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
 
-Arama ekranında AI yanıtındaki her kaynak ayrı ayrı açılıp kapatılabilir; kaynak açıldığında ilişki skoru ve kanıt pasajları incelenebilir. Her kaynak kartındaki dış bağlantı ikonu, aç/kapa durumunu değiştirmeden makaleyi yeni bir tarayıcı sekmesinde açar.
+Arama ekranında AI yanıtındaki her kaynak ayrı ayrı açılıp kapatılabilir; kaynak açıldığında ilişki skoru ve kanıt pasajları incelenebilir. Kanıt pasajlarında sorguyla birebir eşleşen terimler büyük/küçük harf ve Türkçe aksan farkından bağımsız olarak vurgulanır; semantic ilişki nedeniyle metinde bulunmayan terimler için yapay vurgu üretilmez. Yapılandırma yolu gibi bileşik terimlerde hem tam anahtar hem anlamlı alt parçalar eşleştirilebilir, soru sözcükleri ve metadata filtreleri vurgulanmaz. Her kaynak kartındaki dış bağlantı ikonu, aç/kapa durumunu değiştirmeden makaleyi yeni bir tarayıcı sekmesinde açar.
 
 Uygulama ayrıntıları, güvenlik ve dayanıklılık kontrolleri için **RAG Mimarisi ve İşleyişi** makalesine bakın.
 

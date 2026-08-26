@@ -283,6 +283,113 @@ public class RagServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_ConfigurationDefinition_PreservesSummaryAndAddsExplanationParagraph()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "RAG Mimarisi",
+                    bodyText: "Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları. Reranking:External, aday pasajları harici bir cross-encoder servisiyle yeniden sıralayan isteğe bağlı bir katmandır. Varsayılan olarak kapalıdır. Harici servis hata verdiğinde yerel sıralama sonucu kullanılır."));
+                db.SaveChanges();
+            });
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1].","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]}],"insufficientContext":false}""");
+        h.Chat.ResponseOverrides.Enqueue("""{"answer":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Reranking:External, aday pasajları harici bir cross-encoder servisiyle yeniden sıralayan isteğe bağlı bir katmandır [S1]. Varsayılan olarak kapalıdır [S1]. Harici servis hata verdiğinde yerel sıralama sonucu kullanılır [S1].","claims":[{"text":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Reranking:External, aday pasajları harici bir cross-encoder servisiyle yeniden sıralayan isteğe bağlı bir katmandır.","sourceIds":["S1"]},{"text":"Varsayılan olarak kapalıdır.","sourceIds":["S1"]},{"text":"Harici servis hata verdiğinde yerel sıralama sonucu kullanılır.","sourceIds":["S1"]}],"insufficientContext":false}""");
+
+        var result = await h.Rag.AskAsync("Reranking:External nedir?");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.StartsWith("Reranking:External: kapalı varsayılan", result.Answer);
+        Assert.Contains("[S1]\n\nReranking:External, aday pasajları", result.Answer);
+        Assert.Contains("yeniden sıralayan isteğe bağlı bir katmandır", result.Answer);
+        Assert.Contains("Varsayılan olarak kapalıdır", result.Answer);
+        Assert.Contains("yerel sıralama sonucu kullanılır", result.Answer);
+        Assert.Equal(2, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_ConfigurationDefinition_EnrichesRepeatedSingleClaimFromEvidence()
+    {
+        const string terse = """{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1].","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]}],"insufficientContext":false}""";
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "RAG Mimarisi",
+                    bodyText: "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları. Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, aday ve timeout sınırları kullanır ve hatada yerel sonuca döner."));
+                db.SaveChanges();
+            },
+            responseOverride: terse);
+
+        var result = await h.Rag.AskAsync("Reranking:External nedir?");
+
+        Assert.Equal("extractive_enrichment", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.True(result.PartialResult);
+        Assert.StartsWith("Reranking:External, kapalı varsayılan", result.Answer);
+        Assert.Contains("[S1]\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.Equal(2, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_ConfigurationDefinition_ReplacesUnrelatedHeadingWithRelevantExplanation()
+    {
+        const string wrongHeading = """{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Knowledge Portal Nedir? [S2]","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Knowledge Portal Nedir?","sourceIds":["S2"]}],"insufficientContext":false}""";
+        var h = BuildRag(
+            [
+                new VectorSearchResult("a1", 0.9, 0),
+                new VectorSearchResult("a2", 0.8, 0),
+                new VectorSearchResult("a3", 0.7, 0)
+            ],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "RAG Mimarisi",
+                    bodyText: "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları."));
+                db.Articles.Add(Article("a2", "Knowledge Portal — Başlangıç Rehberi",
+                    bodyText: "Knowledge Portal Nedir?"));
+                db.Articles.Add(Article("a3", "Arama Motoru",
+                    bodyText: "Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner."));
+                db.SaveChanges();
+            },
+            responseOverride: wrongHeading);
+
+        var result = await h.Rag.AskAsync("Reranking:External nedir?");
+
+        Assert.Equal("extractive_enrichment", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.True(result.PartialResult);
+        Assert.Contains("Opsiyonel external cross-encoder", result.Answer);
+        Assert.DoesNotContain("Knowledge Portal Nedir", result.Answer);
+        Assert.Equal(2, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_ConfigurationDefinition_UsesEvidenceFallbackWhenAllModelClaimsFail()
+    {
+        const string unsupported = """{"answer":"Reranking:External bütün sonuçları otomatik değiştirir [S1].","claims":[{"text":"Reranking:External bütün sonuçları otomatik değiştirir.","sourceIds":["S1"]}],"insufficientContext":false}""";
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "RAG Mimarisi",
+                    bodyText: "Önemli Yapılandırmalar Ollama:Ranking: freshness ağırlıkları Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları Ollama:ChunkTargetWords ayarları. Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner."));
+                db.SaveChanges();
+            },
+            responseOverride: unsupported);
+
+        var result = await h.Rag.AskAsync("Reranking:External nedir?");
+
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.True(result.PartialResult);
+        Assert.Contains("Reranking:External: kapalı varsayılan external cross-encoder", result.Answer);
+        Assert.Contains("\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.DoesNotContain("otomatik değiştirir", result.Answer);
+        Assert.Equal(2, h.Chat.CallCount);
+    }
+
+    [Fact]
     public async Task AskAsync_UnstructuredModelOutput_ReturnsExtractiveEvidenceFallback()
     {
         var h = BuildRag(
@@ -386,7 +493,8 @@ public class RagServiceTests
     public async Task AskAsync_BroadQuestion_RunsMapReduceOverAllSources()
     {
         // 8 candidate articles + a broad-intent keyword ("özetle") → map-reduce:
-        // 8 chunks / 6-per-batch = 2 map calls + 1 reduce = 3 completions, all 8 kept as sources.
+        // 8 chunks / 6-per-batch = 2 map calls + 1 reduce. The fake reduce repeats only the last
+        // two-source map answer, so the comprehensive-answer gate performs one bounded repair.
         var results = Enumerable.Range(0, 8)
             .Select(i => new VectorSearchResult($"a{i}", 0.9 - i * 0.01, 0)).ToList();
 
@@ -400,8 +508,42 @@ public class RagServiceTests
         var result = await h.Rag.AskAsync("tüm güvenlik politikalarını özetle");
 
         Assert.False(result.InsufficientContext);
-        Assert.NotEmpty(result.Claims);
-        Assert.Equal(3, h.Chat.CallCount);   // 2 map + 1 reduce
+        Assert.True(result.Claims.Count >= 6);
+        Assert.Equal(4, h.Chat.CallCount);   // 2 map + 1 reduce + 1 completeness repair
         Assert.Equal(8, result.Sources.Count); // every consulted document is cited
+    }
+
+    [Fact]
+    public async Task AskAsync_BroadQuestion_EnrichesAnswerWhenRepairRemainsTooShort()
+    {
+        const string shortAnswer = """{"answer":"RAG indeksleme aşaması içerikleri parçalar [S1]. RAG retrieval aşaması aday kanıtları getirir [S2].","claims":[{"text":"RAG indeksleme aşaması içerikleri parçalar.","sourceIds":["S1"]},{"text":"RAG retrieval aşaması aday kanıtları getirir.","sourceIds":["S2"]}],"insufficientContext":false}""";
+        var results = Enumerable.Range(1, 8)
+            .Select(i => new VectorSearchResult($"a{i}", 0.95 - i * 0.01, 0)).ToList();
+        var h = BuildRag(results, db =>
+        {
+            var facts = new[]
+            {
+                "RAG indeksleme aşaması içerikleri parçalar.",
+                "RAG retrieval aşaması aday kanıtları getirir.",
+                "RAG hybrid arama lexical ve semantic sonuçları birleştirir.",
+                "RAG reranking aşaması ilgili pasajları yeniden sıralar.",
+                "RAG context aşaması komşu kanıtları kontrollü biçimde genişletir.",
+                "RAG üretim aşaması yalnız sağlanan kanıtlara dayanır.",
+                "RAG grounding aşaması claim ve atıfları doğrular.",
+                "RAG gözlemlenebilirlik aşaması gecikme ve hata metriklerini kaydeder."
+            };
+            for (var i = 1; i <= facts.Length; i++)
+                db.Articles.Add(Article($"a{i}", $"RAG Aşaması {i}", bodyText: facts[i - 1]));
+            db.SaveChanges();
+        }, responseOverride: shortAnswer);
+
+        var result = await h.Rag.AskAsync("RAG mimarisini özetle");
+
+        Assert.Equal("extractive_enrichment", result.GroundingStatus);
+        Assert.True(result.PartialResult);
+        Assert.True(result.Claims.Count >= 6);
+        Assert.Contains("hybrid arama", result.Answer);
+        Assert.Contains("üretim aşaması", result.Answer);
+        Assert.Equal(4, h.Chat.CallCount);
     }
 }

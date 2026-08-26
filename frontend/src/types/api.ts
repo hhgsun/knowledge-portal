@@ -240,7 +240,7 @@ export interface RagResponse {
   citationCoverage?: number;
   claimSupportCoverage?: number;
   groundingStatus?: "lexically_grounded" | "partially_grounded" | "rejected_unsupported" |
-    "rejected_unstructured" | "extractive_fallback" | "insufficient_context" |
+    "rejected_unstructured" | "extractive_fallback" | "extractive_enrichment" | "insufficient_context" |
     "citations_verified" | "partially_verified" | "failed" | "unverified";
   insufficientContext?: boolean;
   partialResult?: boolean;

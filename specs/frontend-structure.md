@@ -49,7 +49,7 @@ frontend/
     ├── EditArticlePage.tsx    # Edit article form with versioning + change summary
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
-    ├── SearchPage.tsx         # Multi-mode search (fulltext/semantic/hybrid/RAG) + tag autocomplete
+    ├── SearchPage.tsx         # Multi-mode search + tag autocomplete + accent-insensitive snippet/RAG-evidence highlighting
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)

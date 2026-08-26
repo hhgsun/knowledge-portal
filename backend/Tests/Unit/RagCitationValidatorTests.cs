@@ -345,4 +345,168 @@ public class RagCitationValidatorTests
         Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.Equal(1, result.ClaimSupportCoverage);
     }
+
+    [Fact]
+    public void Validate_BareConfigurationKeyRejectsSingleTerseClaimRegardlessOfPunctuation()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları. Reranking:External, aday pasajları yeniden sıralar."
+        };
+        const string raw = """{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1].","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence], "Reranking:External");
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+        Assert.Single(result.Claims);
+        Assert.Contains(result.Warnings, warning => warning.Contains("summary and at least one separate", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_BareConfigurationKeyPreservesSummaryBeforeExplanationParagraph()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları. Reranking:External, aday pasajları harici bir modelle yeniden sıralar. Harici servis hata verdiğinde yerel sıralama kullanılır."
+        };
+        const string raw = """{"answer":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Reranking:External, aday pasajları harici bir modelle yeniden sıralar [S1]. Harici servis hata verdiğinde yerel sıralama kullanılır [S1].","claims":[{"text":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Reranking:External, aday pasajları harici bir modelle yeniden sıralar.","sourceIds":["S1"]},{"text":"Harici servis hata verdiğinde yerel sıralama kullanılır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence], "Reranking:External");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Equal(3, result.Claims.Count);
+        Assert.StartsWith("Reranking:External: kapalı varsayılan", result.Answer);
+        Assert.Contains("[S1]\n\nReranking:External, aday pasajları", result.Answer);
+    }
+
+    [Fact]
+    public void Validate_ConfigurationDefinitionAcceptsSourceShorthandAndFollowupExplanation()
+    {
+        var evidence = Evidence with
+        {
+            Passage = "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları. Harici servis hata verdiğinde yerel sıralama kullanılır."
+        };
+        const string raw = """{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Harici servis hata verdiğinde yerel sıralama kullanılır [S1].","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Harici servis hata verdiğinde yerel sıralama kullanılır.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence], "Reranking:External nedir?");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Equal(2, result.Claims.Count);
+        Assert.Contains("[S1]\n\nHarici servis hata verdiğinde", result.Answer);
+    }
+
+    [Fact]
+    public void Validate_ConfigurationDefinitionRejectsUnrelatedQuestionHeadingAsExplanation()
+    {
+        var definition = Evidence with
+        {
+            Passage = "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları."
+        };
+        var unrelatedHeading = Evidence with
+        {
+            SourceId = "S2",
+            Title = "Knowledge Portal — Başlangıç Rehberi",
+            Passage = "Knowledge Portal Nedir?"
+        };
+        var relevantExplanation = Evidence with
+        {
+            SourceId = "S20",
+            Passage = "Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir ve hata halinde yerel sıralamaya döner."
+        };
+        const string raw = """{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Knowledge Portal Nedir? [S2]","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Knowledge Portal Nedir?","sourceIds":["S2"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw,
+            [definition, unrelatedHeading, relevantExplanation], "Reranking:External nedir?");
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+        Assert.Single(result.Claims);
+        Assert.DoesNotContain("Knowledge Portal", result.Claims.Single().Text);
+    }
+
+    [Fact]
+    public void TryEnrichSupportedSummary_AppendsRelevantEvidenceAsNewParagraph()
+    {
+        var summary = new RagClaim(
+            "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.", ["S1"]);
+        var summaryEvidence = Evidence with
+        {
+            Passage = summary.Text
+        };
+        var explanationEvidence = Evidence with
+        {
+            SourceId = "S2",
+            Passage = "Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, aday ve timeout sınırları kullanır ve hatada yerel sonuca döner."
+        };
+
+        var result = RagCitationValidator.TryEnrichSupportedSummary(
+            "Reranking:External nedir?", [summaryEvidence, explanationEvidence], [summary]);
+
+        Assert.NotNull(result);
+        Assert.Equal("extractive_enrichment", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Equal(2, result.Claims.Count);
+        Assert.Contains("[S1]\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.Contains("[S2]", result.Answer);
+    }
+
+    [Fact]
+    public void TryEnrichSupportedSummary_IgnoresUnrelatedQuestionHeading()
+    {
+        var summary = new RagClaim(
+            "Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.", ["S1"]);
+        var summaryEvidence = Evidence with { Passage = summary.Text };
+        var unrelatedHeading = Evidence with
+        {
+            SourceId = "S2",
+            Title = "Knowledge Portal — Başlangıç Rehberi",
+            Passage = "Knowledge Portal Nedir?"
+        };
+        var explanation = Evidence with
+        {
+            SourceId = "S20",
+            Passage = "Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner."
+        };
+
+        var result = RagCitationValidator.TryEnrichSupportedSummary(
+            "Reranking:External nedir?", [summaryEvidence, unrelatedHeading, explanation], [summary]);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Claims.Count);
+        Assert.Contains("Opsiyonel external cross-encoder", result.Answer);
+        Assert.Contains("[S20]", result.Answer);
+        Assert.DoesNotContain("Knowledge Portal", result.Answer);
+        Assert.DoesNotContain("[S2]", result.Answer);
+    }
+
+    [Fact]
+    public void TryBuildConfigurationExplanationFallback_ExtractsFlattenedEntryAndExplanation()
+    {
+        var flattened = Evidence with
+        {
+            Passage = "Önemli Yapılandırmalar Ollama:Ranking: freshness ve authority ağırlıkları " +
+                      "Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları " +
+                      "Ollama:ChunkTargetWords / ChunkOverlapWords ayarları."
+        };
+        var explanation = Evidence with
+        {
+            SourceId = "S20",
+            Passage = "Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner."
+        };
+
+        var result = RagCitationValidator.TryBuildConfigurationExplanationFallback(
+            "Reranking:External nedir?", [flattened, explanation]);
+
+        Assert.NotNull(result);
+        Assert.Equal("extractive_fallback", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Equal(2, result.Claims.Count);
+        Assert.StartsWith("Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları. [S1]", result.Answer);
+        Assert.Contains("[S1]\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.Contains("[S20]", result.Answer);
+        Assert.DoesNotContain("Ollama:ChunkTargetWords", result.Answer);
+    }
 }
