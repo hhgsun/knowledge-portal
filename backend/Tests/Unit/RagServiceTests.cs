@@ -75,13 +75,15 @@ public class RagServiceTests
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         var metrics = new PortalMetrics(scopeFactory);
         var config = new ConfigurationBuilder().Build();
+        var tokenCounter = new RagTokenCounter(config);
         var rag = new RagService(
             chat,
             new FakeRagRetriever(new FakeVectorSearch(scopeFactory, vectorResults)),
             scopeFactory,
             config,
             new RagResilienceService(config, metrics, NullLogger<RagResilienceService>.Instance),
-            new RagContextBuilder(),
+            new RagContextBuilder(tokenCounter),
+            tokenCounter,
             new RagQueryUnderstandingService(config),
             new RagContextExpansionService(config),
             metrics,
@@ -177,7 +179,7 @@ public class RagServiceTests
         var filter = new ArticleFilter(TagSlugs: ["alpha"]);
         var result = await h.Rag.AskAsync("firewall ayarları", filter);
 
-        var titles = result.Sources.Select(s => s.Title).ToList();
+        var titles = result.ConsultedSources.Select(s => s.Title).ToList();
         Assert.Contains("Firewall Ayarları Alpha", titles);
         Assert.DoesNotContain("Firewall Ayarları Beta", titles);
 
@@ -255,7 +257,8 @@ public class RagServiceTests
         await h.Rag.AskAsync("delimiter");
 
         var prompt = UserMessage(h.Chat);
-        Assert.Contains("<source id=\"S1\" title=\"Delimiter Kontrol\">", prompt);
+        Assert.Contains("<source id=\"S1\" title=\"Delimiter Kontrol\"", prompt);
+        Assert.Contains("authority=\"", prompt);
     }
 
     [Fact]
@@ -278,6 +281,10 @@ public class RagServiceTests
         Assert.Contains("answer", required);
         Assert.Contains("claims", required);
         Assert.Contains("insufficientContext", required);
+        var claimRequired = responseFormat.Schema.Value.GetProperty("properties").GetProperty("claims")
+            .GetProperty("items").GetProperty("required").EnumerateArray()
+            .Select(item => item.GetString()).ToList();
+        Assert.Contains("role", claimRequired);
         Assert.Equal(0, h.Chat.LastOptions?.Temperature);
         Assert.Equal(2048, h.Chat.LastOptions?.MaxOutputTokens);
     }
@@ -548,7 +555,7 @@ public class RagServiceTests
     }
 
     [Fact]
-    public async Task AskAsync_NarrowQuestion_ConsidersUpToTenDistinctSourcesInOnePass()
+    public async Task AskAsync_ShortNarrowQuestion_UsesMinimumRelevantSourceSet()
     {
         var results = Enumerable.Range(1, 12)
             .Select(i => new VectorSearchResult($"a{i}", 1 - i * .01, 0)).ToList();
@@ -563,11 +570,82 @@ public class RagServiceTests
         var result = await h.Rag.AskAsync("VPN politikası");
         var prompt = UserMessage(h.Chat);
 
-        Assert.Equal(10, result.Sources.Count);
+        Assert.Equal(3, result.ConsultedSources.Count);
+        for (var i = 1; i <= 3; i++) Assert.Contains($"VPN Politikası {i}", prompt);
+        Assert.DoesNotContain("VPN Politikası 4", prompt);
+        Assert.Equal(1, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_ComplexExplanatoryQuestion_ExpandsUpToTenRelevantSources()
+    {
+        var results = Enumerable.Range(1, 12)
+            .Select(i => new VectorSearchResult($"a{i}", 1 - i * .01, 0)).ToList();
+        var h = BuildRag(results, db =>
+        {
+            for (var i = 1; i <= 12; i++)
+                db.Articles.Add(Article($"a{i}", $"VPN Politikası {i}",
+                    bodyText: $"VPN politikası {i} kurumsal erişim kuralını açıklar."));
+            db.SaveChanges();
+        });
+
+        var question = "VPN politikasının kurumsal uzaktan erişim sırasında kullanıcı sertifikası cihaz " +
+                       "doğrulaması oturum güvenliği bağlantı kurulumu hata yönetimi varsayılan davranış " +
+                       "sınırlar istisnalar operasyon güvenliği açısından nasıl çalıştığını ayrıntılı anlat";
+        var result = await h.Rag.AskAsync(question);
+        var prompt = UserMessage(h.Chat);
+
+        Assert.Equal(10, result.ConsultedSources.Count);
         for (var i = 1; i <= 10; i++) Assert.Contains($"VPN Politikası {i}", prompt);
         Assert.DoesNotContain("VPN Politikası 11", prompt);
-        Assert.DoesNotContain("VPN Politikası 12", prompt);
         Assert.Equal(1, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_AdaptiveSourceSelection_DropsLowMarginalScores()
+    {
+        var results = new List<VectorSearchResult>
+        {
+            new("a1", .95, 0), new("a2", .85, 0), new("a3", .75, 0), new("a4", .2, 0)
+        };
+        var h = BuildRag(results, db =>
+        {
+            for (var i = 1; i <= 4; i++)
+                db.Articles.Add(Article($"a{i}", $"Erişim {i}", bodyText: $"Erişim kuralı {i} açıklaması."));
+            db.SaveChanges();
+        });
+
+        var result = await h.Rag.AskAsync(
+            "Kurumsal erişim güvenliği cihaz doğrulaması sertifika yönetimi oturum sınırları " +
+            "istisnalar varsayılanlar operasyon akışı hata davranışı açısından nasıl çalışır ayrıntılı anlat");
+
+        Assert.Equal(3, result.ConsultedSources.Count);
+        Assert.DoesNotContain(result.ConsultedSources, source => source.ArticleId == "a4");
+    }
+
+    [Fact]
+    public async Task AskAsync_SeparatesCitedSourcesFromConsultedSources()
+    {
+        var h = BuildRag(
+            [
+                new VectorSearchResult("a1", .95, 0), new VectorSearchResult("a2", .9, 0),
+                new VectorSearchResult("a3", .85, 0)
+            ],
+            db =>
+            {
+                db.Articles.AddRange(
+                    Article("a1", "Birinci", bodyText: "Birinci erişim kuralı uygulanır."),
+                    Article("a2", "İkinci", bodyText: "İkinci erişim rehberi bilgi içerir."),
+                    Article("a3", "Üçüncü", bodyText: "Üçüncü erişim rehberi bilgi içerir."));
+                db.SaveChanges();
+            },
+            responseOverride: """{"answer":"Birinci erişim kuralı uygulanır [S1].","claims":[{"text":"Birinci erişim kuralı uygulanır.","role":"summary","sourceIds":["S1"]}],"insufficientContext":false}""");
+
+        var result = await h.Rag.AskAsync("Hangi erişim kuralı uygulanır?");
+
+        var cited = Assert.Single(result.Sources);
+        Assert.Equal("a1", cited.ArticleId);
+        Assert.Equal(3, result.ConsultedSources.Count);
     }
 
     [Fact]

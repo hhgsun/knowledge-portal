@@ -36,6 +36,26 @@ public class RagCitationValidatorTests
         Assert.DoesNotContain("**Açıklama**", answer);
     }
 
+    [Fact]
+    public void RenderSupportedAnswer_GroupsStructuredClaimRoles()
+    {
+        var claims = new List<RagClaim>
+        {
+            new("VPN profili sertifika tabanlıdır.", ["S1"], "summary"),
+            new("Profili portal üzerinden indirin.", ["S1"], "step"),
+            new("Yalnız yönetilen cihazlar desteklenir.", ["S2"], "constraint"),
+            new("Servis yoksa yerel bağlantı kullanılır.", ["S3"], "exception"),
+            new("Eski rehber 30 saniye belirtir.", ["S4"], "conflict")
+        };
+
+        var answer = RagCitationValidator.RenderSupportedAnswer(claims, "VPN nasıl çalışır?", "", false);
+
+        Assert.Contains("**Adımlar**\n\n1. Profili", answer);
+        Assert.Contains("**Sınırlar**\n\n- Yalnız", answer);
+        Assert.Contains("**İstisnalar**\n\n- Servis", answer);
+        Assert.Contains("**Kaynak uyuşmazlıkları**\n\n- Eski", answer);
+    }
+
     private static readonly RagEvidence Evidence = new("S1", "a1", "VPN Rehberi", "vpn-rehberi",
         "article", null, null, null, "VPN talebi portal üzerinden açılır.", .9);
 

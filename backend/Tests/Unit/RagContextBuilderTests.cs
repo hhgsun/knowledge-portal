@@ -10,13 +10,14 @@ public class RagContextBuilderTests
     public void Build_EnforcesWordBudgetAndReturnsExactlyPromptedPassage()
     {
         var chunk = Chunk("a1", 0, "bir iki üç dört beş");
-        var result = _builder.Build([chunk], Titles(("a1", "Makale")), Evidence((chunk, "S1")), 3, 3);
+        var fullTokens = new RagTokenCounter().CountTokens(chunk.ChunkText);
+        var result = _builder.Build([chunk], Titles(("a1", "Makale")), Evidence((chunk, "S1")),
+            fullTokens - 1, 3);
 
         var item = Assert.Single(result.Items);
-        Assert.Equal("bir iki üç", item.Chunk.ChunkText);
-        Assert.Contains("bir iki üç", item.SourceBlock);
-        Assert.DoesNotContain("dört", item.SourceBlock);
-        Assert.Equal(3, result.TotalWords);
+        Assert.StartsWith("bir iki", item.Chunk.ChunkText);
+        Assert.DoesNotContain("beş", item.SourceBlock);
+        Assert.True(result.TotalTokens <= fullTokens - 1);
         Assert.True(result.BudgetTruncated);
     }
 
@@ -63,8 +64,8 @@ public class RagContextBuilderTests
 
         Assert.Equal(10, result.Items.Count);
         Assert.Equal(10, result.Items.Select(item => item.Chunk.ArticleId).Distinct().Count());
-        Assert.All(result.Items, item => Assert.Equal(50, item.WordCount));
-        Assert.Equal(500, result.TotalWords);
+        Assert.All(result.Items, item => Assert.True(item.TokenCount <= 50));
+        Assert.True(result.TotalTokens <= 500);
         Assert.True(result.BudgetTruncated);
     }
 

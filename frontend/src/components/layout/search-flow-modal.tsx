@@ -227,8 +227,8 @@ const FLOWS: Flow[] = [
       {
         title: "Dar yol — tek çağrı",
         detail:
-          "İlk 10 farklı kaynaktan dengeli pasajlar bağlam bütçesi dolana kadar tek bir isteme paketlenir. Model önce doğrudan sonucu, ardından yalnız kanıtlanan açıklama ve sınırları üretir; tek model çağrısı yapılır.",
-        refs: ["RagSourceLimit: 10", "RagMaxContextWords: 8000"],
+          "Sorgu token karmaşıklığı, decomposition ve açıklama niyeti kaynak sayısını 3-10 arasında belirler; düşük marjinal skorlu kaynaklar elenir. Pasajlar model-calibrated token bütçesine dengeli yerleştirilir ve tek model çağrısı yapılır.",
+        refs: ["RagMinimumSourceLimit: 3", "RagSourceLimit: 10", "RagMaxContextTokens: 12000"],
       },
       {
         title: "Geniş yol — böl ve birleştir",
@@ -239,8 +239,8 @@ const FLOWS: Flow[] = [
       {
         title: "Yanıt ve kaynaklar",
         detail:
-          "İlk doğrulanmış claim kısa sonuç olarak, kalan claim'ler açıklama maddeleri olarak gösterilir. Her olgusal cümle [S1] biçiminde evidence kimliği taşır; yeterli kanıt yoksa sistem bilgi uydurmak yerine fail-closed sonuç döndürür.",
-        refs: ["RagResult", "claims", "evidence"],
+          "Claim'ler özet, açıklama, adım, sınır, istisna veya uyuşmazlık rolüyle gösterilir. Atıf yapılan ve yalnız incelenen kaynaklar ayrılır; sayısal/polarity çelişkileri yönetişim sinyalleriyle raporlanır. Yeterli kanıt yoksa sistem fail-closed sonuç döndürür.",
+        refs: ["claims.role", "sources", "consultedSources", "conflictAssessment"],
       },
     ],
   },

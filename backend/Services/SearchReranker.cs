@@ -4,7 +4,7 @@ namespace KnowledgePortal.Api.Services;
 
 public sealed record RerankCandidate(string ArticleId, string Title, string? Excerpt,
     string? Content, double RetrievalScore, DateTime? UpdatedAt = null,
-    DateTime? ApprovedAt = null, string? ContentType = null);
+    DateTime? ApprovedAt = null, string? ContentType = null, int AuthorityWeight = 50);
 public sealed record RerankedResult(string ArticleId, double Score);
 
 public interface ISearchReranker
@@ -42,7 +42,7 @@ public sealed class LocalSearchReranker(IConfiguration? config = null) : ISearch
                 .Any(x => Fold(query).Contains(x));
             var freshnessWeight = (config?.GetValue("Ollama:Ranking:FreshnessWeight", .05) ?? .05)
                 * (freshIntent ? config?.GetValue("Ollama:Ranking:FreshnessIntentMultiplier", 3d) ?? 3d : 1d);
-            var authority = config?.GetValue($"Ollama:Ranking:Authority:{c.ContentType}", .5) ?? .5;
+            var authority = Math.Clamp(c.AuthorityWeight, 0, 100) / 100d;
             if (c.ApprovedAt != null) authority += config?.GetValue("Ollama:Ranking:ApprovedBoost", .2) ?? .2;
             var authorityWeight = config?.GetValue("Ollama:Ranking:AuthorityWeight", .05) ?? .05;
             var score = 0.45 * retrieval + 0.23 * coverage + 0.17 * titleCoverage + 0.05 * phrase

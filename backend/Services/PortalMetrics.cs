@@ -33,6 +33,7 @@ public sealed class PortalMetrics
     public Histogram<long> RagCandidates { get; }
     public Histogram<long> RagContextChunks { get; }
     public Histogram<long> RagContextWords { get; }
+    public Histogram<long> RagContextTokens { get; }
     public Counter<long> RagLlmCalls { get; }
     public Counter<long> RagRefusals { get; }
     public Counter<long> RagPartialResults { get; }
@@ -58,6 +59,7 @@ public sealed class PortalMetrics
         RagCandidates = _meter.CreateHistogram<long>("kp_rag_candidates", description: "Candidate chunks returned by retrieval");
         RagContextChunks = _meter.CreateHistogram<long>("kp_rag_context_chunks", description: "Chunks supplied to generation");
         RagContextWords = _meter.CreateHistogram<long>("kp_rag_context_words", description: "Approximate words supplied to generation");
+        RagContextTokens = _meter.CreateHistogram<long>("kp_rag_context_tokens", description: "Model-calibrated estimated tokens supplied to generation");
         RagLlmCalls = _meter.CreateCounter<long>("kp_rag_llm_calls", description: "RAG LLM calls by stage and outcome");
         RagRefusals = _meter.CreateCounter<long>("kp_rag_refusals", description: "RAG insufficient-context responses by mode");
         RagPartialResults = _meter.CreateCounter<long>("kp_rag_partial_results", description: "RAG responses produced from partial stage results");

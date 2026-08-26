@@ -401,6 +401,15 @@ public class McpToolExecutor
                 sources = rag.Sources.Select(source => new
                 {
                     source.ArticleId, source.Title, source.Slug, source.Score,
+                    source.AuthorityWeight, source.Approved, source.ReviewState,
+                    source.ReliabilityScore, source.UpdatedAt,
+                    canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
+                }),
+                consultedSources = rag.ConsultedSources.Select(source => new
+                {
+                    source.ArticleId, source.Title, source.Slug, source.Score,
+                    source.AuthorityWeight, source.Approved, source.ReviewState,
+                    source.ReliabilityScore, source.UpdatedAt,
                     canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
                 }),
                 claims = rag.Claims,
@@ -412,7 +421,7 @@ public class McpToolExecutor
                     evidence.Passage, evidence.Score
                 }),
                 rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
-                rag.InsufficientContext, rag.PartialResult, rag.Warnings,
+                rag.InsufficientContext, rag.PartialResult, rag.ConflictAssessment, rag.Warnings,
                 scope = ScopeNode(scope), result.Query, result.Type, result.ResponseTimeMs, result.IndexingPending,
                 result.IndexCoverage, result.SearchQueryId
             };

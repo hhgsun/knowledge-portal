@@ -39,7 +39,11 @@ public class SearchController(AppDbContext db, IConfiguration config,
             {
                 answer = rag.Answer,
                 sources = rag.Sources.Select(source => new
-                    { source.ArticleId, source.Title, source.Slug, source.Score }),
+                    { source.ArticleId, source.Title, source.Slug, source.Score, source.AuthorityWeight,
+                      source.Approved, source.ReviewState, source.ReliabilityScore, source.UpdatedAt }),
+                consultedSources = rag.ConsultedSources.Select(source => new
+                    { source.ArticleId, source.Title, source.Slug, source.Score, source.AuthorityWeight,
+                      source.Approved, source.ReviewState, source.ReliabilityScore, source.UpdatedAt }),
                 claims = rag.Claims,
                 evidence = rag.Evidence,
                 rag.CitationCoverage,
@@ -47,6 +51,7 @@ public class SearchController(AppDbContext db, IConfiguration config,
                 rag.ClaimSupportCoverage,
                 rag.InsufficientContext,
                 rag.PartialResult,
+                rag.ConflictAssessment,
                 rag.Warnings,
                 result.Query, result.Type, result.ResponseTimeMs,
                 result.IndexingPending, result.IndexCoverage, result.SearchQueryId

@@ -225,18 +225,24 @@ export interface RagSource {
   title: string;
   slug: string;
   score: number;
+  authorityWeight: number;
+  approved: boolean;
+  reviewState: string;
+  reliabilityScore: number;
+  updatedAt: string;
 }
 
 export interface RagResponse {
   answer: string;
   sources: RagSource[];
+  consultedSources?: RagSource[];
   query: string;
   type: "rag";
   responseTimeMs: number;
   indexingPending?: boolean;
   indexCoverage?: SearchIndexCoverage;
-  claims?: { text: string; sourceIds: string[] }[];
-  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number; chunkId?: string | null; canonicalUrl?: string | null; pageNumber?: number | null }[];
+  claims?: { text: string; sourceIds: string[]; role: "summary" | "explanation" | "step" | "constraint" | "exception" | "conflict" }[];
+  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number; chunkId?: string | null; canonicalUrl?: string | null; pageNumber?: number | null; authorityWeight: number; approved: boolean; reviewState: string; reliabilityScore: number; updatedAt?: string | null }[];
   citationCoverage?: number;
   claimSupportCoverage?: number;
   groundingStatus?: "lexically_grounded" | "partially_grounded" | "rejected_unsupported" |
@@ -245,6 +251,7 @@ export interface RagResponse {
   insufficientContext?: boolean;
   partialResult?: boolean;
   warnings?: string[];
+  conflictAssessment?: { status: "none_detected" | "conflicts_detected"; conflicts: { kind: "numeric" | "polarity"; sourceIds: string[]; preferredSourceId?: string | null; resolution: "preferred_by_governance" | "unresolved_equal_governance" }[] };
   searchQueryId?: string;
 }
 

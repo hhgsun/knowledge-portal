@@ -192,6 +192,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
     builder.Services.AddScoped<RagService>();
     builder.Services.AddScoped<IRagRetriever, HybridRagRetriever>();
+    builder.Services.AddSingleton<IRagTokenCounter, RagTokenCounter>();
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
     builder.Services.AddSingleton<RagQueryUnderstandingService>();
     builder.Services.AddSingleton<RagContextExpansionService>();

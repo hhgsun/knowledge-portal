@@ -67,6 +67,43 @@ public class RagRetrieverTests
         Assert.Contains(result, x => x.Chunk.ArticleId == "semantic" && x.MatchType == "both");
     }
 
+    [Fact]
+    public async Task HybridRetriever_UsesDynamicLookupAuthorityInsteadOfContentTypeConfig()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new AppDbContext(options);
+        var updated = DateTime.UtcNow;
+        var high = Article("high", "VPN Politikası", "VPN erişim kuralı.");
+        high.ContentType = "dynamic-high";
+        high.UpdatedAt = updated;
+        var low = Article("low", "VPN Politikası", "VPN erişim kuralı.");
+        low.ContentType = "dynamic-low";
+        low.UpdatedAt = updated;
+        db.Articles.AddRange(high, low);
+        db.LookupValues.AddRange(
+            new LookupValue { Id = "lh", Category = "content_type", Value = "dynamic-high", Label = "High", AuthorityWeight = 100 },
+            new LookupValue { Id = "ll", Category = "content_type", Value = "dynamic-low", Label = "Low", AuthorityWeight = 0 });
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ollama:Ranking:AuthorityWeight"] = ".2"
+        }).Build();
+        var fts = new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance);
+        var vectors = new FakeVectors([
+            new VectorChunkResult("low", 0, .8, "VPN erişim kuralı"),
+            new VectorChunkResult("high", 0, .8, "VPN erişim kuralı")
+        ]);
+        var retriever = new HybridRagRetriever(vectors, fts, db, new LocalRagChunkReranker(), config,
+            NullLogger<HybridRagRetriever>.Instance);
+        var plan = new RagQueryPlan("VPN erişim", "VPN erişim", ["VPN erişim"],
+            new([], [], []), [], false, false, null);
+
+        var result = await retriever.RetrieveAsync(plan, 10, .3, 3);
+
+        Assert.Equal("high", result[0].Chunk.ArticleId);
+    }
+
     private static RagRetrievalChunk Item(string article, int chunk, double score) =>
         new(new VectorChunkResult(article, chunk, score, $"content {article} {chunk}"), score, "semantic");
     private static Article Article(string id, string title, string content) => new() { Id = id, Title = title, Slug = id, Content = content, Status = "published", OwnerId = "owner", UpdatedAt = DateTime.UtcNow };

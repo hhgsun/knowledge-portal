@@ -207,6 +207,10 @@ public class SearchDiagnosticsService(AppDbContext db, IConfiguration config)
         settings.Add(Setting("Ollama:ContextExpansion:MinSeedScore", .55));
         settings.Add(Setting("Ollama:Ranking:FreshnessWeight", .05));
         settings.Add(Setting("Ollama:Ranking:AuthorityWeight", .05));
+        settings.Add(Setting("Ollama:RagMaxContextTokens", 12000));
+        settings.Add(Setting("Ollama:RagSourceLimit", 10));
+        settings.Add(Setting("Ollama:RagMinimumSourceLimit", 3));
+        settings.Add(Setting("Ollama:RagSourceRelativeScoreFloor", .55));
         settings.Add(new SearchSettingDto("Reranking:External:Enabled",
             config.GetValue("Reranking:External:Enabled", false).ToString(), "Uygulama"));
 

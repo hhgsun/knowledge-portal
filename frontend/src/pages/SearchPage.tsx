@@ -289,6 +289,11 @@ export default function SearchPage() {
     }
   }, [searchQueryId, fetchWithAuth]);
 
+  const displayedRagSources = ragResponse?.consultedSources?.length
+    ? ragResponse.consultedSources
+    : ragResponse?.sources ?? [];
+  const citedRagSourceIds = new Set(ragResponse?.sources.map(source => source.articleId) ?? []);
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
@@ -522,6 +527,20 @@ export default function SearchPage() {
                 </div>
               )}
 
+              {ragResponse.conflictAssessment?.status === "conflicts_detected" && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
+                  <p className="font-medium">Kaynaklar arasında doğrulanması gereken uyuşmazlık bulundu.</p>
+                  {ragResponse.conflictAssessment.conflicts.map((conflict, index) => (
+                    <p key={`${conflict.kind}-${index}`} className="mt-1">
+                      {conflict.kind === "numeric" ? "Sayısal değer" : "Olumlu/olumsuz ifade"}: {conflict.sourceIds.join(" ↔ ")}
+                      {conflict.preferredSourceId
+                        ? ` · Yönetişim önceliği: ${conflict.preferredSourceId}`
+                        : " · Yönetişim sinyalleri eşit; otomatik seçim yapılmadı."}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               {(ragResponse.partialResult || (ragResponse.warnings?.length ?? 0) > 0) && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
                   {ragResponse.partialResult && <p className="font-medium">{ragResponse.groundingStatus === "extractive_fallback"
@@ -533,17 +552,18 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {ragResponse.sources.length > 0 && (
+              {displayedRagSources.length > 0 && (
                 <section aria-labelledby="rag-sources-heading">
                   <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    İncelenen kaynaklar ({ragResponse.sources.length})
-                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
+                    Kaynak kullanımı
+                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.sources.length} atıf · {displayedRagSources.length} incelendi · {ragResponse.evidence?.length ?? 0} kanıt</span>
                   </h3>
                   <div className="space-y-3">
-                    {ragResponse.sources.map((source: RagSource) => {
+                    {displayedRagSources.map((source: RagSource) => {
                       const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
                       const isExpanded = expandedRagSources.has(source.articleId);
                       const evidenceId = `rag-source-evidence-${source.articleId}`;
+                      const isCited = citedRagSourceIds.has(source.articleId);
 
                       return (
                         <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
@@ -557,6 +577,10 @@ export default function SearchPage() {
                             >
                               <FileText size={14} className="shrink-0 text-blue-500" aria-hidden="true" />
                               <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
+                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", isCited
+                                ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
+                                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400")}>{isCited ? "Yanıtta kullanıldı" : "Yalnız incelendi"}</span>
+                              <span className="text-[10px] text-zinc-400" title={`Otorite ${source.authorityWeight}/100 · ${source.approved ? "onaylı" : "onay kaydı yok"}`}>Güven {source.reliabilityScore}</span>
                               <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
                               <ChevronDown size={15} className={cn("shrink-0 text-zinc-400 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
                             </button>

@@ -85,7 +85,7 @@ The shared scope shape is `{ "tags": ["a", "x", "y"], "contentTypes": ["how-to",
 
 Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. RAG sources similarly include their canonical URL and source type.
 
-MCP search hits also include `governance`: optional approval state (`approved` or `not_recorded`), approver/time when recorded, review state (`current`, `due_soon`, `overdue`, `not_recorded`), next review date, dynamic content-type label/authority weight, reliability score, and warnings. Content-type authority is configured as `authorityWeight` (0-100, default 50) on each dynamic `content_type` lookup; no content-type names are hard-coded. Directly published/imported content remains available and is truthfully marked `not_recorded`. Search responses aggregate caution indicators and reliability-ordered `recommendedArticleIds` in `decisionSupport`. Semantic contradiction detection is deliberately not claimed: `conflictAssessment` is `not_evaluated` until a dedicated contradiction evaluator exists.
+MCP search hits also include `governance`: optional approval state (`approved` or `not_recorded`), approver/time when recorded, review state (`current`, `due_soon`, `overdue`, `not_recorded`), next review date, dynamic content-type label/authority weight, reliability score, and warnings. Content-type authority is configured as `authorityWeight` (0-100, default 50) on each dynamic `content_type` lookup; no content-type names are hard-coded. Directly published/imported content remains available and is truthfully marked `not_recorded`. Search responses aggregate caution indicators and reliability-ordered `recommendedArticleIds` in `decisionSupport`. Ordinary list/search and source-comparison responses keep `conflictAssessment: not_evaluated`; only RAG answers run the conservative numeric/explicit-polarity conflict screen described below, and no endpoint claims general semantic contradiction detection.
 
 MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, explainable `signals`, `secretsRedacted`, `treatAsUntrustedData`, `allowAutomaticExecution=false`). Common portal keys, bearer tokens, JWTs, AWS access-key IDs, and assigned secret/token/password values are replaced with `[REDACTED_SECRET]` throughout structured and compatibility-text output. Injection signals are flagged, not silently deleted. RAG source blocks redact secrets, mark risky chunks as `SECURITY-RISK`, neutralize source delimiters, and explicitly forbid following source instructions, tool execution, URL visits, or credential disclosure.
 
@@ -629,10 +629,11 @@ Ordered by version number descending.
 ```json
 {
   "answer": "Doğrulanmış kısa sonuç [S1]\n\n**Açıklama**\n\n- Destekli açıklama [S2]",
-  "sources": [{ "articleId": "article-1", "title": "...", "slug": "...", "score": 0.95 }],
+  "sources": [{ "articleId": "article-1", "title": "...", "slug": "...", "score": 0.95, "authorityWeight": 90, "approved": true, "reviewState": "current", "reliabilityScore": 95, "updatedAt": "..." }],
+  "consultedSources": [{ "articleId": "article-1", "title": "...", "slug": "...", "score": 0.95, "authorityWeight": 90, "approved": true, "reviewState": "current", "reliabilityScore": 95, "updatedAt": "..." }],
   "claims": [
-    { "text": "Doğrulanmış kısa sonuç", "sourceIds": ["S1"] },
-    { "text": "Destekli açıklama", "sourceIds": ["S2"] }
+    { "text": "Doğrulanmış kısa sonuç", "role": "summary", "sourceIds": ["S1"] },
+    { "text": "Destekli açıklama", "role": "explanation", "sourceIds": ["S2"] }
   ],
   "evidence": [
     { "sourceId": "S1", "chunkId": "chunk-1", "articleId": "article-1", "canonicalUrl": "/api/articles/...", "pageNumber": 12, "passage": "..." },
@@ -643,11 +644,14 @@ Ordered by version number descending.
   "groundingStatus": "lexically_grounded",
   "insufficientContext": false,
   "partialResult": false,
+  "conflictAssessment": { "status": "none_detected", "conflicts": [] },
   "warnings": []
 }
 ```
 
-`sourceId` is the request-local identifier supplied to the model. `chunkId` is the stable stored
+`sources` contains only articles cited by claims that survived grounding. `consultedSources` contains
+every article whose passage was supplied to generation, including relevant sources not used in the
+final answer. `sourceId` is the request-local identifier supplied to the model. `chunkId` is the stable stored
 embedding ID; a lexical-only fallback passage receives a deterministic `lex_...` ID derived from
 its provenance and content. `canonicalUrl` points to the normal authenticated article endpoint,
 and `pageNumber` is present only when PDF page provenance is available.
@@ -660,8 +664,10 @@ returned independently. The API rebuilds `answer` only from claims that pass kno
 lexical-overlap, numeric-consistency and negation-consistency checks; repeating a document title as a
 standalone claim is rejected. The generation contract requires a compact synthesis instead of a
 source-by-source result recap: the first validated claim is the direct answer and later claims explain
-supported behavior, reasons, practical meaning, steps, constraints, exceptions, and trade-offs. The API
-renders these as a summary paragraph followed by a localized Markdown `Explanation`/`Açıklama` list.
+supported behavior, reasons, practical meaning, steps, constraints, exceptions, and trade-offs. Each
+claim has one required role: `summary`, `explanation`, `step`, `constraint`, `exception`, or `conflict`.
+The API renders localized Markdown sections from those roles and normalizes legacy/fallback claims so
+the first claim is always `summary`.
 This presentation adds no model prose; it is built exclusively from grounded claims. For a bare-topic query, punctuation does not affect classification: the
 first supported claim is retained as the summary paragraph. The same rule applies to direct definition
 questions whose subject is a colon-delimited configuration path: compact source-native configuration
@@ -685,14 +691,22 @@ relevant evidence sentence exists, the request fails closed as an
 insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
 **503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
 
-The focused single-pass path considers up to `Ollama:RagSourceLimit` distinct ranked articles (default
-10, clamped to 1-20) within `Ollama:RagMaxContextWords` (default 8,000). Article-interleaved retrieval
-places the best passage from each source before deeper passages. The context builder reserves an equal
-first-pass word share per selected article, preventing a whole-article lexical fallback passage from
-monopolizing the prompt; deeper chunks use the remaining budget after that first pass. This lets the
-assistant synthesize the information a user would otherwise have to read across the first ten results,
-without paying map-reduce latency for a focused question. Corpus-wide summary/compare/list intents still
-use the broad map-reduce path and its completeness gate.
+The focused single-pass path adaptively selects between `Ollama:RagMinimumSourceLimit` (default 3) and
+`Ollama:RagSourceLimit` (default 10, clamped to 1-20). Query token complexity, decomposition and
+explanation intent increase breadth; sources below `RagSourceRelativeScoreFloor` (default 55% of the
+best article score) are excluded after the minimum safety floor. Article-interleaved retrieval places
+the best passage from each source before deeper passages. Context uses `RagMaxContextTokens` (default
+12,000), bounded by the configured model window after output and system-prompt reserves. A conservative
+Qwen/Unicode estimator performs preflight truncation and calibrates future estimates from Ollama's exact
+post-response `InputTokenCount`. The context builder reserves an equal first-pass token share per
+selected article, preventing a whole-article lexical fallback passage from monopolizing the prompt.
+Corpus-wide summary/compare/list intents still use the broad map-reduce path and completeness gate.
+
+Every source block contains trusted approval, dynamic authority, review, reliability and update metadata.
+When facts conflict, precedence is approval → authority → review state → reliability → update time; tied
+signals remain unresolved. `conflictAssessment` conservatively reports only deterministic numeric or
+explicit polarity conflicts and never claims general semantic contradiction detection. Competing facts
+are emitted as separate `conflict` claims so each remains independently groundable.
 
 If a bare-topic/configuration definition produces a fully supported summary but both the initial and
 repair calls omit the required explanation, the server preserves that summary and appends up to three

@@ -51,21 +51,19 @@ public class SearchRerankerTests
     }
 
     [Fact]
-    public void Rerank_UsesConfiguredSourceAuthority()
+    public void Rerank_UsesDynamicLookupAuthoritySuppliedBySearchPipeline()
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Ollama:Ranking:FreshnessWeight"] = "0",
-            ["Ollama:Ranking:AuthorityWeight"] = "1",
-            ["Ollama:Ranking:Authority:policy"] = "1",
-            ["Ollama:Ranking:Authority:faq"] = "0"
+            ["Ollama:Ranking:AuthorityWeight"] = "1"
         }).Build();
         var reranker = new LocalSearchReranker(config);
         var updated = DateTime.UtcNow;
         var results = reranker.Rerank("erişim",
         [
-            new("faq", "Erişim", null, "erişim", 1, updated, ContentType: "faq"),
-            new("policy", "Erişim", null, "erişim", 1, updated, ContentType: "policy")
+            new("faq", "Erişim", null, "erişim", 1, updated, ContentType: "faq", AuthorityWeight: 0),
+            new("policy", "Erişim", null, "erişim", 1, updated, ContentType: "policy", AuthorityWeight: 100)
         ]);
 
         Assert.Equal("policy", results[0].ArticleId);

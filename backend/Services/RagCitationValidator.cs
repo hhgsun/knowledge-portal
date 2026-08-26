@@ -4,10 +4,12 @@ using KnowledgePortal.Api.Helpers;
 
 namespace KnowledgePortal.Api.Services;
 
-public record RagClaim(string Text, List<string> SourceIds);
+public record RagClaim(string Text, List<string> SourceIds, string Role = "explanation");
 public record RagEvidence(string SourceId, string ArticleId, string Title, string Slug, string SourceType,
     string? AttachmentId, string? SourceName, string? SourceLocation, string Passage, double Score,
-    string? ChunkId = null, string? CanonicalUrl = null, int? PageNumber = null);
+    string? ChunkId = null, string? CanonicalUrl = null, int? PageNumber = null,
+    int AuthorityWeight = 50, bool Approved = false, string ReviewState = "not_recorded",
+    int ReliabilityScore = 50, string? UpdatedAt = null);
 public record ValidatedRagAnswer(string Answer, List<RagClaim> Claims, bool InsufficientContext,
     double CitationCoverage, double ClaimSupportCoverage, string GroundingStatus, List<string> Warnings);
 
@@ -46,7 +48,7 @@ public static partial class RagCitationValidator
         var candidateClaims = (parsed.Claims ?? [])
             .Where(claim => !string.IsNullOrWhiteSpace(claim.Text))
             .SelectMany(claim => EvidenceSentences(claim.Text)
-                .Select(sentence => new RagClaim(sentence, claim.SourceIds ?? [])))
+                .Select(sentence => new RagClaim(sentence, claim.SourceIds ?? [], NormalizeRole(claim.Role))))
             .ToList();
         var twoPartTopicQuery = IsBareTopicQuery(question) || IsConfigurationDefinitionQuery(question);
         var requiresTopicExplanation = twoPartTopicQuery && HasMultipleRelevantEvidenceSentences(question!, evidence);
@@ -100,7 +102,7 @@ public static partial class RagCitationValidator
                 warnings.Add($"Non-supporting evidence IDs were removed from claim: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
 
             supported++;
-            claims.Add(new RagClaim(claim.Text.Trim(), supportingIds));
+            claims.Add(new RagClaim(claim.Text.Trim(), supportingIds, NormalizeRole(claim.Role)));
             if (directlyResponsive && IsConfigurationDefinitionQuery(question))
                 configurationDefinitionSourceIds.UnionWith(supportingIds);
         }
@@ -128,6 +130,8 @@ public static partial class RagCitationValidator
                 "rejected_unsupported", warnings.Distinct().ToList());
         }
 
+        claims = NormalizeClaimOrder(claims);
+
         // The model's prose is not trusted independently from its structured claims. Rebuild the
         // user-visible answer exclusively from claims that survived evidence-id and support checks,
         // so uncited sentences cannot bypass validation through the free-form answer field.
@@ -154,13 +158,32 @@ public static partial class RagCitationValidator
         static string Render(RagClaim claim) =>
             $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
 
-        var ordered = claims.ToList();
+        var ordered = NormalizeClaimOrder(claims.ToList());
         if (ordered.Count == 1) return Render(ordered[0]);
 
-        var explanationHeading = LooksEnglish(question) ? "Explanation" : "Açıklama";
-        return $"{Render(ordered[0])}\n\n**{explanationHeading}**\n\n" +
-               string.Join('\n', ordered.Skip(1).Select(claim => $"- {Render(claim)}"));
+        var english = LooksEnglish(question);
+        var sections = new[]
+        {
+            (Role: "explanation", Tr: "Açıklama", En: "Explanation", Ordered: false),
+            (Role: "step", Tr: "Adımlar", En: "Steps", Ordered: true),
+            (Role: "constraint", Tr: "Sınırlar", En: "Constraints", Ordered: false),
+            (Role: "exception", Tr: "İstisnalar", En: "Exceptions", Ordered: false),
+            (Role: "conflict", Tr: "Kaynak uyuşmazlıkları", En: "Source conflicts", Ordered: false)
+        };
+        var blocks = new List<string> { Render(ordered[0]) };
+        foreach (var section in sections)
+        {
+            var sectionClaims = ordered.Skip(1).Where(claim => claim.Role == section.Role).ToList();
+            if (sectionClaims.Count == 0) continue;
+            var lines = sectionClaims.Select((claim, index) =>
+                $"{(section.Ordered ? $"{index + 1}." : "-")} {Render(claim)}");
+            blocks.Add($"**{(english ? section.En : section.Tr)}**\n\n{string.Join('\n', lines)}");
+        }
+        return string.Join("\n\n", blocks);
     }
+
+    public static List<RagClaim> NormalizeRoles(IReadOnlyCollection<RagClaim> claims) =>
+        NormalizeClaimOrder(claims);
 
     public static ValidatedRagAnswer? TryBuildExtractiveFallback(string question,
         IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4, string? reason = null)
@@ -578,6 +601,29 @@ public static partial class RagCitationValidator
     }
 
     private static bool HasNegation(string text) => NegationRegex().IsMatch(SlugHelper.Transliterate(text).ToLowerInvariant());
+
+    private static string NormalizeRole(string? role) => role?.Trim().ToLowerInvariant() switch
+    {
+        "summary" => "summary",
+        "step" => "step",
+        "constraint" => "constraint",
+        "exception" => "exception",
+        "conflict" => "conflict",
+        _ => "explanation"
+    };
+
+    private static List<RagClaim> NormalizeClaimOrder(IReadOnlyCollection<RagClaim> claims)
+    {
+        var ordered = claims.ToList();
+        if (ordered.Count == 0) return ordered;
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            var role = index == 0 ? "summary" : NormalizeRole(ordered[index].Role);
+            if (index > 0 && role == "summary") role = "explanation";
+            ordered[index] = ordered[index] with { Role = role };
+        }
+        return ordered;
+    }
 
     private static bool LooksEnglish(string? question)
     {
