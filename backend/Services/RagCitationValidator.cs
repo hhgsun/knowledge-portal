@@ -141,6 +141,27 @@ public static partial class RagCitationValidator
         return new(answer, claims, false, coverage, supportCoverage, status, warnings.Distinct().ToList());
     }
 
+    /// <summary>
+    /// Builds the only user-visible prose from claims that already passed grounding. The first claim
+    /// is the fast answer; additional claims are rendered as an explanation so clients do not have to
+    /// turn a flat evidence list into a readable synthesis themselves.
+    /// </summary>
+    public static string RenderSupportedAnswer(IReadOnlyCollection<RagClaim> claims, string? question,
+        string fallbackAnswer, bool insufficientContext)
+    {
+        if (insufficientContext || claims.Count == 0) return fallbackAnswer;
+
+        static string Render(RagClaim claim) =>
+            $"{claim.Text.Trim()} {string.Join(' ', claim.SourceIds.Select(id => $"[{id}]"))}";
+
+        var ordered = claims.ToList();
+        if (ordered.Count == 1) return Render(ordered[0]);
+
+        var explanationHeading = LooksEnglish(question) ? "Explanation" : "Açıklama";
+        return $"{Render(ordered[0])}\n\n**{explanationHeading}**\n\n" +
+               string.Join('\n', ordered.Skip(1).Select(claim => $"- {Render(claim)}"));
+    }
+
     public static ValidatedRagAnswer? TryBuildExtractiveFallback(string question,
         IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4, string? reason = null)
     {
@@ -558,6 +579,13 @@ public static partial class RagCitationValidator
 
     private static bool HasNegation(string text) => NegationRegex().IsMatch(SlugHelper.Transliterate(text).ToLowerInvariant());
 
+    private static bool LooksEnglish(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var normalized = SlugHelper.Transliterate(question).ToLowerInvariant();
+        return EnglishQuestionWordRegex().IsMatch(normalized) && !TurkishQuestionWordRegex().IsMatch(normalized);
+    }
+
     private static HashSet<string> SignificantTokens(string text)
     {
         var stop = new HashSet<string>(StringComparer.Ordinal)
@@ -596,4 +624,8 @@ public static partial class RagCitationValidator
     private static partial Regex DefinitionPredicateRegex();
     [GeneratedRegex(@"\s+(?=[\p{L}][\p{L}\p{N}_]*(?::[\p{L}\p{N}_*]+)+)")]
     private static partial Regex NextConfigurationKeyRegex();
+    [GeneratedRegex(@"\b(?:what|how|why|when|where|which|explain|summarize|compare|overview)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex EnglishQuestionWordRegex();
+    [GeneratedRegex(@"\b(?:nedir|nasil|neden|nicin|ne|hangi|acikla|ozetle|karsilastir)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex TurkishQuestionWordRegex();
 }

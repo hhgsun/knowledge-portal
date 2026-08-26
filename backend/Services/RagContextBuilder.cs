@@ -34,6 +34,14 @@ public sealed class RagContextBuilder : IRagContextBuilder
     {
         maxWords = Math.Max(0, maxWords);
         maxDistinctArticles = Math.Max(1, maxDistinctArticles);
+        var diversified = Diversify(rankedChunks, articleTitles, maxDistinctArticles);
+        var distinctArticleCount = Math.Max(1, diversified.Select(x => x.Chunk.ArticleId)
+            .Distinct(StringComparer.Ordinal).Count());
+        // Reserve an equal first-pass share for every selected article. This matters for lexical
+        // fallback chunks, which may contain a whole article and would otherwise consume the entire
+        // prompt before the remaining ranked sources are seen. After depth zero, unused budget can
+        // still be spent on additional chunks from those same articles.
+        var firstPassWordLimit = Math.Max(1, maxWords / distinctArticleCount);
         var items = new List<RagContextItem>();
         var articleIds = new HashSet<string>(StringComparer.Ordinal);
         var chunkKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -41,8 +49,9 @@ public sealed class RagContextBuilder : IRagContextBuilder
         var usedWords = 0;
         var budgetTruncated = false;
 
-        foreach (var chunk in rankedChunks)
+        foreach (var candidate in diversified)
         {
+            var chunk = candidate.Chunk;
             if (usedWords >= maxWords) { budgetTruncated = true; break; }
             if (!articleTitles.TryGetValue(chunk.ArticleId, out var articleTitle)) continue;
             if (!articleIds.Contains(chunk.ArticleId) && articleIds.Count >= maxDistinctArticles) continue;
@@ -53,7 +62,10 @@ public sealed class RagContextBuilder : IRagContextBuilder
             var normalized = NormalizeForDeduplication(chunk.ChunkText);
             if (normalized.Length == 0 || !contentKeys.Add(ContentExtractor.ComputeHash(normalized))) continue;
 
-            var (text, wordCount, truncated) = TruncateWords(chunk.ChunkText, maxWords - usedWords);
+            var itemBudget = candidate.Depth == 0
+                ? Math.Min(maxWords - usedWords, firstPassWordLimit)
+                : maxWords - usedWords;
+            var (text, wordCount, truncated) = TruncateWords(chunk.ChunkText, itemBudget);
             if (wordCount == 0) continue;
 
             var selectedChunk = chunk with { ChunkText = text };
@@ -67,6 +79,24 @@ public sealed class RagContextBuilder : IRagContextBuilder
         }
 
         return new(items, usedWords, budgetTruncated);
+    }
+
+    private static List<(VectorChunkResult Chunk, int Depth)> Diversify(
+        IEnumerable<VectorChunkResult> rankedChunks,
+        IReadOnlyDictionary<string, string> articleTitles,
+        int maxDistinctArticles)
+    {
+        var groups = rankedChunks
+            .Where(chunk => articleTitles.ContainsKey(chunk.ArticleId))
+            .GroupBy(chunk => chunk.ArticleId, StringComparer.Ordinal)
+            .Take(maxDistinctArticles)
+            .Select(group => group.ToList())
+            .ToList();
+        var diversified = new List<(VectorChunkResult, int)>();
+        for (var depth = 0; groups.Any(group => group.Count > depth); depth++)
+            foreach (var group in groups)
+                if (group.Count > depth) diversified.Add((group[depth], depth));
+        return diversified;
     }
 
     internal static string ChunkKey(VectorChunkResult chunk) =>

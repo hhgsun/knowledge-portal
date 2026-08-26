@@ -208,8 +208,8 @@ const FLOWS: Flow[] = [
       {
         title: "Pasajlar toplanır",
         detail:
-          "Semantik aramanın parça seviyeli hali kullanılır: makale başına en iyi birkaç parça alınır, böylece uzun bir doküman tek bir pencereye indirgenmez. Benzerlik eşiği liste aramasından daha düşüktür — alaka kararını sonunda modelin kendisi verecektir.",
-        refs: ["RagCandidateLimit: 40", "RagMaxChunksPerArticle: 3", "RagMinSimilarityScore: 0.3"],
+          "Hybrid aramanın parça seviyeli hali kullanılır: makale başına en iyi birkaç parça alınır, böylece uzun bir doküman tek bir pencereye indirgenmez. Benzerlik eşiği liste aramasından daha düşüktür; nihai yanıt ayrıca deterministic grounding kontrolünden geçer.",
+        refs: ["RagCandidateLimit: 60", "RagMaxChunksPerArticle: 3", "RagMinSimilarityScore: 0.3"],
       },
       {
         title: "Filtre ve yayın kontrolü",
@@ -227,8 +227,8 @@ const FLOWS: Flow[] = [
       {
         title: "Dar yol — tek çağrı",
         detail:
-          "Pasajlar bağlam bütçesi dolana kadar tek bir isteme paketlenir ve kaynak makale sayısı sınırlanır, böylece yanıt dağılmaz. Tek model çağrısı yapılır.",
-        refs: ["RagSourceLimit: 3", "RagMaxContextWords: 8000"],
+          "İlk 10 farklı kaynaktan dengeli pasajlar bağlam bütçesi dolana kadar tek bir isteme paketlenir. Model önce doğrudan sonucu, ardından yalnız kanıtlanan açıklama ve sınırları üretir; tek model çağrısı yapılır.",
+        refs: ["RagSourceLimit: 10", "RagMaxContextWords: 8000"],
       },
       {
         title: "Geniş yol — böl ve birleştir",
@@ -239,8 +239,8 @@ const FLOWS: Flow[] = [
       {
         title: "Yanıt ve kaynaklar",
         detail:
-          "Yanıt [Başlık] biçiminde atıf içerir. Kaynak listesi, her makalenin en iyi parça skoruna göre kurulur. Hiçbir pasaj yeterince alakalı değilse model uydurmak yerine bilgi bulunamadığını söyler.",
-        refs: ["RagResult", "sources"],
+          "İlk doğrulanmış claim kısa sonuç olarak, kalan claim'ler açıklama maddeleri olarak gösterilir. Her olgusal cümle [S1] biçiminde evidence kimliği taşır; yeterli kanıt yoksa sistem bilgi uydurmak yerine fail-closed sonuç döndürür.",
+        refs: ["RagResult", "claims", "evidence"],
       },
     ],
   },

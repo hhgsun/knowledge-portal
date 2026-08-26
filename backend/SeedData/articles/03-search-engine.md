@@ -51,7 +51,7 @@ Her iki sinyalden yararlanmak istediğiniz genel aramalarda hybrid mod önerilir
 
 ## 4. RAG Arama
 
-RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak doğal dilde yanıt oluşturur. Retrieval katmanı lexical ve semantic chunk adaylarını RRF ile birleştirir, yeniden sıralar, yakın kopyaları bastırır ve kaynak çeşitliliğini korur. Dar sorular tek üretim çağrısına, tüm içerikleri özetleme/karşılaştırma gibi geniş sorular bounded-parallel map-reduce akışına yönlendirilir.
+RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak önce kısa sonuç, ardından kanıtlı açıklama oluşturur. Model doküman başlıklarını veya sonuçları tek tek aktarmak yerine ilgili pasajları sentezler; açıklamadaki her olgusal cümle yine deterministik grounding kontrolünden geçer. Retrieval katmanı lexical ve semantic chunk adaylarını RRF ile birleştirir, yeniden sıralar, yakın kopyaları bastırır ve kaynak çeşitliliğini korur. Dar sorular varsayılan olarak ilk 10 farklı kaynağın dengeli pasajlarını 8.000 kelimelik bütçede tek üretim çağrısına taşır; tüm içerikleri özetleme/karşılaştırma gibi geniş sorular bounded-parallel map-reduce akışına yönlendirilir.
 
 Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Her evidence öğesi ayrıca gerçek embedding satırının stabil `chunkId` değerini (lexical fallback için deterministik kimlik), yetki kontrollü canonical makale URL'sini ve varsa ayrıştırılmış PDF sayfa numarasını taşır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
 

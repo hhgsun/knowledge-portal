@@ -301,7 +301,7 @@ public class RagServiceTests
         Assert.Equal("lexically_grounded", result.GroundingStatus);
         Assert.False(result.InsufficientContext);
         Assert.StartsWith("Reranking:External: kapalı varsayılan", result.Answer);
-        Assert.Contains("[S1]\n\nReranking:External, aday pasajları", result.Answer);
+        Assert.Contains("[S1]\n\n**Açıklama**\n\n- Reranking:External, aday pasajları", result.Answer);
         Assert.Contains("yeniden sıralayan isteğe bağlı bir katmandır", result.Answer);
         Assert.Contains("Varsayılan olarak kapalıdır", result.Answer);
         Assert.Contains("yerel sıralama sonucu kullanılır", result.Answer);
@@ -328,7 +328,7 @@ public class RagServiceTests
         Assert.False(result.InsufficientContext);
         Assert.True(result.PartialResult);
         Assert.StartsWith("Reranking:External, kapalı varsayılan", result.Answer);
-        Assert.Contains("[S1]\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.Contains("[S1]\n\n**Açıklama**\n\n- Opsiyonel external cross-encoder", result.Answer);
         Assert.Equal(2, h.Chat.CallCount);
     }
 
@@ -384,7 +384,7 @@ public class RagServiceTests
         Assert.False(result.InsufficientContext);
         Assert.True(result.PartialResult);
         Assert.Contains("Reranking:External: kapalı varsayılan external cross-encoder", result.Answer);
-        Assert.Contains("\n\nOpsiyonel external cross-encoder", result.Answer);
+        Assert.Contains("\n\n**Açıklama**\n\n- Opsiyonel external cross-encoder", result.Answer);
         Assert.DoesNotContain("otomatik değiştirir", result.Answer);
         Assert.Equal(2, h.Chat.CallCount);
     }
@@ -545,5 +545,49 @@ public class RagServiceTests
         Assert.Contains("hybrid arama", result.Answer);
         Assert.Contains("üretim aşaması", result.Answer);
         Assert.Equal(4, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_NarrowQuestion_ConsidersUpToTenDistinctSourcesInOnePass()
+    {
+        var results = Enumerable.Range(1, 12)
+            .Select(i => new VectorSearchResult($"a{i}", 1 - i * .01, 0)).ToList();
+        var h = BuildRag(results, db =>
+        {
+            for (var i = 1; i <= 12; i++)
+                db.Articles.Add(Article($"a{i}", $"VPN Politikası {i}",
+                    bodyText: $"VPN politikası {i} kurumsal erişim kuralını açıklar."));
+            db.SaveChanges();
+        });
+
+        var result = await h.Rag.AskAsync("VPN politikası");
+        var prompt = UserMessage(h.Chat);
+
+        Assert.Equal(10, result.Sources.Count);
+        for (var i = 1; i <= 10; i++) Assert.Contains($"VPN Politikası {i}", prompt);
+        Assert.DoesNotContain("VPN Politikası 11", prompt);
+        Assert.DoesNotContain("VPN Politikası 12", prompt);
+        Assert.Equal(1, h.Chat.CallCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_GenerationPrompt_RequiresGroundedSummaryAndExplanation()
+    {
+        var h = BuildRag(
+            [new VectorSearchResult("a1", 0.9, 0)],
+            db =>
+            {
+                db.Articles.Add(Article("a1", "VPN Kurulumu",
+                    bodyText: "VPN profili portal üzerinden indirilir ve kullanıcı sertifikası seçilir."));
+                db.SaveChanges();
+            });
+
+        await h.Rag.AskAsync("VPN nasıl kurulur?");
+
+        var systemPrompt = h.Chat.LastMessages.Single(message => message.Role == ChatRole.System).Text ?? "";
+        Assert.Contains("Synthesize the evidence", systemPrompt);
+        Assert.Contains("first claim a decisive, concise answer", systemPrompt);
+        Assert.Contains("Explanation is not permission to speculate", systemPrompt);
+        Assert.Contains("compact synthesis over a source-by-source recap", systemPrompt);
     }
 }

@@ -4,6 +4,38 @@ namespace KnowledgePortal.Api.Tests.Unit;
 
 public class RagCitationValidatorTests
 {
+    [Fact]
+    public void RenderSupportedAnswer_FormatsSummaryAndExplanationWithoutAddingFacts()
+    {
+        var claims = new List<RagClaim>
+        {
+            new("VPN erişimi sertifika tabanlıdır.", ["S1"]),
+            new("Kullanıcı önce VPN profilini indirir.", ["S1"]),
+            new("Ardından kullanıcı sertifikasını seçer.", ["S2"])
+        };
+
+        var answer = RagCitationValidator.RenderSupportedAnswer(claims, "VPN nasıl kurulur?", "fallback", false);
+
+        Assert.Equal("VPN erişimi sertifika tabanlıdır. [S1]\n\n**Açıklama**\n\n" +
+                     "- Kullanıcı önce VPN profilini indirir. [S1]\n" +
+                     "- Ardından kullanıcı sertifikasını seçer. [S2]", answer);
+    }
+
+    [Fact]
+    public void RenderSupportedAnswer_UsesEnglishHeadingForEnglishQuestion()
+    {
+        var claims = new List<RagClaim>
+        {
+            new("VPN access uses certificates.", ["S1"]),
+            new("The profile is downloaded first.", ["S1"])
+        };
+
+        var answer = RagCitationValidator.RenderSupportedAnswer(claims, "How does VPN work?", "fallback", false);
+
+        Assert.Contains("**Explanation**", answer);
+        Assert.DoesNotContain("**Açıklama**", answer);
+    }
+
     private static readonly RagEvidence Evidence = new("S1", "a1", "VPN Rehberi", "vpn-rehberi",
         "article", null, null, null, "VPN talebi portal üzerinden açılır.", .9);
 

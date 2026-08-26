@@ -465,7 +465,10 @@ export default function SearchPage() {
               <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl">
                 <div className="flex items-center gap-2 mb-3">
                   <Bot size={16} className="text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Yapay Zekâ Yanıtı</span>
+                  <div>
+                    <span className="block text-sm font-medium text-blue-700 dark:text-blue-300">Yapay Zekâ Yanıtı</span>
+                    <span className="block text-[11px] text-blue-500 dark:text-blue-400">Bulunan kaynaklardan doğrulanmış özet ve açıklama</span>
+                  </div>
                   <div className="ml-auto flex items-center gap-2">
                     {responseTime !== null && <span className="text-xs text-blue-400">{responseTime}ms</span>}
                     <button
@@ -533,7 +536,7 @@ export default function SearchPage() {
               {ragResponse.sources.length > 0 && (
                 <section aria-labelledby="rag-sources-heading">
                   <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Kaynaklar ({ragResponse.sources.length})
+                    İncelenen kaynaklar ({ragResponse.sources.length})
                     <span className="ml-1 font-normal text-zinc-500">· {ragResponse.evidence?.length ?? 0} kanıt</span>
                   </h3>
                   <div className="space-y-3">

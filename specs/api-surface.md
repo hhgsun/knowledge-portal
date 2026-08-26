@@ -628,10 +628,16 @@ Ordered by version number descending.
 **200 Response (RAG)**:
 ```json
 {
-  "answer": "Doğrulanmış claim [S1]",
-  "sources": [{ "articleId": "...", "title": "...", "slug": "...", "score": 0.95 }],
-  "claims": [{ "text": "Doğrulanmış claim", "sourceIds": ["S1"] }],
-  "evidence": [{ "sourceId": "S1", "chunkId": "...", "articleId": "...", "canonicalUrl": "/api/articles/...", "pageNumber": 12, "passage": "..." }],
+  "answer": "Doğrulanmış kısa sonuç [S1]\n\n**Açıklama**\n\n- Destekli açıklama [S2]",
+  "sources": [{ "articleId": "article-1", "title": "...", "slug": "...", "score": 0.95 }],
+  "claims": [
+    { "text": "Doğrulanmış kısa sonuç", "sourceIds": ["S1"] },
+    { "text": "Destekli açıklama", "sourceIds": ["S2"] }
+  ],
+  "evidence": [
+    { "sourceId": "S1", "chunkId": "chunk-1", "articleId": "article-1", "canonicalUrl": "/api/articles/...", "pageNumber": 12, "passage": "..." },
+    { "sourceId": "S2", "chunkId": "chunk-2", "articleId": "article-1", "canonicalUrl": "/api/articles/...", "pageNumber": 13, "passage": "..." }
+  ],
   "citationCoverage": 1.0,
   "claimSupportCoverage": 1.0,
   "groundingStatus": "lexically_grounded",
@@ -652,7 +658,11 @@ treated as an implicit request to explain that topic from all directly relevant 
 supported purpose, behavior, defaults, limits, and fallbacks. The free-form model answer is never
 returned independently. The API rebuilds `answer` only from claims that pass known-evidence,
 lexical-overlap, numeric-consistency and negation-consistency checks; repeating a document title as a
-standalone claim is rejected. For a bare-topic query, punctuation does not affect classification: the
+standalone claim is rejected. The generation contract requires a compact synthesis instead of a
+source-by-source result recap: the first validated claim is the direct answer and later claims explain
+supported behavior, reasons, practical meaning, steps, constraints, exceptions, and trade-offs. The API
+renders these as a summary paragraph followed by a localized Markdown `Explanation`/`Açıklama` list.
+This presentation adds no model prose; it is built exclusively from grounded claims. For a bare-topic query, punctuation does not affect classification: the
 first supported claim is retained as the summary paragraph. The same rule applies to direct definition
 questions whose subject is a colon-delimited configuration path: compact source-native configuration
 descriptions are accepted as definitions even when they do not contain a grammatical `is`/`-dır`
@@ -674,6 +684,15 @@ verbatim evidence sentences, lexical, numeric and negation support hold by const
 relevant evidence sentence exists, the request fails closed as an
 insufficient-context response. Capacity saturation returns **429**, an open AI circuit returns
 **503**, and an exceeded stage/request deadline returns **504** with `Retry-After` where applicable.
+
+The focused single-pass path considers up to `Ollama:RagSourceLimit` distinct ranked articles (default
+10, clamped to 1-20) within `Ollama:RagMaxContextWords` (default 8,000). Article-interleaved retrieval
+places the best passage from each source before deeper passages. The context builder reserves an equal
+first-pass word share per selected article, preventing a whole-article lexical fallback passage from
+monopolizing the prompt; deeper chunks use the remaining budget after that first pass. This lets the
+assistant synthesize the information a user would otherwise have to read across the first ten results,
+without paying map-reduce latency for a focused question. Corpus-wide summary/compare/list intents still
+use the broad map-reduce path and its completeness gate.
 
 If a bare-topic/configuration definition produces a fully supported summary but both the initial and
 repair calls omit the required explanation, the server preserves that summary and appends up to three
