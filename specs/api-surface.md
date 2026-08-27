@@ -20,7 +20,7 @@ In endpoint descriptions below, **"JWT or API Key"** means the endpoint accepts 
 | Policy | Limit | Window | Endpoints |
 |--------|-------|--------|-----------|
 | `auth` | 10 requests | 1 minute | `POST /api/auth/login`, `POST /api/auth/register`, `POST /api/auth/azure-login` |
-| `search` | 30 requests | 1 minute | `GET /api/search` |
+| `search` | 30 requests | 1 minute | `GET /api/search`, `POST /api/assistant` |
 | `mcp` | 60 requests | 1 minute | `GET /mcp`, `POST /mcp` |
 
 When rate limit is exceeded, returns `429 Too Many Requests`.
@@ -732,6 +732,75 @@ Broad summary queries use a configurable completeness gate (`Ollama:RagBroadMini
 Supported, distinct claims from the reduce and repair passes are merged. If the merged answer is
 still below the target, query-relevant verified evidence sentences complete the response as an
 `extractive_enrichment` partial result; unrelated retrieval hits are not added merely to reach a count.
+
+---
+
+## Agentic Assistant
+
+### `POST /api/assistant`
+**Auth**: Bearer (JWT or API Key). The analytics route additionally requires an interactive session and `analytics:view`; viewer sessions and all API keys receive `403` for that route.
+**Rate limit**: `search`
+
+The assistant is an isolated, bounded, read-only orchestration surface. It reuses `SearchExecutionService` for hybrid search and grounded RAG, and the shared analytics report service for authorized portal statistics. It exposes no mutation tool and executes no free-form SQL. Removing or disabling it does not alter `GET /api/search`, RAG, MCP, or stored portal content.
+
+**Request**:
+
+```json
+{
+  "message": "VPN politikası nedir ve ilgili rehberleri listele",
+  "preferredRoute": "auto"
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|:--------:|-------|
+| `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
+| `preferredRoute` | string | No | `auto`, `search`, `answer`, `analytics`, or `chat`; default `auto` |
+
+In `auto` mode, explicit safe modes and deterministic Turkish/English signals run first. Only ambiguous input reaches the structured low-token classifier. A classifier decision below `AgenticRouting:MinConfidence` falls back to read-only hybrid search. The server-side policy layer independently authorizes the chosen route; classifier output never grants permission. A compound answer-plus-list request may invoke at most grounded RAG plus hybrid search, bounded by `MaxToolCalls`. If RAG is unavailable or fails, the assistant returns hybrid results with a warning rather than an ungrounded answer.
+
+**200 Response**:
+
+```json
+{
+  "route": "knowledge_answer",
+  "confidence": 0.94,
+  "routeSource": "deterministic",
+  "reasonCode": "answer_and_results",
+  "normalizedQuery": "VPN politikası nedir ve ilgili rehberleri listele",
+  "answer": "Portal kaynaklarına dayalı doğrulanmış yanıt [S1]",
+  "results": [{ "id": "...", "title": "VPN Rehberi", "slug": "vpn-rehberi" }],
+  "rag": {
+    "sources": [{ "articleId": "...", "title": "VPN Politikası", "slug": "vpn-politikasi", "score": 0.95 }],
+    "consultedSources": [],
+    "claims": [{ "text": "...", "role": "summary", "sourceIds": ["S1"] }],
+    "evidence": [{ "sourceId": "S1", "articleId": "...", "passage": "..." }],
+    "citationCoverage": 1,
+    "claimSupportCoverage": 1,
+    "groundingStatus": "lexically_grounded",
+    "insufficientContext": false,
+    "partialResult": false
+  },
+  "analytics": null,
+  "requiresClarification": false,
+  "clarification": null,
+  "toolCalls": ["knowledge_rag", "knowledge_search"],
+  "warnings": [],
+  "responseTimeMs": 640,
+  "traceId": "..."
+}
+```
+
+Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `fallback`, or `default`. General chat is bounded canned assistance and cannot make company factual claims.
+
+Operational controls:
+
+- `Assistant:Enabled=false`: endpoint returns `404`; search/RAG remain available. Set frontend build variable `VITE_ASSISTANT_ENABLED=false` to remove the sidebar item and route.
+- `AgenticRouting:Enabled=false`: assistant remains available but uses the explicit/default route without classification.
+- The current tool registry is read-only by construction; configuration cannot expose a write or free-form SQL tool.
+- Metrics: `kp_assistant_routes`, `kp_assistant_tool_calls`, `kp_assistant_duration_ms`; usage operations are persisted as `assistant.<route>`.
+
+Errors use `{ "error": "..." }`: `400` for invalid input/mode, `403` for a denied route, `404` when the assistant kill switch is off, and `504` when the total bounded deadline expires.
 
 ---
 

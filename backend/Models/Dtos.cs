@@ -48,6 +48,49 @@ public record CommentRequest(string Comment);
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
 public record RagFeedbackRequest(string SearchQueryId, bool Helpful, string? Reason = null);
 
+// Assistant / bounded agentic routing. Kept separate from search DTOs so the entire
+// assistant surface can be disabled or removed without changing /api/search contracts.
+public record AssistantRequest(string Message, string? PreferredRoute = "auto");
+public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
+    int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
+public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
+public record AssistantEvidenceDto(string SourceId, string ArticleId, string Title, string Slug,
+    string SourceType, string? AttachmentId, string? SourceName, string? SourceLocation,
+    string Passage, double Score, string? ChunkId, string? CanonicalUrl, int? PageNumber);
+public record AssistantRagDto(
+    AssistantSourceDto[] Sources,
+    AssistantSourceDto[] ConsultedSources,
+    AssistantClaimDto[] Claims,
+    AssistantEvidenceDto[] Evidence,
+    double CitationCoverage,
+    double ClaimSupportCoverage,
+    string GroundingStatus,
+    bool InsufficientContext,
+    bool PartialResult);
+public record AssistantAnalyticsOverviewDto(int TotalArticles, int ViewsThisWeek,
+    int SearchesToday, int StaleArticles);
+public record AssistantQueryCountDto(string Query, int Count);
+public record AssistantTopArticleDto(string ArticleId, string Title, string Slug, int Views);
+public record AssistantAnalyticsDto(AssistantAnalyticsOverviewDto Overview,
+    AssistantQueryCountDto[] TopSearches, AssistantQueryCountDto[] FailedSearches,
+    AssistantTopArticleDto[] TopArticles, int PeriodDays);
+public record AssistantResponseDto(
+    string Route,
+    double Confidence,
+    string RouteSource,
+    string ReasonCode,
+    string NormalizedQuery,
+    string? Answer,
+    List<ArticleSummaryDto> Results,
+    AssistantRagDto? Rag,
+    AssistantAnalyticsDto? Analytics,
+    bool RequiresClarification,
+    string? Clarification,
+    string[] ToolCalls,
+    string[] Warnings,
+    long ResponseTimeMs,
+    string TraceId);
+
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.
 public record ArticleSummaryDto(

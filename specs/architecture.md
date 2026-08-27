@@ -29,7 +29,7 @@
      │                           │                             │
      │  ┌────────────────────────▼──────────────────────────┐  │
      │  │  API Controllers                                   │  │
-     │  │  Auth · content · search/RAG · admin · MCP         │  │
+     │  │  Auth · content · assistant · search/RAG · MCP      │  │
      │  └──────────────────────┬────────────────────────────┘  │
      │                         │                               │
      │  ┌──────────────────────▼────────────────────────────┐  │
@@ -50,7 +50,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 |-------|----------|---------------|
 | **Presentation** | `frontend/src/` | React SPA — routing, state, UI rendering |
 | **API** | `backend/Controllers/` | HTTP endpoint mapping, request validation, auth scoping, response shaping |
-| **Services** | `backend/Services/` | Domain logic (`ArticleMutationService`, `ContentTypeService`, Article/Tag/API-key/User/Stats services) + shared REST/MCP search orchestration (`SearchExecutionService`) + AI/indexing + observability |
+| **Services** | `backend/Services/` | Domain logic + shared REST/MCP search (`SearchExecutionService`) + shared analytics reporting + isolated assistant router/policy/orchestrator + AI/indexing + observability |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
 | **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid child retrieval → rerank/ranking signals → ACL-safe child→parent resolution → bounded evidence context |
@@ -133,8 +133,9 @@ React Router v7 with a single `<BrowserRouter>`:
 | `/articles/:slug/edit` | EditArticlePage | Protected |
 | `/articles/:slug/versions` | VersionsPage | Protected |
 | `/search` | SearchPage | Protected |
+| `/assistant` | AssistantPage | Protected; build-time feature flag |
 | `/profile` | ProfilePage | Protected |
-| `/analytics` | AnalyticsPage | Protected |
+| `/analytics` | AnalyticsPage | Protected (admin/editor) |
 | `/tags` | TagsPage | Protected (admin/editor) |
 | `/settings/bulk-transfer` | BulkTransferPage | Protected (admin/editor) |
 | `/articles/import` | KnowledgeImportPage | Protected |
@@ -156,7 +157,8 @@ Protected routes use a `<ProtectedRoute>` wrapper that redirects to `/login` if 
 │                        │ (via <Outlet/>) │
 │ • Home                 │                 │
 │ • Articles / Import    │                 │
-│ • Search / Analytics   │                 │
+│ • Assistant / Search   │                 │
+│ • Analytics            │                 │
 │ • Role-based settings  │                 │
 └────────────────────────┴─────────────────┘
 ```
@@ -185,6 +187,7 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 6. **UTC timestamps** — All `DateTime` values stored and transmitted in UTC.
 7. **Private attachment delivery** — Attachment downloads and inline images use authenticated bearer requests and apply the same article-visibility policy as the article itself; credentials are never placed in URLs.
 8. **Durable indexing with eager lexical visibility** — Article changes invalidate separate lexical (`FtsIndexedAt`) and semantic (`IndexedAt`) state and first enqueue a generation-guarded, leased PostgreSQL job. The request then best-effort refreshes local PostgreSQL FTS (savepoint-isolated inside wider import transactions), while semantic embedding remains asynchronous. The worker claims no more jobs than it can run, enforces a configurable per-article timeout, and always re-runs FTS before embedding. Routine admin repair targets only dirty missing/delayed/failed/lease-expired jobs; corpus-wide reindex remains a separate maintenance operation.
+9. **Removable bounded assistant** — `AssistantController → AssistantOrchestratorService → AssistantRouterService + AssistantPolicyService → existing SearchExecutionService/RAG/AnalyticsReportService` is a one-way dependency. Explicit modes and deterministic rules precede an optional structured classifier; low-confidence or unavailable classification falls back to hybrid search. The policy layer—not the model—authorizes analytics, and the current registry contains only read operations. `Assistant:Enabled=false` disables the API, while `VITE_ASSISTANT_ENABLED=false` removes the compiled frontend route/navigation. Deleting the assistant controller/services/page does not alter search, RAG, MCP, analytics reporting, database entities, or stored content.
 
 ## Future Consideration: Controlled Dynamic Metadata Facets
 

@@ -255,6 +255,44 @@ export interface RagResponse {
   searchQueryId?: string;
 }
 
+// ─── Assistant / Agentic Routing ────────────────────────────
+export type AssistantRoute = "knowledge_search" | "knowledge_answer" | "analytics" | "general_chat" | "clarification";
+export type AssistantPreferredRoute = "auto" | "search" | "answer" | "analytics" | "chat";
+
+export interface AssistantResponse {
+  route: AssistantRoute;
+  confidence: number;
+  routeSource: "manual" | "deterministic" | "classifier" | "fallback" | "default";
+  reasonCode: string;
+  normalizedQuery: string;
+  answer: string | null;
+  results: SearchResult[];
+  rag: {
+    sources: RagSource[];
+    consultedSources: RagSource[];
+    claims: { text: string; role: "summary" | "explanation" | "step" | "constraint" | "exception" | "conflict"; sourceIds: string[] }[];
+    evidence: NonNullable<RagResponse["evidence"]>;
+    citationCoverage: number;
+    claimSupportCoverage: number;
+    groundingStatus: string;
+    insufficientContext: boolean;
+    partialResult: boolean;
+  } | null;
+  analytics: {
+    overview: { totalArticles: number; viewsThisWeek: number; searchesToday: number; staleArticles: number };
+    topSearches: { query: string; count: number }[];
+    failedSearches: { query: string; count: number }[];
+    topArticles: { articleId: string; title: string; slug: string; views: number }[];
+    periodDays: number;
+  } | null;
+  requiresClarification: boolean;
+  clarification: string | null;
+  toolCalls: string[];
+  warnings: string[];
+  responseTimeMs: number;
+  traceId: string;
+}
+
 // ─── Dashboard ───────────────────────────────────────────────
 export interface DashboardResponse {
   totalArticles: number;

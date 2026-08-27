@@ -14,6 +14,7 @@ frontend/
     ├── App.tsx                   # BrowserRouter + route definitions + ProtectedRoute
     ├── index.css                 # Tailwind v4 import + CSS custom properties + dark mode
     ├── config/
+    │   ├── features.ts            # Build-time feature switches (Assistant defaults on)
     │   └── msalConfig.ts          # MSAL.js configuration (Azure AD clientId, tenantId, scopes)
 ├── contexts/
 │   ├── AuthContext.tsx        # JWT auth state, login/logout/register/loginWithAzure, auto-revalidation
@@ -50,6 +51,7 @@ frontend/
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
     ├── SearchPage.tsx         # Multi-mode search + typed RAG synthesis, cited/consulted source labels, governance/conflict signals and accent-insensitive evidence highlighting
+    ├── AssistantPage.tsx      # Bounded auto/manual routing over search, grounded RAG, authorized analytics and canned chat
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
@@ -99,6 +101,7 @@ graph TD
     ArticleViewPage --> ReactMarkdown
     VersionsPage --> useApi
     SearchPage --> useApi
+    AssistantPage --> useApi
     AnalyticsPage --> useApi
     AdminUsersPage --> useApi
     AdminApiKeysPage --> useApi
@@ -129,6 +132,7 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | — |
+| `/assistant` | AssistantPage | Protected | AppShell | —; omitted when `VITE_ASSISTANT_ENABLED=false` |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |
@@ -160,7 +164,7 @@ Shows loading state while auth is being validated. Redirects to `/login` if no u
 ### Navigation
 
 Sidebar navigation is **role-aware**:
-- All users see: Home, Articles (with "New Article" nested), Search, Profile and featured links.
+- All users see: Home, Articles (with "New Article" nested), Search, Profile and featured links. Assistant is also visible unless `VITE_ASSISTANT_ENABLED=false` at build time.
 - Admin/editor users also see Analytics, Tags, Lookups and bulk-transfer/import operations.
 - Admins additionally see user/API-key administration, featured-link management, logs, search diagnostics and RAG evaluations.
 
@@ -265,6 +269,7 @@ Tag picker with inline creation capability.
 | ArticleViewPage | `GET /api/articles/:slug`, `POST /api/articles/:id/vote`, `GET /api/articles/:id/votes`, `GET /api/articles/:id/comments`, `POST /api/articles/:id/comments` |
 | VersionsPage | `GET /api/articles/:slug`, `GET /api/articles/:id/versions`, `GET /api/articles/:id/versions/:vid` |
 | SearchPage | `GET /api/search`, `GET /api/tags` |
+| AssistantPage | `POST /api/assistant` |
 | AnalyticsPage | `GET /api/analytics` |
 | AdminUsersPage | `GET/POST/PUT/DELETE /api/admin/users` |
 | ProfilePage (ApiKeysSection) | `GET/POST/DELETE /api/keys`, `POST /api/keys/:id/rotate` |

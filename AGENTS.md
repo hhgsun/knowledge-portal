@@ -42,7 +42,7 @@ The following items are explicit owner decisions and are not open findings unles
 - **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 11 default tags + content types + project documentation articles
 - **Port**: 5174
-- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
+- **Rate Limiting**: ASP.NET Core built-in rate limiter on auth + search/assistant + MCP endpoints (defaults: auth=10/min, search=30/min, mcp=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
 - **Middleware pipeline**: ForwardedHeaders → HSTS (non-dev) → SecurityHeaders (nosniff/DENY/Referrer-Policy) → GlobalExceptionMiddleware → CORS → ApiKeyMiddleware → Authentication → UsageTrackingMiddleware → RateLimiter → Authorization → Controllers. RateLimiter runs after auth so partitioning sees the principal; ForwardedHeaders first so everything sees real client IP/scheme (`ForwardedHeaders:KnownProxies`/`KnownNetworks` config; TLS terminates at the company reverse proxy — no in-app HTTPS redirect)
 - **AI/Search**: Ollama integration (optional, `Ollama:Enabled` in appsettings.json). Embedding model: bge-m3 (1024 dims; dimension guard before persistence). Chat/vision model: qwen2.5vl:7b. PostgreSQL-backed durable `index_jobs` queue coalesces edits by article with a generation counter; backend workers claim at most their available parallelism via `FOR UPDATE SKIP LOCKED`, use leases, a configurable per-article timeout (`Indexing:JobTimeoutSeconds`, default 600), exponential retry, and terminal failure tracking. Before FTS/embedding, `AttachmentProcessingService` creates one cached canonical extraction: DOCX/XLSX/PPTX/CSV tables become GFM Markdown, PDF/Office layout keeps page/sheet/slide provenance, and raster or embedded visuals receive bounded local-VLM description/OCR/table/diagram enrichment. A privacy-explicit optional Unstructured `hi_res` HTTP provider handles complex/scanned layouts; it is disabled by default and falls back to native parsing unless marked required. The extraction profile participates in semantic freshness, so parser/model/config changes durably re-index affected content. Article writes enqueue the durable job first, then best-effort refresh PostgreSQL FTS in the request path for immediate lexical visibility; the worker re-synchronizes FTS after canonical attachment processing before semantic indexing. Article body and each attachment are indexed as separate provenance-bearing sources, fairly interleaved under per-source/total child caps. True hierarchical chunking stores structure-bounded parents (~1000 words) once and embeds compact overlapping children (~220/40 words); Markdown headings, GFM tables and attachment page/sheet/slide boundaries are preserved. Dense and lexical RAG candidates reuse the same child→parent identity, and only ACL-rechecked parent content enters generation. Parent/child targets, overlap, chunking version and extraction profile are included in the embedding freshness hash. Hybrid search retrieves a configurable candidate pool, merges with RRF, then applies `ISearchReranker` (`LocalSearchReranker` by default). pgvector HNSW and PostgreSQL GIN/tsvector provide vector and lexical retrieval. RAG uses a model-calibrated Unicode token estimator with explicit model/output/prompt reserves, query-complexity plus marginal-score adaptive source selection, typed claim roles (`summary|explanation|step|constraint|exception|conflict`), dynamic `lookup_values.authority_weight` governance, deterministic numeric/polarity conflict screening, and separate cited versus consulted source lists.
 - **Error format**: All errors return `{ "error": "Human-readable message" }`
@@ -73,8 +73,9 @@ backend/
 ├── Middleware/            # GlobalExceptionMiddleware
 ├── Helpers/              # ContentExtractor, AttachmentTextExtractor, SlugHelper, AttachmentHelper, ArticleQueryExtensions, RrfHelper
 ├── Mcp/                  # Official-SDK adapter (KnowledgePortalMcpServer), internal tool DTOs, tool executor
-├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, ServiceError
-│                         # AI/Search: EmbeddingService, VectorSearchService (IVectorSearchService), RagService, EmbeddingBackgroundService, IndexJobQueue, FullTextSearchService, SearchReranker
+├── Services/             # Domain: ArticleService, TagService, ApiKeyService, UserService, StatsService, AnalyticsReportService, ServiceError
+│                         # AI/Search: EmbeddingService, VectorSearchService (IVectorSearchService), RagService, SearchExecutionService, EmbeddingBackgroundService, IndexJobQueue, FullTextSearchService, SearchReranker
+│                         # Assistant: AssistantRouterService, AssistantPolicyService, AssistantOrchestratorService (isolated, read-only, feature-flagged composition over existing services)
 │                         # Observability: PortalMetrics (OpenTelemetry meters)
 ├── Models/
 │   ├── Dtos.cs           # All request/response DTOs (C# records)
@@ -207,6 +208,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
 | `/api/search` | GET | ✓ | — | ✗ |
+| `/api/assistant` | POST | ✓ | `analytics:view` on analytics route | ✓ on analytics route |
 | `/api/search/authors` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
 | `/api/search/rag-feedback` | POST | ✓ | — | ✗ |
@@ -279,6 +281,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
+| `assistant.message` | 1 | 4000 | Required; configurable via `Assistant:MaxMessageCharacters` |
+| `assistant.preferredRoute` | — | — | Optional: `auto`, `search`, `answer`, `analytics`, or `chat` |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `articles.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
 | `articles.includeContent` | — | — | Optional, boolean. When true → includes canonical CommonMark/GFM as the string field `contentMarkdown` |
@@ -305,6 +309,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + heading/layout-bounded parent (~1000 words) and searchable child (~220 words, 40 overlap) hierarchy + pgvector cosine distance, best-child scoring |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
 | Search (RAG) | ✅ Implemented | Deterministic query understanding, hybrid/RRF fusion, dynamic lookup authority/freshness ranking, adaptive source breadth, calibrated token budgeting, local/optional external reranking, ACL-safe child→parent document retrieval, typed grounded synthesis, cited/consulted separation, conservative conflict screening, and resilient fail-closed map-reduce controls |
+| Agentic Assistant Routing | ✅ Implemented | Isolated `/api/assistant` and `/assistant` UI; explicit/deterministic/structured-LLM routing across hybrid search, grounded RAG, session/RBAC-protected analytics and bounded general chat. Low-confidence/RAG failures fall back to read-only search; no write tools or free-form SQL. Separate assistant/routing kill switches preserve `/api/search` and RAG contracts. |
 | RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, lease-recoverable durable background runs, immutable dataset/config/model/prompt/retrieval snapshots, Recall/MRR/NDCG/fact/citation/grounding/refusal/safety/latency metrics, production feedback summary at `/settings/rag-evaluations`, and a mandatory CI live-model gate |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint; persisted authenticated usage events with calendar-day trend plus per-user, per-API-key integration, REST/MCP, read/write, error, latency, and top-operation breakdowns |
@@ -314,7 +319,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Related Articles | ✅ Implemented | Tag-overlap based, GET /api/articles/{id}/related |
 | Article Versions | ✅ Implemented | Created on content change |
 | View Tracking | ✅ Implemented | Deduplicated per user/article/15min window |
-| Rate Limiting | ✅ Implemented | Login, register, search, MCP endpoints — partitioned per API key/user/IP |
+| Rate Limiting | ✅ Implemented | Login, register, search/assistant, MCP endpoints — partitioned per API key/user/IP |
 | Health Check | ✅ Implemented | GET /api/health (readiness: 503 "unhealthy" when DB unreachable, 200 "degraded" when only Ollama down, else "healthy"; Ollama probe is separately timeout-bounded and cached) + GET /api/health/live (liveness, always 200) |
 | Metrics | ✅ Implemented | OpenTelemetry → Prometheus at /metrics (not proxied by nginx — internal only): ASP.NET Core instrumentation + `kp_pending_embeddings` gauge + `kp_embedding_failures` counter |
 | RAG Observability | ✅ Implemented | `kp_rag_*` request/stage/latency/candidate/context/LLM/refusal/partial/failure/citation/active metrics, optional OTLP export for `KnowledgePortal.Rag` traces (`OpenTelemetry:OtlpEndpoint` or `OTEL_EXPORTER_OTLP_ENDPOINT`), Prometheus alerts under `ops/prometheus/rag-alerts.yml`, Grafana dashboard under `ops/grafana/rag-overview.json`, measurable objectives/error-budget policy in `specs/rag-slo.md`, privacy-safe query fingerprints, and admin runtime snapshot at `/api/search/rag-observability` |
@@ -335,6 +340,7 @@ No known gaps at this time.
 
 ## Key Behaviors
 
+- **Assistant routing and removal boundary**: `POST /api/assistant` first honors an explicit safe mode, then deterministic Turkish/English intent signals, and only ambiguous input reaches a structured low-token classifier. `AssistantPolicyService` authorizes the chosen route independently of the model; analytics retains `analytics:view` plus session-only enforcement. The bounded orchestrator calls existing `SearchExecutionService`/RAG/`AnalyticsReportService`, never duplicates their domain behavior, and exposes no mutation or Text-to-SQL tool. `Assistant:Enabled=false` disables the backend capability; `VITE_ASSISTANT_ENABLED=false` omits its frontend route/navigation at build time; `AgenticRouting:Enabled=false` keeps the assistant on an explicit/default route. The assistant controller/services/page can be deleted without changing `/api/search`, `RagService`, MCP, analytics reporting, or stored portal content.
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
 - **Version creation**: Triggered when `content` field changes (not title-only or metadata-only edits)
 - **Version restore**: POST `/api/articles/{id}/versions/{versionId}/restore` copies version content/title back to article, creates a new version with "Restored to version N" summary, recalculates read time

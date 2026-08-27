@@ -1,7 +1,7 @@
 # Current State Validation
 
 > **⚠️ Bu dosya `AGENTS.md`'ye tabidir.** Çelişki durumunda `AGENTS.md` geçerlidir.
-> **Last verified**: 2026-07-17
+> **Last verified**: 2026-08-27
 > **Note**: This is a smoke-test checklist. For authoritative system docs see `AGENTS.md`.
 
 This document describes how to verify the Knowledge Portal is functioning correctly. Use it before making changes (baseline) and after modifications (regression).
@@ -115,6 +115,21 @@ This document describes how to verify the Knowledge Portal is functioning correc
 
 ---
 
+## Assistant Routing Tests
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | `POST /api/assistant` without auth | 401 |
+| 2 | Post `{"message":"ilgili dokümanları bul","preferredRoute":"auto"}` | 200: `route: "knowledge_search"`, hybrid results, `toolCalls: ["knowledge_search"]` |
+| 3 | Post a portal policy question | 200: grounded RAG answer and evidence, or an explicit hybrid fallback warning when RAG is unavailable |
+| 4 | Post `{"message":"merhaba"}` | 200: canned `general_chat` response and no tool call |
+| 5 | Request analytics as viewer or API key | 403; router confidence never grants permission |
+| 6 | Request analytics as admin/editor session | 200: analytics DTO and `portal_analytics` tool call |
+| 7 | Set `Assistant:Enabled=false` and restart backend | `POST /api/assistant` returns 404; `/api/search` remains operational |
+| 8 | Build with `VITE_ASSISTANT_ENABLED=false` | Assistant navigation and `/assistant` route are omitted |
+
+---
+
 ## Dashboard & Analytics Tests
 
 | # | Action | Expected |
@@ -150,10 +165,11 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 4 | Click "New Article" | Milkdown Crepe editor loads with its formatting UI |
 | 5 | Type content, select tags, save | Redirected to article view |
 | 6 | Navigate to Search | Search input with type tabs visible |
-| 7 | Navigate to Analytics | Stats, top searches, content gaps render |
-| 8 | Navigate to Admin > Users | User table with pagination loads |
-| 9 | Navigate to Settings > API Keys | Key list with create form loads |
-| 10 | Click Logout | Redirected to `/login`, localStorage cleared |
+| 7 | Navigate to Assistant | Auto/manual mode controls render; a source-backed question shows citations/evidence |
+| 8 | Navigate to Analytics | Stats, top searches, content gaps render |
+| 9 | Navigate to Admin > Users | User table with pagination loads |
+| 10 | Navigate to Settings > API Keys | Key list with create form loads |
+| 11 | Click Logout | Redirected to `/login`, localStorage cleared |
 
 ---
 
@@ -183,7 +199,7 @@ These behaviors are by design in the current baseline and should not be treated 
 
 | Command | Expected |
 |---------|----------|
-| `cd backend/Tests && dotnet test` | 315 tests pass — no Docker required (EF Core InMemory + in-process fakes) |
+| `cd backend/Tests && dotnet test` | 374 tests pass — no Docker required (EF Core InMemory + in-process fakes) |
 
 Also runs as the gating `Test` stage in `azure-pipelines.yml` before image build/deploy.
 

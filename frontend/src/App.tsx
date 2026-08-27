@@ -25,6 +25,8 @@ import SearchDiagnosticsPage from "./pages/SearchDiagnosticsPage";
 import BulkTransferPage from "./pages/BulkTransferPage";
 import KnowledgeImportPage from "./pages/KnowledgeImportPage";
 import RagEvaluationsPage from "./pages/RagEvaluationsPage";
+import AssistantPage from "./pages/AssistantPage";
+import { assistantEnabled } from "./config/features";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -77,6 +79,7 @@ export default function App() {
           <Route path="/articles/:slug/edit" element={<EditArticlePage />} />
           <Route path="/articles/:slug/versions" element={<VersionsPage />} />
           <Route path="/search" element={<SearchPage />} />
+          {assistantEnabled && <Route path="/assistant" element={<AssistantPage />} />}
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/analytics" element={<RoleRoute roles={["admin", "editor"]}><AnalyticsPage /></RoleRoute>} />
           <Route path="/tags" element={<RoleRoute roles={["admin", "editor"]}><TagsPage /></RoleRoute>} />

@@ -102,6 +102,12 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 | Inline RBAC checks | Inside controller actions | Principal-aware ownership checks (`RbacService.CanEditArticle(User, …)` etc.) |
 | `[RequireSessionAuth]` attribute | Controller/action level | `source == "api-key"` returns 403 for session-only endpoints |
 
+### Assistant Route Policy
+
+`POST /api/assistant` is authenticated and exposes a fixed read-only route registry. The router may classify intent, but it cannot authorize a route or invoke a tool. `AssistantPolicyService` re-checks every selected route against the authenticated principal; analytics requires both an interactive session and `analytics:view`, exactly like `GET /api/analytics`. The search and RAG routes reuse `SearchExecutionService`, including its article visibility and API-key ownership filters.
+
+User text is serialized as untrusted data for the optional structured classifier. The classifier has no tool access. General chat is canned so it cannot invent company facts, and company answers use the existing grounded RAG validation path. No mutation or free-form SQL operation is registered; changing configuration cannot create one. The request has bounded message, classifier, total-time and tool-call budgets. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
+
 ### API Key Capability Model ("editor minus delete")
 
 API-key principals (`source=api-key`) are capped independently of their owner's role:
@@ -119,6 +125,7 @@ These endpoints explicitly reject API key authentication:
 |----------|--------|
 | `GET/POST/PUT/DELETE /api/admin/users` | User management is sensitive admin operation |
 | `GET /api/analytics` | Analytics data should not be programmatically scraped |
+| `POST /api/assistant` when routed to analytics | Route policy preserves the same session-only analytics boundary |
 | `GET/POST/DELETE /api/keys` | Prevents API key from creating/managing other API keys |
 | `GET/POST/PUT/DELETE /api/admin/keys` | Admin all-user key management; same reason as above |
 | `DELETE /api/articles/{id}`, `DELETE .../attachments/{id}`, `DELETE .../comments/{id}`, `DELETE /api/tags`, `DELETE /api/lookups`, `DELETE /api/featured-links` | Destructive deletes are session-only (API key capability model) |
@@ -138,7 +145,7 @@ These endpoints explicitly reject API key authentication:
 | Policy | Limit | Window | Endpoints |
 |--------|-------|--------|-----------|
 | `auth` | 10 requests | 1 minute | Login, Register |
-| `search` | 30 requests | 1 minute | Search |
+| `search` | 30 requests | 1 minute | Search and Assistant |
 | `mcp` | 60 requests | 1 minute | MCP endpoint (`/mcp`) |
 
 Implemented via ASP.NET Core built-in `AddRateLimiter` with **partitioned** fixed-window limiters:

@@ -40,6 +40,9 @@ public sealed class PortalMetrics
     public Counter<long> RagFailures { get; }
     public Histogram<double> RagCitationCoverage { get; }
     public UpDownCounter<long> RagActiveRequests { get; }
+    public Counter<long> AssistantRoutes { get; }
+    public Counter<long> AssistantToolCalls { get; }
+    public Histogram<double> AssistantDuration { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
     {
@@ -66,6 +69,12 @@ public sealed class PortalMetrics
         RagFailures = _meter.CreateCounter<long>("kp_rag_failures", description: "RAG failures by stage and error type");
         RagCitationCoverage = _meter.CreateHistogram<double>("kp_rag_citation_coverage", description: "Fraction of claims linked to valid evidence");
         RagActiveRequests = _meter.CreateUpDownCounter<long>("kp_rag_active_requests", description: "RAG requests currently inside the process bulkhead");
+        AssistantRoutes = _meter.CreateCounter<long>("kp_assistant_routes",
+            description: "Assistant route decisions by route and classifier source");
+        AssistantToolCalls = _meter.CreateCounter<long>("kp_assistant_tool_calls",
+            description: "Bounded read-only assistant tool calls by tool and outcome");
+        AssistantDuration = _meter.CreateHistogram<double>("kp_assistant_duration_ms", "ms",
+            "End-to-end assistant orchestration duration by route and outcome");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",
