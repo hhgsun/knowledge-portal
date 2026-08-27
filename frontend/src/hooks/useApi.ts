@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { fetchWithRetry } from "./useNetworkStatus";
+import { networkErrorMessage, normalizeApiErrorResponse } from "../lib/api-response";
 
 export interface FetchOptions extends RequestInit {
   /** Disable automatic retry for this request */
@@ -31,13 +32,15 @@ export function useApi() {
         const shouldRetry = !noRetry && (method === "GET" || method === "HEAD");
         res = shouldRetry ? await fetchWithRetry(doFetch) : await doFetch();
       } catch (err) {
-        // Network failure
-        if (!navigator.onLine) {
-          toast.error("You are offline. Please check your connection.");
-        } else {
-          toast.error("Network error. Please try again.");
-        }
+        toast.error(networkErrorMessage(), { id: "api-network-error" });
         throw err;
+      }
+
+      const normalized = await normalizeApiErrorResponse(res);
+      res = normalized.response;
+
+      if (normalized.usedFallback && res.status !== 401) {
+        toast.error(normalized.message, { id: "api-response-error" });
       }
 
       if (res.status === 401) {

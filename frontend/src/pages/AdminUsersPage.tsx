@@ -4,6 +4,7 @@ import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { UsersListSkeleton } from "../components/ui/skeleton";
 import type { AdminUser } from "../types/api";
+import { apiErrorMessage } from "../lib/api-response";
 
 interface Pagination {
   page: number;
@@ -38,15 +39,20 @@ export default function AdminUsersPage() {
     const params = new URLSearchParams({ page: String(page), limit: "50" });
     if (q) params.set("q", q);
 
-    const res = await fetchWithAuth(`/api/admin/users?${params}`);
-    if (res.ok) {
-      const data = await res.json();
-      setUsers(data.users);
-      setPagination({ page, limit: 50, total: data.total, pages: Math.ceil(data.total / 50) });
-    } else if (res.status === 403) {
-      setError("You don't have permission to manage users");
+    try {
+      const res = await fetchWithAuth(`/api/admin/users?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users);
+        setPagination({ page, limit: 50, total: data.total, pages: Math.ceil(data.total / 50) });
+      } else if (res.status === 403) {
+        setError("You don't have permission to manage users");
+      }
+    } catch (loadError) {
+      setError(apiErrorMessage(loadError));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fetchWithAuth]);
 
   useEffect(() => { void loadUsers(); }, [loadUsers]);

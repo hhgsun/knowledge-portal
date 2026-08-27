@@ -62,7 +62,7 @@ Rate limiter authentication'dan sonra çalıştığı için isteği API key kiml
 - **React Context:** Auth ve tema state'i; merkezi store kütüphanesi kullanılmaz.
 - **Sonner + lucide-react:** Bildirim ve ikon altyapısı.
 
-Tüm authenticated API çağrıları JWT ekleme ve 401'de logout davranışını merkezileştiren `useApi` hook'u üzerinden yapılır.
+Tüm authenticated API çağrıları JWT ekleme ve 401'de logout davranışını merkezileştiren `useApi` hook'u üzerinden yapılır. Ortak API yanıt katmanı, backend veya reverse proxy erişilemezken oluşan ağ hatalarını ve boş/JSON olmayan hata gövdelerini kullanıcı dostu mesaja çevirir; ekranların loading state'leri hata halinde de sonlandırılır.
 
 ## Veri ve İçerik Modeli
 

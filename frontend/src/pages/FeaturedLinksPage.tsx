@@ -32,11 +32,16 @@ export default function FeaturedLinksPage() {
   const [editColor, setEditColor] = useState("");
 
   const loadLinks = useCallback(async () => {
-    const res = await fetchWithAuth("/api/featured-links?includeInactive=true");
-    if (res.ok) {
-      setLinks(await res.json());
+    try {
+      const res = await fetchWithAuth("/api/featured-links?includeInactive=true");
+      if (res.ok) {
+        setLinks(await res.json());
+      }
+    } catch {
+      // useApi displays the shared network error.
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fetchWithAuth]);
 
   useEffect(() => {

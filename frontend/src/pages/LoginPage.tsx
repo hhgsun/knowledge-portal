@@ -4,6 +4,7 @@ import { BookSearch } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../config/msalConfig";
+import { apiErrorMessage, networkErrorMessage, readApiError, readApiJson } from "../lib/api-response";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -36,15 +37,17 @@ export default function LoginPage() {
             body: JSON.stringify({ accessToken: response.accessToken }),
           });
           if (res.ok) {
-            const data = await res.json();
+            const data = await readApiJson<{ token: string }>(res);
             localStorage.setItem("token", data.token);
             window.location.href = callbackUrl;
             return;
           }
+          setError(await readApiError(res, "Azure login failed"));
         }
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        setError(apiErrorMessage(err));
         setLoading(false);
       });
   }, [autoLoginAttempted, msalInstance, callbackUrl]);
@@ -54,13 +57,17 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const result = await login(email, password);
-
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-    } else {
+    try {
+      const result = await login(email, password);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       navigate(callbackUrl);
+    } catch {
+      setError(networkErrorMessage());
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,13 +75,17 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const result = await loginWithAzure();
-
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-    } else {
+    try {
+      const result = await loginWithAzure();
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       navigate(callbackUrl);
+    } catch {
+      setError(networkErrorMessage());
+    } finally {
+      setLoading(false);
     }
   };
 

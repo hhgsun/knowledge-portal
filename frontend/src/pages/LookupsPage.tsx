@@ -22,11 +22,16 @@ export default function LookupsPage() {
   const [newAuthorityWeight, setNewAuthorityWeight] = useState(50);
 
   const loadLookups = useCallback(async () => {
-    const res = await fetchWithAuth("/api/lookups");
-    if (res.ok) {
-      setLookups(await res.json());
+    try {
+      const res = await fetchWithAuth("/api/lookups");
+      if (res.ok) {
+        setLookups(await res.json());
+      }
+    } catch {
+      // useApi displays the shared network error.
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fetchWithAuth]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);

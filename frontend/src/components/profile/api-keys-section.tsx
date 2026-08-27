@@ -20,12 +20,17 @@ export function ApiKeysSection() {
   const [editError, setEditError] = useState("");
 
   const loadKeys = useCallback(async () => {
-    const res = await fetchWithAuth("/api/keys");
-    if (res.ok) {
-      const data = await res.json();
-      setKeys(data);
+    try {
+      const res = await fetchWithAuth("/api/keys");
+      if (res.ok) {
+        const data = await res.json();
+        setKeys(data);
+      }
+    } catch {
+      // useApi displays the shared network error.
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fetchWithAuth]);
 
   useEffect(() => { void loadKeys(); }, [loadKeys]);

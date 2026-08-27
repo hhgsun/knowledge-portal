@@ -3,6 +3,7 @@ import { Key, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Plus, X, Copy, 
 import { useApi } from "../hooks/useApi";
 import { KeysListSkeleton } from "../components/ui/skeleton";
 import type { AdminApiKey, AdminUser } from "../types/api";
+import { apiErrorMessage } from "../lib/api-response";
 
 interface Pagination {
   page: number;
@@ -38,22 +39,31 @@ export default function AdminApiKeysPage() {
     const params = new URLSearchParams({ page: String(page), limit: "50" });
     if (q) params.set("q", q);
 
-    const res = await fetchWithAuth(`/api/admin/keys?${params}`);
-    if (res.ok) {
-      const data = await res.json();
-      setKeys(data.keys);
-      setPagination({ page, limit: 50, total: data.total, pages: Math.ceil(data.total / 50) });
-    } else if (res.status === 403) {
-      setError("You don't have permission to manage API keys");
+    try {
+      const res = await fetchWithAuth(`/api/admin/keys?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setKeys(data.keys);
+        setPagination({ page, limit: 50, total: data.total, pages: Math.ceil(data.total / 50) });
+      } else if (res.status === 403) {
+        setError("You don't have permission to manage API keys");
+      }
+    } catch (loadError) {
+      setError(apiErrorMessage(loadError));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fetchWithAuth]);
 
   const loadUsers = useCallback(async () => {
-    const res = await fetchWithAuth("/api/admin/users?limit=100");
-    if (res.ok) {
-      const data = await res.json();
-      setUsers(data.users);
+    try {
+      const res = await fetchWithAuth("/api/admin/users?limit=100");
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users);
+      }
+    } catch (loadError) {
+      setError(apiErrorMessage(loadError));
     }
   }, [fetchWithAuth]);
 

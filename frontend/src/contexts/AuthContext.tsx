@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../config/msalConfig";
+import { apiErrorMessage, readApiError, readApiJson } from "../lib/api-response";
 
 interface User {
   id: string;
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           throw new Error("Unauthorized");
         }
-        return res.json();
+        return readApiJson<User>(res);
       })
       .then((data) => {
         setUser(data);
@@ -68,47 +69,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     if (!token) return;
-    const res = await fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setUser(data);
+    try {
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setUser(await readApiJson<User>(res));
+      }
+    } catch {
+      // The initiating screen already reports request failures through useApi.
     }
   }, [token]);
 
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json();
-      return { error: data.error || "Invalid credentials" };
+      if (!res.ok) {
+        return { error: await readApiError(res, "Invalid credentials") };
+      }
+
+      const data = await readApiJson<{ token: string; user: User }>(res);
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem("token", data.token);
+      return {};
+    } catch (error) {
+      return { error: apiErrorMessage(error) };
     }
-
-    const data = await res.json();
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem("token", data.token);
-    return {};
   };
 
   const register = async (name: string, email: string, password: string): Promise<{ error?: string }> => {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json();
-      return { error: data.error || "Registration failed" };
+      if (!res.ok) {
+        return { error: await readApiError(res, "Registration failed") };
+      }
+
+      return {};
+    } catch (error) {
+      return { error: apiErrorMessage(error) };
     }
-
-    return {};
   };
 
   const loginWithAzure = async (): Promise<{ error?: string }> => {
@@ -142,11 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        return { error: data.error || "Azure login failed" };
+        return { error: await readApiError(res, "Azure login failed") };
       }
 
-      const data = await res.json();
+      const data = await readApiJson<{ token: string; user: User }>(res);
       setToken(data.token);
       setUser(data.user);
       localStorage.setItem("token", data.token);
@@ -156,8 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (err instanceof Error && err.message?.includes("interaction_in_progress")) {
         return { error: "Login is already in progress, please wait" };
       }
-      const message = err instanceof Error ? err.message : "Azure authentication failed";
-      return { error: message };
+      return { error: apiErrorMessage(err, "Azure authentication failed") };
     }
   };
 
