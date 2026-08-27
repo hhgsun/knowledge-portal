@@ -42,6 +42,8 @@ GET  /api/bulk/export              # jsonl, csv veya Markdown ZIP
 
 ## Kaynak Dosyadan İçe Aktarma
 
+`/articles/import` ekranında kaynak dosyalar dosya seçiciyle veya sürükleyip bırakılarak topluca eklenebilir. Yeni seçilen ya da bırakılan dosyalar mevcut listeye eklenir; desteklenmeyen uzantılar analiz kuyruğuna alınmadan kullanıcıya bildirilir.
+
 Kaynak akışı iki aşamalıdır:
 
 1. `POST /api/source-imports/analyze` dosyaları ayrıştırır ve Markdown taslakları döndürür. Desteklenmeyen ancak geçerli bir dosya veya kullanılabilir metin içermeyen kaynak `warning` ile ek olarak korunabilir; bozuk ya da okunamayan kaynak ise `analysisError` ile başarısız olarak işaretlenir.

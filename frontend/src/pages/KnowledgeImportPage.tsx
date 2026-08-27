@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Paperclip, Tag, Upload, WandSparkles, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,6 +10,9 @@ import { useLookups } from "../hooks/useLookups";
 import { PendingFileList } from "../components/attachments/file-upload-zone";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
+
+const ACCEPTED_SOURCE_FILES = ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg";
+const ACCEPTED_SOURCE_EXTENSIONS = new Set(ACCEPTED_SOURCE_FILES.split(","));
 
 const STATUS_DESCRIPTIONS: Record<string, string> = {
   draft: "Henüz yayımlanmadı",
@@ -101,14 +104,39 @@ export default function KnowledgeImportPage() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [issues, setIssues] = useState<ImportIssue[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const [additionalAttachments, setAdditionalAttachments] = useState<Record<number, File[]>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const current = drafts[selected];
   const currentAdditionalAttachments = current ? additionalAttachments[current.sourceIndex] ?? [] : [];
   const currentAnalysisResolved = Boolean(current?.analysisError && current.contentMarkdown.trim());
   const hasBlockingAnalysisErrors = drafts.some(draft => Boolean(draft.analysisError && !draft.contentMarkdown.trim()));
   const titleRef = useAutoResizeTextArea(current?.title ?? "");
   const excerptRef = useAutoResizeTextArea(current?.excerpt ?? "");
-  const accepted = useMemo(() => ".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xlsx,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg", []);
+
+  const addSourceFiles = (incomingFiles: File[]) => {
+    const supportedFiles = incomingFiles.filter(file => {
+      const extensionStart = file.name.lastIndexOf(".");
+      return extensionStart >= 0 && ACCEPTED_SOURCE_EXTENSIONS.has(file.name.slice(extensionStart).toLowerCase());
+    });
+    const unsupportedCount = incomingFiles.length - supportedFiles.length;
+    if (unsupportedCount) toast.error(`${unsupportedCount} unsupported file${unsupportedCount === 1 ? " was" : "s were"} skipped`);
+    if (!supportedFiles.length) return;
+
+    setFiles(currentFiles => {
+      const knownFiles = new Set(currentFiles.map(file => `${file.name}\u0000${file.size}\u0000${file.lastModified}`));
+      const uniqueFiles = supportedFiles.filter(file => {
+        const key = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+        if (knownFiles.has(key)) return false;
+        knownFiles.add(key);
+        return true;
+      });
+      return [...currentFiles, ...uniqueFiles];
+    });
+    setError("");
+    setIssues([]);
+    setAdditionalAttachments({});
+  };
 
   const analyze = async () => {
     if (!files.length) return;
@@ -260,9 +288,40 @@ export default function KnowledgeImportPage() {
     </div>
     <ImportFeedback message={error} issues={issues}/>
     <div className="space-y-4">
-      <label className="block rounded-xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 p-10 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-blue-950/10 transition-colors">
-        <Upload className="mx-auto mb-3 text-blue-600" size={32}/><strong className="text-zinc-900 dark:text-zinc-100">Select source files</strong><p className="text-sm text-zinc-500 mt-2">TXT, Markdown, CSV, Excel, PDF and Office files are parsed. Other supported files remain attachments.</p>
-        <input multiple type="file" accept={accepted} className="hidden" onChange={event => { setFiles(Array.from(event.target.files ?? [])); setError(""); setIssues([]); setAdditionalAttachments({}); }}/>
+      <label
+        role="button"
+        tabIndex={busy ? -1 : 0}
+        aria-disabled={busy}
+        onKeyDown={event => {
+          if (!busy && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        onDragEnter={event => {
+          event.preventDefault();
+          if (!busy && Array.from(event.dataTransfer.types).includes("Files")) setDragOver(true);
+        }}
+        onDragOver={event => {
+          event.preventDefault();
+          if (!busy && Array.from(event.dataTransfer.types).includes("Files")) {
+            event.dataTransfer.dropEffect = "copy";
+            setDragOver(true);
+          }
+        }}
+        onDragLeave={event => {
+          event.preventDefault();
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOver(false);
+        }}
+        onDrop={event => {
+          event.preventDefault();
+          setDragOver(false);
+          if (!busy) addSourceFiles(Array.from(event.dataTransfer.files));
+        }}
+        className={`block rounded-xl border-2 border-dashed p-10 text-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${busy ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${dragOver ? "border-blue-500 bg-blue-50/70 dark:bg-blue-950/20" : "border-zinc-300 hover:border-blue-500 hover:bg-blue-50/40 dark:border-zinc-700 dark:hover:bg-blue-950/10"}`}
+      >
+        <Upload className={`mx-auto mb-3 ${dragOver ? "text-blue-500" : "text-blue-600"}`} size={32}/><strong className="text-zinc-900 dark:text-zinc-100">{dragOver ? "Drop source files here" : "Select or drag & drop source files"}</strong><p className="text-sm text-zinc-500 mt-2">TXT, Markdown, CSV, Excel, PDF and Office files are parsed. Other supported files remain attachments.</p>
+        <input ref={fileInputRef} multiple type="file" accept={ACCEPTED_SOURCE_FILES} disabled={busy} className="hidden" onChange={event => { addSourceFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }}/>
       </label>
       {files.length > 0 && <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-200 dark:divide-zinc-800">{files.map((file, index) => <div key={`${file.name}-${index}`} className="p-3 flex items-center gap-3"><FileText size={17} className="text-zinc-500"/><span className="flex-1 text-sm truncate">{file.name}</span><span className="text-xs text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(items => items.filter((_, itemIndex) => itemIndex !== index))} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"><X size={16}/></button></div>)}</div>}
       <div className="flex justify-end"><button disabled={!files.length || busy} onClick={analyze} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"><WandSparkles size={16}/>{busy ? "Analyzing..." : "Analyze Sources"}</button></div>
