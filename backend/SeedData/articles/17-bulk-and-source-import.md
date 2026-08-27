@@ -19,7 +19,7 @@ Knowledge Portal iki tamamlayıcı aktarım yolu sunar:
 - **Toplu Aktarım** (`/settings/bulk-transfer`): Yapılandırılmış Markdown, Markdown ZIP, JSONL veya CSV kayıtlarını en çok 5.000 satırlık işler hâlinde doğrular ve içe aktarır. Aynı ekran görünür makaleleri JSONL, CSV veya Markdown ZIP olarak dışa aktarır.
 - **Kaynak İçe Aktarma** (`/articles/import`): TXT, Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX ve PPTX dosyalarını düzenlenebilir Markdown önizlemelerine dönüştürür. Kullanıcı başlık, özet, durum, içerik türü ve etiketleri kontrol ettikten sonra makaleleri oluşturur; isterse özgün dosyayı ek olarak korur.
 
-Her iki akış da normal makale endpoint'iyle aynı `ArticleMutationService` kurallarını kullanır. Böylece başlık uzunluğu, yaşam döngüsü durumu, arşivleme yetkisi, aktif içerik türü, etiket oluşturma yetkisi, sürüm kaydı ve indeksleme davranışı giriş kanalına göre değişmez.
+Her iki akış da normal makale endpoint'iyle aynı `ArticleMutationService` kurallarını kullanır. Böylece başlık uzunluğu, yaşam döngüsü durumu, arşivleme yetkisi, aktif içerik türü, makale mutasyonu sırasında yeni etiketi atomik oluşturup bağlama davranışı, sürüm kaydı ve indeksleme giriş kanalına göre değişmez. Bu bağlamsal etiket oluşturma yetkisi bağımsız Etiket Yönetimi işlemlerine erişim vermez.
 
 ## Toplu Aktarım
 

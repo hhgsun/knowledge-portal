@@ -67,7 +67,7 @@ public sealed class ArticleMutationService(
         db.Articles.Add(article);
         await articles.AddVersionAsync(article.Id, article.Title, article.Content, user.GetUserId(), changeSummary);
         if (command.Tags is { Length: > 0 })
-            await articles.AttachTagsAsync(article.Id, command.Tags, CanCreateTags(user));
+            await articles.AttachTagsAsync(article.Id, command.Tags, allowCreate: true);
 
         await db.SaveChangesAsync(ct);
         if (queueReindex) await articles.QueueReindexAsync(article, ct);
@@ -140,7 +140,7 @@ public sealed class ArticleMutationService(
         if (request.Tags != null)
         {
             ArticleService.InvalidateApproval(article);
-            await ReplaceTagsAsync(article.Id, request.Tags, user, ct);
+            await ReplaceTagsAsync(article.Id, request.Tags, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -189,7 +189,7 @@ public sealed class ArticleMutationService(
 
         if (contentChanged)
             await articles.AddVersionAsync(article.Id, article.Title, content, user.GetUserId(), changeSummary);
-        await ReplaceTagsAsync(article.Id, command.Tags ?? [], user, ct);
+        await ReplaceTagsAsync(article.Id, command.Tags ?? [], ct);
 
         await db.SaveChangesAsync(ct);
         await articles.QueueReindexAsync(article, ct);
@@ -242,14 +242,11 @@ public sealed class ArticleMutationService(
         article.Status = status;
     }
 
-    private async Task ReplaceTagsAsync(string articleId, string[] tags, ClaimsPrincipal user, CancellationToken ct)
+    private async Task ReplaceTagsAsync(string articleId, string[] tags, CancellationToken ct)
     {
         var existing = await db.ArticleTags.Where(tag => tag.ArticleId == articleId).ToListAsync(ct);
         db.ArticleTags.RemoveRange(existing);
         if (tags.Length > 0)
-            await articles.AttachTagsAsync(articleId, tags, CanCreateTags(user));
+            await articles.AttachTagsAsync(articleId, tags, allowCreate: true);
     }
-
-    private static bool CanCreateTags(ClaimsPrincipal user) =>
-        user.GetSource() == "api-key" || RbacService.HasPermission(user, Permissions.TagsManage);
 }

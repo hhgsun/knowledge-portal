@@ -44,6 +44,7 @@ Bilgi portalının değeri, içeriklerin bulunabilirliği ve güvenilirliği ile
 
 - Her makaleye en az bir, en fazla 4-5 etiket ekleyin. Aşırı etiketleme filtrelemeyi anlamsızlaştırır.
 - Yeni etiket oluşturmadan önce mevcut etiketleri kontrol edin — "k8s" ve "kubernetes" gibi eş anlamlı etiketler içeriği böler.
+- Makale oluşturma veya kendi makalenizi düzenleme sırasında rolünüzden bağımsız olarak yeni bir etiket yazıp makaleyle birlikte kaydedebilirsiniz. Bu yetki yalnızca makale bağlamındadır; Etiket Yönetimi ekranında bağımsız oluşturma, yeniden adlandırma ve silme işlemleri `tags:manage` yetkisi gerektirir.
 - Proje kapsamındaki içerikler için proje etiketi kullanın: bu portalın kendi dokümantasyonu project-knowledge-portal etiketini taşır.
 - Aramada #etiket-slug sözdizimi ile filtreleme yapılabildiğini unutmayın — etiket slug'ları kısa ve tahmin edilebilir olmalı.
 

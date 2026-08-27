@@ -65,6 +65,27 @@ public class RbacTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Viewer_CanCreateAndAttachNewTagThroughArticle()
+    {
+        var token = await RegisterAndGetToken($"viewer-article-tag-{Guid.NewGuid():N}@example.com");
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var tagName = $"viewer-tag-{Guid.NewGuid():N}";
+
+        var createResponse = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "Viewer article with a new tag",
+            tags = new[] { tagName }
+        });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var article = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/articles/{created.GetProperty("id").GetString()}");
+        Assert.Contains(article.GetProperty("tags").EnumerateArray(),
+            tag => tag.GetProperty("name").GetString() == tagName);
+    }
+
+    [Fact]
     public async Task Viewer_CannotManageTags()
     {
         var token = await RegisterAndGetToken($"viewer-tags-{Guid.NewGuid():N}@example.com");

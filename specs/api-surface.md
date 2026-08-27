@@ -384,7 +384,7 @@ The caller must also be allowed to view the parent article; draft ownership is e
 
 ## Tags
 
-Article create/update requests may include a new tag name in their `tags` array. For users with `tags:manage` (and API-key article flows), the tag is created and linked atomically when the article is saved; merely entering it in the editor does not persist it.
+Article create/update requests may include a new tag name in their `tags` array. Any caller authorized for that article mutation, including viewer sessions, may create and attach the tag in this context. The tag is created and linked atomically when the article is saved; merely entering it in the editor does not persist it. Standalone tag creation, rename, and deletion through `/api/tags` still require `tags:manage`.
 
 ### `GET /api/tags`
 **Auth**: Bearer (JWT or API Key)

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
-import { useAuth } from "../../contexts/AuthContext";
 
 interface Tag {
   id: string;
@@ -36,7 +35,6 @@ const queryKey = (query: string) => query.trim().toLocaleLowerCase("tr-TR");
 
 export function TagSelector({ selectedTags, onChange, valueField = "id", allowCreate = true, hideSelectedTags = false }: TagSelectorProps) {
   const { fetchWithAuth } = useApi();
-  const { user } = useAuth();
   const listboxId = useId();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -206,8 +204,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
   const hasMore = resultIds.length < total;
   const normalizedSearch = queryKey(searchQuery);
   const hasExactMatch = visibleTags.some((tag) => queryKey(tag.name) === normalizedSearch);
-  const canCreate = user?.role === "admin" || user?.role === "editor";
-  const showCreateAction = allowCreate && canCreate && normalizedSearch.length > 0 && searchQuery.trim().length <= 50 && !hasExactMatch && !isLoading;
+  const showCreateAction = allowCreate && normalizedSearch.length > 0 && searchQuery.trim().length <= 50 && !hasExactMatch && !isLoading;
 
   return (
     <div className="space-y-2">
