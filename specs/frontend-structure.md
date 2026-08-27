@@ -132,7 +132,7 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | — |
-| `/assistant` | AssistantPage | Protected | AppShell | —; omitted when `VITE_ASSISTANT_ENABLED=false`, hidden when runtime `/api/capabilities` disables it |
+| `/assistant` | AssistantPage | Protected | AppShell | Runtime capabilities; verified SSE, owned history/new/delete/clear, route retry, citations, feedback and cache/calibration indicators |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |

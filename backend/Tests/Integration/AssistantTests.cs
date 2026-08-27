@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -150,7 +151,8 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
 
         var recorded = await client.PostAsJsonAsync("/api/assistant/feedback", new
         {
-            interactionId, helpful = false, reason = "wrong_route", correctedRoute = "search"
+            interactionId, helpful = false, reason = "wrong_route", correctedRoute = "search",
+            question = "Merhaba"
         });
         Assert.Equal(HttpStatusCode.OK, recorded.StatusCode);
 
@@ -163,7 +165,21 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
             Assert.Equal("wrong_route", interaction.FeedbackReason);
             Assert.Equal("knowledge_search", interaction.CorrectedRoute);
             Assert.False(interaction.Helpful);
+            Assert.Equal(AssistantRouterService.RoutingPromptVersion, interaction.RoutingPromptVersion);
+            Assert.False(string.IsNullOrWhiteSpace(interaction.ClassifierModel));
+            Assert.StartsWith("{", interaction.RoutingConfigSnapshotJson);
+            Assert.Single(scope.ServiceProvider.GetRequiredService<AppDbContext>()
+                .AssistantEvaluationCandidates.Where(x => x.InteractionId == interactionId));
         }
+
+        var candidates = await client.GetFromJsonAsync<JsonElement>(
+            "/api/admin/assistant-evaluations/candidates?status=pending");
+        var candidate = candidates.GetProperty("candidates").EnumerateArray()
+            .Single(x => x.GetProperty("interactionId").GetString() == interactionId);
+        var approved = await client.PutAsJsonAsync(
+            $"/api/admin/assistant-evaluations/candidates/{candidate.GetProperty("id").GetString()}",
+            new { status = "approved", expectedRoute = "knowledge_search" });
+        Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
 
         var summary = await client.GetFromJsonAsync<JsonElement>(
             "/api/admin/rag-evaluations/feedback-summary?days=30");
@@ -249,6 +265,79 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.Equal("knowledge_answer", json.GetProperty("route").GetString());
         Assert.False(json.TryGetProperty("toolCalls", out _));
+    }
+
+    [Fact]
+    public async Task ConversationHistory_IsOwnedAndProvidesBoundedFollowUpContext()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        created.EnsureSuccessStatusCode();
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString()!;
+        var first = await client.PostAsJsonAsync("/api/assistant", new
+            { message = "Zeplin kalibrasyon dokümanını bul", preferredRoute = "search", conversationId });
+        first.EnsureSuccessStatusCode();
+        Assert.Equal(conversationId, (await first.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("conversationId").GetString());
+
+        var followUp = await client.PostAsJsonAsync("/api/assistant", new
+            { message = "peki detayları?", preferredRoute = "search", conversationId });
+        followUp.EnsureSuccessStatusCode();
+        var followUpBody = await followUp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("Zeplin kalibrasyon", followUpBody.GetProperty("normalizedQuery").GetString());
+        var messages = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/assistant/conversations/{conversationId}/messages");
+        Assert.Equal(4, messages.GetProperty("messages").GetArrayLength());
+
+        using var other = factory.CreateClient();
+        var token = await RegisterAndGetToken($"assistant-history-{Guid.NewGuid():N}@example.com", other);
+        other.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await other.GetAsync($"/api/assistant/conversations/{conversationId}/messages")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Stream_UsesSseAndCompletesWithVerifiedResponse()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/assistant/stream")
+        {
+            Content = JsonContent.Create(new { message = "Merhaba", preferredRoute = "auto" })
+        };
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("event: status", body);
+        Assert.Contains("event: token", body);
+        Assert.Contains("event: complete", body);
+        Assert.Contains("general_chat", body);
+        var completeBlock = body.Split("\n\n").Single(x => x.StartsWith("event: complete"));
+        var completeJson = JsonDocument.Parse(completeBlock.Split('\n')
+            .Single(x => x.StartsWith("data: "))[6..]);
+        Assert.Equal("general_chat", completeJson.RootElement.GetProperty("route").GetString());
+    }
+
+    [Fact]
+    public async Task SemanticAnswerCache_DoesNotCacheRejectedGroundingResult()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var unique = Guid.NewGuid().ToString("N")[..8];
+        await client.PostAsJsonAsync("/api/articles", new { title = $"Cache Policy {unique}",
+            contentMarkdown = $"Cache Policy {unique} requires verified evidence and citations.",
+            status = "published" });
+        var first = await client.PostAsJsonAsync("/api/assistant", new
+            { message = $"Cache Policy {unique} nedir?", preferredRoute = "answer" });
+        first.EnsureSuccessStatusCode();
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(firstBody.GetProperty("cacheHit").GetBoolean());
+
+        var second = await client.PostAsJsonAsync("/api/assistant", new
+            { message = $"Cache Policy {unique} nedir?", preferredRoute = "answer" });
+        second.EnsureSuccessStatusCode();
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(secondBody.GetProperty("cacheHit").GetBoolean());
     }
 
     private Task<string> RegisterAndGetToken(string email) => RegisterAndGetToken(email, client);

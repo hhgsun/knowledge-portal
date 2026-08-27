@@ -50,3 +50,10 @@ groups:
           severity: warning
         annotations:
           summary: "Knowledge Portal Assistant privacy-safe audit persistence failed"
+      - alert: KnowledgePortalAssistantShadowDisagreement
+        expr: sum(increase(kp_assistant_shadow_comparisons_total{outcome="disagree"}[1h])) / clamp_min(sum(increase(kp_assistant_shadow_comparisons_total{outcome=~"agree|disagree"}[1h])), 1) > 0.2 and sum(increase(kp_assistant_shadow_comparisons_total{outcome=~"agree|disagree"}[1h])) >= 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Portal Assistant shadow routing disagreement exceeds 20%"

@@ -5,6 +5,7 @@ using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Text.Json;
 
 namespace KnowledgePortal.Api.Controllers;
 
@@ -14,10 +15,11 @@ namespace KnowledgePortal.Api.Controllers;
 [EnableRateLimiting("search")]
 public sealed class AssistantController(
     IConfiguration config,
-    AssistantOrchestratorService orchestrator,
+    AssistantRequestService requests,
     AssistantRouterService router,
     AssistantInteractionService interactions) : ControllerBase
 {
+    private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<string> PreferredRoutes = new(StringComparer.OrdinalIgnoreCase)
         { "auto", "search", "knowledge_search", "answer", "rag", "knowledge_answer", "analytics", "chat", "general_chat" };
 
@@ -26,11 +28,7 @@ public sealed class AssistantController(
     {
         if (!config.GetValue("Assistant:Enabled", true))
             return NotFound(new { error = "Assistant is disabled." });
-        if (!string.IsNullOrWhiteSpace(request.PreferredRoute)
-            && !PreferredRoutes.Contains(request.PreferredRoute))
-            return BadRequest(new { error = "preferredRoute must be auto, search, answer, analytics, or chat." });
-
-        var execution = await orchestrator.ExecuteAsync(request, User, HttpContext.RequestAborted);
+        var execution = await requests.ExecuteAsync(request, User, HttpContext.RequestAborted);
         if (execution.Error != null)
         {
             HttpContext.Items[UsageTrackingMiddleware.OutcomeItem] = "assistant_error";
@@ -38,11 +36,51 @@ public sealed class AssistantController(
         }
 
         var response = execution.Response!;
-        var interactionId = await interactions.RecordAsync(request.Message, response, User,
-            HttpContext.RequestAborted);
-        response = response with { InteractionId = interactionId };
         HttpContext.Items[UsageTrackingMiddleware.OperationItem] = $"assistant.{response.Route}";
         return Ok(response);
+    }
+
+    [HttpPost("stream")]
+    public async Task Stream(AssistantRequest request)
+    {
+        Response.StatusCode = 200;
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers.CacheControl = "no-cache, no-transform";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        await WriteEventAsync("status", new { stage = "routing", message = "İstek yönlendiriliyor." });
+        if (!config.GetValue("Assistant:Enabled", true))
+        {
+            await WriteEventAsync("error", new { error = "Assistant is disabled.", status = 404 }); return;
+        }
+        await WriteEventAsync("status", new { stage = "processing", message = "Kaynaklar aranıyor ve yanıt doğrulanıyor." });
+        var execution = await requests.ExecuteAsync(request, User, HttpContext.RequestAborted);
+        if (execution.Error != null)
+        {
+            await WriteEventAsync("error", new { error = execution.Error.Message,
+                status = execution.Error.StatusCode }); return;
+        }
+        var response = execution.Response!;
+        await WriteEventAsync("metadata", new { response.Route, response.RouteSource,
+            response.Confidence, response.RawConfidence, response.CacheHit });
+        var answer = response.Answer ?? response.Clarification ?? "";
+        foreach (var chunk in TokenChunks(answer, 4))
+            await WriteEventAsync("token", new { text = chunk });
+        await WriteEventAsync("complete", response);
+        HttpContext.Items[UsageTrackingMiddleware.OperationItem] = $"assistant.stream.{response.Route}";
+    }
+
+    private async Task WriteEventAsync(string eventName, object value)
+    {
+        await Response.WriteAsync($"event: {eventName}\n", HttpContext.RequestAborted);
+        await Response.WriteAsync($"data: {JsonSerializer.Serialize(value, SseJson)}\n\n", HttpContext.RequestAborted);
+        await Response.Body.FlushAsync(HttpContext.RequestAborted);
+    }
+
+    private static IEnumerable<string> TokenChunks(string text, int wordsPerChunk)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < words.Length; i += wordsPerChunk)
+            yield return (i == 0 ? "" : " ") + string.Join(' ', words.Skip(i).Take(wordsPerChunk));
     }
 
     [HttpPost("feedback")]

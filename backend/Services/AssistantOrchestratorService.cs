@@ -11,6 +11,9 @@ namespace KnowledgePortal.Api.Services;
 public sealed class AssistantOrchestratorService(
     AssistantRouterService router,
     AssistantPolicyService policy,
+    AssistantConfidenceCalibrationService calibration,
+    AssistantShadowRoutingQueue shadowRouting,
+    AssistantAnswerCacheService answerCache,
     SearchExecutionService search,
     AnalyticsReportService analytics,
     IConfiguration config,
@@ -35,6 +38,13 @@ public sealed class AssistantOrchestratorService(
         try
         {
             decision = await router.RouteAsync(request.Message, request.PreferredRoute, budget.Token);
+            var rawConfidence = decision.Confidence;
+            var calibrated = decision.Source == "manual" ? new AssistantCalibrationResult(1, 0)
+                : await calibration.CalibrateAsync(
+                    AssistantRouterService.RouteName(decision.Route), rawConfidence, budget.Token);
+            decision = decision with { Confidence = calibrated.Confidence,
+                RawConfidence = rawConfidence, CalibrationSamples = calibrated.Samples };
+            shadowRouting.TryEnqueue(request.Message, decision);
             var authorization = policy.Authorize(decision.Route, principal);
             if (!authorization.Allowed)
             {
@@ -115,6 +125,14 @@ public sealed class AssistantOrchestratorService(
     private async Task<AssistantResponseDto> AnswerAsync(AssistantRouteDecision decision,
         ClaimsPrincipal principal, CancellationToken ct)
     {
+        CachedAssistantAnswer? cached = null;
+        try { cached = await answerCache.TryGetAsync(decision.NormalizedQuery, principal, ct); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { logger.LogWarning(ex, "Assistant semantic answer cache lookup failed open");
+            metrics.AssistantAnswerCache.Add(1, new KeyValuePair<string, object?>("outcome", "failure")); }
+        if (cached != null)
+            return Base(decision) with { Answer = cached.Answer, Rag = cached.Rag,
+                ToolCalls = ["semantic_answer_cache"], CacheHit = true };
         var execution = await ExecuteSearchAsync(decision.NormalizedQuery, "rag", principal, ct);
         if (execution.Error != null) throw new AssistantExecutionException(execution.Error);
         var result = execution.Result!;
@@ -150,11 +168,20 @@ public sealed class AssistantOrchestratorService(
             }
         }
 
+        var ragDto = ToDto(result.Rag);
+        try
+        {
+            await answerCache.StoreAsync(decision.NormalizedQuery, principal,
+                new(result.Rag.Answer, ragDto), ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { logger.LogWarning(ex, "Assistant semantic answer cache store failed open");
+            metrics.AssistantAnswerCache.Add(1, new KeyValuePair<string, object?>("outcome", "failure")); }
         return Base(decision) with
         {
             Answer = result.Rag.Answer,
             Results = results,
-            Rag = ToDto(result.Rag),
+            Rag = ragDto,
             SearchQueryId = result.SearchQueryId,
             ToolCalls = tools.ToArray(),
             Warnings = warnings.Distinct().ToArray()
@@ -238,7 +265,8 @@ public sealed class AssistantOrchestratorService(
         AssistantRoute? actualRoute = null, string? reason = null) => new(
         AssistantRouterService.RouteName(actualRoute ?? decision.Route), decision.Confidence,
         decision.Source, reason ?? decision.ReasonCode, decision.NormalizedQuery, null, [], null, null,
-        false, null, [], [], null, null, 0, "");
+        false, null, [], [], null, null, 0, "", null,
+        decision.RawConfidence ?? decision.Confidence, decision.CalibrationSamples, false);
 
     private static AssistantRagDto ToDto(RagService.RagResult rag) => new(
         rag.Sources.Select(ToSource).ToArray(), rag.ConsultedSources.Select(ToSource).ToArray(),

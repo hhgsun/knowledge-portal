@@ -353,7 +353,14 @@ Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nul
 
 ### AssistantInteraction
 
-Privacy-safe routing audit and feedback stored in `assistant_interactions`: `id`, nullable `user_id`/`api_key_id`, SHA-256 `query_fingerprint`, route/source/reason/confidence, nullable `search_query_id`, JSONB tool names, duration, optional helpful/reason/corrected-route feedback, and timestamps. Raw user text and generated answers are intentionally not stored. User/API-key foreign keys use SetNull; the search query identifier is audit correlation rather than a database foreign key so historical interaction rows remain removable and loosely coupled from the search subsystem.
+Privacy-safe routing audit and feedback stored in `assistant_interactions`: identity correlations, SHA-256 query fingerprint, route/source/reason, raw/calibrated confidence and sample count, classifier/prompt/application versions, JSONB routing config snapshot, optional conversation/search correlations, tool names, duration and feedback. Raw user text and generated answers are not stored here. Conversation content is separately owned/retained and user-deletable.
+
+### Assistant conversation and quality/cache entities
+
+- `assistant_conversations` and cascade-owned `assistant_messages` persist session-only multi-turn history. User deletion cascades conversations; conversation deletion sets interaction correlation null.
+- `assistant_evaluation_candidates` stores fingerprint-validated negative-feedback questions pending admin approval/rejection as dynamic routing golden cases.
+- `assistant_routing_shadow_samples` stores no raw query—only fingerprint, primary/shadow route/model/confidence and agreement.
+- `assistant_answer_cache` stores fully grounded response JSON and query embedding per required user FK plus user/role/auth/API-key scope, corpus/governance fingerprint, runtime fingerprint and TTL/hit metadata. User deletion cascades cache rows.
 
 ### RagEvaluationDataset and RagEvaluationRun
 
@@ -414,6 +421,11 @@ Privacy-safe routing audit and feedback stored in `assistant_interactions`: `id`
 | Tag | ArticleTag | Cascade |
 | User | AssistantInteraction | SetNull |
 | ApiKey | AssistantInteraction | SetNull |
+| User | AssistantConversation | Cascade |
+| AssistantConversation | AssistantMessage | Cascade |
+| AssistantConversation | AssistantInteraction | SetNull |
+| AssistantInteraction | AssistantEvaluationCandidate | Cascade |
+| User | AssistantAnswerCacheEntry | Cascade |
 
 ## Seed Data
 

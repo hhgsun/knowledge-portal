@@ -110,6 +110,8 @@ User text is serialized as untrusted data for the optional structured classifier
 
 Assistant audit stores only a SHA-256 query fingerprint plus route/tool/timing identifiers; raw prompts and generated answers are not persisted in `assistant_interactions`. Feedback updates require ownership of the interaction. When an interaction produced a RAG query, the vote is also attached to the existing owned `search_queries` evaluation record. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
 
+Conversation history is an explicit separate data class: only interactive sessions can create/read/delete it, every query is owner-filtered, context is bounded to recent user messages, retention is configurable, and user/conversation deletion cascades content. Semantic answer cache never crosses a user/role/auth/API-key scope and becomes unusable on any published-corpus, review/approval/authority, prompt/retrieval/model/chunking change. Only fully grounded non-partial answers qualify. SSE never exposes pre-validation model output. Shadow routing runs asynchronously and persists only a query fingerprint.
+
 ### API Key Capability Model ("editor minus delete")
 
 API-key principals (`source=api-key`) are capped independently of their owner's role:

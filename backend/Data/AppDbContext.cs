@@ -24,6 +24,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<AssistantInteraction> AssistantInteractions => Set<AssistantInteraction>();
+    public DbSet<AssistantConversation> AssistantConversations => Set<AssistantConversation>();
+    public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
+    public DbSet<AssistantEvaluationCandidate> AssistantEvaluationCandidates => Set<AssistantEvaluationCandidate>();
+    public DbSet<AssistantRoutingShadowSample> AssistantRoutingShadowSamples => Set<AssistantRoutingShadowSample>();
+    public DbSet<AssistantAnswerCacheEntry> AssistantAnswerCacheEntries => Set<AssistantAnswerCacheEntry>();
     public DbSet<RagEvaluationDataset> RagEvaluationDatasets => Set<RagEvaluationDataset>();
     public DbSet<RagEvaluationRun> RagEvaluationRuns => Set<RagEvaluationRun>();
 
@@ -330,6 +335,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.ToolCallsJson).IsRequired().HasColumnType("jsonb");
             e.Property(x => x.FeedbackReason).HasMaxLength(40);
             e.Property(x => x.CorrectedRoute).HasMaxLength(40);
+            e.Property(x => x.RoutingPromptVersion).IsRequired().HasMaxLength(100);
+            e.Property(x => x.ClassifierModel).IsRequired().HasMaxLength(200);
+            e.Property(x => x.RoutingConfigSnapshotJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.ApplicationVersion).IsRequired().HasMaxLength(50);
+            e.Property(x => x.ConversationId).HasMaxLength(21);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => new { x.UserId, x.CreatedAt });
             e.HasIndex(x => new { x.Route, x.CreatedAt });
@@ -337,6 +347,67 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.ApiKey).WithMany().HasForeignKey(x => x.ApiKeyId)
                 .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Conversation).WithMany().HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AssistantConversation>(e =>
+        {
+            e.ToTable("assistant_conversations"); e.HasKey(x => x.Id);
+            e.Property(x => x.Title).IsRequired().HasMaxLength(160);
+            e.HasIndex(x => new { x.UserId, x.UpdatedAt });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<AssistantMessage>(e =>
+        {
+            e.ToTable("assistant_messages"); e.HasKey(x => x.Id);
+            e.Property(x => x.Role).IsRequired().HasMaxLength(20);
+            e.Property(x => x.Content).IsRequired().HasMaxLength(20000);
+            e.Property(x => x.Route).HasMaxLength(40);
+            e.Property(x => x.InteractionId).HasMaxLength(21);
+            e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<AssistantEvaluationCandidate>(e =>
+        {
+            e.ToTable("assistant_evaluation_candidates"); e.HasKey(x => x.Id);
+            e.Property(x => x.Question).IsRequired().HasMaxLength(4000);
+            e.Property(x => x.ActualRoute).IsRequired().HasMaxLength(40);
+            e.Property(x => x.ExpectedRoute).HasMaxLength(40);
+            e.Property(x => x.Reason).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.HasIndex(x => x.InteractionId).IsUnique();
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasOne(x => x.Interaction).WithMany().HasForeignKey(x => x.InteractionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ReviewedBy).WithMany().HasForeignKey(x => x.ReviewedById)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        modelBuilder.Entity<AssistantRoutingShadowSample>(e =>
+        {
+            e.ToTable("assistant_routing_shadow_samples"); e.HasKey(x => x.Id);
+            e.Property(x => x.QueryFingerprint).IsRequired().HasMaxLength(64);
+            e.Property(x => x.PrimaryRoute).IsRequired().HasMaxLength(40);
+            e.Property(x => x.ShadowRoute).IsRequired().HasMaxLength(40);
+            e.Property(x => x.PrimaryModel).IsRequired().HasMaxLength(200);
+            e.Property(x => x.ShadowModel).IsRequired().HasMaxLength(200);
+            e.HasIndex(x => x.CreatedAt);
+        });
+        modelBuilder.Entity<AssistantAnswerCacheEntry>(e =>
+        {
+            e.ToTable("assistant_answer_cache"); e.HasKey(x => x.Id);
+            e.Property(x => x.UserScope).IsRequired().HasMaxLength(200);
+            e.Property(x => x.QueryFingerprint).IsRequired().HasMaxLength(64);
+            e.Property(x => x.QueryEmbeddingJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.CorpusFingerprint).IsRequired().HasMaxLength(64);
+            e.Property(x => x.RuntimeFingerprint).IsRequired().HasMaxLength(64);
+            e.Property(x => x.AnswerJson).IsRequired().HasColumnType("jsonb");
+            e.HasIndex(x => new { x.UserScope, x.ExpiresAt });
+            e.HasIndex(x => new { x.UserScope, x.QueryFingerprint, x.CorpusFingerprint,
+                x.RuntimeFingerprint }).IsUnique();
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ─── Durable search-index queue ───────────────────

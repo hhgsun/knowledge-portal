@@ -17,7 +17,8 @@ public enum AssistantRoute
 }
 
 public sealed record AssistantRouteDecision(AssistantRoute Route, double Confidence,
-    string NormalizedQuery, string ReasonCode, string Source, bool IncludeSearchResults = false);
+    string NormalizedQuery, string ReasonCode, string Source, bool IncludeSearchResults = false,
+    double? RawConfidence = null, int CalibrationSamples = 0);
 
 /// <summary>
 /// Policy-neutral intent classifier. Explicit modes and high-signal deterministic rules run first;
@@ -31,6 +32,7 @@ public sealed class AssistantRouterService(
     PortalMetrics metrics,
     ILogger<AssistantRouterService> logger)
 {
+    public const string RoutingPromptVersion = "2026-08-27.read-only-router-v2";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly Regex SpaceRegex = new(@"\s+", RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(50));
@@ -114,16 +116,29 @@ public sealed class AssistantRouterService(
                 "knowledge_question", "deterministic"));
 
         if (config.GetValue("AgenticRouting:ClassifierEnabled", true)
-            && services.GetService<IChatClient>() is { } chat)
+            && (services.GetKeyedService<IChatClient>("assistant-router")
+                ?? services.GetService<IChatClient>()) is { } chat)
         {
             var fingerprint = Fingerprint(normalized);
             if (classifierResilience.TryGet(fingerprint, out var cached))
                 return Record(new(cached.Route, cached.Confidence, normalized,
                     cached.ReasonCode, "classifier_cache", cached.IncludeSearchResults));
             var classified = await TryClassifyAsync(chat, normalized, ct);
+            var fallbackChat = services.GetService<IChatClient>();
+            if (classified == null && fallbackChat != null && !ReferenceEquals(chat, fallbackChat)
+                && config.GetValue("AgenticRouting:FallbackToChatModel", true))
+            {
+                classified = await TryClassifyAsync(fallbackChat, normalized, ct,
+                    usePrimaryResilience: false);
+                if (classified != null) classified = classified with
+                    { Source = "classifier_model_fallback", ReasonCode = "routing_model_fallback" };
+            }
             if (classified != null)
             {
-                var threshold = Math.Clamp(config.GetValue("AgenticRouting:MinConfidence", .78), .5, 1);
+                var routeName = RouteName(classified.Route);
+                var threshold = Math.Clamp(config.GetValue(
+                    $"AgenticRouting:ConfidenceThresholds:{routeName}",
+                    config.GetValue("AgenticRouting:MinConfidence", .78)), .5, 1);
                 if (classified.Confidence >= threshold)
                 {
                     classifierResilience.Set(fingerprint, new(classified.Route, classified.Confidence,
@@ -139,8 +154,17 @@ public sealed class AssistantRouterService(
             "classifier_unavailable_safe_fallback", "fallback"));
     }
 
+    public async Task<AssistantRouteDecision?> RouteShadowAsync(string message, CancellationToken ct)
+    {
+        if (!config.GetValue("AgenticRouting:Shadow:Enabled", false)) return null;
+        var chat = services.GetKeyedService<IChatClient>("assistant-router-shadow");
+        if (chat == null) return null;
+        var decision = await TryClassifyAsync(chat, Normalize(message), ct, usePrimaryResilience: false);
+        return decision == null ? null : decision with { Source = "shadow_classifier" };
+    }
+
     private async Task<AssistantRouteDecision?> TryClassifyAsync(IChatClient chat, string message,
-        CancellationToken ct)
+        CancellationToken ct, bool usePrimaryResilience = true)
     {
         const string system = """
             You route requests for a read-only internal knowledge portal assistant.
@@ -158,7 +182,7 @@ public sealed class AssistantRouterService(
         try
         {
             var userPayload = JsonSerializer.Serialize(new { userText = message });
-            return await classifierResilience.ExecuteAsync(async token =>
+            async Task<AssistantRouteDecision> InvokeAsync(CancellationToken token)
             {
                 var response = await chat.GetResponseAsync(
                     [new(ChatRole.System, system), new(ChatRole.User, userPayload)],
@@ -170,7 +194,13 @@ public sealed class AssistantRouterService(
                     throw new InvalidOperationException("Assistant classifier returned an invalid route decision.");
                 return new AssistantRouteDecision(route.Value, Math.Clamp(model.Confidence, 0, 1),
                     message, SanitizeReason(model.ReasonCode), "classifier", model.IncludeSearchResults);
-            }, ct);
+            }
+            if (usePrimaryResilience)
+                return await classifierResilience.ExecuteAsync(InvokeAsync, ct);
+            using var localBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            localBudget.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(
+                config.GetValue("AgenticRouting:ClassifierTimeoutSeconds", 8), 1, 30)));
+            return await InvokeAsync(localBudget.Token);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

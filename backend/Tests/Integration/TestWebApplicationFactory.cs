@@ -59,6 +59,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IVectorSearchService>();
             services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
             services.AddSingleton<IChatClient>(new FakeChatClient());
+            services.AddKeyedSingleton<IChatClient>("assistant-router", new FakeChatClient());
+            services.AddKeyedSingleton<IChatClient>("assistant-router-shadow", new FakeChatClient());
             services.AddSingleton<IVectorSearchService, FakeVectorSearchService>();
 
             // The embedding background service uses Postgres-only raw SQL (xmin) — drop it;

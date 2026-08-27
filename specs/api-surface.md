@@ -756,6 +756,7 @@ The assistant is an isolated, bounded, read-only orchestration surface. It reuse
 |-------|------|:--------:|-------|
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
 | `preferredRoute` | string | No | `auto`, `search`, `answer`, `analytics`, or `chat`; default `auto` |
+| `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user turns contextualize follow-ups. |
 
 In `auto` mode, explicit safe modes and deterministic Turkish/English signals run first. Only ambiguous input reaches the structured low-token classifier. A classifier decision below `AgenticRouting:MinConfidence` falls back to read-only hybrid search. The server-side policy layer independently authorizes the chosen route; classifier output never grants permission. A compound answer-plus-list request may invoke at most grounded RAG plus hybrid search, bounded by `MaxToolCalls`. If RAG is unavailable or fails, the assistant returns hybrid results with a warning rather than an ungrounded answer.
 
@@ -795,7 +796,9 @@ The classifier cannot rewrite or expand `message`: the normalized original input
 }
 ```
 
-Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `classifier_cache`, `fallback`, or `default`. `searchQueryId` enables owned search-click/RAG evaluation linkage; `interactionId` enables owned Assistant feedback. General chat is bounded canned assistance and cannot make company factual claims.
+The response also includes `conversationId`, `rawConfidence`, `confidenceCalibrationSamples`, and `cacheHit`. `confidence` is empirically calibrated when enough route-specific feedback exists; manual routes remain 1.0.
+
+Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `classifier_cache`, `classifier_model_fallback`, `fallback`, or `default`. The model-fallback source keeps the portal available when the configured small router is missing, while the live gate still requires actual dedicated-model cases. `searchQueryId` enables owned search-click/RAG evaluation linkage; `interactionId` enables owned Assistant feedback.
 
 Operational controls:
 
@@ -831,6 +834,19 @@ Returns the runtime Assistant enablement, routing/classifier/feedback status, ma
 **Rate limit**: `search`
 
 Accepts the normal Assistant request and returns only `route`, `confidence`, `routeSource`, `reasonCode`, `normalizedQuery`, and `includeSearchResults`. No route policy grants access and no search/RAG/analytics tool is executed. The post-deploy live routing gate uses this endpoint to evaluate real classifier behavior independently of document availability.
+
+### `POST /api/assistant/stream`
+**Auth/policy/rate limit**: Same as `POST /api/assistant`.
+
+Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, then `complete`; validation failures use an SSE `error` event. Grounding remains fail-closed: raw model tokens are buffered and validated, then only the verified final answer is emitted as token chunks. `X-Accel-Buffering: no` and `no-transform` are set to prevent reverse-proxy buffering.
+
+### Assistant conversations
+
+`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. Create returns a new conversation; list returns at most 100 recent items; delete-one and clear-all are recoverable only from database backup. Retention is configured by `Assistant:ConversationRetentionDays`.
+
+### Assistant evaluation candidates
+
+Admin session endpoints `GET /api/admin/assistant-evaluations/candidates?status=...`, `PUT /api/admin/assistant-evaluations/candidates/{id}`, and `GET /api/admin/assistant-evaluations/routing-summary` manage feedback-derived golden routing candidates and primary/shadow agreement. Approval requires a valid expected route. Approved candidates are included by the live routing gate script.
 
 ---
 

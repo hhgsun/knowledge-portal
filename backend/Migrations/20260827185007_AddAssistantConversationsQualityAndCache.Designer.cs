@@ -3,6 +3,7 @@ using System;
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace KnowledgePortal.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827185007_AddAssistantConversationsQualityAndCache")]
+    partial class AddAssistantConversationsQualityAndCache
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -720,11 +723,6 @@ namespace KnowledgePortal.Api.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("runtime_fingerprint");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("user_id");
-
                     b.Property<string>("UserScope")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -734,15 +732,11 @@ namespace KnowledgePortal.Api.Migrations
                     b.HasKey("Id")
                         .HasName("pk_assistant_answer_cache");
 
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_assistant_answer_cache_user_id");
-
                     b.HasIndex("UserScope", "ExpiresAt")
                         .HasDatabaseName("ix_assistant_answer_cache_user_scope_expires_at");
 
-                    b.HasIndex("UserScope", "QueryFingerprint", "CorpusFingerprint", "RuntimeFingerprint")
-                        .IsUnique()
-                        .HasDatabaseName("ix_assistant_answer_cache_user_scope_query_fingerprint_corpus_~");
+                    b.HasIndex("UserScope", "QueryFingerprint")
+                        .HasDatabaseName("ix_assistant_answer_cache_user_scope_query_fingerprint");
 
                     b.ToTable("assistant_answer_cache", (string)null);
                 });
@@ -1889,18 +1883,6 @@ namespace KnowledgePortal.Api.Migrations
                         .HasConstraintName("fk_article_votes_users_user_id");
 
                     b.Navigation("Article");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantAnswerCacheEntry", b =>
-                {
-                    b.HasOne("KnowledgePortal.Api.Models.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_assistant_answer_cache_users_user_id");
 
                     b.Navigation("User");
                 });

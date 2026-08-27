@@ -34,6 +34,15 @@ public sealed class AssistantInteractionService(
             RouteSource = response.RouteSource,
             ReasonCode = response.ReasonCode,
             Confidence = response.Confidence,
+            RawConfidence = response.RawConfidence,
+            ConfidenceCalibrationSamples = response.ConfidenceCalibrationSamples,
+            RoutingPromptVersion = AssistantRouterService.RoutingPromptVersion,
+            ClassifierModel = response.RouteSource == "classifier_model_fallback"
+                ? config["Ollama:ChatModel"] ?? "unknown"
+                : config["AgenticRouting:Model"] ?? config["Ollama:ChatModel"] ?? "unknown",
+            RoutingConfigSnapshotJson = BuildRoutingSnapshot(),
+            ApplicationVersion = typeof(AssistantInteractionService).Assembly.GetName().Version?.ToString() ?? "unknown",
+            ConversationId = response.ConversationId,
             SearchQueryId = response.SearchQueryId,
             ToolCallsJson = JsonSerializer.Serialize(response.ToolCalls),
             DurationMs = response.ResponseTimeMs
@@ -81,6 +90,23 @@ public sealed class AssistantInteractionService(
         interaction.CorrectedRoute = corrected;
         interaction.FeedbackAt = DateTime.UtcNow;
 
+        if (!request.Helpful && !string.IsNullOrWhiteSpace(request.Question)
+            && string.Equals(Fingerprint(request.Question), interaction.QueryFingerprint,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var exists = await db.AssistantEvaluationCandidates.AnyAsync(
+                x => x.InteractionId == interaction.Id, ct);
+            if (!exists)
+                db.AssistantEvaluationCandidates.Add(new AssistantEvaluationCandidate
+                {
+                    InteractionId = interaction.Id,
+                    Question = request.Question.Trim(),
+                    ActualRoute = interaction.Route,
+                    ExpectedRoute = corrected,
+                    Reason = reason ?? "other"
+                });
+        }
+
         // Keep grounded-answer feedback in the existing RAG evaluation cohort as well.
         // Search-only interactions are intentionally excluded because they have no
         // generated answer to evaluate.
@@ -106,4 +132,23 @@ public sealed class AssistantInteractionService(
     private static string? EmptyToNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
     private static string Fingerprint(string value) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim()))).ToLowerInvariant();
+
+    private string BuildRoutingSnapshot() => JsonSerializer.Serialize(new SortedDictionary<string, object?>
+    {
+        ["promptVersion"] = AssistantRouterService.RoutingPromptVersion,
+        ["routingModel"] = config["AgenticRouting:Model"] ?? config["Ollama:ChatModel"],
+        ["chatModelFallback"] = config["Ollama:ChatModel"],
+        ["shadowModel"] = config["AgenticRouting:Shadow:Model"],
+        ["minConfidence"] = config.GetValue("AgenticRouting:MinConfidence", .78),
+        ["confidenceThresholds"] = new SortedDictionary<string, double>
+        {
+            ["analytics"] = config.GetValue("AgenticRouting:ConfidenceThresholds:analytics", .86),
+            ["general_chat"] = config.GetValue("AgenticRouting:ConfidenceThresholds:general_chat", .75),
+            ["knowledge_answer"] = config.GetValue("AgenticRouting:ConfidenceThresholds:knowledge_answer", .80),
+            ["knowledge_search"] = config.GetValue("AgenticRouting:ConfidenceThresholds:knowledge_search", .72)
+        },
+        ["classifierTimeoutSeconds"] = config.GetValue("AgenticRouting:ClassifierTimeoutSeconds", 8),
+        ["defaultRoute"] = config["AgenticRouting:DefaultRoute"],
+        ["calibrationEnabled"] = config.GetValue("AgenticRouting:Calibration:Enabled", true)
+    });
 }

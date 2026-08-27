@@ -133,6 +133,11 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 12 | Cancel an in-flight Assistant request | Browser aborts the request without a failure toast; a retry can be submitted normally |
 | 13 | Call `POST /api/assistant/route-preview` as viewer/API key, then admin session | Viewer/key gets 403; admin gets decision metadata without `toolCalls`, answer or results |
 | 14 | Run `backend/scripts/run-assistant-live-routing-gate.ps1` against deployment | At least 80% cases pass and at least three cases use live `classifier`/`classifier_cache` |
+| 15 | Create a conversation, ask a topic, then ask “peki detayları?” | Only the owner can read it; response query contains bounded prior topic context; delete-one/clear remove messages |
+| 16 | Call `/api/assistant/stream` | `text/event-stream`: status → verified token chunks → complete; cancellation closes work without a server failure |
+| 17 | Repeat a fully grounded answer, then update a cited article | Second request may be `cacheHit:true`; update forces miss. Another user/API-key scope never receives the entry |
+| 18 | Submit negative feedback with corrected route and matching question | Pending candidate appears; admin approval adds it to the next live golden gate |
+| 19 | Enable shadow sampling in staging | User route is unchanged; routing summary and `kp_assistant_shadow_comparisons` show async agreement |
 
 ---
 

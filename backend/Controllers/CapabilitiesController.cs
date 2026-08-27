@@ -16,5 +16,9 @@ public sealed class CapabilitiesController(IConfiguration config) : ControllerBa
         config.GetValue("AgenticRouting:ClassifierEnabled", true),
         config.GetValue("Assistant:AuditEnabled", true),
         Math.Clamp(config.GetValue("Assistant:MaxMessageCharacters", 4000), 100, 20_000),
-        ["auto", "search", "answer", "analytics", "chat"]));
+        ["auto", "search", "answer", "analytics", "chat"],
+        true,
+        config.GetValue("Assistant:ConversationHistoryEnabled", true),
+        config.GetValue("Assistant:SemanticCache:Enabled", true),
+        config["AgenticRouting:Model"] ?? config["Ollama:ChatModel"] ?? "unknown"));
 }

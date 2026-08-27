@@ -50,12 +50,14 @@ public record RagFeedbackRequest(string SearchQueryId, bool Helpful, string? Rea
 
 // Assistant / bounded agentic routing. Kept separate from search DTOs so the entire
 // assistant surface can be disabled or removed without changing /api/search contracts.
-public record AssistantRequest(string Message, string? PreferredRoute = "auto");
+public record AssistantRequest(string Message, string? PreferredRoute = "auto", string? ConversationId = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful,
-    string? Reason = null, string? CorrectedRoute = null);
+    string? Reason = null, string? CorrectedRoute = null, string? Question = null);
+public record ReviewAssistantCandidateRequest(string Status, string? ExpectedRoute = null);
 public record AssistantCapabilitiesDto(bool Enabled, bool AgenticRoutingEnabled,
     bool ClassifierEnabled, bool FeedbackEnabled, int MaxMessageCharacters,
-    string[] SupportedModes);
+    string[] SupportedModes, bool StreamingEnabled, bool ConversationHistoryEnabled,
+    bool SemanticCacheEnabled, string RoutingModel);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
@@ -96,7 +98,11 @@ public record AssistantResponseDto(
     string? SearchQueryId,
     string? InteractionId,
     long ResponseTimeMs,
-    string TraceId);
+    string TraceId,
+    string? ConversationId,
+    double RawConfidence,
+    int ConfidenceCalibrationSamples,
+    bool CacheHit);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

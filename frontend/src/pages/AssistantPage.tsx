@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Send, Sparkles, Search, BarChart3, MessageCircle, FileText, ShieldCheck, AlertTriangle, Loader2, ExternalLink, ThumbsUp, ThumbsDown, Square, RotateCcw } from "lucide-react";
+import { Bot, Send, Sparkles, Search, BarChart3, MessageCircle, FileText, ShieldCheck, AlertTriangle, Loader2, ExternalLink, ThumbsUp, ThumbsDown, Square, RotateCcw, Plus, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -8,7 +8,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { readApiError, readApiJson } from "../lib/api-response";
 import { cn } from "../lib/utils";
-import type { AssistantPreferredRoute, AssistantResponse } from "../types/api";
+import type { AssistantConversation, AssistantConversationMessage, AssistantPreferredRoute, AssistantResponse } from "../types/api";
 import { useCapabilities } from "../contexts/CapabilitiesContext";
 
 const modes: { value: AssistantPreferredRoute; label: string; icon: typeof Sparkles }[] = [
@@ -35,26 +35,74 @@ export default function AssistantPage() {
   const [mode, setMode] = useState<AssistantPreferredRoute>("auto");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<AssistantResponse | null>(null);
+  const [conversationList, setConversationList] = useState<AssistantConversation[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [history, setHistory] = useState<AssistantConversationMessage[]>([]);
+  const [streamedText, setStreamedText] = useState("");
+  const [streamStage, setStreamStage] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
   const visibleModes = modes.filter(item =>
     (capabilities?.supportedModes ?? modes.map(mode => mode.value)).includes(item.value)
     && (item.value !== "analytics" || user?.role === "admin" || user?.role === "editor"));
 
+  const loadConversations = async () => {
+    if (capabilities && !capabilities.conversationHistoryEnabled) return;
+    const result = await fetchWithAuth("/api/assistant/conversations", { noRetry: true });
+    if (result.ok) setConversationList((await result.json()).conversations);
+  };
+  const loadMessages = async (id: string) => {
+    const result = await fetchWithAuth(`/api/assistant/conversations/${id}/messages`, { noRetry: true });
+    if (result.ok) setHistory((await result.json()).messages);
+  };
+  useEffect(() => { if (capabilities?.conversationHistoryEnabled) void loadConversations(); }, [capabilities?.conversationHistoryEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const createConversation = async () => {
+    const result = await fetchWithAuth("/api/assistant/conversations", { method: "POST", noRetry: true });
+    if (!result.ok) return null;
+    const item = await result.json() as AssistantConversation;
+    setConversationId(item.id); setHistory([]); setResponse(null); setStreamedText("");
+    await loadConversations(); return item.id;
+  };
+
   const execute = async (text: string, preferredMode: AssistantPreferredRoute) => {
     if (!text || loading) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
+    setStreamedText(""); setStreamStage("Yönlendiriliyor…");
     try {
-      const result = await fetchWithAuth("/api/assistant", {
+      let activeConversation = conversationId;
+      if (capabilities?.conversationHistoryEnabled && !activeConversation)
+        activeConversation = await createConversation();
+      const streaming = capabilities?.streamingEnabled ?? true;
+      const result = await fetchWithAuth(streaming ? "/api/assistant/stream" : "/api/assistant", {
         method: "POST",
         noRetry: true,
         signal: controller.signal,
-        body: JSON.stringify({ message: text, preferredRoute: preferredMode }),
+        body: JSON.stringify({ message: text, preferredRoute: preferredMode, conversationId: activeConversation }),
       });
       if (!result.ok) throw new Error(await readApiError(result, "Asistan isteği tamamlanamadı."));
-      setResponse(await readApiJson<AssistantResponse>(result));
+      if (!streaming || !result.body) setResponse(await readApiJson<AssistantResponse>(result));
+      else {
+        const reader = result.body.getReader(); const decoder = new TextDecoder(); let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read(); buffer += decoder.decode(value, { stream: !done });
+          const blocks = buffer.split("\n\n"); buffer = blocks.pop() ?? "";
+          for (const block of blocks) {
+            const event = block.split("\n").find(line => line.startsWith("event: "))?.slice(7);
+            const dataLine = block.split("\n").find(line => line.startsWith("data: "))?.slice(6);
+            if (!event || !dataLine) continue;
+            const data = JSON.parse(dataLine);
+            if (event === "status") setStreamStage(data.message);
+            if (event === "token") setStreamedText(current => current + data.text);
+            if (event === "error") throw new Error(data.error);
+            if (event === "complete") setResponse(data as AssistantResponse);
+          }
+          if (done) break;
+        }
+      }
+      if (activeConversation) { await loadMessages(activeConversation); await loadConversations(); }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         toast.info("Asistan isteği iptal edildi.");
@@ -64,6 +112,7 @@ export default function AssistantPage() {
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setLoading(false);
+      setStreamStage("");
     }
   };
 
@@ -75,6 +124,10 @@ export default function AssistantPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {capabilities?.conversationHistoryEnabled && <section className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Konuşmalar</h2><div className="flex gap-1"><button type="button" onClick={() => void createConversation()} className="rounded p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label="Yeni konuşma"><Plus size={15}/></button><button type="button" onClick={async () => { if (!confirm("Tüm konuşma geçmişi silinsin mi?")) return; await fetchWithAuth("/api/assistant/conversations", { method: "DELETE", noRetry: true }); setConversationList([]); setConversationId(null); setHistory([]); setResponse(null); }} className="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950" aria-label="Tüm geçmişi temizle"><Trash2 size={15}/></button></div></div>
+        <div className="flex gap-2 overflow-x-auto pb-1">{conversationList.map(item=><div key={item.id} className={cn("flex shrink-0 items-center rounded-lg border", conversationId === item.id ? "border-blue-400 bg-blue-50 dark:bg-blue-950" : "border-zinc-200 dark:border-zinc-700")}><button type="button" onClick={() => { setConversationId(item.id); setResponse(null); void loadMessages(item.id); }} className="px-3 py-2 text-left text-xs"><span className="block max-w-44 truncate font-medium">{item.title}</span><span className="text-zinc-400">{item.messageCount} mesaj</span></button><button type="button" onClick={async()=>{ await fetchWithAuth(`/api/assistant/conversations/${item.id}`, { method:"DELETE", noRetry:true }); if(conversationId===item.id){setConversationId(null);setHistory([]);setResponse(null);} await loadConversations(); }} className="mr-1 rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950" aria-label={`${item.title} konuşmasını sil`}><Trash2 size={13}/></button></div>)}</div>
+      </section>}
       <header>
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-100 p-2.5 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><Bot size={24} /></div>
@@ -84,6 +137,8 @@ export default function AssistantPage() {
           </div>
         </div>
       </header>
+
+      {history.length > 0 && <section className="max-h-80 space-y-2 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-950">{history.map(item=><div key={item.id} className={cn("max-w-[85%] rounded-xl px-3 py-2 text-sm", item.role === "user" ? "ml-auto bg-blue-600 text-white" : "bg-white text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300")}>{item.content}</div>)}</section>}
 
       <form onSubmit={submit} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <textarea
@@ -119,8 +174,10 @@ export default function AssistantPage() {
             <Send size={16} />Gönder
           </button>}
         </div>
-        {loading && <div className="mt-3 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400"><Loader2 size={13} className="animate-spin" />Routing ve kaynak doğrulama devam ediyor…</div>}
+        {loading && <div className="mt-3 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400"><Loader2 size={13} className="animate-spin" />{streamStage || "Routing ve kaynak doğrulama devam ediyor…"}</div>}
       </form>
+
+      {loading && streamedText && <div className="rounded-2xl border border-blue-200 bg-white p-5 text-sm text-zinc-700 dark:border-blue-900 dark:bg-zinc-900 dark:text-zinc-300"><div className="mb-2 flex items-center gap-2 text-xs font-medium text-blue-600"><Bot size={15}/>Doğrulanmış yanıt aktarılıyor</div><p className="whitespace-pre-wrap">{streamedText}</p></div>}
 
       {response && <AssistantResult key={response.interactionId ?? response.traceId} response={response}
         feedbackEnabled={capabilities?.feedbackEnabled ?? true}
@@ -150,7 +207,8 @@ function AssistantResult({ response, feedbackEnabled, onRetry }: {
         method: "POST",
         noRetry: true,
         body: JSON.stringify({ interactionId: response.interactionId, helpful,
-          reason: reason || null, correctedRoute: correctedRoute || null }),
+          reason: reason || null, correctedRoute: correctedRoute || null,
+          question: response.normalizedQuery }),
       });
       if (!result.ok) throw new Error(await readApiError(result, "Geri bildirim kaydedilemedi."));
       setFeedback(helpful ? "helpful" : "not_helpful");
@@ -173,8 +231,9 @@ function AssistantResult({ response, feedbackEnabled, onRetry }: {
   return <section className="space-y-4" aria-live="polite">
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full bg-purple-100 px-2.5 py-1 font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-300">{routeLabels[response.route]}</span>
-      <span className="text-zinc-500" title="Routing karar skoru; kalibre edilmiş doğruluk olasılığı değildir.">Karar skoru %{Math.round(response.confidence * 100)}</span>
+      <span className="text-zinc-500" title={response.confidenceCalibrationSamples > 0 ? `${response.confidenceCalibrationSamples} gerçek rota geri bildirimiyle kalibre edildi; ham skor %${Math.round(response.rawConfidence * 100)}.` : "Henüz yeterli rota geri bildirimi olmadığı için ham karar skoru gösteriliyor."}>Karar skoru %{Math.round(response.confidence * 100)}</span>
       <span className="text-zinc-400">· {response.responseTimeMs} ms</span>
+      {response.cacheHit && <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">güvenli cache</span>}
       {response.toolCalls.map(tool => <span key={tool} className="rounded bg-zinc-100 px-2 py-1 text-zinc-500 dark:bg-zinc-800">{tool}</span>)}
     </div>
 

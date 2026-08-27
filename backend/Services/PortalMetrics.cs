@@ -48,6 +48,8 @@ public sealed class PortalMetrics
     public Counter<long> AssistantClassifierRequests { get; }
     public Histogram<double> AssistantClassifierDuration { get; }
     public UpDownCounter<long> AssistantClassifierActive { get; }
+    public Counter<long> AssistantShadowComparisons { get; }
+    public Counter<long> AssistantAnswerCache { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
     {
@@ -90,6 +92,10 @@ public sealed class PortalMetrics
             "Assistant classifier execution duration by outcome");
         AssistantClassifierActive = _meter.CreateUpDownCounter<long>("kp_assistant_classifier_active",
             description: "Assistant classifier requests currently holding a concurrency slot");
+        AssistantShadowComparisons = _meter.CreateCounter<long>("kp_assistant_shadow_comparisons",
+            description: "Asynchronous primary/shadow route comparison outcomes");
+        AssistantAnswerCache = _meter.CreateCounter<long>("kp_assistant_answer_cache",
+            description: "ACL and corpus-version scoped semantic answer cache outcomes");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",

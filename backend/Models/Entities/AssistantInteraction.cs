@@ -14,6 +14,13 @@ public class AssistantInteraction
     public string RouteSource { get; set; } = null!;
     public string ReasonCode { get; set; } = null!;
     public double Confidence { get; set; }
+    public double RawConfidence { get; set; }
+    public int ConfidenceCalibrationSamples { get; set; }
+    public string RoutingPromptVersion { get; set; } = null!;
+    public string ClassifierModel { get; set; } = null!;
+    public string RoutingConfigSnapshotJson { get; set; } = "{}";
+    public string ApplicationVersion { get; set; } = null!;
+    public string? ConversationId { get; set; }
     public string? SearchQueryId { get; set; }
     public string ToolCallsJson { get; set; } = "[]";
     public long DurationMs { get; set; }
@@ -25,4 +32,5 @@ public class AssistantInteraction
 
     public User? User { get; set; }
     public ApiKey? ApiKey { get; set; }
+    public AssistantConversation? Conversation { get; set; }
 }

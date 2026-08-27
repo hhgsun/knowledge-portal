@@ -266,12 +266,16 @@ export interface AssistantCapabilities {
   feedbackEnabled: boolean;
   maxMessageCharacters: number;
   supportedModes: AssistantPreferredRoute[];
+  streamingEnabled: boolean;
+  conversationHistoryEnabled: boolean;
+  semanticCacheEnabled: boolean;
+  routingModel: string;
 }
 
 export interface AssistantResponse {
   route: AssistantRoute;
   confidence: number;
-  routeSource: "manual" | "deterministic" | "classifier" | "classifier_cache" | "fallback" | "default";
+  routeSource: "manual" | "deterministic" | "classifier" | "classifier_cache" | "classifier_model_fallback" | "fallback" | "default";
   reasonCode: string;
   normalizedQuery: string;
   answer: string | null;
@@ -302,6 +306,18 @@ export interface AssistantResponse {
   interactionId: string | null;
   responseTimeMs: number;
   traceId: string;
+  conversationId?: string | null;
+  rawConfidence: number;
+  confidenceCalibrationSamples: number;
+  cacheHit: boolean;
+}
+
+export interface AssistantConversation {
+  id: string; title: string; createdAt: string; updatedAt: string; messageCount: number;
+}
+export interface AssistantConversationMessage {
+  id: string; role: "user" | "assistant"; content: string; route?: string | null;
+  interactionId?: string | null; createdAt: string;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────

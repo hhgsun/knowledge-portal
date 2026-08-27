@@ -191,6 +191,15 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
         new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, chatModel);
     builder.Services.AddSingleton<IChatClient>(chatClientInstance);
 
+    var routingModel = builder.Configuration["AgenticRouting:Model"] ?? chatModel;
+    var routingClient = new OllamaApiClient(
+        new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, routingModel);
+    builder.Services.AddKeyedSingleton<IChatClient>("assistant-router", routingClient);
+    var shadowModel = builder.Configuration["AgenticRouting:Shadow:Model"] ?? routingModel;
+    var shadowClient = new OllamaApiClient(
+        new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, shadowModel);
+    builder.Services.AddKeyedSingleton<IChatClient>("assistant-router-shadow", shadowClient);
+
     builder.Services.AddScoped<EmbeddingService>();
     builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
     builder.Services.AddScoped<RagService>();
@@ -246,6 +255,12 @@ builder.Services.AddSingleton<AssistantClassifierResilienceService>();
 builder.Services.AddSingleton<AssistantPolicyService>();
 builder.Services.AddScoped<AssistantOrchestratorService>();
 builder.Services.AddScoped<AssistantInteractionService>();
+builder.Services.AddScoped<AssistantConversationService>();
+builder.Services.AddScoped<AssistantRequestService>();
+builder.Services.AddScoped<AssistantConfidenceCalibrationService>();
+builder.Services.AddScoped<AssistantAnswerCacheService>();
+builder.Services.AddSingleton<AssistantShadowRoutingQueue>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AssistantShadowRoutingQueue>());
 builder.Services.AddScoped<AnalyticsReportService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
