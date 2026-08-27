@@ -90,6 +90,10 @@ public class EmbeddingBackgroundService(
             var article = await db.Articles.FirstOrDefaultAsync(a => a.Id == claim.ArticleId, jobCt);
             if (article != null)
             {
+                // Parse tables/layout and persist optional visual OCR before either search index
+                // reads attachment text, so FTS and embeddings see one canonical representation.
+                await scope.ServiceProvider.GetRequiredService<AttachmentProcessingService>()
+                    .PrepareArticleAsync(article.Id, jobCt);
                 var fts = scope.ServiceProvider.GetRequiredService<FullTextSearchService>();
                 var embeddings = scope.ServiceProvider.GetService<EmbeddingService>();
                 await fts.SyncArticleAsync(article, jobCt);

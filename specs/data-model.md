@@ -307,6 +307,7 @@ erDiagram
 | ExtractionTruncated | `bool` | `extraction_truncated` | True when text exceeded the configured extraction cap | `false` |
 | ExtractedCharacters | `int` | `extracted_characters` | Persisted extracted character count | `0` |
 | ExtractionCharacterLimit | `int` | `extraction_character_limit` | Limit used for this extraction | `50000` |
+| ExtractionProfile | `string?` | `extraction_profile` | Max 200; parser/strategy/vision cache identity | `null` |
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 

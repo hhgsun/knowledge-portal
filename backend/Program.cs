@@ -163,6 +163,9 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
+builder.Services.AddHttpClient<AttachmentProcessingService>((services, client) =>
+    client.Timeout = TimeSpan.FromSeconds(Math.Max(5,
+        services.GetRequiredService<IConfiguration>().GetValue("DocumentParsing:External:TimeoutSeconds", 180))));
 
 // ─── Ollama AI Services ──────────────────────────────────────
 if (builder.Configuration.GetValue("Ollama:Enabled", false))

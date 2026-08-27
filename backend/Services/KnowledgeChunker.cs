@@ -83,14 +83,17 @@ internal static partial class KnowledgeChunker
         var childBodyTarget = Math.Max(1, childTargetWords - headerBudget);
         var childBodyOverlap = Math.Min(childOverlapWords, Math.Max(0, childBodyTarget - 1));
 
-        var parentBodies = PackBlocks(blocks, parentBodyTarget, 0, location);
+        var parentBodies = PackStructuredBlocks(blocks, parentBodyTarget, 0, location);
         var parents = new List<KnowledgeParentChunk>(parentBodies.Count);
         for (var parentIndex = 0; parentIndex < parentBodies.Count; parentIndex++)
         {
             var body = parentBodies[parentIndex].Content;
             var parentLocation = $"{location}:parent:{parentIndex}";
             var parentContent = Prefix(safeHeader, body);
-            var childBodies = PackBlocks([body], childBodyTarget, childBodyOverlap, parentLocation);
+            var childBlocks = ParagraphBreak().Split(body)
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToList();
+            var childBodies = PackStructuredBlocks(childBlocks.Count == 0 ? [body] : childBlocks,
+                childBodyTarget, childBodyOverlap, parentLocation);
             var children = childBodies.Select((chunk, childIndex) => new KnowledgeChunk(
                 Prefix(safeHeader, chunk.Content), $"{parentLocation}:child:{childIndex}")).ToList();
             if (children.Count > 0)
@@ -100,7 +103,98 @@ internal static partial class KnowledgeChunker
     }
 
     private static string Prefix(string header, string body) =>
-        string.IsNullOrWhiteSpace(header) ? body : $"{header} {body}";
+        string.IsNullOrWhiteSpace(header) ? body : body.TrimStart().StartsWith('|')
+            ? $"{header}\n\n{body}" : $"{header} {body}";
+
+    /// <summary>
+    /// Hierarchical packing keeps paragraph and Markdown-table line structure. Oversized prose
+    /// falls back to word windows; oversized GFM tables repeat their header in each child.
+    /// </summary>
+    private static List<KnowledgeChunk> PackStructuredBlocks(IReadOnlyList<string> blocks,
+        int targetWords, int overlapWords, string location)
+    {
+        targetWords = Math.Max(1, targetWords);
+        overlapWords = Math.Clamp(overlapWords, 0, targetWords - 1);
+        var output = new List<KnowledgeChunk>();
+        var current = new List<string>();
+        var currentWords = 0;
+
+        void Emit()
+        {
+            if (current.Count == 0) return;
+            output.Add(new(string.Join("\n\n", current), $"{location}:chunk:{output.Count}"));
+            current.Clear();
+            currentWords = 0;
+        }
+
+        foreach (var block in blocks)
+        {
+            var count = Words(block).Length;
+            if (count == 0) continue;
+            if (count > targetWords)
+            {
+                Emit();
+                var split = LooksLikeMarkdownTable(block)
+                    ? SplitMarkdownTable(block, targetWords)
+                    : PackBlocks([block], targetWords, overlapWords, location).Select(x => x.Content).ToList();
+                foreach (var part in split)
+                    output.Add(new(part, $"{location}:chunk:{output.Count}"));
+                continue;
+            }
+            if (current.Count > 0 && currentWords + count > targetWords)
+            {
+                var overlap = new List<string>();
+                var overlapCount = 0;
+                for (var i = current.Count - 1; i >= 0; i--)
+                {
+                    var blockWords = Words(current[i]).Length;
+                    if (overlapCount + blockWords > overlapWords || overlapCount + blockWords + count > targetWords)
+                        break;
+                    overlap.Insert(0, current[i]);
+                    overlapCount += blockWords;
+                }
+                Emit();
+                current.AddRange(overlap);
+                currentWords = overlapCount;
+            }
+            current.Add(block);
+            currentWords += count;
+        }
+        Emit();
+        return output;
+    }
+
+    private static bool LooksLikeMarkdownTable(string block)
+    {
+        var lines = block.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return lines.Length >= 2 && lines[0].TrimStart().StartsWith('|')
+            && Regex.IsMatch(lines[1], @"^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*$");
+    }
+
+    private static List<string> SplitMarkdownTable(string table, int targetWords)
+    {
+        var lines = table.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length <= 2) return [table];
+        var header = new[] { lines[0], lines[1] };
+        var headerWords = Words(string.Join(' ', header)).Length;
+        var result = new List<string>();
+        var rows = new List<string>();
+        var words = headerWords;
+        foreach (var row in lines.Skip(2))
+        {
+            var rowWords = Words(row).Length;
+            if (rows.Count > 0 && words + rowWords > targetWords)
+            {
+                result.Add(string.Join('\n', header.Concat(rows)));
+                rows.Clear();
+                words = headerWords;
+            }
+            rows.Add(row);
+            words += rowWords;
+        }
+        if (rows.Count > 0) result.Add(string.Join('\n', header.Concat(rows)));
+        return result;
+    }
 
     public static List<KnowledgeChunk> ChunkMarkdown(string title, string? excerpt, string? markdown,
         int targetWords, int overlapWords)

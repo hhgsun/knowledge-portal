@@ -167,4 +167,23 @@ public class EmbeddingChunkTests
         Assert.EndsWith("w119", parent.Children[0].Content);
         Assert.StartsWith("w100 ", parent.Children[1].Content);
     }
+
+    [Fact]
+    public void BuildTextHierarchy_PreservesMarkdownTableRowsAndHeader()
+    {
+        const string table = """
+            | Kod | Açıklama |
+            | --- | --- |
+            | ERR42 | Sertifika geçersiz |
+            | ERR51 | Ağ erişimi yok |
+            """;
+
+        var parent = Assert.Single(KnowledgeChunker.BuildTextHierarchy(table, "page:2",
+            parentTargetWords: 100, childTargetWords: 50, childOverlapWords: 5));
+        var child = Assert.Single(parent.Children);
+
+        Assert.Contains("| Kod | Açıklama |\n| --- | --- |", parent.Content);
+        Assert.Contains("| ERR42 | Sertifika geçersiz |", child.Content);
+        Assert.DoesNotContain("| Kod | Açıklama | | ---", child.Content);
+    }
 }

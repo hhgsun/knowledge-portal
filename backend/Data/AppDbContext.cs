@@ -179,6 +179,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.ExtractionTruncated).HasDefaultValue(false);
             e.Property(a => a.ExtractedCharacters).HasDefaultValue(0);
             e.Property(a => a.ExtractionCharacterLimit).HasDefaultValue(50_000);
+            e.Property(a => a.ExtractionProfile).HasMaxLength(200);
             e.Property(a => a.UploadedById).IsRequired();
             e.Property(a => a.CreatedAt).IsRequired();
             e.HasOne(a => a.Article).WithMany(ar => ar.Attachments).HasForeignKey(a => a.ArticleId).OnDelete(DeleteBehavior.Cascade);

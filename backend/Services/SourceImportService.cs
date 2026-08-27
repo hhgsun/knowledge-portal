@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using DocumentFormat.OpenXml.Packaging;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
@@ -10,8 +9,6 @@ using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using UglyToad.PdfPig;
-using S = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -27,20 +24,17 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         var title = Path.GetFileNameWithoutExtension(file.FileName).Replace('_', ' ').Replace('-', ' ').Trim();
         try
         {
-            await using var stream = file.OpenReadStream();
             object content;
-            if (extension == ".xlsx") content = ReadWorkbook(stream);
-            else if (extension == ".pdf") content = ReadPdf(stream);
-            else if (extension == ".docx") content = ReadOpenXmlText(stream, true);
-            else if (extension == ".pptx") content = ReadOpenXmlText(stream, false);
+            if (extension is ".xlsx" or ".pdf" or ".docx" or ".pptx" or ".csv")
+                content = await ReadStructuredUploadAsync(file, extension, ct);
             else if (TextExtensions.Contains(extension))
             {
+                await using var stream = file.OpenReadStream();
                 using var reader = new StreamReader(stream, Encoding.UTF8, true, leaveOpen: true);
                 var text = await reader.ReadToEndAsync(ct);
                 content = extension switch
                 {
                     ".md" or ".markdown" => text,
-                    ".csv" => DelimitedToDoc(text, ','),
                     ".tsv" => DelimitedToDoc(text, '\t'),
                     ".json" or ".yaml" or ".yml" => Doc(CodeBlock(text, extension.TrimStart('.'))),
                     _ => PlainTextToDoc(text)
@@ -72,6 +66,32 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 _ => "The file could not be parsed. It may be damaged or its contents may not match the file extension."
             };
             return Preview(index, file.FileName, title, Doc(), false, "failed", analysisError: reason);
+        }
+    }
+
+    private async Task<string> ReadStructuredUploadAsync(IFormFile file, string extension,
+        CancellationToken ct)
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), $"kp_source_{Guid.NewGuid():N}{extension}");
+        try
+        {
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 128 * 1024, FileOptions.Asynchronous))
+            {
+                await using var input = file.OpenReadStream();
+                await input.CopyToAsync(output, ct);
+                await output.FlushAsync(ct);
+            }
+            var extraction = AttachmentTextExtractor.Extract(temporary, extension,
+                Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
+                    AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000));
+            if (extraction.Status == "failed")
+                throw new InvalidDataException(extraction.Error ?? "Structured extraction failed");
+            return extraction.Text;
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
         }
     }
 
@@ -206,58 +226,6 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             }
         }
         db.ChangeTracker.Clear();
-    }
-
-    private static object ReadWorkbook(Stream stream)
-    {
-        using var document = SpreadsheetDocument.Open(stream, false);
-        var workbook = document.WorkbookPart;
-        if (workbook?.Workbook.Sheets == null) return Doc();
-        var sharedStrings = workbook.SharedStringTablePart?.SharedStringTable;
-        var blocks = new List<object>();
-        foreach (var sheet in workbook.Workbook.Sheets.Elements<S.Sheet>())
-        {
-            if (sheet.Id?.Value == null || workbook.GetPartById(sheet.Id.Value) is not WorksheetPart worksheet)
-                continue;
-            blocks.Add(Heading(sheet.Name?.Value ?? "Sheet", 2));
-            var rows = new List<object>();
-            var firstRow = true;
-            foreach (var row in worksheet.Worksheet.Descendants<S.Row>())
-            {
-                var cells = row.Elements<S.Cell>()
-                    .Select(cell => Cell(ReadCell(cell, sharedStrings), firstRow)).ToList();
-                if (cells.Count > 0) rows.Add(new { type = "tableRow", content = cells });
-                firstRow = false;
-            }
-            if (rows.Count > 0) blocks.Add(new { type = "table", content = rows });
-        }
-        return new { type = "doc", content = blocks };
-    }
-
-    private static string ReadCell(S.Cell cell, S.SharedStringTable? sharedStrings)
-    {
-        if (cell.DataType?.Value == S.CellValues.SharedString && sharedStrings != null
-            && int.TryParse(cell.CellValue?.InnerText, out var index)
-            && index >= 0 && index < sharedStrings.ChildElements.Count)
-            return sharedStrings.ChildElements[index].InnerText;
-        if (cell.DataType?.Value == S.CellValues.InlineString)
-            return cell.InlineString?.InnerText ?? "";
-        return cell.CellValue?.InnerText ?? "";
-    }
-
-    private static object ReadPdf(Stream stream)
-    {
-        using var pdf = PdfDocument.Open(stream); var blocks = new List<object>();
-        foreach (var page in pdf.GetPages()) { blocks.Add(Heading($"Page {page.Number}", 2)); blocks.AddRange(Paragraphs(page.Text)); }
-        return new { type = "doc", content = blocks };
-    }
-
-    private static object ReadOpenXmlText(Stream stream, bool word)
-    {
-        string text;
-        if (word) { using var doc = WordprocessingDocument.Open(stream, false); text = doc.MainDocumentPart?.Document.Body?.InnerText ?? ""; }
-        else { using var doc = PresentationDocument.Open(stream, false); text = string.Join("\n\n", doc.PresentationPart?.SlideParts.Select(x => x.Slide.InnerText) ?? []); }
-        return PlainTextToDoc(text);
     }
 
     private static object MarkdownToDoc(string text)

@@ -22,7 +22,7 @@ public partial class RagService(
     ILogger<RagService> logger)
 {
     public const string PromptVersion = "2026-08-26.typed-governed-synthesis-v15";
-    public const string RetrievalVersion = "2026-08-27.hierarchical-parent-child-v3";
+    public const string RetrievalVersion = "2026-08-27.multimodal-hierarchical-v4";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
     private readonly int _minimumSourceLimit = Math.Clamp(config.GetValue("Ollama:RagMinimumSourceLimit", 3), 1, 10);

@@ -16,6 +16,7 @@ public class ArticleAttachment
     public bool ExtractionTruncated { get; set; }
     public int ExtractedCharacters { get; set; }
     public int ExtractionCharacterLimit { get; set; } = 50_000;
+    public string? ExtractionProfile { get; set; }
     public DateTime? ExtractedAt { get; set; }
     public string UploadedById { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

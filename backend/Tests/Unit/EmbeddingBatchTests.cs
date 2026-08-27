@@ -191,4 +191,43 @@ public class EmbeddingBatchTests
         var baseline = EmbeddingService.ComputeIndexProfile(Config("1000", "220", "40"));
         Assert.NotEqual(baseline, EmbeddingService.ComputeIndexProfile(Config(parent, child, overlap)));
     }
+
+    [Fact]
+    public void ComputeIndexProfile_ChangesWhenMultimodalExtractionChanges()
+    {
+        IConfiguration Config(bool external, bool vision) => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:EmbeddingModel"] = "bge-m3",
+                ["Ollama:EmbeddingDimensions"] = "1024",
+                ["Ollama:Enabled"] = "true",
+                ["Ollama:ChatModel"] = "qwen2.5vl:7b",
+                ["DocumentParsing:External:Enabled"] = external.ToString(),
+                ["DocumentParsing:Vision:Enabled"] = vision.ToString()
+            }).Build();
+
+        var nativeVision = EmbeddingService.ComputeIndexProfile(Config(false, true));
+        Assert.NotEqual(nativeVision, EmbeddingService.ComputeIndexProfile(Config(true, true)));
+        Assert.NotEqual(nativeVision, EmbeddingService.ComputeIndexProfile(Config(false, false)));
+    }
+
+    [Fact]
+    public void ComputeIndexProfile_ChangesWhenExtractionOrVisionBudgetChanges()
+    {
+        IConfiguration Config(string characters, string outputTokens) => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:EmbeddingModel"] = "bge-m3",
+                ["Ollama:EmbeddingDimensions"] = "1024",
+                ["Ollama:Enabled"] = "true",
+                ["Ollama:ChatModel"] = "qwen2.5vl:7b",
+                ["DocumentParsing:Vision:Enabled"] = "true",
+                ["DocumentParsing:Vision:MaxOutputTokens"] = outputTokens,
+                ["FileStorage:MaxExtractedCharacters"] = characters
+            }).Build();
+
+        var baseline = EmbeddingService.ComputeIndexProfile(Config("50000", "700"));
+        Assert.NotEqual(baseline, EmbeddingService.ComputeIndexProfile(Config("75000", "700")));
+        Assert.NotEqual(baseline, EmbeddingService.ComputeIndexProfile(Config("50000", "900")));
+    }
 }

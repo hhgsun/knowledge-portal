@@ -152,6 +152,7 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
             ["childChunkOverlapWords"] = config.GetValue<int>("Ollama:ChildChunkOverlapWords",
                 KnowledgeChunker.DefaultChildOverlapWords),
             ["chunkingVersion"] = config["Ollama:ChunkingVersion"] ?? "hierarchical-parent-child-v2",
+            ["attachmentExtractionProfile"] = AttachmentProcessingService.ComputeProfile(config),
             ["semanticIndexProfile"] = EmbeddingService.ComputeIndexProfile(config),
             ["ragCandidateLimit"] = config.GetValue<int>("Ollama:RagCandidateLimit"),
             ["ragBroadCandidateLimit"] = config.GetValue<int>("Ollama:RagBroadCandidateLimit"),

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text.Json;
 using KnowledgePortal.Api.Models.Entities;
+using KnowledgePortal.Api.Services;
 
 namespace KnowledgePortal.Api.Helpers;
 
@@ -115,8 +116,10 @@ public static class AttachmentHelper
     {
         var extractionLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
             AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000);
+        var extractionProfile = AttachmentProcessingService.ComputeProfile(config);
         if (attachment.ExtractedAt != null && (attachment.ExtractionStatus is "completed" or "no_text")
-            && attachment.ExtractionCharacterLimit == extractionLimit)
+            && attachment.ExtractionCharacterLimit == extractionLimit
+            && attachment.ExtractionProfile == extractionProfile)
         {
             try
             {
@@ -125,7 +128,9 @@ public static class AttachmentHelper
                     : JsonSerializer.Deserialize<List<AttachmentTextSegment>>(attachment.ExtractedSegmentsJson) ?? [];
                 return new(attachment.ExtractionStatus, attachment.ExtractedText ?? "", segments,
                     attachment.ExtractionError, attachment.ExtractionTruncated,
-                    attachment.ExtractedCharacters, attachment.ExtractionCharacterLimit);
+                    attachment.ExtractedCharacters, attachment.ExtractionCharacterLimit,
+                    segments.Count(x => x.Kind is "table" or "mixed-table"),
+                    segments.Count(x => x.Kind == "image"), extractionProfile);
             }
             catch (JsonException)
             {
@@ -134,7 +139,12 @@ public static class AttachmentHelper
         }
 
         var path = GetFilePath(config, attachment.ArticleId, attachment.StoredFileName);
-        var result = AttachmentTextExtractor.Extract(path, Path.GetExtension(attachment.FileName), extractionLimit);
+        var requiresAsyncEnrichment = config.GetValue("DocumentParsing:External:Enabled", false)
+            || (config.GetValue("DocumentParsing:Vision:Enabled", true)
+                && config.GetValue("Ollama:Enabled", false));
+        var result = AttachmentTextExtractor.Extract(path, Path.GetExtension(attachment.FileName), extractionLimit)
+            with { ExtractionProfile = requiresAsyncEnrichment
+                ? AttachmentTextExtractor.NativeProfile : extractionProfile };
         attachment.ExtractionStatus = result.Status;
         attachment.ExtractionError = result.Error;
         attachment.ExtractedText = result.Text;
@@ -142,6 +152,7 @@ public static class AttachmentHelper
         attachment.ExtractionTruncated = result.Truncated;
         attachment.ExtractedCharacters = result.ExtractedCharacters;
         attachment.ExtractionCharacterLimit = result.CharacterLimit;
+        attachment.ExtractionProfile = result.ExtractionProfile;
         attachment.ExtractedAt = DateTime.UtcNow;
         return result;
     }

@@ -55,7 +55,8 @@ public class EmbeddingService(
             source["Ollama:ChunkingVersion"] ?? "hierarchical-parent-child-v2",
             parentTarget,
             childTarget,
-            childOverlap))[..16];
+            childOverlap,
+            AttachmentProcessingService.ComputeProfile(source)))[..16];
     }
 
     public async Task<bool> EmbedArticleAsync(Article article, CancellationToken ct = default)

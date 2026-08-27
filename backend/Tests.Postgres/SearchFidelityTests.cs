@@ -212,6 +212,10 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
             SELECT EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'article_embeddings' AND column_name = 'parent_chunk_id')
             """));
+        Assert.True(await Scalar<bool>(connection, """
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'article_attachments' AND column_name = 'extraction_profile')
+            """));
 
         await using var db = fixture.CreateDb();
         var fts = new FullTextSearchService(db, new ConfigurationBuilder().Build(), NullLogger<FullTextSearchService>.Instance);

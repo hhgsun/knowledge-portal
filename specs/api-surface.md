@@ -348,7 +348,7 @@ Removes the recorded approval without unpublishing the article.
 ```json
 {
   "attachments": [
-    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "no_text", "extractionTruncated": false, "extractedCharacters": 0, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
+    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "completed", "extractionTruncated": false, "extractedCharacters": 846, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
   ],
   "total": 1
 }
@@ -365,6 +365,8 @@ Removes the recorded approval without unpublishing the article.
 ```
 **400**: Empty file, invalid extension, MIME mismatch, max attachments reached.
 **403**: No edit permission.
+
+Attachment extraction runs in the durable indexing job. PDF/DOCX/PPTX/XLSX/CSV tables are retained as GFM Markdown with page, slide, or sheet provenance; image attachments and supported embedded visuals are described and OCR'd by the configured local vision model. The resulting canonical extraction is shared by full-text and semantic indexing. `DocumentParsing:External` can optionally target an Unstructured-compatible `hi_res` partition endpoint for complex or scanned layouts; native parsing remains the default fallback unless `Required` is enabled. Parser, vision-model, or extraction-setting changes alter the extraction profile, so existing attachments are re-extracted during the next repair/reindex cycle instead of reusing stale text.
 
 ### `DELETE /api/articles/{id}/attachments/{attachmentId}`
 **Auth**: Bearer session only — requires `articles:edit_own` (if owner) or `articles:edit_any`
@@ -1140,7 +1142,7 @@ All endpoints require authentication. Bulk/source commit operations use the same
 | `/api/source-imports/analyze` | POST multipart | `articles:create` | Convert supported source files to editable Markdown previews |
 | `/api/source-imports/commit` | POST multipart | `articles:create` | Create articles from the approved preview manifest and optionally retain originals as attachments |
 
-Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; unsupported but valid files can be offered as attachments. Analyze responses retain one draft per source without aborting the remaining files. A recoverable conversion condition is returned in the draft's `warning`; a damaged or unreadable source is returned in `analysisError`. Every preview, including failed analyses, exposes the Markdown editor, the original-file attachment option, and a draft-specific additional-attachment picker. The commit manifest maps each draft to its files through `additionalAttachmentIndexes`; multipart `attachments` carries the corresponding files. Original and additional files share the configured size, extension and maximum-per-article limits and are committed atomically with their article. The review UI blocks commit only while an `analysisError` draft has no manual content; entering content or removing every unresolved failed draft enables commit. Commit response items include `sourceIndex`, `fileName`, article identity/title fields, and a file-specific `error` when that draft fails.
+Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; PDF and Office previews reuse the production structure-aware attachment extractor, including GFM table and page/sheet/slide provenance, so previewed Markdown and later retrieval do not diverge. Unsupported but valid files can be offered as attachments. Analyze responses retain one draft per source without aborting the remaining files. A recoverable conversion condition is returned in the draft's `warning`; a damaged or unreadable source is returned in `analysisError`. Every preview, including failed analyses, exposes the Markdown editor, the original-file attachment option, and a draft-specific additional-attachment picker. The commit manifest maps each draft to its files through `additionalAttachmentIndexes`; multipart `attachments` carries the corresponding files. Original and additional files share the configured size, extension and maximum-per-article limits and are committed atomically with their article. The review UI blocks commit only while an `analysisError` draft has no manual content; entering content or removing every unresolved failed draft enables commit. Commit response items include `sourceIndex`, `fileName`, article identity/title fields, and a file-specific `error` when that draft fails.
 
 ---
 
