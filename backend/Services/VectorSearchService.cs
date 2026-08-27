@@ -11,7 +11,7 @@ public record VectorSearchResult(string ArticleId, double Score, int ChunkIndex)
 /// <summary>A single matched chunk with its stored text — used by RAG to build prompt context.</summary>
 public record VectorChunkResult(string ArticleId, int ChunkIndex, double Score, string ChunkText,
     string SourceType = "article", string? AttachmentId = null, string? SourceName = null,
-    string? SourceLocation = null, string? ChunkId = null);
+    string? SourceLocation = null, string? ChunkId = null, string? ParentChunkId = null);
 
 /// <summary>
 /// pgvector-backed semantic retrieval. Abstracted so RAG (and its tests) can depend on
@@ -155,13 +155,14 @@ public sealed class VectorSearchService(
             .SqlQueryRaw<PgvectorChunkRow>(
                 $$"""
                 SELECT r."Id", r."ArticleId", r."ChunkIndex", r."Content", r."SourceType", r."AttachmentId",
-                    r."SourceName", r."SourceLocation", r."Distance"
+                    r."SourceName", r."SourceLocation", r."ParentChunkId", r."Distance"
                 FROM (
                     SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c."ArticleId" ORDER BY c."Distance") AS rn
                     FROM (
                         SELECT e.id AS "Id", e.article_id AS "ArticleId", e.chunk_index AS "ChunkIndex",
                             e.content AS "Content", e.source_type AS "SourceType", e.attachment_id AS "AttachmentId",
                             e.source_name AS "SourceName", e.source_location AS "SourceLocation",
+                            e.parent_chunk_id AS "ParentChunkId",
                             e.embedding <=> {0}::vector AS "Distance"
                         FROM article_embeddings e
                         {{scanWhere}}
@@ -179,7 +180,7 @@ public sealed class VectorSearchService(
 
         return rows
             .Select(r => new VectorChunkResult(r.ArticleId, r.ChunkIndex, 1.0 - r.Distance, r.Content ?? "",
-                r.SourceType, r.AttachmentId, r.SourceName, r.SourceLocation, r.Id))
+                r.SourceType, r.AttachmentId, r.SourceName, r.SourceLocation, r.Id, r.ParentChunkId))
             .ToList();
     }
 
@@ -291,6 +292,7 @@ public sealed class VectorSearchService(
         public string? AttachmentId { get; set; }
         public string? SourceName { get; set; }
         public string? SourceLocation { get; set; }
+        public string? ParentChunkId { get; set; }
         public double Distance { get; set; }
     }
 }

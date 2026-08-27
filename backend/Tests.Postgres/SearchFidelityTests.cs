@@ -207,6 +207,11 @@ public class SearchFidelityTests(PostgresFixture fixture) : IClassFixture<Postgr
 
         Assert.True(await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='vector')"));
         Assert.True(await Scalar<bool>(connection, "SELECT to_regclass('ix_article_embeddings_embedding_hnsw') IS NOT NULL"));
+        Assert.True(await Scalar<bool>(connection, "SELECT to_regclass('article_chunk_parents') IS NOT NULL"));
+        Assert.True(await Scalar<bool>(connection, """
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'article_embeddings' AND column_name = 'parent_chunk_id')
+            """));
 
         await using var db = fixture.CreateDb();
         var fts = new FullTextSearchService(db, new ConfigurationBuilder().Build(), NullLogger<FullTextSearchService>.Instance);

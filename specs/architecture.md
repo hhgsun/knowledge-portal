@@ -53,7 +53,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 | **Services** | `backend/Services/` | Domain logic (`ArticleMutationService`, `ContentTypeService`, Article/Tag/API-key/User/Stats services) + shared REST/MCP search orchestration (`SearchExecutionService`) + AI/indexing + observability |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
-| **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid multi-query fusion → rerank/ranking signals → ACL-safe parent-neighbor expansion → bounded evidence context |
+| **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid child retrieval → rerank/ranking signals → ACL-safe child→parent resolution → bounded evidence context |
 | **Domain** | `backend/Models/` | Entity classes, DTO records (`Models/Dtos.cs`) |
 | **Storage** | PostgreSQL + pgvector | Relational data + vector embeddings (FTS + semantic search) |
 
@@ -176,7 +176,7 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 ## Key Design Decisions
 
 1. **Shared service layer** — Controllers retain routing, authorization scoping, and response shaping; reusable domain behavior lives in `backend/Services/`.
-2. **Provider-aware hybrid retrieval** — PostgreSQL FTS and pgvector supply lexical and semantic candidates; Ollama provides optional embeddings/chat. Structure-aware chunking preserves Markdown sections and parser page/sheet/slide provenance, with configurable target/overlap/version settings. When Ollama is unavailable, lexical search remains available and semantic modes report an explicit fallback warning.
+2. **Provider-aware hierarchical hybrid retrieval** — PostgreSQL FTS and pgvector supply lexical and semantic child candidates; Ollama provides optional embeddings/chat. Structure-bounded parents preserve Markdown sections and parser page/sheet/slide provenance, while smaller overlapping children provide precise retrieval. Both paths reuse child→parent identity after ACL recheck. Parent/child targets, overlap and version are configurable. When Ollama is unavailable, lexical search remains available and semantic modes report an explicit fallback warning.
 3. **Centralized DTOs** — Request/response shapes are C# records defined in `backend/Models/Dtos.cs`.
 4. **21-char truncated GUIDs** — Entity IDs are `Guid.NewGuid().ToString("N")[..21]`. Not globally unique in the mathematical sense but collision-resistant for a single-database deployment.
 5. **Cascade deletes** — Deleting an article cascades to versions, tags, feedback, and views. Deleting a user cascades to API keys. API key deletion sets `created_via_api_key_id` to null on articles.

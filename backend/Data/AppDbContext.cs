@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
     public DbSet<FeaturedLink> FeaturedLinks => Set<FeaturedLink>();
+    public DbSet<ArticleChunkParent> ArticleChunkParents => Set<ArticleChunkParent>();
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
     public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
@@ -234,7 +235,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId).OnDelete(DeleteBehavior.SetNull);
         });
 
-        // ─── ArticleEmbeddings ────────────────────────────
+        // ─── Hierarchical parent chunks ───────────────────
+        modelBuilder.Entity<ArticleChunkParent>(e =>
+        {
+            e.ToTable("article_chunk_parents");
+            e.HasKey(p => p.Id);
+            e.Property(p => p.ArticleId).IsRequired();
+            e.Property(p => p.ParentIndex).IsRequired();
+            e.Property(p => p.SourceType).IsRequired().HasMaxLength(20);
+            e.Property(p => p.SourceName).HasMaxLength(500);
+            e.Property(p => p.SourceLocation).HasMaxLength(200);
+            e.Property(p => p.Content).IsRequired().HasColumnType("text");
+            e.Property(p => p.TextHash).IsRequired().HasMaxLength(64);
+            e.Property(p => p.WordCount).IsRequired();
+            e.Property(p => p.CreatedAt).IsRequired();
+            e.HasIndex(p => new { p.ArticleId, p.ParentIndex }).IsUnique();
+            e.HasOne(p => p.Article).WithMany(a => a.ArticleChunkParents)
+                .HasForeignKey(p => p.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(p => p.Attachment).WithMany().HasForeignKey(p => p.AttachmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── ArticleEmbeddings (searchable children) ──────
         // The non-relational InMemory provider (used by Docker-free RAG unit tests)
         // can't map the pgvector Vector type; ignore the column there. Vector queries
         // always run through VectorSearchService (Npgsql only), never InMemory.
@@ -265,12 +287,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property<string>("CreatedViaApiKeyId");
             e.Property<string[]>("TagSlugs").HasColumnType("text[]");
             e.HasIndex(ae => new { ae.ArticleId, ae.ChunkIndex }).IsUnique();
+            e.HasIndex(ae => ae.ParentChunkId);
             e.HasIndex("OwnerId");
             e.HasIndex("ContentType");
             e.HasIndex("CreatedViaApiKeyId");
             e.HasIndex("TagSlugs").HasMethod("gin");
             e.HasOne(ae => ae.Article).WithMany(a => a.ArticleEmbeddings).HasForeignKey(ae => ae.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(ae => ae.Attachment).WithMany().HasForeignKey(ae => ae.AttachmentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(ae => ae.ParentChunk).WithMany(p => p.Children)
+                .HasForeignKey(ae => ae.ParentChunkId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UsageEvent>(e =>

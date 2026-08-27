@@ -11,6 +11,7 @@ public class ArticleEmbedding
     public string? AttachmentId { get; set; }
     public string? SourceName { get; set; }
     public string? SourceLocation { get; set; }
+    public string? ParentChunkId { get; set; }
     public Vector Embedding { get; set; } = null!;
     public string ModelName { get; set; } = null!;
     public string TextHash { get; set; } = null!;
@@ -24,4 +25,5 @@ public class ArticleEmbedding
 
     public Article Article { get; set; } = null!;
     public ArticleAttachment? Attachment { get; set; }
+    public ArticleChunkParent? ParentChunk { get; set; }
 }

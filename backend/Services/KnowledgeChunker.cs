@@ -4,6 +4,8 @@ using KnowledgePortal.Api.Helpers;
 namespace KnowledgePortal.Api.Services;
 
 internal sealed record KnowledgeChunk(string Content, string Location);
+internal sealed record KnowledgeParentChunk(string Content, string Location,
+    IReadOnlyList<KnowledgeChunk> Children);
 
 /// <summary>
 /// Structure-aware text chunking for knowledge sources. Markdown sections and paragraph-like
@@ -15,6 +17,90 @@ internal static partial class KnowledgeChunker
 {
     internal const int DefaultTargetWords = 500;
     internal const int DefaultOverlapWords = 50;
+    internal const int DefaultParentTargetWords = 1000;
+    internal const int DefaultChildTargetWords = 220;
+    internal const int DefaultChildOverlapWords = 40;
+
+    /// <summary>
+    /// Builds true parent-child chunks. Search vectors are generated only for the compact
+    /// children; the larger, structure-bounded parent is persisted once and supplied to RAG
+    /// after a child match. A parent never crosses a Markdown heading boundary.
+    /// </summary>
+    public static List<KnowledgeParentChunk> BuildMarkdownHierarchy(string title, string? excerpt,
+        string? markdown, int parentTargetWords, int childTargetWords, int childOverlapWords)
+    {
+        var sections = ParseMarkdownSections(markdown);
+        if (sections.Count == 0)
+        {
+            var fallback = ContentExtractor.ExtractSearchableText(title, excerpt, markdown, "");
+            return BuildTextHierarchy(fallback, "article", parentTargetWords, childTargetWords,
+                childOverlapWords);
+        }
+
+        var result = new List<KnowledgeParentChunk>();
+        foreach (var section in sections)
+        {
+            var header = string.Join(". ", new[] { title, excerpt, section.Heading }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+            var location = section.Heading == null ? "article" : $"section:{LocationPart(section.Heading)}";
+            result.AddRange(BuildHierarchy(section.Blocks, header, location, parentTargetWords,
+                childTargetWords, childOverlapWords));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Builds a hierarchy for a layout segment such as one PDF page, workbook sheet or slide.
+    /// Callers invoke this once per segment, so parents cannot leak across provenance boundaries.
+    /// </summary>
+    public static List<KnowledgeParentChunk> BuildTextHierarchy(string text, string location,
+        int parentTargetWords, int childTargetWords, int childOverlapWords)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var normalized = text.Replace("\r", "").Trim();
+        var blocks = ParagraphBreak().Split(normalized)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .ToList();
+        return BuildHierarchy(blocks.Count == 0 ? [normalized] : blocks, null, location,
+            parentTargetWords, childTargetWords, childOverlapWords);
+    }
+
+    private static List<KnowledgeParentChunk> BuildHierarchy(IReadOnlyList<string> blocks,
+        string? header, string location, int parentTargetWords, int childTargetWords,
+        int childOverlapWords)
+    {
+        parentTargetWords = Math.Max(2, parentTargetWords);
+        childTargetWords = Math.Clamp(childTargetWords, 1, parentTargetWords);
+        childOverlapWords = Math.Clamp(childOverlapWords, 0, childTargetWords - 1);
+
+        // Repeating a bounded title/section header in every child makes an independently
+        // retrieved passage self-identifying without allowing metadata to crowd out its body.
+        var headerWords = Words(header ?? "");
+        var headerBudget = Math.Min(headerWords.Length, Math.Max(0, childTargetWords / 3));
+        var safeHeader = string.Join(' ', headerWords.Take(headerBudget));
+        var parentBodyTarget = Math.Max(1, parentTargetWords - headerBudget);
+        var childBodyTarget = Math.Max(1, childTargetWords - headerBudget);
+        var childBodyOverlap = Math.Min(childOverlapWords, Math.Max(0, childBodyTarget - 1));
+
+        var parentBodies = PackBlocks(blocks, parentBodyTarget, 0, location);
+        var parents = new List<KnowledgeParentChunk>(parentBodies.Count);
+        for (var parentIndex = 0; parentIndex < parentBodies.Count; parentIndex++)
+        {
+            var body = parentBodies[parentIndex].Content;
+            var parentLocation = $"{location}:parent:{parentIndex}";
+            var parentContent = Prefix(safeHeader, body);
+            var childBodies = PackBlocks([body], childBodyTarget, childBodyOverlap, parentLocation);
+            var children = childBodies.Select((chunk, childIndex) => new KnowledgeChunk(
+                Prefix(safeHeader, chunk.Content), $"{parentLocation}:child:{childIndex}")).ToList();
+            if (children.Count > 0)
+                parents.Add(new(parentContent, parentLocation, children));
+        }
+        return parents;
+    }
+
+    private static string Prefix(string header, string body) =>
+        string.IsNullOrWhiteSpace(header) ? body : $"{header} {body}";
 
     public static List<KnowledgeChunk> ChunkMarkdown(string title, string? excerpt, string? markdown,
         int targetWords, int overlapWords)

@@ -31,24 +31,31 @@ public class EmbeddingService(
     // Distinct from Ollama:RagMaxChunksPerArticle, which caps chunks per article at query time.
     private readonly int _maxChunksPerSource = config.GetValue("Ollama:MaxIndexChunksPerSource", 100);
     private readonly int _maxTotalChunksPerArticle = config.GetValue("Ollama:MaxTotalChunksPerArticle", 500);
-    private readonly int _chunkTargetWords = Math.Clamp(
-        config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
-    private readonly int _chunkOverlapWords = Math.Clamp(
-        config.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0,
-        Math.Clamp(config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000) - 1);
-    private readonly string _chunkingVersion = config["Ollama:ChunkingVersion"] ?? "markdown-structure-v1";
+    private readonly int _parentChunkTargetWords = Math.Clamp(
+        config.GetValue("Ollama:ParentChunkTargetWords", KnowledgeChunker.DefaultParentTargetWords), 300, 3000);
+    private readonly int _childChunkTargetWords = Math.Clamp(
+        config.GetValue("Ollama:ChildChunkTargetWords", KnowledgeChunker.DefaultChildTargetWords), 80, 800);
+    private readonly int _childChunkOverlapWords = Math.Clamp(
+        config.GetValue("Ollama:ChildChunkOverlapWords", KnowledgeChunker.DefaultChildOverlapWords), 0,
+        Math.Clamp(config.GetValue("Ollama:ChildChunkTargetWords", KnowledgeChunker.DefaultChildTargetWords), 80, 800) - 1);
+    private readonly string _chunkingVersion = config["Ollama:ChunkingVersion"] ?? "hierarchical-parent-child-v2";
     private readonly string _indexProfile = ComputeIndexProfile(config);
 
     internal static string ComputeIndexProfile(IConfiguration source)
     {
-        var target = Math.Clamp(source.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
-        var overlap = Math.Clamp(source.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0, target - 1);
+        var parentTarget = Math.Clamp(source.GetValue("Ollama:ParentChunkTargetWords",
+            KnowledgeChunker.DefaultParentTargetWords), 300, 3000);
+        var childTarget = Math.Clamp(source.GetValue("Ollama:ChildChunkTargetWords",
+            KnowledgeChunker.DefaultChildTargetWords), 80, 800);
+        var childOverlap = Math.Clamp(source.GetValue("Ollama:ChildChunkOverlapWords",
+            KnowledgeChunker.DefaultChildOverlapWords), 0, childTarget - 1);
         return ContentExtractor.ComputeHash(string.Join('|',
             source["Ollama:EmbeddingModel"] ?? "bge-m3",
             source.GetValue("Ollama:EmbeddingDimensions", 1024),
-            source["Ollama:ChunkingVersion"] ?? "markdown-structure-v1",
-            target,
-            overlap))[..16];
+            source["Ollama:ChunkingVersion"] ?? "hierarchical-parent-child-v2",
+            parentTarget,
+            childTarget,
+            childOverlap))[..16];
     }
 
     public async Task<bool> EmbedArticleAsync(Article article, CancellationToken ct = default)
@@ -72,7 +79,8 @@ public class EmbeddingService(
 
         // Includes provenance so replacing/renaming an attachment invalidates the embedding set.
         var contentHash = ContentExtractor.ComputeHash(string.Join('|', chunks.Select(c =>
-            $"{c.SourceType}:{c.AttachmentId}:{c.SourceName}:{c.SourceLocation}:{ContentExtractor.ComputeHash(c.Content)}")));
+            $"{c.SourceType}:{c.AttachmentId}:{c.SourceName}:{c.SourceLocation}:" +
+            $"{ContentExtractor.ComputeHash(c.Content)}:{ContentExtractor.ComputeHash(c.Parent.Content)}")));
         var textHash = $"{_indexProfile}:{contentHash}";
 
         // Check if already up-to-date (compare hash of first chunk)
@@ -81,7 +89,8 @@ public class EmbeddingService(
             .OrderBy(e => e.ChunkIndex)
             .ToListAsync(ct);
 
-        if (existingChunks.Count > 0 && existingChunks[0].TextHash == textHash && existingChunks[0].ModelName == _modelName)
+        if (existingChunks.Count > 0 && existingChunks.All(x => x.ParentChunkId != null) &&
+            existingChunks[0].TextHash == textHash && existingChunks[0].ModelName == _modelName)
         {
             if (article.IndexedAt == null)
                 await TryClaimIndexedAsync(article.Id, xmin.Value, ct);
@@ -89,6 +98,10 @@ public class EmbeddingService(
         }
 
         var embedResults = await GenerateInBatchesAsync(chunks.Select(c => c.Content).ToList(), ct);
+
+        if (embedResults.Count != chunks.Count)
+            throw new InvalidOperationException(
+                $"Embedding model '{_modelName}' returned {embedResults.Count} vectors for {chunks.Count} child chunks.");
 
         // Guard: a model/column dimension mismatch would otherwise only surface as an opaque
         // pgvector INSERT error. Fail with an actionable message instead.
@@ -111,6 +124,31 @@ public class EmbeddingService(
         if (existingChunks.Count > 0)
             db.ArticleEmbeddings.RemoveRange(existingChunks);
 
+        var existingParents = await db.ArticleChunkParents
+            .Where(p => p.ArticleId == article.Id).ToListAsync(ct);
+        if (existingParents.Count > 0)
+            db.ArticleChunkParents.RemoveRange(existingParents);
+
+        var selectedParents = chunks.Select(c => c.Parent).DistinctBy(p => p.Id).ToList();
+        for (var parentIndex = 0; parentIndex < selectedParents.Count; parentIndex++)
+        {
+            var parent = selectedParents[parentIndex];
+            db.ArticleChunkParents.Add(new ArticleChunkParent
+            {
+                Id = parent.Id,
+                ArticleId = article.Id,
+                ParentIndex = parentIndex,
+                SourceType = parent.SourceType,
+                AttachmentId = parent.AttachmentId,
+                SourceName = parent.SourceName,
+                SourceLocation = parent.SourceLocation,
+                Content = parent.Content,
+                TextHash = ContentExtractor.ComputeHash(parent.Content),
+                WordCount = parent.Content.Split((char[]?)null,
+                    StringSplitOptions.RemoveEmptyEntries).Length
+            });
+        }
+
         for (int i = 0; i < chunks.Count; i++)
         {
             var vector = embedResults[i].Vector.ToArray();
@@ -122,6 +160,7 @@ public class EmbeddingService(
                 AttachmentId = chunks[i].AttachmentId,
                 SourceName = chunks[i].SourceName,
                 SourceLocation = chunks[i].SourceLocation,
+                ParentChunkId = chunks[i].Parent.Id,
                 Embedding = new Vector(vector),
                 ModelName = _modelName,
                 TextHash = i == 0 ? textHash : ContentExtractor.ComputeHash(chunks[i].Content),
@@ -142,20 +181,23 @@ public class EmbeddingService(
 
         await tx.CommitAsync(ct);
 
-        logger.LogInformation("Embedded article {ArticleId} ({Chunks} chunks, {Dimensions} dims, model={Model})",
-            article.Id, chunks.Count, embedResults[0].Vector.Length, _modelName);
+        logger.LogInformation(
+            "Embedded article {ArticleId} ({Parents} parents, {Children} searchable children, {Dimensions} dims, model={Model})",
+            article.Id, selectedParents.Count, chunks.Count, embedResults[0].Vector.Length, _modelName);
         return true;
     }
 
+    private sealed record ParentSeed(string Id, string Content, string SourceType,
+        string? AttachmentId, string? SourceName, string? SourceLocation);
     private sealed record ChunkSeed(string Content, string SourceType, string? AttachmentId,
-        string? SourceName, string? SourceLocation);
+        string? SourceName, string? SourceLocation, ParentSeed Parent);
 
     private async Task<List<List<ChunkSeed>>> BuildChunkSourcesAsync(Article article, CancellationToken ct)
     {
         var result = new List<List<ChunkSeed>>();
-        AddSource(result, KnowledgeChunker
-            .ChunkMarkdown(article.Title, article.Excerpt, article.Content, _chunkTargetWords, _chunkOverlapWords)
-            .Select(chunk => new ChunkSeed(chunk.Content, "article", null, article.Title, chunk.Location)),
+        AddSource(result, FlattenHierarchy(KnowledgeChunker.BuildMarkdownHierarchy(article.Title,
+                article.Excerpt, article.Content, _parentChunkTargetWords, _childChunkTargetWords,
+                _childChunkOverlapWords), "article", null, article.Title),
             article.Id, "article");
 
         var attachments = await db.ArticleAttachments
@@ -170,21 +212,34 @@ public class EmbeddingService(
                 continue;
             }
 
-            var attachmentChunks = extraction.Segments.SelectMany(segment =>
-                KnowledgeChunker.ChunkText(segment.Text, _chunkTargetWords, _chunkOverlapWords, segment.Location)
-                    .Select(chunk => new ChunkSeed(chunk.Content, "attachment", attachment.Id,
-                        attachment.FileName, chunk.Location)));
+            var attachmentChunks = extraction.Segments.SelectMany(segment => FlattenHierarchy(
+                KnowledgeChunker.BuildTextHierarchy(segment.Text, segment.Location,
+                    _parentChunkTargetWords, _childChunkTargetWords, _childChunkOverlapWords),
+                "attachment", attachment.Id, attachment.FileName));
             if (!extraction.Segments.Any() && !string.IsNullOrWhiteSpace(extraction.Text))
             {
-                attachmentChunks = KnowledgeChunker
-                    .ChunkText(extraction.Text, _chunkTargetWords, _chunkOverlapWords, "file")
-                    .Select(chunk => new ChunkSeed(chunk.Content, "attachment", attachment.Id,
-                        attachment.FileName, chunk.Location));
+                attachmentChunks = FlattenHierarchy(KnowledgeChunker.BuildTextHierarchy(extraction.Text,
+                    "file", _parentChunkTargetWords, _childChunkTargetWords, _childChunkOverlapWords),
+                    "attachment", attachment.Id, attachment.FileName);
             }
             AddSource(result, attachmentChunks, article.Id, attachment.FileName);
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
         return result;
+    }
+
+    private static IEnumerable<ChunkSeed> FlattenHierarchy(
+        IEnumerable<KnowledgeParentChunk> hierarchy, string sourceType, string? attachmentId,
+        string? sourceName)
+    {
+        foreach (var parent in hierarchy)
+        {
+            var seed = new ParentSeed(Guid.NewGuid().ToString("N")[..21], parent.Content,
+                sourceType, attachmentId, sourceName, parent.Location);
+            foreach (var child in parent.Children)
+                yield return new(child.Content, sourceType, attachmentId, sourceName,
+                    child.Location, seed);
+        }
     }
 
     private void AddSource(List<List<ChunkSeed>> target, IEnumerable<ChunkSeed> chunks,
@@ -267,11 +322,15 @@ public class EmbeddingService(
         var existing = await db.ArticleEmbeddings
             .Where(e => e.ArticleId == articleId)
             .ToListAsync(ct);
+        var parents = await db.ArticleChunkParents
+            .Where(p => p.ArticleId == articleId)
+            .ToListAsync(ct);
         if (existing.Count > 0)
-        {
             db.ArticleEmbeddings.RemoveRange(existing);
+        if (parents.Count > 0)
+            db.ArticleChunkParents.RemoveRange(parents);
+        if (existing.Count > 0 || parents.Count > 0)
             await db.SaveChangesAsync(ct);
-        }
     }
 
     /// <summary>
@@ -283,9 +342,13 @@ public class EmbeddingService(
     /// </summary>
     public async Task<int> CleanupOrphanEmbeddingsAsync(CancellationToken ct = default)
     {
-        return await db.ArticleEmbeddings
+        var removed = await db.ArticleEmbeddings
             .Where(e => !db.Articles.Any(a => a.Id == e.ArticleId && a.Status == "published"))
             .ExecuteDeleteAsync(ct);
+        await db.ArticleChunkParents
+            .Where(p => !db.Articles.Any(a => a.Id == p.ArticleId && a.Status == "published"))
+            .ExecuteDeleteAsync(ct);
+        return removed;
     }
 
     public async Task<int> InvalidateStaleModelAsync(CancellationToken ct = default)

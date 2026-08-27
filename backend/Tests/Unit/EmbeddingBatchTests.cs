@@ -160,12 +160,35 @@ public class EmbeddingBatchTests
             {
                 ["Ollama:EmbeddingModel"] = "bge-m3",
                 ["Ollama:EmbeddingDimensions"] = "1024",
-                ["Ollama:ChunkTargetWords"] = "500",
-                ["Ollama:ChunkOverlapWords"] = "50",
+                ["Ollama:ParentChunkTargetWords"] = "1000",
+                ["Ollama:ChildChunkTargetWords"] = "220",
+                ["Ollama:ChildChunkOverlapWords"] = "40",
                 ["Ollama:ChunkingVersion"] = version
             }).Build();
 
         Assert.NotEqual(EmbeddingService.ComputeIndexProfile(Config("v1")),
             EmbeddingService.ComputeIndexProfile(Config("v2")));
+    }
+
+    [Theory]
+    [InlineData("900", "220", "40")]
+    [InlineData("1000", "240", "40")]
+    [InlineData("1000", "220", "30")]
+    public void ComputeIndexProfile_ChangesForEveryHierarchyBoundary(string parent, string child,
+        string overlap)
+    {
+        IConfiguration Config(string parentValue, string childValue, string overlapValue) =>
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Ollama:EmbeddingModel"] = "bge-m3",
+                ["Ollama:EmbeddingDimensions"] = "1024",
+                ["Ollama:ParentChunkTargetWords"] = parentValue,
+                ["Ollama:ChildChunkTargetWords"] = childValue,
+                ["Ollama:ChildChunkOverlapWords"] = overlapValue,
+                ["Ollama:ChunkingVersion"] = "hierarchical-parent-child-v2"
+            }).Build();
+
+        var baseline = EmbeddingService.ComputeIndexProfile(Config("1000", "220", "40"));
+        Assert.NotEqual(baseline, EmbeddingService.ComputeIndexProfile(Config(parent, child, overlap)));
     }
 }

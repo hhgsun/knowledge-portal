@@ -22,7 +22,8 @@ erDiagram
     Article ||--o{ ArticleComment : "commented"
     Article ||--o{ ArticleView : "tracked"
     Article ||--o{ ArticleAttachment : "has"
-    Article ||--o{ ArticleEmbedding : "embedded (chunks)"
+    Article ||--o{ ArticleChunkParent : "context parents"
+    ArticleChunkParent ||--o{ ArticleEmbedding : "searchable children"
     Article o|--o| ApiKey : "created_via"
 
     Tag ||--o{ ArticleTag : "applied"
@@ -309,6 +310,13 @@ erDiagram
 | UploadedById | `string` | `uploaded_by_id` | FK → users.id, Required | — |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
 
+### ArticleChunkParent
+
+Structure-bounded context rows stored in `article_chunk_parents`. They carry `id`, `article_id`,
+`parent_index`, source/attachment provenance, exact `content`, `text_hash`, `word_count`, and
+`created_at`. Parents are not embedded; one parent is reused by every matching searchable child.
+The `(article_id, parent_index)` pair is unique.
+
 ### ArticleEmbedding
 
 | Column | C# Type | DB Column | Constraints | Default |
@@ -320,6 +328,7 @@ erDiagram
 | AttachmentId | `string?` | `attachment_id` | FK → article_attachments.id | `null` |
 | SourceName | `string?` | `source_name` | Max 500 | `null` |
 | SourceLocation | `string?` | `source_location` | Max 200 | `null` |
+| ParentChunkId | `string?` | `parent_chunk_id` | FK → article_chunk_parents.id (Cascade); nullable for rolling legacy rows | `null` |
 | Embedding | `Vector` | `embedding` | Required, vector(1024) | — |
 | ModelName | `string` | `model_name` | Required | — |
 | TextHash | `string` | `text_hash` | Required | — (SHA256 hex) |
@@ -370,6 +379,8 @@ Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nul
 | `articles` | `status`, `indexed_at` | Composite |
 | `articles` | `status`, `fts_indexed_at` | Composite |
 | `article_embeddings` | `article_id`, `chunk_index` | Unique (composite) |
+| `article_embeddings` | `parent_chunk_id` | B-tree |
+| `article_chunk_parents` | `article_id`, `parent_index` | Unique (composite) |
 | `article_embeddings` | `embedding` | HNSW cosine |
 | `article_embeddings` | `tag_slugs` | GIN |
 | `tags` | `slug` | Unique |
@@ -386,6 +397,8 @@ Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nul
 | Article | ArticleComment | Cascade |
 | Article | ArticleView | Cascade |
 | Article | ArticleAttachment | Cascade |
+| Article | ArticleChunkParent | Cascade |
+| ArticleChunkParent | ArticleEmbedding | Cascade |
 | Article | ArticleEmbedding | Cascade |
 | ApiKey | Article.CreatedViaApiKeyId | SetNull |
 | User | Article.ApprovedById | SetNull |

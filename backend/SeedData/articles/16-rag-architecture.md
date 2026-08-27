@@ -23,7 +23,7 @@ RAG akışının ana adımları:
 Makale + ekler
     │
     ▼
-Dayanıklı indeks kuyruğu → chunk + embedding + FTS
+Dayanıklı indeks kuyruğu → parent + child embedding + FTS
                                    │
 Kullanıcı sorusu → rewrite / filtre / seçici decomposition
     └──────────────→ alt sorgu başına lexical + semantic retrieval
@@ -31,7 +31,7 @@ Kullanıcı sorusu → rewrite / filtre / seçici decomposition
                               ▼
                  query fusion + RRF + rerank + authority/freshness
                               │
-                  seçici parent/komşu genişletme
+                  ACL-safe child → parent çözümleme
                               │
                     dar soru ─┴─ geniş soru
                        │             │
@@ -50,12 +50,12 @@ Makale yayınlandığında, içeriği değiştiğinde veya eki eklenip silindiğ
 
 Kanonik Markdown okunabilir düz metne çevrilir. Makale gövdesi ile metni çıkarılabilen her ek ayrı kaynak kabul edilir:
 
-- Makale Markdown'ı başlık/bölüm sınırları korunarak; ekler parser'ın page/sheet/slide konumları korunarak chunk'lara ayrılır. Paragraf, liste, tablo ve kod blokları hedef bütçeye sığıyorsa bölünmez; aşırı büyük tek bloklar kontrollü kayan pencereye düşer.
+- Makale Markdown'ı başlık/bölüm sınırları korunarak; ekler parser'ın page/sheet/slide konumları korunarak gerçek bir parent-child hiyerarşisine ayrılır. Parent hiçbir zaman başka başlığa, sayfaya, sheet'e veya slide'a geçmez. Paragraf, liste, tablo ve kod blokları hedef bütçeye sığıyorsa bölünmez; aşırı büyük tek bloklar kontrollü kayan pencereye düşer.
 - Eklerden çıkarılacak metin `FileStorage:MaxExtractedCharacters` ile sınırlandırılır. Sınır, çıkarılan karakter sayısı ve truncation durumu kalıcı metadata'dır; sınır değişince sonraki indeks geçişi cache'i yeniden üretir ve storage teşhisleri kırpılan dosyaları sayar.
-- Varsayılan hedef 500 kelime ve örtüşme 50 kelimedir; `ChunkTargetWords`, `ChunkOverlapWords` ve `ChunkingVersion` yapılandırılabilir. Chunking sürümü ve sınırlar içerik hash'ine katıldığı için değişiklik dayanıklı kuyruk üzerinden re-embedding tetikler.
+- Varsayılan parent hedefi yaklaşık 1000 kelime, searchable child hedefi 220 kelime ve child örtüşmesi 40 kelimedir. Yalnız child metinleri embed edilir; parent metinleri `article_chunk_parents` içinde bir kez saklanır ve her child `parent_chunk_id` taşır. `ParentChunkTargetWords`, `ChildChunkTargetWords`, `ChildChunkOverlapWords` ve `ChunkingVersion` yapılandırılabilir. Bütün sınırlar semantic index profile'a katıldığı için değişiklik dayanıklı kuyruk üzerinden atomik re-embedding tetikler.
 - Kaynak başına ve makale toplamında yapılandırılabilir chunk sınırları uygulanır.
 - Makale ve ek kaynakları round-robin interleave edilerek uzun bir kaynağın tüm bütçeyi tüketmesi önlenir.
-- Her chunk `sourceType`, `attachmentId`, `sourceName` ve `sourceLocation` gibi provenance alanlarını taşır.
+- Her parent ve child `sourceType`, `attachmentId`, `sourceName` ve `sourceLocation` provenance alanlarını taşır; child konumu parent ve child sırasını birlikte içerir.
 - `bge-m3` modeli 1024 boyutlu embedding üretir; boyut persistence öncesinde doğrulanır.
 - Embedding'ler PostgreSQL `vector(1024)` kolonunda, cosine distance için HNSW indeksle saklanır.
 
@@ -70,7 +70,7 @@ RAG yalnız semantic arama kullanmaz. `HybridRagRetriever` iki bağımsız aday 
 
 Kollardan biri geçici olarak hata verirse diğeriyle devam edilebilir. Makale seviyesindeki listeler varsayılan `k=60`, lexical `0.4` ve semantic `0.6` ağırlıklarıyla Reciprocal Rank Fusion üzerinden birleştirilir.
 
-Lexical eşleşmenin gerçek pasajı semantic sonuçta yoksa makale gövdesinden veya çıkarılmış ek metninden provenance-bearing sentetik chunk eklenir. Ardından:
+Lexical eşleşmeler de mümkün olduğunda kalıcı searchable child kayıtlarını kullanır. Böylece BM25/FTS ve vector yolları aynı child→parent kimliğinde birleşir; semantic sonuçta bulunmayan lexical child da doğru parent bağlamına genişleyebilir. Henüz semantic indeksi olmayan geçiş kayıtlarında makale metniyle sınırlı sentetik fallback korunur. Ardından:
 
 - Yerel ve deterministik chunk reranker; retrieval skoru, query coverage, başlık/kaynak coverage ve tam ifade sinyalini birleştirir.
 - Aynı makaledeki yüksek Jaccard benzerliğine sahip yakın kopyalar bastırılır.
@@ -80,7 +80,7 @@ Lexical eşleşmenin gerçek pasajı semantic sonuçta yoksa makale gövdesinden
 
 Sorgudan önce `RagQueryUnderstandingService`, LLM maliyeti oluşturmadan explicit `#/@/##` ile `tag:/author:/type:` filtrelerini ayırır, yapılandırılmış acronym/synonym sözlüğünü genişletir ve yalnız karşılaştırma/bileşik soruları bounded alt sorgulara böler. Her alt sorgu aynı ACL filtresiyle çalışır; sonuçlar yeniden fusion ile birleşir. Güncellik sinyali exponential half-life, otorite sinyali dinamik içerik türünün `lookup_values.authority_weight` değeri ve onay durumundan gelir; relevance ana sinyal olmaya devam eder. Böylece arama sıralaması ile yönetişim/reliability çıktısı aynı otorite kaynağını kullanır; içerik türü adlarına özel ikinci bir config matrisi yoktur.
 
-Yüksek skorlu bir child chunk `section/page/sheet/...:chunk:N` provenance'ı taşıyorsa yapılandırılmış sayıdaki önceki/sonraki child aynı parent içinde eklenebilir. Genişletme published ve metadata-filter recheck'inden sonra çalışır; başka makaleye, eke, kaynağa veya parent'a geçmez. Varsayılan yerel reranker her zaman hazırdır. Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner.
+Yüksek skorlu child, reranking ve published/metadata ACL recheck'inden sonra `parent_chunk_id` ile yapısal parent'ına çözülür. Aynı parent'a isabet eden birden fazla child tek parent context'e deduplicate edilir. Parent sorgusu yalnız yetkilendirilmiş makale kimlikleriyle çalışır; başka makaleye, eke veya provenance sınırına geçemez. Rolling geçiş sırasında parent FK'sı olmayan eski satırlar için aynı bölüm içindeki sınırlı komşu fallback'i geçici olarak korunur. Varsayılan yerel reranker her zaman hazırdır. Opsiyonel external cross-encoder yalnız açıkça etkinleştirilir, candidate/metin/timeout sınırları kullanır ve hata veya geçersiz yanıtta yerel sonuca döner.
 
 Varsayılan RAG semantic eşiği 0.3'tür. Bu değer liste tipi semantic aramadaki 0.5 eşiğinden daha düşüktür; çünkü genel soruların cosine skoru düşük olabilir ve nihai katman yetersiz kanıtta fail-closed davranır.
 
@@ -177,10 +177,10 @@ Başlıca ayarlar `backend/appsettings.json` içindedir:
 - `Ollama:RagRrfK` / `RagLexicalWeight` / `RagSemanticWeight`
 - `Ollama:RagDuplicateThreshold` / `RagMinSimilarityScore`
 - `Ollama:QueryUnderstanding:*` rewrite, synonym ve decomposition ayarları
-- `Ollama:ContextExpansion:*` parent-komşu genişletme sınırları
+- `Ollama:ContextExpansion:*` child→parent çözümleme eşiği/tohum sınırı ve yalnız rolling-upgrade legacy komşu fallback sınırları
 - `Ollama:Ranking:*` freshness/approval katkıları ve dinamik `lookup_values.authority_weight` değerinin relevance skoruna bounded katkı çarpanı
 - `Reranking:External:*`, retrieval sonrasında aday pasajları harici bir cross-encoder ile yeniden sıralayan isteğe bağlı katmandır. `Enabled=false` ile varsayılan olarak kapalıdır; kapalıyken veya geçerli bir `Endpoint` verilmediğinde yerel deterministik sıralama aynen kullanılır. Etkinleştirildiğinde en fazla `MaxCandidates` adayın her birinden `MaxDocumentCharacters` kadar metin, yapılandırılan `Model` ve sorguyla endpoint'e gönderilir; `ApiKey` varsa Bearer kimlik doğrulaması uygulanır. Çağrı `TimeoutSeconds` ile sınırlandırılır. Geçerli harici skorlar `ScoreWeight` oranında yerel skorlarla birleştirilir; timeout, HTTP hatası veya geçersiz/boş yanıt halinde istek bozulmaz ve yerel sıralama sonucuna geri dönülür. Varsayılanlar sırasıyla 8 saniye, 50 aday, aday başına 4.000 karakter ve 0,8 harici skor ağırlığıdır.
-- `Ollama:ChunkTargetWords` / `ChunkOverlapWords` / `ChunkingVersion`
+- `Ollama:ParentChunkTargetWords` / `ChildChunkTargetWords` / `ChildChunkOverlapWords` / `ChunkingVersion`
 - `RagResilience:*` timeout, budget, retry, parallelism ve circuit breaker ayarları
 
 Bu değerler değiştirilirken latency, recall, citation coverage, refusal oranı ve hata bütçesi birlikte değerlendirilmelidir. Değişiklik sonrası PostgreSQL fidelity testleri ve canlı RAG kalite kapısı çalıştırılmalıdır.

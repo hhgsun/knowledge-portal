@@ -22,7 +22,7 @@ public partial class RagService(
     ILogger<RagService> logger)
 {
     public const string PromptVersion = "2026-08-26.typed-governed-synthesis-v15";
-    public const string RetrievalVersion = "2026-08-26.adaptive-governed-retrieval-v2";
+    public const string RetrievalVersion = "2026-08-27.hierarchical-parent-child-v3";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
     private readonly int _minimumSourceLimit = Math.Clamp(config.GetValue("Ollama:RagMinimumSourceLimit", 3), 1, 10);
@@ -230,7 +230,7 @@ public partial class RagService(
         string Title, string? SourceName, string? SourceLocation, int WordCount, int TokenCount,
         string Passage);
     public sealed record RagDebugSnapshot(RagQueryPlan QueryPlan, string Mode, int RetrievedCount,
-        int AuthorizedCount, int ExpandedNeighborCount, IReadOnlyList<string> ExpandedParents,
+        int AuthorizedCount, int ExpandedParentCount, IReadOnlyList<string> ExpandedParents,
         IReadOnlyList<RagDebugCandidate> Candidates, IReadOnlyList<RagDebugContext> SelectedContext,
         int ContextWords, int ContextTokens, bool BudgetTruncated, string TokenizerStrategy,
         int AdaptiveSourceLimit);
@@ -310,7 +310,7 @@ public partial class RagService(
             x.Chunk.SourceName, x.Chunk.SourceLocation, x.WordCount, x.TokenCount,
             x.Chunk.ChunkText)).ToList();
         return new(prepared.Plan, broad ? "broad" : "narrow", prepared.Retrieved.Count,
-            prepared.AuthorizedChunks.Count, prepared.Expansion.AddedNeighbors,
+            prepared.AuthorizedChunks.Count, prepared.Expansion.ExpandedParentCount,
             prepared.Expansion.ExpandedParentLocations, candidates, selected,
             selection.TotalWords, selection.TotalTokens, selection.BudgetTruncated,
             tokenCounter.Strategy, adaptiveSourceLimit);

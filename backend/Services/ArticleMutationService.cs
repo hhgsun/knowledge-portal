@@ -238,6 +238,8 @@ public sealed class ArticleMutationService(
             article.IndexedAt = null;
             var embeddings = await db.ArticleEmbeddings.Where(embedding => embedding.ArticleId == article.Id).ToListAsync(ct);
             if (embeddings.Count > 0) db.ArticleEmbeddings.RemoveRange(embeddings);
+            var parents = await db.ArticleChunkParents.Where(parent => parent.ArticleId == article.Id).ToListAsync(ct);
+            if (parents.Count > 0) db.ArticleChunkParents.RemoveRange(parents);
         }
         article.Status = status;
     }

@@ -6,7 +6,8 @@
 -- (default 24). This file is the same operation by hand, for when you do not want to wait
 -- for the next sweep or the background service is not running.
 --
--- What an orphan is: a chunk whose article no longer exists or is no longer published.
+-- What an orphan is: a searchable child or context parent whose article no longer exists or
+-- is no longer published.
 -- Embeddings are supposed to exist only for published articles — EmbedArticleAsync commits
 -- the chunks and the published claim in one transaction, and unpublishing deletes them — but
 -- a narrow race remains, and older builds could leak rows. That invariant is not cosmetic:
@@ -49,6 +50,12 @@ WHERE NOT EXISTS (
     WHERE a.id = e.article_id AND a.status = 'published'
 );
 
+DELETE FROM article_chunk_parents p
+WHERE NOT EXISTS (
+    SELECT 1 FROM articles a
+    WHERE a.id = p.article_id AND a.status = 'published'
+);
+
 \echo ''
 \echo '=== remaining orphans (expect 0) ============================================='
 SELECT count(*) AS remaining
@@ -58,7 +65,14 @@ WHERE NOT EXISTS (
     WHERE a.id = e.article_id AND a.status = 'published'
 );
 
+SELECT count(*) AS remaining_parents
+FROM article_chunk_parents p
+WHERE NOT EXISTS (
+    SELECT 1 FROM articles a
+    WHERE a.id = p.article_id AND a.status = 'published'
+);
+
 \echo ''
 \echo 'On a large table this deletion leaves dead tuples behind; autovacuum will reclaim'
-\echo 'them, or run VACUUM (ANALYZE) article_embeddings if you need the space back now.'
+\echo 'them, or run VACUUM (ANALYZE) on article_embeddings/article_chunk_parents if needed.'
 \endif

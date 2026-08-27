@@ -797,7 +797,7 @@ Repairs only published articles whose full-text or semantic index marker is miss
   "ollamaEnabled": true,
   "modelName": "bge-m3",
   "configuredDimensions": 1024,
-  "chunkingVersion": "markdown-structure-v1",
+  "chunkingVersion": "hierarchical-parent-child-v2",
   "semanticIndexProfile": "9f0c...",
   "failedArticles": [
     { "articleId": "...", "failureCount": 10, "nextRetryAt": "2026-07-17T12:02:00.000Z", "error": "..." }
@@ -816,7 +816,7 @@ Records feedback for an authenticated user's own RAG search. Body: `{ "searchQue
 
 ### `GET /api/search/rag-debug?q=...`
 
-Session-admin-only diagnostic path. Runs query understanding, hybrid/multi-query retrieval, reranking, ACL recheck, selective parent-neighbor expansion, deduplication and context budgeting without calling the chat model. Returns the rewritten/decomposed query plan, extracted filters, only post-authorization candidates, expansion details, and exact bounded context/evidence mapping.
+Session-admin-only diagnostic path. Runs query understanding, hybrid/multi-query child retrieval, reranking, ACL recheck, selective child-to-parent resolution, deduplication and context budgeting without calling the chat model. Returns the rewritten/decomposed query plan, extracted filters, only post-authorization candidates, expanded parent count/locations, and exact bounded context/evidence mapping.
 
 ### `GET /api/admin/rag-evaluations/feedback-summary?days=30`
 

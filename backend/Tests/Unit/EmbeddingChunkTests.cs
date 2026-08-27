@@ -127,4 +127,44 @@ public class EmbeddingChunkTests
             Assert.True(chunk.Content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 20);
         });
     }
+
+    [Fact]
+    public void BuildMarkdownHierarchy_SearchesChildrenAndPreservesSectionBoundedParents()
+    {
+        var first = string.Join(' ', Enumerable.Range(0, 700).Select(i => $"vpn{i}"));
+        var second = string.Join(' ', Enumerable.Range(0, 300).Select(i => $"cert{i}"));
+        var markdown = $"# VPN Kurulumu\n\n{first}\n\n## Sertifika\n\n{second}";
+
+        var parents = KnowledgeChunker.BuildMarkdownHierarchy("Uzak Erişim", "Operasyon rehberi",
+            markdown, parentTargetWords: 500, childTargetWords: 120, childOverlapWords: 20);
+
+        Assert.True(parents.Count >= 3);
+        Assert.All(parents, parent =>
+        {
+            Assert.NotEmpty(parent.Children);
+            Assert.True(parent.Content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 500);
+            Assert.All(parent.Children, child =>
+            {
+                Assert.StartsWith(parent.Location + ":child:", child.Location);
+                Assert.True(child.Content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 120);
+            });
+        });
+        Assert.DoesNotContain(parents, p => p.Content.Contains("vpn0") && p.Content.Contains("cert0"));
+        Assert.Contains(parents, p => p.Location.StartsWith("section:VPN Kurulumu:parent:"));
+        Assert.Contains(parents, p => p.Location.StartsWith("section:Sertifika:parent:"));
+    }
+
+    [Fact]
+    public void BuildTextHierarchy_DoesNotCrossLayoutSegmentAndOverlapsChildren()
+    {
+        var words = Enumerable.Range(0, 360).Select(i => $"w{i}").ToArray();
+
+        var parent = Assert.Single(KnowledgeChunker.BuildTextHierarchy(string.Join(' ', words),
+            "page:7", parentTargetWords: 500, childTargetWords: 120, childOverlapWords: 20));
+
+        Assert.Equal("page:7:parent:0", parent.Location);
+        Assert.Equal(4, parent.Children.Count);
+        Assert.EndsWith("w119", parent.Children[0].Content);
+        Assert.StartsWith("w100 ", parent.Children[1].Content);
+    }
 }

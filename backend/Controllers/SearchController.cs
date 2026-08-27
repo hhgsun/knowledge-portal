@@ -224,7 +224,7 @@ public class SearchController(AppDbContext db, IConfiguration config,
             ollamaEnabled = semanticEnabled,
             modelName = config["Ollama:EmbeddingModel"] ?? "bge-m3",
             configuredDimensions = config.GetValue("Ollama:EmbeddingDimensions", 1024),
-            chunkingVersion = config["Ollama:ChunkingVersion"] ?? "markdown-structure-v1",
+            chunkingVersion = config["Ollama:ChunkingVersion"] ?? "hierarchical-parent-child-v2",
             semanticIndexProfile = EmbeddingService.ComputeIndexProfile(config),
             failedArticles = failedJobs.Select(job => new
             {

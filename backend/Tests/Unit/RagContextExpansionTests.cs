@@ -32,8 +32,45 @@ public class RagContextExpansionTests
         var result = await service.ExpandAsync(db, [seed], new HashSet<string> { "a1" });
 
         Assert.Equal(3, result.Chunks.Count);
-        Assert.Equal(2, result.AddedNeighbors);
+        Assert.Equal(0, result.ExpandedParentCount);
         Assert.DoesNotContain(result.Chunks, x => x.ArticleId == "a2" || x.SourceLocation?.Contains("Başka") == true);
+    }
+
+    [Fact]
+    public async Task Expand_ReplacesStrongChildWithSingleAuthorizedParent()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new AppDbContext(options);
+        db.ArticleChunkParents.AddRange(
+            new ArticleChunkParent
+            {
+                Id = "p1", ArticleId = "a1", ParentIndex = 3, Content = "geniş yetkili bağlam",
+                SourceType = "article", SourceLocation = "section:VPN:parent:0", TextHash = "h", WordCount = 3
+            },
+            new ArticleChunkParent
+            {
+                Id = "p2", ArticleId = "a2", ParentIndex = 0, Content = "yetkisiz bağlam",
+                SourceType = "article", SourceLocation = "section:Gizli:parent:0", TextHash = "h", WordCount = 2
+            });
+        await db.SaveChangesAsync();
+        var service = new RagContextExpansionService(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["Ollama:ContextExpansion:MinSeedScore"] = ".5" }).Build());
+        var first = new VectorChunkResult("a1", 10, .9, "eşleşen küçük parça",
+            SourceLocation: "section:VPN:parent:0:child:0", ChunkId: "c1", ParentChunkId: "p1");
+        var second = first with { ChunkIndex = 11, ChunkId = "c2", Score = .8 };
+        var unauthorized = new VectorChunkResult("a2", 0, .99, "gizli",
+            SourceLocation: "section:Gizli:parent:0:child:0", ChunkId: "c3", ParentChunkId: "p2");
+
+        var result = await service.ExpandAsync(db, [first, second, unauthorized],
+            new HashSet<string> { "a1" });
+
+        var parent = Assert.Single(result.Chunks, x => x.ArticleId == "a1");
+        Assert.Equal("p1", parent.ChunkId);
+        Assert.Equal("geniş yetkili bağlam", parent.ChunkText);
+        Assert.Equal(-4, parent.ChunkIndex);
+        Assert.Equal(1, result.ExpandedParentCount);
+        Assert.DoesNotContain(result.Chunks, x => x.ChunkText == "yetkisiz bağlam");
     }
 
     [Theory]

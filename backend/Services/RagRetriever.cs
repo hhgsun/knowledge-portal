@@ -1,7 +1,6 @@
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -61,11 +60,7 @@ public sealed class HybridRagRetriever(
     private readonly double _lexicalWeight = Math.Clamp(config.GetValue("Ollama:RagLexicalWeight", .4), 0, 1);
     private readonly double _semanticWeight = Math.Clamp(config.GetValue("Ollama:RagSemanticWeight", .6), 0, 1);
     private readonly double _duplicateThreshold = Math.Clamp(config.GetValue("Ollama:RagDuplicateThreshold", .88), .5, 1);
-    private readonly int _chunkTargetWords = Math.Clamp(
-        config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000);
-    private readonly int _chunkOverlapWords = Math.Clamp(
-        config.GetValue("Ollama:ChunkOverlapWords", KnowledgeChunker.DefaultOverlapWords), 0,
-        Math.Clamp(config.GetValue("Ollama:ChunkTargetWords", KnowledgeChunker.DefaultTargetWords), 100, 2000) - 1);
+    private readonly string _embeddingModel = config["Ollama:EmbeddingModel"] ?? "bge-m3";
 
     public async Task<List<RagRetrievalChunk>> RetrieveAsync(RagQueryPlan plan, int limit, double minSemanticScore,
         int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default)
@@ -123,10 +118,11 @@ public sealed class HybridRagRetriever(
         var chunks = semantic.Where(x => metadata.ContainsKey(x.ArticleId)).ToList();
         var semanticKeys = chunks.Select(Key).ToHashSet();
         var lexicalCandidateIds = lexicalIds.Where(metadata.ContainsKey).ToList();
-        var lexicalAttachments = await db.ArticleAttachments
-            .Where(x => lexicalCandidateIds.Contains(x.ArticleId) && x.ExtractionStatus == "completed"
-                && x.ExtractedText != null)
-            .Select(x => new { x.ArticleId, x.Id, x.FileName, x.ExtractedText, x.ExtractedSegmentsJson })
+        var lexicalStoredChildren = await db.ArticleEmbeddings.AsNoTracking()
+            .Where(x => lexicalCandidateIds.Contains(x.ArticleId) && x.ModelName == _embeddingModel
+                && x.Content != null)
+            .Select(x => new { x.Id, x.ArticleId, x.ChunkIndex, x.Content, x.SourceType,
+                x.AttachmentId, x.SourceName, x.SourceLocation, x.ParentChunkId })
             .ToListAsync(ct);
         var queryTokens = Tokens(query);
 
@@ -135,27 +131,18 @@ public sealed class HybridRagRetriever(
         foreach (var articleId in lexicalCandidateIds)
         {
             var a = metadata[articleId];
-            var text = ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
-            var syntheticCandidates = new List<VectorChunkResult>
+            // Reuse persisted searchable children for lexical hits too. This keeps BM25/FTS and
+            // vector retrieval on the same parent-child identities, so either path can resolve a
+            // precise match to its larger parent without query-time re-chunking.
+            var syntheticCandidates = lexicalStoredChildren.Where(x => x.ArticleId == articleId)
+                .Select(x => new VectorChunkResult(x.ArticleId, x.ChunkIndex, 0, x.Content!,
+                    x.SourceType, x.AttachmentId, x.SourceName, x.SourceLocation, x.Id,
+                    x.ParentChunkId)).ToList();
+            if (syntheticCandidates.Count == 0)
             {
-                SyntheticChunk(articleId, -1, text, "article", null, a.Title, "article")
-            };
-            var syntheticIndex = -2;
-            foreach (var attachment in lexicalAttachments.Where(x => x.ArticleId == articleId))
-            {
-                List<AttachmentTextSegment>? segments = null;
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(attachment.ExtractedSegmentsJson))
-                        segments = JsonSerializer.Deserialize<List<AttachmentTextSegment>>(attachment.ExtractedSegmentsJson);
-                }
-                catch (JsonException) { /* Fall back to the combined extracted text. */ }
-                segments ??= [new(attachment.ExtractedText!, "extracted")];
-                foreach (var segment in segments)
-                foreach (var passage in KnowledgeChunker.ChunkText(segment.Text, _chunkTargetWords,
-                    _chunkOverlapWords, segment.Location))
-                    syntheticCandidates.Add(SyntheticChunk(articleId, syntheticIndex--, passage.Content,
-                        "attachment", attachment.Id, attachment.FileName, passage.Location));
+                var text = ContentExtractor.ExtractSearchableText(a.Title, a.Excerpt, a.Content, "");
+                syntheticCandidates.Add(SyntheticChunk(articleId, -1, text, "article", null,
+                    a.Title, "article"));
             }
 
             foreach (var synthetic in syntheticCandidates
