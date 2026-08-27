@@ -43,6 +43,11 @@ public sealed class PortalMetrics
     public Counter<long> AssistantRoutes { get; }
     public Counter<long> AssistantToolCalls { get; }
     public Histogram<double> AssistantDuration { get; }
+    public Counter<long> AssistantFeedback { get; }
+    public Counter<long> AssistantAuditFailures { get; }
+    public Counter<long> AssistantClassifierRequests { get; }
+    public Histogram<double> AssistantClassifierDuration { get; }
+    public UpDownCounter<long> AssistantClassifierActive { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
     {
@@ -75,6 +80,16 @@ public sealed class PortalMetrics
             description: "Bounded read-only assistant tool calls by tool and outcome");
         AssistantDuration = _meter.CreateHistogram<double>("kp_assistant_duration_ms", "ms",
             "End-to-end assistant orchestration duration by route and outcome");
+        AssistantFeedback = _meter.CreateCounter<long>("kp_assistant_feedback",
+            description: "Assistant feedback by bounded outcome and reason");
+        AssistantAuditFailures = _meter.CreateCounter<long>("kp_assistant_audit_failures",
+            description: "Assistant interaction audit records that could not be persisted");
+        AssistantClassifierRequests = _meter.CreateCounter<long>("kp_assistant_classifier_requests",
+            description: "Assistant classifier executions by outcome");
+        AssistantClassifierDuration = _meter.CreateHistogram<double>("kp_assistant_classifier_duration_ms", "ms",
+            "Assistant classifier execution duration by outcome");
+        AssistantClassifierActive = _meter.CreateUpDownCounter<long>("kp_assistant_classifier_active",
+            description: "Assistant classifier requests currently holding a concurrency slot");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",

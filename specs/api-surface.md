@@ -759,6 +759,8 @@ The assistant is an isolated, bounded, read-only orchestration surface. It reuse
 
 In `auto` mode, explicit safe modes and deterministic Turkish/English signals run first. Only ambiguous input reaches the structured low-token classifier. A classifier decision below `AgenticRouting:MinConfidence` falls back to read-only hybrid search. The server-side policy layer independently authorizes the chosen route; classifier output never grants permission. A compound answer-plus-list request may invoke at most grounded RAG plus hybrid search, bounded by `MaxToolCalls`. If RAG is unavailable or fails, the assistant returns hybrid results with a warning rather than an ungrounded answer.
 
+The classifier cannot rewrite or expand `message`: the normalized original input is always used by retrieval. Classifier traffic has a dedicated concurrency bulkhead, queue timeout, circuit breaker, timeout and fingerprint-only exact-decision cache. A cached classification reports `routeSource: "classifier_cache"`.
+
 **200 Response**:
 
 ```json
@@ -786,21 +788,49 @@ In `auto` mode, explicit safe modes and deterministic Turkish/English signals ru
   "clarification": null,
   "toolCalls": ["knowledge_rag", "knowledge_search"],
   "warnings": [],
+  "searchQueryId": "...",
+  "interactionId": "...",
   "responseTimeMs": 640,
   "traceId": "..."
 }
 ```
 
-Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `fallback`, or `default`. General chat is bounded canned assistance and cannot make company factual claims.
+Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `classifier_cache`, `fallback`, or `default`. `searchQueryId` enables owned search-click/RAG evaluation linkage; `interactionId` enables owned Assistant feedback. General chat is bounded canned assistance and cannot make company factual claims.
 
 Operational controls:
 
 - `Assistant:Enabled=false`: endpoint returns `404`; search/RAG remain available. Set frontend build variable `VITE_ASSISTANT_ENABLED=false` to remove the sidebar item and route.
 - `AgenticRouting:Enabled=false`: assistant remains available but uses the explicit/default route without classification.
 - The current tool registry is read-only by construction; configuration cannot expose a write or free-form SQL tool.
-- Metrics: `kp_assistant_routes`, `kp_assistant_tool_calls`, `kp_assistant_duration_ms`; usage operations are persisted as `assistant.<route>`.
+- Metrics: `kp_assistant_routes`, `kp_assistant_tool_calls`, `kp_assistant_duration_ms`, `kp_assistant_classifier_requests`, `kp_assistant_classifier_duration_ms`, `kp_assistant_classifier_active`, `kp_assistant_feedback`, and `kp_assistant_audit_failures`; usage operations are persisted as `assistant.<route>`.
 
 Errors use `{ "error": "..." }`: `400` for invalid input/mode, `403` for a denied route, `404` when the assistant kill switch is off, and `504` when the total bounded deadline expires.
+
+### `POST /api/assistant/feedback`
+**Auth**: Bearer (JWT or API Key). Feedback is accepted only for an interaction owned by the current principal's user.
+**Rate limit**: `search`
+
+```json
+{
+  "interactionId": "...",
+  "helpful": false,
+  "reason": "wrong_route",
+  "correctedRoute": "knowledge_search"
+}
+```
+
+Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `wrong_route`, `outdated`, `no_answer`, and `other`. Corrected routes are validated against the fixed read-only route registry. Audit/feedback persistence stores a SHA-256 query fingerprint and routing/tool/timing metadata, never raw query or answer content. A grounded answer vote is also attached to its owned RAG search record so the existing RAG feedback cohorts include Assistant traffic.
+
+### `GET /api/capabilities`
+**Auth**: Bearer (JWT or API Key).
+
+Returns the runtime Assistant enablement, routing/classifier/feedback status, maximum message size, and supported UI modes. The frontend combines this response with the compile-time `VITE_ASSISTANT_ENABLED` flag so a backend kill-switch change cannot leave a visible but unusable Assistant route.
+
+### `POST /api/assistant/route-preview`
+**Auth**: Admin interactive session (`users:manage`; API keys rejected).
+**Rate limit**: `search`
+
+Accepts the normal Assistant request and returns only `route`, `confidence`, `routeSource`, `reasonCode`, `normalizedQuery`, and `includeSearchResults`. No route policy grants access and no search/RAG/analytics tool is executed. The post-deploy live routing gate uses this endpoint to evaluate real classifier behavior independently of document availability.
 
 ---
 

@@ -26,7 +26,7 @@ import BulkTransferPage from "./pages/BulkTransferPage";
 import KnowledgeImportPage from "./pages/KnowledgeImportPage";
 import RagEvaluationsPage from "./pages/RagEvaluationsPage";
 import AssistantPage from "./pages/AssistantPage";
-import { assistantEnabled } from "./config/features";
+import { useCapabilities } from "./contexts/CapabilitiesContext";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -53,6 +53,7 @@ function RoleRoute({ children, roles }: { children: React.ReactNode; roles: stri
 }
 
 export default function App() {
+  const { assistantEnabled } = useCapabilities();
   return (
     <BrowserRouter>
       <Routes>

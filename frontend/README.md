@@ -25,7 +25,7 @@ npm run dev
 
 Dev server starts on **http://localhost:5173**. API requests to `/api/*` are proxied to `http://localhost:5174`.
 
-Set `VITE_ASSISTANT_ENABLED=false` before build/start to omit the Assistant sidebar item and `/assistant` route. The default is enabled; the backend capability has its independent `Assistant:Enabled` kill switch.
+Set `VITE_ASSISTANT_ENABLED=false` before build/start to omit the Assistant sidebar item and `/assistant` route. The default is enabled; after authentication the UI also reads `/api/capabilities`, so the independent backend `Assistant:Enabled` kill switch hides the route without requiring a frontend rebuild.
 
 ## Project Structure
 

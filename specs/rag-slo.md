@@ -22,3 +22,4 @@ when the PostgreSQL fidelity suite or the post-deploy live-model gate is skipped
 Structured refusals are successful service outcomes, not availability failures. Responses rejected
 by the grounding validator are tracked as refusals for availability and must still satisfy the
 separate refusal-accuracy and grounding gates.
+The same dashboard and alert group also cover the bounded Assistant orchestration layer: Assistant p95 latency, route/source volume, classifier outcomes, feedback, classifier degradation, and audit persistence failures. These metrics are evaluated separately from RAG availability so a routing degradation is visible even when direct `/api/search?type=rag` remains healthy.

@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KnowledgePortal.Api.Data;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KnowledgePortal.Api.Tests.Integration;
 
@@ -59,6 +61,8 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
             item => item.GetString() == "knowledge_search");
         Assert.Contains(json.GetProperty("results").EnumerateArray(),
             item => item.GetProperty("title").GetString() == "Zeplin Kalibrasyon Rehberi");
+        Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("searchQueryId").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("interactionId").GetString()));
     }
 
     [Fact]
@@ -118,13 +122,144 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, search.StatusCode);
     }
 
-    private async Task<string> RegisterAndGetToken(string email)
+    [Fact]
+    public async Task Capabilities_ReflectRuntimeAssistantKillSwitch()
     {
-        await client.PostAsJsonAsync("/api/auth/register", new
+        using var disabledFactory = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Assistant:Enabled", "false"));
+        using var disabledClient = disabledFactory.CreateClient();
+        await TestHelpers.AuthenticateAsAdminAsync(disabledClient);
+
+        var response = await disabledClient.GetAsync("/api/capabilities");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.False(json.GetProperty("enabled").GetBoolean());
+        Assert.True(json.GetProperty("supportedModes").GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task Feedback_IsPersistedAndOwnershipProtected()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var assistant = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "Merhaba" });
+        assistant.EnsureSuccessStatusCode();
+        var body = await assistant.Content.ReadFromJsonAsync<JsonElement>();
+        var interactionId = body.GetProperty("interactionId").GetString();
+
+        var recorded = await client.PostAsJsonAsync("/api/assistant/feedback", new
+        {
+            interactionId, helpful = false, reason = "wrong_route", correctedRoute = "search"
+        });
+        Assert.Equal(HttpStatusCode.OK, recorded.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var interaction = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
+                .AssistantInteractions.FindAsync(interactionId);
+            Assert.NotNull(interaction);
+            Assert.Equal(64, interaction.QueryFingerprint.Length);
+            Assert.Equal("wrong_route", interaction.FeedbackReason);
+            Assert.Equal("knowledge_search", interaction.CorrectedRoute);
+            Assert.False(interaction.Helpful);
+        }
+
+        var summary = await client.GetFromJsonAsync<JsonElement>(
+            "/api/admin/rag-evaluations/feedback-summary?days=30");
+        Assert.True(summary.GetProperty("assistant").GetProperty("total").GetInt32() >= 1);
+
+        using var otherClient = factory.CreateClient();
+        var otherToken = await RegisterAndGetToken(
+            $"assistant-feedback-{Guid.NewGuid():N}@example.com", otherClient);
+        otherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", otherToken);
+        var denied = await otherClient.PostAsJsonAsync("/api/assistant/feedback", new
+            { interactionId, helpful = true });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnswerRoute_FallsBackToHybridWhenAiIsDisabled()
+    {
+        using var disabledFactory = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Ollama:Enabled", "false"));
+        using var disabledClient = disabledFactory.CreateClient();
+        await TestHelpers.AuthenticateAsAdminAsync(disabledClient);
+
+        var response = await disabledClient.PostAsJsonAsync("/api/assistant", new
+            { message = "VPN politikası nedir?" });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("knowledge_search", json.GetProperty("route").GetString());
+        Assert.Equal("rag_failure_safe_fallback", json.GetProperty("reasonCode").GetString());
+        Assert.Equal(2, json.GetProperty("toolCalls").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task AssistantSearch_DoesNotExposeAnotherUsersDraft()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var title = $"Gizli Taslak {Guid.NewGuid():N}";
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            title, contentMarkdown = "yalnız taslakta bulunan benzersiz-gizli-terim", status = "draft"
+        });
+
+        using var viewerClient = factory.CreateClient();
+        var viewerToken = await RegisterAndGetToken(
+            $"assistant-acl-{Guid.NewGuid():N}@example.com", viewerClient);
+        viewerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", viewerToken);
+        var response = await viewerClient.PostAsJsonAsync("/api/assistant", new
+            { message = "benzersiz-gizli-terim dokümanını bul", preferredRoute = "search" });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.DoesNotContain(json.GetProperty("results").EnumerateArray(),
+            item => item.GetProperty("title").GetString() == title);
+    }
+
+    [Fact]
+    public async Task Assistant_RejectsMessageOverConfiguredLimit()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/assistant",
+            new { message = new string('x', 4001) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RoutePreview_IsAdminOnlyAndDoesNotExecuteTools()
+    {
+        var viewerToken = await RegisterAndGetToken(
+            $"assistant-preview-{Guid.NewGuid():N}@example.com");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", viewerToken);
+        var denied = await client.PostAsJsonAsync("/api/assistant/route-preview",
+            new { message = "VPN politikasını açıkla" });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = null;
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var response = await client.PostAsJsonAsync("/api/assistant/route-preview",
+            new { message = "VPN politikasını açıkla" });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("knowledge_answer", json.GetProperty("route").GetString());
+        Assert.False(json.TryGetProperty("toolCalls", out _));
+    }
+
+    private Task<string> RegisterAndGetToken(string email) => RegisterAndGetToken(email, client);
+
+    private static async Task<string> RegisterAndGetToken(string email, HttpClient targetClient)
+    {
+        await targetClient.PostAsJsonAsync("/api/auth/register", new
         {
             name = "Assistant Viewer", email, password = "password123"
         });
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
+        var response = await targetClient.PostAsJsonAsync("/api/auth/login", new
         {
             email, password = "password123"
         });

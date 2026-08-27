@@ -15,7 +15,7 @@ public sealed class AssistantRouterTests
         var fake = new FakeChatClient
         {
             ResponseOverride = """
-                {"route":"analytics","confidence":0.91,"normalizedQuery":"portal trendleri","reasonCode":"usage_trend","includeSearchResults":false}
+                {"route":"analytics","confidence":0.91,"reasonCode":"usage_trend","includeSearchResults":false}
                 """
         };
         var router = CreateRouter(fake);
@@ -33,7 +33,7 @@ public sealed class AssistantRouterTests
         var fake = new FakeChatClient
         {
             ResponseOverride = """
-                {"route":"analytics","confidence":0.4,"normalizedQuery":"belirsiz istek","reasonCode":"ambiguous","includeSearchResults":false}
+                {"route":"analytics","confidence":0.4,"reasonCode":"ambiguous","includeSearchResults":false}
                 """
         };
         var router = CreateRouter(fake);
@@ -72,6 +72,40 @@ public sealed class AssistantRouterTests
         Assert.Equal(0, fake.CallCount);
     }
 
+    [Fact]
+    public async Task Classifier_CannotRewriteTheSearchQuery()
+    {
+        var fake = new FakeChatClient
+        {
+            ResponseOverride = """
+                {"route":"knowledge_search","confidence":0.92,"reasonCode":"document_lookup","includeSearchResults":false,"normalizedQuery":"model attempted rewrite"}
+                """
+        };
+        var router = CreateRouter(fake);
+
+        var decision = await router.RouteAsync("Özgün ve belirsiz kurumsal terim", "auto");
+
+        Assert.Equal("Özgün ve belirsiz kurumsal terim", decision.NormalizedQuery);
+    }
+
+    [Fact]
+    public async Task RepeatedAmbiguousQuery_UsesPrivacySafeClassifierCache()
+    {
+        var fake = new FakeChatClient
+        {
+            ResponseOverride = """
+                {"route":"knowledge_search","confidence":0.92,"reasonCode":"document_lookup","includeSearchResults":false}
+                """
+        };
+        var router = CreateRouter(fake);
+
+        await router.RouteAsync("benzersiz belirsiz terim", "auto");
+        var cached = await router.RouteAsync("benzersiz belirsiz terim", "auto");
+
+        Assert.Equal("classifier_cache", cached.Source);
+        Assert.Equal(1, fake.CallCount);
+    }
+
     private static AssistantRouterService CreateRouter(FakeChatClient fake,
         bool classifierEnabled = true)
     {
@@ -86,6 +120,8 @@ public sealed class AssistantRouterTests
         collection.AddSingleton<IChatClient>(fake);
         var provider = collection.BuildServiceProvider();
         var metrics = new PortalMetrics(provider.GetRequiredService<IServiceScopeFactory>(), config);
-        return new(config, provider, metrics, NullLogger<AssistantRouterService>.Instance);
+        var resilience = new AssistantClassifierResilienceService(config, metrics,
+            NullLogger<AssistantClassifierResilienceService>.Instance);
+        return new(config, provider, resilience, metrics, NullLogger<AssistantRouterService>.Instance);
     }
 }

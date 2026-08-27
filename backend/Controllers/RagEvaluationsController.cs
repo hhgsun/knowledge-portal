@@ -106,6 +106,12 @@ public class RagEvaluationsController(AppDbContext db, IServiceProvider services
                 x.RagPromptVersion, x.RagRetrievalVersion, x.RagReranker, x.RagIndexProfile, x.ResponseTimeMs })
             .ToListAsync();
         var helpful = rows.Count(x => x.RagFeedback == "helpful");
+        var assistantRows = await db.AssistantInteractions.AsNoTracking()
+            .Where(x => x.FeedbackAt >= since && x.Helpful != null)
+            .Select(x => new { x.Route, x.RouteSource, x.Helpful, x.FeedbackReason, x.CorrectedRoute,
+                x.DurationMs })
+            .ToListAsync();
+        var assistantHelpful = assistantRows.Count(x => x.Helpful == true);
         return Ok(new
         {
             days,
@@ -125,7 +131,25 @@ public class RagEvaluationsController(AppDbContext db, IServiceProvider services
                 .Select(x => new { promptVersion = x.Key.RagPromptVersion, indexProfile = x.Key.RagIndexProfile,
                     retrievalVersion = x.Key.RagRetrievalVersion, reranker = x.Key.RagReranker,
                     count = x.Count(), helpfulRate = x.Count(y => y.RagFeedback == "helpful") / (double)x.Count() })
-                .OrderByDescending(x => x.count).Take(10)
+                .OrderByDescending(x => x.count).Take(10),
+            assistant = new
+            {
+                total = assistantRows.Count,
+                helpful = assistantHelpful,
+                notHelpful = assistantRows.Count - assistantHelpful,
+                helpfulRate = assistantRows.Count == 0 ? 0 : assistantHelpful / (double)assistantRows.Count,
+                averageResponseTimeMs = assistantRows.Count == 0 ? 0 : assistantRows.Average(x => x.DurationMs),
+                reasons = assistantRows.Where(x => x.Helpful == false)
+                    .GroupBy(x => x.FeedbackReason ?? "unspecified")
+                    .Select(x => new { reason = x.Key, count = x.Count() }).OrderByDescending(x => x.count),
+                routes = assistantRows.GroupBy(x => new { x.Route, x.RouteSource })
+                    .Select(x => new { route = x.Key.Route, source = x.Key.RouteSource, count = x.Count(),
+                        helpfulRate = x.Count(y => y.Helpful == true) / (double)x.Count() })
+                    .OrderByDescending(x => x.count),
+                corrections = assistantRows.Where(x => x.CorrectedRoute != null)
+                    .GroupBy(x => x.CorrectedRoute!)
+                    .Select(x => new { route = x.Key, count = x.Count() }).OrderByDescending(x => x.count)
+            }
         });
     }
 

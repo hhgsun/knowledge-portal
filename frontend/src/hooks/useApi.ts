@@ -32,6 +32,7 @@ export function useApi() {
         const shouldRetry = !noRetry && (method === "GET" || method === "HEAD");
         res = shouldRetry ? await fetchWithRetry(doFetch) : await doFetch();
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") throw err;
         toast.error(networkErrorMessage(), { id: "api-network-error" });
         throw err;
       }

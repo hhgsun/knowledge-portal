@@ -126,7 +126,13 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 5 | Request analytics as viewer or API key | 403; router confidence never grants permission |
 | 6 | Request analytics as admin/editor session | 200: analytics DTO and `portal_analytics` tool call |
 | 7 | Set `Assistant:Enabled=false` and restart backend | `POST /api/assistant` returns 404; `/api/search` remains operational |
-| 8 | Build with `VITE_ASSISTANT_ENABLED=false` | Assistant navigation and `/assistant` route are omitted |
+| 8 | Call `GET /api/capabilities` after disabling Assistant | `assistant.enabled: false`; the authenticated UI hides navigation and rejects direct `/assistant` routing |
+| 9 | Build with `VITE_ASSISTANT_ENABLED=false` | Assistant navigation and `/assistant` route are omitted regardless of backend capability |
+| 10 | Submit thumbs-down with `wrong_route` and a corrected route | Owned interaction is updated; another user receives 403; admin feedback summary shows the route cohort/correction |
+| 11 | Repeat the same ambiguous query while classifier caching is enabled | First decision source is `classifier`, subsequent decision source is `classifier_cache`; retrieval query remains the original text |
+| 12 | Cancel an in-flight Assistant request | Browser aborts the request without a failure toast; a retry can be submitted normally |
+| 13 | Call `POST /api/assistant/route-preview` as viewer/API key, then admin session | Viewer/key gets 403; admin gets decision metadata without `toolCalls`, answer or results |
+| 14 | Run `backend/scripts/run-assistant-live-routing-gate.ps1` against deployment | At least 80% cases pass and at least three cases use live `classifier`/`classifier_cache` |
 
 ---
 

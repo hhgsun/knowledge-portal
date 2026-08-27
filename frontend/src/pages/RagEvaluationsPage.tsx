@@ -11,6 +11,12 @@ type FeedbackSummary = {
   averageResponseTimeMs: number; reasons: { reason: string; count: number }[];
   grounding: { status: string; count: number; helpfulRate: number }[];
   configurations: { promptVersion?: string; retrievalVersion?: string; reranker?: string; indexProfile?: string; count: number; helpfulRate: number }[];
+  assistant: {
+    total: number; helpful: number; notHelpful: number; helpfulRate: number; averageResponseTimeMs: number;
+    reasons: { reason: string; count: number }[];
+    routes: { route: string; source: string; count: number; helpfulRate: number }[];
+    corrections: { route: string; count: number }[];
+  };
 };
 
 const defaultThresholds = { recallAtK: .8, mrr: .75, ndcgAtK: .75, factCoverage: .7, citationCoverage: .8, groundingCoverage: .8, refusalAccuracy: .9, forbiddenFactPassRate: 1, p95LatencyMs: 30000 };
@@ -63,6 +69,13 @@ export default function RagEvaluationsPage() {
       <div className="grid md:grid-cols-2 gap-4 text-xs">
         <div><h3 className="font-medium mb-2">Grounding cohort'ları</h3><div className="space-y-1">{feedback.grounding.map(x=><div key={x.status} className="flex justify-between rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><span>{x.status} · {x.count}</span><span>{percent(x.helpfulRate)} yararlı</span></div>)}</div></div>
         <div><h3 className="font-medium mb-2">Retrieval / reranker cohort'ları</h3><div className="space-y-1">{feedback.configurations.map((x, i)=><div key={`${x.retrievalVersion}-${x.reranker}-${i}`} className="rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><div className="flex justify-between"><span className="truncate">{x.retrievalVersion ?? "retrieval bilinmiyor"} · {x.reranker ?? "reranker bilinmiyor"}</span><span className="ml-2 shrink-0">{percent(x.helpfulRate)} / {x.count}</span></div><div className="truncate text-zinc-500">prompt: {x.promptVersion ?? "—"} · index: {x.indexProfile ?? "—"}</div></div>)}</div></div>
+      </div>
+      <div className="border-t dark:border-zinc-800 pt-4 space-y-3">
+        <div className="flex items-center justify-between"><div><h3 className="font-medium">Assistant yönlendirme geri bildirimi</h3><p className="text-xs text-zinc-500">Rota doğruluğunu RAG yanıt kalitesinden ayrı izler.</p></div><span className="text-sm font-semibold">{percent(feedback.assistant.helpfulRate)} yararlı · {feedback.assistant.total} oy</span></div>
+        <div className="grid md:grid-cols-2 gap-4 text-xs">
+          <div className="space-y-1">{feedback.assistant.routes.map(x=><div key={`${x.route}-${x.source}`} className="flex justify-between rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><span>{x.route} · {x.source} · {x.count}</span><span>{percent(x.helpfulRate)}</span></div>)}</div>
+          <div className="flex flex-wrap content-start gap-2">{feedback.assistant.reasons.map(x=><span key={x.reason} className="rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-1">{x.reason}: {x.count}</span>)}{feedback.assistant.corrections.map(x=><span key={x.route} className="rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 px-2 py-1">önerilen {x.route}: {x.count}</span>)}</div>
+        </div>
       </div>
     </section>}
     <div className="grid lg:grid-cols-[260px_1fr] gap-6">

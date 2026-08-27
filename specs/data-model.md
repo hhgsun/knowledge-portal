@@ -351,6 +351,10 @@ Sidebar configuration stored in `featured_links`: `id`, `label`, `link_type`, `t
 
 Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nullable `user_id`/`api_key_id`, `auth_source`, `channel`, `operation`, `http_method`, `outcome`, `status_code`, and `duration_ms`. Foreign keys use SetNull so historical analytics survive user/key deletion.
 
+### AssistantInteraction
+
+Privacy-safe routing audit and feedback stored in `assistant_interactions`: `id`, nullable `user_id`/`api_key_id`, SHA-256 `query_fingerprint`, route/source/reason/confidence, nullable `search_query_id`, JSONB tool names, duration, optional helpful/reason/corrected-route feedback, and timestamps. Raw user text and generated answers are intentionally not stored. User/API-key foreign keys use SetNull; the search query identifier is audit correlation rather than a database foreign key so historical interaction rows remain removable and loosely coupled from the search subsystem.
+
 ### RagEvaluationDataset and RagEvaluationRun
 
 `rag_evaluation_datasets` stores named/versioned JSONB cases and thresholds plus timestamps. `rag_evaluation_runs` stores the requesting admin, durable lease/retry state, immutable dataset/config/runtime snapshots, progress, JSONB metrics/results, errors and lifecycle timestamps. Dataset deletion cascades to runs; deleting a requesting user is restricted while runs reference that user.
@@ -385,6 +389,10 @@ Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nul
 | `article_embeddings` | `embedding` | HNSW cosine |
 | `article_embeddings` | `tag_slugs` | GIN |
 | `tags` | `slug` | Unique |
+| `assistant_interactions` | `created_at` | B-tree |
+| `assistant_interactions` | `route`, `created_at` | Composite |
+| `assistant_interactions` | `user_id`, `created_at` | Composite |
+| `assistant_interactions` | `api_key_id` | B-tree |
 
 ## Cascade Behavior
 
@@ -404,6 +412,8 @@ Authenticated usage telemetry stored in `usage_events`: `id`, `occurred_at`, nul
 | ApiKey | Article.CreatedViaApiKeyId | SetNull |
 | User | Article.ApprovedById | SetNull |
 | Tag | ArticleTag | Cascade |
+| User | AssistantInteraction | SetNull |
+| ApiKey | AssistantInteraction | SetNull |
 
 ## Seed Data
 

@@ -37,7 +37,7 @@ import { McpModal } from "./mcp-modal";
 import { useFeaturedLinks, resolveFeaturedLinkHref } from "../../hooks/useFeaturedLinks";
 import { getColorClasses, getIconComponent } from "../../lib/lookup-utils";
 import type { FeaturedLink } from "../../types/api";
-import { assistantEnabled } from "../../config/features";
+import { useCapabilities } from "../../contexts/CapabilitiesContext";
 
 interface NavItem {
   label: string;
@@ -46,11 +46,8 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const navigation: NavItem[] = [
+const baseNavigation: NavItem[] = [
   { label: "Home", href: "/", icon: <Home size={18} /> },
-  ...(assistantEnabled
-    ? [{ label: "Assistant", href: "/assistant", icon: <Bot size={18} /> }]
-    : []),
   { label: "Search", href: "/search", icon: <Search size={18} /> },
   {
     label: "Articles",
@@ -195,6 +192,10 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mcpModalOpen, setMcpModalOpen] = useState(false);
   const { links: featuredLinks } = useFeaturedLinks();
+  const { assistantEnabled } = useCapabilities();
+  const navigation: NavItem[] = assistantEnabled
+    ? [baseNavigation[0], { label: "Assistant", href: "/assistant", icon: <Bot size={18} /> }, ...baseNavigation.slice(1)]
+    : baseNavigation;
 
   // Close mobile sidebar on route change
   useEffect(() => {

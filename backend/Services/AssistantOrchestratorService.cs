@@ -40,8 +40,8 @@ public sealed class AssistantOrchestratorService(
             {
                 watch.Stop();
                 metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
-                    new("assistant.route", AssistantRouterService.RouteName(decision.Route)),
-                    new("assistant.outcome", "denied"));
+                    new("route", AssistantRouterService.RouteName(decision.Route)),
+                    new("outcome", "denied"));
                 return (null, new(403, authorization.Error!));
             }
 
@@ -56,16 +56,21 @@ public sealed class AssistantOrchestratorService(
             watch.Stop();
             response = response with { ResponseTimeMs = watch.ElapsedMilliseconds, TraceId = traceId };
             metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
-                new("assistant.route", response.Route), new("assistant.outcome", "success"));
+                new("route", response.Route), new("outcome", "success"));
             return (response, null);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             watch.Stop();
             metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
-                new("assistant.route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
-                new("assistant.outcome", "timeout"));
+                new("route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
+                new("outcome", "timeout"));
             return (null, new(504, "Assistant request exceeded its processing deadline."));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Preserve caller disconnect/cancellation semantics; this is not a server failure.
+            throw;
         }
         catch (AssistantExecutionException ex)
         {
@@ -73,8 +78,8 @@ public sealed class AssistantOrchestratorService(
             logger.LogWarning("Assistant tool failed for trace {TraceId} with status {StatusCode}",
                 traceId, ex.Error.StatusCode);
             metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
-                new("assistant.route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
-                new("assistant.outcome", "tool_failure"));
+                new("route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
+                new("outcome", "tool_failure"));
             return (null, ex.Error);
         }
         catch (Exception ex)
@@ -82,8 +87,8 @@ public sealed class AssistantOrchestratorService(
             watch.Stop();
             logger.LogError(ex, "Assistant orchestration failed for trace {TraceId}", traceId);
             metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
-                new("assistant.route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
-                new("assistant.outcome", "failure"));
+                new("route", decision == null ? "unknown" : AssistantRouterService.RouteName(decision.Route)),
+                new("outcome", "failure"));
             return (null, new(500, "Assistant request failed."));
         }
     }
@@ -101,6 +106,7 @@ public sealed class AssistantOrchestratorService(
         {
             Answer = answer,
             Results = value.Results,
+            SearchQueryId = value.SearchQueryId,
             ToolCalls = ["knowledge_search"],
             Warnings = CompactWarnings(value.Warning)
         };
@@ -123,6 +129,7 @@ public sealed class AssistantOrchestratorService(
                     ? "Kaynaklı yanıt üretilemedi ve eşleşen bir portal kaynağı bulunamadı."
                     : $"Kaynaklı yanıt üretilemedi; bunun yerine {fallback.Result.Results.Count} ilgili kaynak gösteriyorum.",
                 Results = fallback.Result.Results,
+                SearchQueryId = fallback.Result.SearchQueryId,
                 ToolCalls = ["knowledge_rag", "knowledge_search"],
                 Warnings = CompactWarnings(warning, fallback.Result.Warning)
             };
@@ -148,6 +155,7 @@ public sealed class AssistantOrchestratorService(
             Answer = result.Rag.Answer,
             Results = results,
             Rag = ToDto(result.Rag),
+            SearchQueryId = result.SearchQueryId,
             ToolCalls = tools.ToArray(),
             Warnings = warnings.Distinct().ToArray()
         };
@@ -224,13 +232,13 @@ public sealed class AssistantOrchestratorService(
     }
 
     private void RecordTool(string tool, string outcome) => metrics.AssistantToolCalls.Add(1,
-        new("assistant.tool", tool), new("assistant.outcome", outcome));
+        new("tool", tool), new("outcome", outcome));
 
     private static AssistantResponseDto Base(AssistantRouteDecision decision,
         AssistantRoute? actualRoute = null, string? reason = null) => new(
         AssistantRouterService.RouteName(actualRoute ?? decision.Route), decision.Confidence,
         decision.Source, reason ?? decision.ReasonCode, decision.NormalizedQuery, null, [], null, null,
-        false, null, [], [], 0, "");
+        false, null, [], [], null, null, 0, "");
 
     private static AssistantRagDto ToDto(RagService.RagResult rag) => new(
         rag.Sources.Select(ToSource).ToArray(), rag.ConsultedSources.Select(ToSource).ToArray(),

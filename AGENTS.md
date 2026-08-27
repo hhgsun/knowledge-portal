@@ -208,7 +208,10 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/tags` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/tags?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
 | `/api/search` | GET | ✓ | — | ✗ |
+| `/api/capabilities` | GET | ✓ | — | ✗ |
 | `/api/assistant` | POST | ✓ | `analytics:view` on analytics route | ✓ on analytics route |
+| `/api/assistant/feedback` | POST | ✓ | — | ✗ |
+| `/api/assistant/route-preview` | POST | ✓ | `users:manage` | ✓ |
 | `/api/search/authors` | GET | ✓ | — | ✗ |
 | `/api/search/click` | POST | ✓ | — | ✗ |
 | `/api/search/rag-feedback` | POST | ✓ | — | ✗ |
@@ -283,6 +286,8 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
 | `assistant.message` | 1 | 4000 | Required; configurable via `Assistant:MaxMessageCharacters` |
 | `assistant.preferredRoute` | — | — | Optional: `auto`, `search`, `answer`, `analytics`, or `chat` |
+| `assistant.feedback.reason` | — | — | Optional: `incorrect`, `incomplete`, `wrong_source`, `wrong_route`, `outdated`, `no_answer`, or `other` |
+| `assistant.feedback.correctedRoute` | — | — | Optional route correction; validated against the fixed read-only route registry |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `articles.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
 | `articles.includeContent` | — | — | Optional, boolean. When true → includes canonical CommonMark/GFM as the string field `contentMarkdown` |
@@ -309,7 +314,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | Search (semantic) | ✅ Implemented | Ollama embedding (bge-m3, 1024 dims) + heading/layout-bounded parent (~1000 words) and searchable child (~220 words, 40 overlap) hierarchy + pgvector cosine distance, best-child scoring |
 | Search (hybrid) | ✅ Implemented | Reciprocal Rank Fusion (α=0.4 fulltext + β=0.6 semantic, k=60, `Helpers/RrfHelper`) |
 | Search (RAG) | ✅ Implemented | Deterministic query understanding, hybrid/RRF fusion, dynamic lookup authority/freshness ranking, adaptive source breadth, calibrated token budgeting, local/optional external reranking, ACL-safe child→parent document retrieval, typed grounded synthesis, cited/consulted separation, conservative conflict screening, and resilient fail-closed map-reduce controls |
-| Agentic Assistant Routing | ✅ Implemented | Isolated `/api/assistant` and `/assistant` UI; explicit/deterministic/structured-LLM routing across hybrid search, grounded RAG, session/RBAC-protected analytics and bounded general chat. Low-confidence/RAG failures fall back to read-only search; no write tools or free-form SQL. Separate assistant/routing kill switches preserve `/api/search` and RAG contracts. |
+| Agentic Assistant Routing | ✅ Implemented | Isolated `/api/assistant` and runtime-discovered `/assistant` UI; explicit/deterministic/structured-LLM routing across hybrid search, grounded RAG, session/RBAC-protected analytics and bounded general chat. Classifier has its own bulkhead, circuit breaker, timeout and fingerprint-only exact cache; it cannot rewrite the query. Low-confidence/RAG failures fall back to read-only search. Responses preserve search IDs for click/RAG evaluation, feedback is ownership-bound and privacy-safe, and no write tool or free-form SQL exists. Separate assistant/routing kill switches preserve `/api/search` and RAG contracts. |
 | RAG Quality Evaluation | ✅ Implemented | Admin-only dynamic golden datasets and thresholds, lease-recoverable durable background runs, immutable dataset/config/model/prompt/retrieval snapshots, Recall/MRR/NDCG/fact/citation/grounding/refusal/safety/latency metrics, production feedback summary at `/settings/rag-evaluations`, and a mandatory CI live-model gate |
 | Search Click Tracking | ✅ Implemented | POST /api/search/click records which result was clicked |
 | Analytics | ✅ Implemented | Session-only endpoint; persisted authenticated usage events with calendar-day trend plus per-user, per-API-key integration, REST/MCP, read/write, error, latency, and top-operation breakdowns |
@@ -340,7 +345,7 @@ No known gaps at this time.
 
 ## Key Behaviors
 
-- **Assistant routing and removal boundary**: `POST /api/assistant` first honors an explicit safe mode, then deterministic Turkish/English intent signals, and only ambiguous input reaches a structured low-token classifier. `AssistantPolicyService` authorizes the chosen route independently of the model; analytics retains `analytics:view` plus session-only enforcement. The bounded orchestrator calls existing `SearchExecutionService`/RAG/`AnalyticsReportService`, never duplicates their domain behavior, and exposes no mutation or Text-to-SQL tool. `Assistant:Enabled=false` disables the backend capability; `VITE_ASSISTANT_ENABLED=false` omits its frontend route/navigation at build time; `AgenticRouting:Enabled=false` keeps the assistant on an explicit/default route. The assistant controller/services/page can be deleted without changing `/api/search`, `RagService`, MCP, analytics reporting, or stored portal content.
+- **Assistant routing and removal boundary**: `POST /api/assistant` first honors an explicit safe mode, then deterministic Turkish/English intent signals, and only ambiguous input reaches a structured low-token classifier. The classifier cannot rewrite the original query and runs behind an independent timeout/bulkhead/circuit breaker plus fingerprint-only exact-decision cache. `AssistantPolicyService` authorizes the chosen route independently of the model; analytics retains `analytics:view` plus session-only enforcement. The bounded orchestrator calls existing `SearchExecutionService`/RAG/`AnalyticsReportService`, never duplicates their domain behavior, and exposes no mutation or Text-to-SQL tool. Runtime `/api/capabilities` prevents frontend/backend flag drift; `Assistant:Enabled=false` disables the backend capability, `VITE_ASSISTANT_ENABLED=false` omits its frontend route/navigation at build time, and `AgenticRouting:Enabled=false` keeps the assistant on an explicit/default route. Privacy-safe `assistant_interactions` audit/feedback rows contain a query fingerprint, routing/tool metadata and optional vote—never raw query or answer—and can be removed with an explicit data migration if the feature is physically removed. Search, `RagService`, MCP, analytics reporting and portal content remain independent.
 - **Slug regeneration**: When article title changes via PUT, slug is regenerated (if not conflicting)
 - **Version creation**: Triggered when `content` field changes (not title-only or metadata-only edits)
 - **Version restore**: POST `/api/articles/{id}/versions/{versionId}/restore` copies version content/title back to article, creates a new version with "Restored to version N" summary, recalculates read time

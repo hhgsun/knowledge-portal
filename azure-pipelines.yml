@@ -44,6 +44,9 @@ stages:
           - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --no-build --filter "Gate=McpConformance|Gate=McpSchema|Gate=GoldenRetrieval|Gate=DataIsolation|Gate=McpSecurity|Gate=McpConcurrency" --logger "trx;LogFileName=mcp-quality-gates.trx" --results-directory $(Agent.TempDirectory)/testresults
             displayName: 'MCP quality gates'
 
+          - script: dotnet test backend/Tests/KnowledgePortal.Api.Tests.csproj --no-build --filter "Gate=AssistantRouting" --logger "trx;LogFileName=assistant-routing-gate.trx" --results-directory $(Agent.TempDirectory)/testresults
+            displayName: 'Assistant routing golden gate'
+
           - script: |
               if [ -z "$RAG_FIDELITY_CONNECTION_STRING" ]; then
                 echo "RAG_FIDELITY_CONNECTION_STRING is mandatory; refusing to skip the PostgreSQL/pgvector fidelity gate."
@@ -177,3 +180,8 @@ stages:
               RAG_LIVE_BASE_URL: $(RAG_LIVE_BASE_URL)
               RAG_LIVE_TOKEN: $(RAG_LIVE_TOKEN)
               RAG_LIVE_DATASET_ID: $(RAG_LIVE_DATASET_ID)
+          - pwsh: backend/scripts/run-assistant-live-routing-gate.ps1
+            displayName: 'Require live Assistant routing quality'
+            env:
+              ASSISTANT_LIVE_BASE_URL: $(RAG_LIVE_BASE_URL)
+              ASSISTANT_LIVE_TOKEN: $(RAG_LIVE_TOKEN)

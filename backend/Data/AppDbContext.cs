@@ -23,6 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
     public DbSet<IndexJob> IndexJobs => Set<IndexJob>();
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
+    public DbSet<AssistantInteraction> AssistantInteractions => Set<AssistantInteraction>();
     public DbSet<RagEvaluationDataset> RagEvaluationDatasets => Set<RagEvaluationDataset>();
     public DbSet<RagEvaluationRun> RagEvaluationRuns => Set<RagEvaluationRun>();
 
@@ -315,6 +316,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(u => new { u.Operation, u.OccurredAt });
             e.HasOne(u => u.User).WithMany().HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(u => u.ApiKey).WithMany().HasForeignKey(u => u.ApiKeyId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AssistantInteraction>(e =>
+        {
+            e.ToTable("assistant_interactions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.QueryFingerprint).IsRequired().HasMaxLength(64);
+            e.Property(x => x.Route).IsRequired().HasMaxLength(40);
+            e.Property(x => x.RouteSource).IsRequired().HasMaxLength(30);
+            e.Property(x => x.ReasonCode).IsRequired().HasMaxLength(80);
+            e.Property(x => x.SearchQueryId).HasMaxLength(21);
+            e.Property(x => x.ToolCallsJson).IsRequired().HasColumnType("jsonb");
+            e.Property(x => x.FeedbackReason).HasMaxLength(40);
+            e.Property(x => x.CorrectedRoute).HasMaxLength(40);
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasIndex(x => new { x.Route, x.CreatedAt });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ApiKey).WithMany().HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── Durable search-index queue ───────────────────

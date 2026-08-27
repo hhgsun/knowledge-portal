@@ -259,10 +259,19 @@ export interface RagResponse {
 export type AssistantRoute = "knowledge_search" | "knowledge_answer" | "analytics" | "general_chat" | "clarification";
 export type AssistantPreferredRoute = "auto" | "search" | "answer" | "analytics" | "chat";
 
+export interface AssistantCapabilities {
+  enabled: boolean;
+  agenticRoutingEnabled: boolean;
+  classifierEnabled: boolean;
+  feedbackEnabled: boolean;
+  maxMessageCharacters: number;
+  supportedModes: AssistantPreferredRoute[];
+}
+
 export interface AssistantResponse {
   route: AssistantRoute;
   confidence: number;
-  routeSource: "manual" | "deterministic" | "classifier" | "fallback" | "default";
+  routeSource: "manual" | "deterministic" | "classifier" | "classifier_cache" | "fallback" | "default";
   reasonCode: string;
   normalizedQuery: string;
   answer: string | null;
@@ -289,6 +298,8 @@ export interface AssistantResponse {
   clarification: string | null;
   toolCalls: string[];
   warnings: string[];
+  searchQueryId: string | null;
+  interactionId: string | null;
   responseTimeMs: number;
   traceId: string;
 }

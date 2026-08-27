@@ -106,7 +106,9 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 
 `POST /api/assistant` is authenticated and exposes a fixed read-only route registry. The router may classify intent, but it cannot authorize a route or invoke a tool. `AssistantPolicyService` re-checks every selected route against the authenticated principal; analytics requires both an interactive session and `analytics:view`, exactly like `GET /api/analytics`. The search and RAG routes reuse `SearchExecutionService`, including its article visibility and API-key ownership filters.
 
-User text is serialized as untrusted data for the optional structured classifier. The classifier has no tool access. General chat is canned so it cannot invent company facts, and company answers use the existing grounded RAG validation path. No mutation or free-form SQL operation is registered; changing configuration cannot create one. The request has bounded message, classifier, total-time and tool-call budgets. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
+User text is serialized as untrusted data for the optional structured classifier. The classifier has no tool access and its schema cannot return a rewritten query; retrieval always receives the original normalized user input. It has a separate bulkhead, queue timeout, circuit breaker and fingerprint-only exact decision cache. General chat is canned so it cannot invent company facts, and company answers use the existing grounded RAG validation path. No mutation or free-form SQL operation is registered; changing configuration cannot create one. The request has bounded message, classifier, total-time and tool-call budgets. `/api/capabilities` lets the authenticated UI honor the runtime backend kill switch in addition to the compile-time flag.
+
+Assistant audit stores only a SHA-256 query fingerprint plus route/tool/timing identifiers; raw prompts and generated answers are not persisted in `assistant_interactions`. Feedback updates require ownership of the interaction. When an interaction produced a RAG query, the vote is also attached to the existing owned `search_queries` evaluation record. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
 
 ### API Key Capability Model ("editor minus delete")
 
@@ -126,6 +128,7 @@ These endpoints explicitly reject API key authentication:
 | `GET/POST/PUT/DELETE /api/admin/users` | User management is sensitive admin operation |
 | `GET /api/analytics` | Analytics data should not be programmatically scraped |
 | `POST /api/assistant` when routed to analytics | Route policy preserves the same session-only analytics boundary |
+| `POST /api/assistant/route-preview` | Admin-only live classifier quality probe; never executes the selected tool |
 | `GET/POST/DELETE /api/keys` | Prevents API key from creating/managing other API keys |
 | `GET/POST/PUT/DELETE /api/admin/keys` | Admin all-user key management; same reason as above |
 | `DELETE /api/articles/{id}`, `DELETE .../attachments/{id}`, `DELETE .../comments/{id}`, `DELETE /api/tags`, `DELETE /api/lookups`, `DELETE /api/featured-links` | Destructive deletes are session-only (API key capability model) |

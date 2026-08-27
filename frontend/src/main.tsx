@@ -3,6 +3,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./config/msalConfig";
 import { AuthProvider } from "./contexts/AuthContext";
+import { CapabilitiesProvider } from "./contexts/CapabilitiesContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ErrorBoundary } from "./components/error-boundary";
 import { ToastProvider } from "./components/toast-provider";
@@ -23,9 +24,11 @@ msalInstance.initialize().then(() => {
       <MsalProvider instance={msalInstance}>
         <ThemeProvider>
           <AuthProvider>
-            <OfflineBanner />
-            <App />
-            <ToastProvider />
+            <CapabilitiesProvider>
+              <OfflineBanner />
+              <App />
+              <ToastProvider />
+            </CapabilitiesProvider>
           </AuthProvider>
         </ThemeProvider>
       </MsalProvider>

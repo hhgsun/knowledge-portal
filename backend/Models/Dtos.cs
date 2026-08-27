@@ -51,6 +51,11 @@ public record RagFeedbackRequest(string SearchQueryId, bool Helpful, string? Rea
 // Assistant / bounded agentic routing. Kept separate from search DTOs so the entire
 // assistant surface can be disabled or removed without changing /api/search contracts.
 public record AssistantRequest(string Message, string? PreferredRoute = "auto");
+public record AssistantFeedbackRequest(string InteractionId, bool Helpful,
+    string? Reason = null, string? CorrectedRoute = null);
+public record AssistantCapabilitiesDto(bool Enabled, bool AgenticRoutingEnabled,
+    bool ClassifierEnabled, bool FeedbackEnabled, int MaxMessageCharacters,
+    string[] SupportedModes);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
@@ -88,6 +93,8 @@ public record AssistantResponseDto(
     string? Clarification,
     string[] ToolCalls,
     string[] Warnings,
+    string? SearchQueryId,
+    string? InteractionId,
     long ResponseTimeMs,
     string TraceId);
 
