@@ -140,6 +140,8 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         followUp.EnsureSuccessStatusCode();
         var body = await followUp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("VPN politikası", body.GetProperty("normalizedQuery").GetString());
+        Assert.Contains(body.GetProperty("toolCalls").EnumerateArray(), item =>
+            item.GetString()?.StartsWith("query_contextualization:", StringComparison.Ordinal) == true);
         var messages = await client.GetFromJsonAsync<JsonElement>($"/api/assistant/conversations/{conversationId}/messages");
         Assert.Equal(4, messages.GetProperty("messages").GetArrayLength());
     }

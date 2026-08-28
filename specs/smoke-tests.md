@@ -133,7 +133,7 @@ This document describes how to verify the Knowledge Portal is functioning correc
 | 12 | Cancel an in-flight Assistant request | Browser aborts the request without a failure toast; a retry can be submitted normally |
 | 13 | Call `GET /api/admin/rag/debug?q=...` as viewer/API key, then admin session | Viewer/key gets 403; admin gets retrieval/context plan without an LLM answer |
 | 14 | Run `backend/scripts/run-rag-live-quality-gate.ps1` against deployment | Live grounded-answer quality thresholds pass |
-| 15 | Create a conversation, ask a topic, then ask “peki detayları?” | Only the owner can read it; response query contains bounded prior topic context; delete-one/clear remove messages |
+| 15 | Create a conversation, ask a topic, then ask “peki bunun istisnası var mı?” | Only the owner can read it; `normalizedQuery` is a standalone question containing the prior topic, tool calls report contextualization, and delete-one/clear remove messages |
 | 16 | Call `/api/assistant/stream` | `text/event-stream`: status → verified token chunks → complete; cancellation closes work without a server failure |
 | 17 | Repeat a fully grounded answer, then update a cited article | Second request may be `cacheHit:true`; update forces miss. Another user/API-key scope never receives the entry |
 | 18 | Inspect `assistant_interactions` after feedback | RAG versions/profile/grounding/answer hash exist; no raw query/answer or SearchQuery relation exists |

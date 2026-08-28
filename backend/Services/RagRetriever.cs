@@ -60,15 +60,21 @@ public sealed class HybridRagRetriever(
     private readonly double _lexicalWeight = Math.Clamp(config.GetValue("Ollama:RagLexicalWeight", .4), 0, 1);
     private readonly double _semanticWeight = Math.Clamp(config.GetValue("Ollama:RagSemanticWeight", .6), 0, 1);
     private readonly double _duplicateThreshold = Math.Clamp(config.GetValue("Ollama:RagDuplicateThreshold", .88), .5, 1);
+    private readonly double _hydeWeight = Math.Clamp(config.GetValue(
+        "Assistant:QueryContextualization:HydeWeight", .3), .1, .5);
     private readonly string _embeddingModel = config["Ollama:EmbeddingModel"] ?? "bge-m3";
 
     public async Task<List<RagRetrievalChunk>> RetrieveAsync(RagQueryPlan plan, int limit, double minSemanticScore,
         int maxPerArticle, ArticleFilter? filter = null, CancellationToken ct = default)
     {
         var perQuery = new List<List<RagRetrievalChunk>>();
-        foreach (var query in plan.Queries)
+        for (var index = 0; index < plan.Queries.Count; index++)
+        {
+            var query = plan.Queries[index];
             perQuery.Add(await RetrieveSingleAsync(query, limit, minSemanticScore, maxPerArticle,
-                plan.EffectiveFilter ?? filter, plan.PrefersFreshSources, ct));
+                plan.EffectiveFilter ?? filter, plan.PrefersFreshSources,
+                index == 0 ? plan.HypotheticalDocument : null, ct));
+        }
 
         if (perQuery.Count == 1) return perQuery[0];
         var merged = perQuery.SelectMany(list => list.Select((item, rank) => new { item, rank }))
@@ -85,12 +91,30 @@ public sealed class HybridRagRetriever(
 
     private async Task<List<RagRetrievalChunk>> RetrieveSingleAsync(string query, int limit,
         double minSemanticScore, int maxPerArticle, ArticleFilter? filter, bool prefersFreshSources,
-        CancellationToken ct)
+        string? hypotheticalDocument, CancellationToken ct)
     {
         List<VectorChunkResult> semantic;
         try { semantic = await vectors.SearchChunksAsync(query, limit, ct, minSemanticScore, maxPerArticle, filter); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.LogWarning(ex, "Semantic RAG retrieval failed; continuing with lexical candidates"); semantic = []; }
+
+        // HyDE is deliberately isolated to dense candidate generation. Its model-authored text is
+        // never treated as evidence, never enters FTS, and never reaches answer generation.
+        if (!string.IsNullOrWhiteSpace(hypotheticalDocument))
+        {
+            try
+            {
+                var hyde = await vectors.SearchChunksAsync(hypotheticalDocument, limit, ct,
+                    minSemanticScore, maxPerArticle, filter);
+                semantic = MergeDenseCandidates(semantic, hyde, limit, _hydeWeight);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "HyDE dense retrieval failed; continuing with the standalone query embedding");
+            }
+        }
 
         List<string> lexicalIds;
         try
@@ -197,6 +221,32 @@ public sealed class HybridRagRetriever(
     }
 
     private static string Key(VectorChunkResult x) => $"{x.ArticleId}:{x.SourceType}:{x.AttachmentId}:{x.ChunkIndex}";
+    private static List<VectorChunkResult> MergeDenseCandidates(
+        IReadOnlyList<VectorChunkResult> original,
+        IReadOnlyList<VectorChunkResult> hypothetical,
+        int limit,
+        double hypotheticalWeight)
+    {
+        var originalByKey = original.GroupBy(Key, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.MaxBy(item => item.Score)!, StringComparer.Ordinal);
+        var hypotheticalByKey = hypothetical.GroupBy(Key, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.MaxBy(item => item.Score)!, StringComparer.Ordinal);
+        return original.Concat(hypothetical)
+            .GroupBy(Key, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var best = group.OrderByDescending(item => item.Score).First();
+                var originalScore = originalByKey.GetValueOrDefault(group.Key)?.Score ?? 0;
+                var hypotheticalScore = hypotheticalByKey.GetValueOrDefault(group.Key)?.Score ?? 0;
+                var agreement = originalScore > 0 && hypotheticalScore > 0 ? .02 : 0;
+                var score = (1 - hypotheticalWeight) * originalScore
+                    + hypotheticalWeight * hypotheticalScore + agreement;
+                return best with { Score = Math.Min(1, score) };
+            })
+            .OrderByDescending(item => item.Score)
+            .Take(Math.Max(1, limit))
+            .ToList();
+    }
     private static VectorChunkResult SyntheticChunk(string articleId, int chunkIndex, string content,
         string sourceType, string? attachmentId, string? sourceName, string? sourceLocation)
     {

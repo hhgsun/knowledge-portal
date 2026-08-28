@@ -52,7 +52,9 @@ Arama ekranındaki “Bilgi Asistanına sor” eylemi sorguyu metni korunarak `/
 
 ## Çok Turlu Konuşma
 
-Konuşma geçmişi yalnız interaktif oturumda kullanılabilir ve kullanıcı sahipliğiyle korunur; API key geçmiş okuyamaz. Bounded son kullanıcı mesajları takip sorusunu bağlamsallaştırır. `GET/POST/DELETE /api/assistant/conversations`, mesaj listeleme ve tek konuşma silme endpoint'leri session-only'dir. `Assistant:ConversationRetentionDays` süresi dolan konuşmaları sınırlar.
+Konuşma geçmişi yalnız interaktif oturumda kullanılabilir ve kullanıcı sahipliğiyle korunur; API key geçmiş okuyamaz. `AssistantQueryContextualizer`, bounded son kullanıcı ve asistan turlarını untrusted veri olarak işleyip “peki bunun istisnası var mı?” gibi anaforik takip sorularını önceki konu, kesin teknik adlar ve explicit scope token'ları korunmuş bağımsız bir arama sorusuna dönüştürür. Model timeout, hata veya şema dışı çıktı verirse istek bozulmaz; son kullanıcı konusuyla deterministik rewrite uygulanır. `GET/POST/DELETE /api/assistant/conversations`, mesaj listeleme ve tek konuşma silme endpoint'leri session-only'dir. `Assistant:ConversationRetentionDays` süresi dolan konuşmaları sınırlar.
+
+`Assistant:QueryContextualization:HydeEnabled=true` olduğunda aynı bounded çağrı kısa bir hypothetical knowledge passage da üretebilir. Bu metin gerçek bilgi veya kanıt sayılmaz: yalnız standalone query embedding'ine ek ikinci dense lookup çalıştırır; FTS'e, context builder'a, citation validator'a veya yanıt üretim promptuna girmez. Original-query ve HyDE dense adayları kimlik bazında `HydeWeight` (varsayılan 0,3) ile ağırlıklı birleştirilir; iki sinyalin aynı child'a isabeti yalnız küçük bir tie-break bonusu verir. Böylece üretilmiş metin original kullanıcı sorgusunu domine edemez.
 
 ## Yetki ve Fail-Closed Davranış
 

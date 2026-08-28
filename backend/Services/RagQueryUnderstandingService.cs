@@ -10,7 +10,7 @@ public sealed record RagExtractedFilters(IReadOnlyList<string> Tags, IReadOnlyLi
 public sealed record RagQueryPlan(string OriginalQuery, string RewrittenQuery,
     IReadOnlyList<string> Queries, RagExtractedFilters ExtractedFilters,
     IReadOnlyList<string> Expansions, bool IsComplex, bool PrefersFreshSources,
-    ArticleFilter? EffectiveFilter);
+    ArticleFilter? EffectiveFilter, string? HypotheticalDocument = null);
 
 /// <summary>
 /// Cheap deterministic query understanding. It extracts explicit metadata filters, expands a
@@ -38,7 +38,8 @@ public sealed class RagQueryUnderstandingService(IConfiguration config)
         .ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Get<string[]>() ?? [], StringComparer.OrdinalIgnoreCase);
 
     public async Task<RagQueryPlan> UnderstandAsync(AppDbContext db, string query,
-        ArticleFilter? existingFilter = null, CancellationToken ct = default)
+        ArticleFilter? existingFilter = null, CancellationToken ct = default,
+        string? hypotheticalDocument = null)
     {
         var tags = new List<string>();
         var authors = new List<string>();
@@ -88,7 +89,8 @@ public sealed class RagQueryUnderstandingService(IConfiguration config)
 
         return new(query, rewritten, queries,
             new(tags.Distinct().ToList(), authors.Distinct().ToList(), contentTypes.Distinct().ToList()),
-            expansions, isComplex, FreshnessSignals.Any(folded.Contains), effective);
+            expansions, isComplex, FreshnessSignals.Any(folded.Contains), effective,
+            string.IsNullOrWhiteSpace(hypotheticalDocument) ? null : hypotheticalDocument.Trim());
     }
 
     private static List<string>? Merge(IEnumerable<string>? existing, IEnumerable<string> added)

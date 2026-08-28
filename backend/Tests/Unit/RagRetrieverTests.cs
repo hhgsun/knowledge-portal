@@ -11,10 +11,14 @@ public class RagRetrieverTests
 {
     private sealed class FakeVectors(List<VectorChunkResult> chunks) : IVectorSearchService
     {
+        public List<string> Queries { get; } = [];
         public Task<List<VectorSearchResult>> SearchAsync(string queryText, int limit, CancellationToken ct = default, double? minScore = null, ArticleFilter? filter = null) =>
             Task.FromResult(chunks.Take(limit).Select(x => new VectorSearchResult(x.ArticleId, x.Score, x.ChunkIndex)).ToList());
-        public Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks, CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3, ArticleFilter? filter = null) =>
-            Task.FromResult(chunks.Take(maxChunks).ToList());
+        public Task<List<VectorChunkResult>> SearchChunksAsync(string queryText, int maxChunks, CancellationToken ct = default, double? minScore = null, int maxPerArticle = 3, ArticleFilter? filter = null)
+        {
+            Queries.Add(queryText);
+            return Task.FromResult(chunks.Take(maxChunks).ToList());
+        }
     }
 
     [Fact]
@@ -102,6 +106,31 @@ public class RagRetrieverTests
         var result = await retriever.RetrieveAsync(plan, 10, .3, 3);
 
         Assert.Equal("high", result[0].Chunk.ArticleId);
+    }
+
+    [Fact]
+    public async Task HybridRetriever_UsesHydeOnlyForSecondDenseLookup()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new AppDbContext(options);
+        db.Articles.Add(Article("vpn", "VPN Politikası", "VPN istisnaları ve onay koşulları."));
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        var vectors = new FakeVectors(
+            [new VectorChunkResult("vpn", 0, .8, "VPN istisnaları ve onay koşulları")]);
+        var retriever = new HybridRagRetriever(vectors,
+            new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance),
+            db, new LocalRagChunkReranker(), config, NullLogger<HybridRagRetriever>.Instance);
+        var plan = new RagQueryPlan("VPN istisnaları", "VPN istisnaları", ["VPN istisnaları"],
+            new([], [], []), [], false, false, null,
+            "VPN politikasında kapsam dışı durumlar ve onay koşulları açıklanır.");
+
+        await retriever.RetrieveAsync(plan, 10, .3, 3);
+
+        Assert.Equal(2, vectors.Queries.Count);
+        Assert.Equal("VPN istisnaları", vectors.Queries[0]);
+        Assert.Contains("kapsam dışı", vectors.Queries[1]);
     }
 
     private static RagRetrievalChunk Item(string article, int chunk, double score) =>

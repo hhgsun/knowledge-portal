@@ -763,7 +763,7 @@ The Assistant has one purpose: produce a grounded answer from authorized portal 
 | Field | Type | Required | Notes |
 |-------|------|:--------:|-------|
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
-| `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user turns contextualize follow-ups. |
+| `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user/assistant turns rewrite follow-ups into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
 | `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |

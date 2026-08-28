@@ -200,9 +200,12 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IRagTokenCounter, RagTokenCounter>();
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
     builder.Services.AddSingleton<RagQueryUnderstandingService>();
+    builder.Services.AddSingleton<AssistantQueryContextualizer>();
     builder.Services.AddSingleton<RagContextExpansionService>();
     builder.Services.AddSingleton<LocalRagChunkReranker>();
-    builder.Services.AddHttpClient<ExternalRagChunkReranker>();
+    builder.Services.AddSingleton<ExternalRerankerState>();
+    builder.Services.AddHttpClient<ExternalRagChunkReranker>()
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
     builder.Services.AddScoped<IRagChunkReranker>(sp => sp.GetRequiredService<ExternalRagChunkReranker>());
 }
 

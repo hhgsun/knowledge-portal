@@ -96,8 +96,11 @@ public sealed class AssistantAnswerCacheService(AppDbContext db, IServiceProvide
     }
 
     private string RuntimeFingerprint() => Fingerprint(string.Join('|', RagService.PromptVersion,
-        RagService.RetrievalVersion, config["Ollama:ChatModel"], config["Ollama:EmbeddingModel"],
-        config["Ollama:ChunkingVersion"]));
+        RagService.RetrievalVersion, AssistantQueryContextualizer.Version,
+        config["Ollama:ChatModel"], config["Ollama:EmbeddingModel"],
+        config["Ollama:ChunkingVersion"], config["Reranking:External:Enabled"],
+        config["Reranking:External:Model"], config["Reranking:External:ScoreWeight"],
+        config["Assistant:QueryContextualization:HydeWeight"]));
     private static string UserScope(ClaimsPrincipal p) =>
         $"{p.GetUserId()}|{p.GetRole()}|{p.GetSource()}|{p.GetApiKeyId() ?? "session"}";
     private static string Fingerprint(string value) => Convert.ToHexString(

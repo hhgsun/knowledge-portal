@@ -16,7 +16,8 @@ public sealed class AssistantOrchestratorService(
     ILogger<AssistantOrchestratorService> logger)
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
-        AssistantRequest request, ClaimsPrincipal principal, CancellationToken cancellationToken = default)
+        AssistantRequest request, ClaimsPrincipal principal, CancellationToken cancellationToken = default,
+        string? hypotheticalDocument = null, string contextualizationStrategy = "none")
     {
         if (string.IsNullOrWhiteSpace(request.Message))
             return (null, new ServiceError(400, "Message is required."));
@@ -57,7 +58,7 @@ public sealed class AssistantOrchestratorService(
                 {
                     Answer = cached.Answer,
                     Rag = cached.Rag,
-                    ToolCalls = ["semantic_answer_cache"],
+                    ToolCalls = ToolCalls("semantic_answer_cache", contextualizationStrategy),
                     CacheHit = true
                 }, null);
             }
@@ -67,7 +68,8 @@ public sealed class AssistantOrchestratorService(
                 request.OnlyOwnContent,
                 request.Tags,
                 request.Authors,
-                request.ContentTypes), principal, budget.Token);
+                request.ContentTypes,
+                hypotheticalDocument), principal, budget.Token);
             if (execution.Error != null) return (null, execution.Error);
 
             var result = execution.Result!;
@@ -105,7 +107,7 @@ public sealed class AssistantOrchestratorService(
             {
                 Answer = result.Rag.Answer,
                 Rag = ragDto,
-                ToolCalls = ["knowledge_rag"],
+                ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
                 Warnings = warnings.Distinct().ToArray()
             }, null);
         }
@@ -152,6 +154,11 @@ public sealed class AssistantOrchestratorService(
         return $"{request.Message.Trim()}\n[scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)}]";
     }
+
+    private static string[] ToolCalls(string terminalTool, string contextualizationStrategy) =>
+        contextualizationStrategy == "none"
+            ? [terminalTool]
+            : [$"query_contextualization:{contextualizationStrategy}", terminalTool];
 
     private static AssistantRagDto ToDto(RagService.RagResult rag) => new(
         rag.Sources.Select(ToSource).ToArray(), rag.ConsultedSources.Select(ToSource).ToArray(),

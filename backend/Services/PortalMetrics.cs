@@ -45,6 +45,10 @@ public sealed class PortalMetrics
     public Counter<long> AssistantFeedback { get; }
     public Counter<long> AssistantAuditFailures { get; }
     public Counter<long> AssistantAnswerCache { get; }
+    public Counter<long> AssistantQueryContextualization { get; }
+    public Histogram<double> AssistantQueryContextualizationDuration { get; }
+    public Counter<long> RagRerankerRequests { get; }
+    public Histogram<double> RagRerankerDuration { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
     {
@@ -81,6 +85,16 @@ public sealed class PortalMetrics
             description: "Assistant interaction audit records that could not be persisted");
         AssistantAnswerCache = _meter.CreateCounter<long>("kp_assistant_answer_cache",
             description: "ACL and corpus-version scoped semantic answer cache outcomes");
+        AssistantQueryContextualization = _meter.CreateCounter<long>(
+            "kp_assistant_query_contextualization",
+            description: "Multi-turn standalone-query rewrites by strategy and outcome");
+        AssistantQueryContextualizationDuration = _meter.CreateHistogram<double>(
+            "kp_assistant_query_contextualization_duration_ms", "ms",
+            "Multi-turn query contextualization duration");
+        RagRerankerRequests = _meter.CreateCounter<long>("kp_rag_reranker_requests",
+            description: "External cross-encoder reranker calls by outcome");
+        RagRerankerDuration = _meter.CreateHistogram<double>("kp_rag_reranker_duration_ms", "ms",
+            "External cross-encoder reranker duration");
 
         _meter.CreateObservableGauge(
             "kp_pending_embeddings",

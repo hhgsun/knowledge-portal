@@ -8,7 +8,8 @@ public sealed record KnowledgeAnswerRequest(
     bool OnlyOwnContent = false,
     IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null,
-    IEnumerable<string>? ContentTypes = null);
+    IEnumerable<string>? ContentTypes = null,
+    string? HypotheticalDocument = null);
 
 public enum KnowledgeAnswerFailureKind
 {
@@ -77,7 +78,8 @@ public sealed class KnowledgeAnswerService(
 
         try
         {
-            var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken);
+            var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken,
+                request.HypotheticalDocument);
             stopwatch.Stop();
             return (new KnowledgeAnswerResult(request.Question, rag, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString()), null);

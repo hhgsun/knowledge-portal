@@ -53,7 +53,7 @@ The system is a **split monorepo** with a shared service layer between controlle
 | **Services** | `backend/Services/` | Domain logic + shared REST/MCP search (`SearchExecutionService`) + shared analytics reporting + isolated assistant router/policy/orchestrator + AI/indexing + observability |
 | **Auth** | `backend/Auth/` | JWT issuance, token validation, API key middleware, RBAC (principal-aware, API-key cap) |
 | **Data** | `backend/Data/` | EF Core DbContext, seed data, migrations |
-| **RAG query/context** | `RagQueryUnderstandingService`, `HybridRagRetriever`, `RagContextExpansionService`, `IRagContextBuilder` | Deterministic rewrite/filter/decomposition → hybrid child retrieval → rerank/ranking signals → ACL-safe child→parent resolution → bounded evidence context |
+| **RAG query/context** | `AssistantQueryContextualizer`, `RagQueryUnderstandingService`, `HybridRagRetriever`, `ExternalRagChunkReranker`, `RagContextExpansionService`, `IRagContextBuilder` | Bounded multi-turn standalone rewrite + retrieval-only HyDE → deterministic filter/decomposition → hybrid child retrieval → calibrated/bounded rerank → ACL-safe child→parent resolution → bounded evidence context |
 | **Document parsing** | `AttachmentProcessingService`, `AttachmentTextExtractor` | Native layout/table extraction → optional versioned Unstructured hi_res → bounded local-VLM visual OCR/description for image/PDF/DOCX/XLSX/PPTX assets → cached provenance segments shared by FTS/vector; parser/vision budgets and extraction limit participate in index freshness |
 | **Domain** | `backend/Models/` | Entity classes, DTO records (`Models/Dtos.cs`) |
 | **Storage** | PostgreSQL + pgvector | Relational data + vector embeddings (FTS + semantic search) |

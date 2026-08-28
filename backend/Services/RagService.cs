@@ -22,7 +22,7 @@ public partial class RagService(
     ILogger<RagService> logger)
 {
     public const string PromptVersion = "2026-08-26.typed-governed-synthesis-v15";
-    public const string RetrievalVersion = "2026-08-27.multimodal-hierarchical-v4";
+    public const string RetrievalVersion = "2026-08-28.contextual-hyde-cross-encoder-v5";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
     private readonly int _minimumSourceLimit = Math.Clamp(config.GetValue("Ollama:RagMinimumSourceLimit", 3), 1, 10);
@@ -235,7 +235,8 @@ public partial class RagService(
         int ContextWords, int ContextTokens, bool BudgetTruncated, string TokenizerStrategy,
         int AdaptiveSourceLimit);
 
-    public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null, CancellationToken ct = default)
+    public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null,
+        CancellationToken ct = default, string? hypotheticalDocument = null)
     {
         var broad = IsBroadQuery(question); var mode = broad ? "broad" : "narrow";
         var fingerprint = QueryFingerprint(question); var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -251,7 +252,7 @@ public partial class RagService(
             RagResult result;
             try
             {
-                result = await AskCoreAsync(question, filter, broad, budget.Token);
+                result = await AskCoreAsync(question, filter, broad, budget.Token, hypotheticalDocument);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested && budget.IsCancellationRequested)
             {
@@ -286,7 +287,7 @@ public partial class RagService(
         CancellationToken ct = default)
     {
         var broad = IsBroadQuery(question);
-        var prepared = await PrepareAsync(question, filter, broad, ct);
+        var prepared = await PrepareAsync(question, filter, broad, ct, null);
         var chunks = prepared.Expansion.Chunks;
         var ids = EvidenceIds(chunks);
         var adaptiveSourceLimit = broad
@@ -316,9 +317,10 @@ public partial class RagService(
             tokenCounter.Strategy, adaptiveSourceLimit);
     }
 
-    private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad, CancellationToken ct)
+    private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad,
+        CancellationToken ct, string? hypotheticalDocument)
     {
-        var prepared = await PrepareAsync(question, filter, broad, ct);
+        var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument);
         if (prepared.Retrieved.Count == 0)
         {
             return EmptyResult(prepared.AnyIndexed
@@ -338,11 +340,12 @@ public partial class RagService(
     }
 
     private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
-        CancellationToken ct)
+        CancellationToken ct, string? hypotheticalDocument)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct);
+        var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct,
+            hypotheticalDocument);
         var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
             token => retriever.RetrieveAsync(plan, broad ? _broadCandidateLimit : _candidateLimit,
                 _ragMinScore, _maxChunksPerArticle, plan.EffectiveFilter, token), ct);

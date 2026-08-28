@@ -18,7 +18,9 @@ public sealed class AssistantRequestService(
         var conversation = await conversations.ResolveAsync(request, principal, ct);
         if (conversation.Error != null) return (null, conversation.Error);
         var effective = request with { Message = conversation.Context!.EffectiveMessage };
-        var execution = await orchestrator.ExecuteAsync(effective, principal, ct);
+        var execution = await orchestrator.ExecuteAsync(effective, principal, ct,
+            conversation.Context.HypotheticalDocument,
+            conversation.Context.ContextualizationStrategy);
         if (execution.Error != null) return execution;
         var response = execution.Response! with { ConversationId = conversation.Context.ConversationId };
         var interactionId = await interactions.RecordAsync(effective.Message, response, principal, ct);

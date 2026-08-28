@@ -7,15 +7,22 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
-public sealed record AssistantConversationContext(string? ConversationId, string EffectiveMessage);
+public sealed record AssistantConversationContext(
+    string? ConversationId,
+    string EffectiveMessage,
+    string? HypotheticalDocument,
+    string ContextualizationStrategy);
 
-public sealed class AssistantConversationService(AppDbContext db, IConfiguration config)
+public sealed class AssistantConversationService(
+    AppDbContext db,
+    IServiceProvider services,
+    IConfiguration config)
 {
     public async Task<(AssistantConversationContext? Context, ServiceError? Error)> ResolveAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.ConversationId))
-            return (new(null, request.Message), null);
+            return (new(null, request.Message.Trim(), null, "none"), null);
         if (!config.GetValue("Assistant:ConversationHistoryEnabled", true))
             return (null, new(400, "Assistant conversation history is disabled."));
         if (principal.GetSource() == "api-key")
@@ -25,20 +32,23 @@ public sealed class AssistantConversationService(AppDbContext db, IConfiguration
             .SingleOrDefaultAsync(x => x.Id == request.ConversationId && x.UserId == userId, ct);
         if (conversation == null) return (null, new(404, "Assistant conversation not found."));
 
+        var maxMessages = Math.Clamp(config.GetValue(
+            "Assistant:QueryContextualization:MaxHistoryMessages", 6), 2, 12);
+        var maxCharacters = Math.Clamp(config.GetValue(
+            "Assistant:QueryContextualization:MaxHistoryCharacters", 6000), 500, 20_000);
+        var maxCharactersPerMessage = Math.Clamp(config.GetValue(
+            "Assistant:QueryContextualization:MaxCharactersPerMessage", 1500), 200, 4000);
         var recent = await db.AssistantMessages.AsNoTracking()
-            .Where(x => x.ConversationId == conversation.Id && x.Role == "user")
-            .OrderByDescending(x => x.CreatedAt).Take(3).OrderBy(x => x.CreatedAt)
-            .Select(x => x.Content).ToListAsync(ct);
-        if (recent.Count == 0 || !LooksLikeFollowUp(request.Message))
-            return (new(conversation.Id, request.Message), null);
-        var context = string.Join("\n", recent.TakeLast(2).Select((text, i) =>
-            $"Önceki kullanıcı mesajı {i + 1}: {text[..Math.Min(text.Length, 900)]}"));
-        var max = Math.Clamp(config.GetValue("Assistant:MaxMessageCharacters", 4000), 100, 20_000);
-        var prefixBudget = Math.Max(0, max - request.Message.Length - 16);
-        var boundedContext = context[..Math.Min(context.Length, prefixBudget)];
-        var effective = string.IsNullOrEmpty(boundedContext) ? request.Message
-            : $"{boundedContext}\nTakip sorusu: {request.Message}";
-        return (new(conversation.Id, effective), null);
+            .Where(x => x.ConversationId == conversation.Id)
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Take(maxMessages).OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .Select(x => new AssistantConversationTurn(x.Role, x.Content)).ToListAsync(ct);
+        var bounded = BoundHistory(recent, maxCharacters, maxCharactersPerMessage);
+        if (services.GetService<AssistantQueryContextualizer>() is not { } contextualizer)
+            return (new(conversation.Id, request.Message.Trim(), null, "none"), null);
+        var contextualized = await contextualizer.ContextualizeAsync(request.Message, bounded, ct);
+        return (new(conversation.Id, contextualized.StandaloneQuery,
+            contextualized.HypotheticalDocument, contextualized.Strategy), null);
     }
 
     public async Task<AssistantConversation> CreateAsync(ClaimsPrincipal principal, CancellationToken ct)
@@ -74,12 +84,22 @@ public sealed class AssistantConversationService(AppDbContext db, IConfiguration
         else { db.AssistantConversations.RemoveRange(await expired.ToListAsync(ct)); await db.SaveChangesAsync(ct); }
     }
 
-    private static bool LooksLikeFollowUp(string message)
+    private static IReadOnlyList<AssistantConversationTurn> BoundHistory(
+        IReadOnlyList<AssistantConversationTurn> history, int maxCharacters,
+        int maxCharactersPerMessage)
     {
-        var text = Helpers.SlugHelper.Transliterate(message.Trim()).ToLowerInvariant();
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string[] references = ["peki", "bunun", "bunu", "bunda", "bu ", "ona", "onun", "ayrica",
-            "what about", "that", "this", "it ", "and ", "also"];
-        return words.Length <= 8 || references.Any(text.Contains);
+        var selected = new List<AssistantConversationTurn>();
+        var remaining = maxCharacters;
+        foreach (var turn in history.Reverse())
+        {
+            if (remaining <= 0) break;
+            var compact = string.Join(' ', turn.Content.Split((char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries));
+            var take = Math.Min(Math.Min(compact.Length, maxCharactersPerMessage), remaining);
+            if (take > 0) selected.Add(turn with { Content = compact[..take] });
+            remaining -= take;
+        }
+        selected.Reverse();
+        return selected;
     }
 }

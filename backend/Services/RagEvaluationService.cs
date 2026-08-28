@@ -170,6 +170,13 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
             ["queryRewriteEnabled"] = config.GetValue("Ollama:QueryUnderstanding:RewriteEnabled", true),
             ["queryDecompositionEnabled"] = config.GetValue("Ollama:QueryUnderstanding:DecompositionEnabled", true),
             ["queryMaxQueries"] = config.GetValue("Ollama:QueryUnderstanding:MaxQueries", 3),
+            ["conversationQueryContextualizerVersion"] = AssistantQueryContextualizer.Version,
+            ["conversationQueryContextualizationEnabled"] = config.GetValue(
+                "Assistant:QueryContextualization:Enabled", true),
+            ["conversationHydeEnabled"] = config.GetValue(
+                "Assistant:QueryContextualization:HydeEnabled", true),
+            ["conversationHydeWeight"] = config.GetValue(
+                "Assistant:QueryContextualization:HydeWeight", .3),
             ["contextExpansionEnabled"] = config.GetValue("Ollama:ContextExpansion:Enabled", true),
             ["contextNeighborCount"] = config.GetValue("Ollama:ContextExpansion:NeighborCount", 1),
             ["freshnessWeight"] = config.GetValue("Ollama:Ranking:FreshnessWeight", .05),
@@ -177,6 +184,10 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
             ["authoritySource"] = "lookup_values.authority_weight",
             ["externalRerankerEnabled"] = config.GetValue("Reranking:External:Enabled", false),
             ["externalRerankerModel"] = config["Reranking:External:Model"],
+            ["externalRerankerRequestFormat"] = config["Reranking:External:RequestFormat"],
+            ["externalRerankerScoreWeight"] = config.GetValue<double>("Reranking:External:ScoreWeight", .8),
+            ["externalRerankerMinimumCoverage"] = config.GetValue<double>(
+                "Reranking:External:MinimumScoreCoverage", .8),
             ["requestBudgetSeconds"] = config.GetValue<int>("RagResilience:RequestBudgetSeconds"),
             ["publishedArticleCount"] = corpus.Count,
             ["semanticallyIndexedArticleCount"] = corpus.Count(x => x.IndexedAt != null),
