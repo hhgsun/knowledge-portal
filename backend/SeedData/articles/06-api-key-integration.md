@@ -105,7 +105,8 @@ API key principal'ı, sahibi admin olsa bile en fazla editor yetkisi taşır. `a
 - `/api/keys` ve `/api/admin/keys` — API key yönetimi
 - `/api/admin/users`, `/api/admin/rag-evaluations` ve `/api/logs` — yönetim işlemleri
 - `/api/analytics` — analitik verileri
-- `/api/search/reindex`, `/api/search/repair-indexing`, `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability` ve `/api/search/rag-debug` — ayrıcalıklı arama operasyonları
+- `/api/search/reindex`, `/api/search/repair-indexing`, `/api/search/diagnostics`, `/api/search/embedding-status` ve `/api/search/storage-status` — ayrıcalıklı arama/indeks operasyonları
+- `/api/admin/rag/observability` ve `/api/admin/rag/debug` — session-admin Assistant RAG operasyonları
 - İçerik veya yapılandırma silen `DELETE` endpoint'leri. Kendi oyunu geri alan `DELETE /api/articles/{id}/vote` bu kuralın istisnasıdır.
 
 ## Güvenlik Önerileri

@@ -1,7 +1,7 @@
 # RAG Service-Level Objectives
 
-These objectives apply to authenticated `type=rag` requests on the supported single-backend
-deployment. Planned maintenance and caller cancellations are excluded. Prometheus rules live in
+These objectives apply to authenticated `POST /api/assistant`, Assistant streaming, and MCP
+`ask_knowledge` requests on the supported single-backend deployment. Planned maintenance and caller cancellations are excluded. Prometheus rules live in
 `ops/prometheus/rag-alerts.yml`; the importable Grafana dashboard is
 `ops/grafana/rag-overview.json`.
 
@@ -22,4 +22,4 @@ when the PostgreSQL fidelity suite or the post-deploy live-model gate is skipped
 Structured refusals are successful service outcomes, not availability failures. Responses rejected
 by the grounding validator are tracked as refusals for availability and must still satisfy the
 separate refusal-accuracy and grounding gates.
-The same dashboard and alert group also cover the bounded Assistant orchestration layer: Assistant p95 latency, route/source volume, classifier outcomes, feedback, semantic-answer-cache outcomes, shadow-router agreement, classifier degradation, and audit persistence failures. Shadow disagreement alerts require a minimum sample volume to avoid noisy low-traffic decisions. These metrics are evaluated separately from RAG availability so a routing degradation is visible even when direct `/api/search?type=rag` remains healthy.
+The same dashboard and alert group also cover Assistant request latency, answer/stream volume, feedback, semantic-answer-cache outcomes and audit persistence failures. Search availability is evaluated separately because it is a document-retrieval product and does not share the Assistant answer surface.

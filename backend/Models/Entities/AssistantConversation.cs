@@ -17,7 +17,6 @@ public class AssistantMessage
     public string ConversationId { get; set; } = null!;
     public string Role { get; set; } = null!;
     public string Content { get; set; } = null!;
-    public string? Route { get; set; }
     public string? InteractionId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public AssistantConversation Conversation { get; set; } = null!;

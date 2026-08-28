@@ -28,6 +28,9 @@ export default function RagEvaluationsPage() {
   const [thresholds, setThresholds] = useState(JSON.stringify(defaultThresholds, null, 2));
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackSummary>();
+  const [debugQuery, setDebugQuery] = useState("");
+  const [debugResult, setDebugResult] = useState<unknown>();
+  const [debugBusy, setDebugBusy] = useState(false);
 
   const load = useCallback(async () => {
     const [d, r, f] = await Promise.all([fetchWithAuth("/api/admin/rag-evaluations/datasets"), fetchWithAuth("/api/admin/rag-evaluations/runs"), fetchWithAuth("/api/admin/rag-evaluations/feedback-summary?days=30")]);
@@ -52,6 +55,17 @@ export default function RagEvaluationsPage() {
   }
   async function run() { if (!id) return toast.error("Önce dataset'i kaydedin"); const res = await fetchWithAuth(`/api/admin/rag-evaluations/datasets/${id}/runs`, { method: "POST", noRetry: true }); const data = await res.json(); if (!res.ok) return toast.error(data.error); toast.success("Değerlendirme kuyruğa alındı"); await load(); }
   async function remove() { if (!id || !confirm("Dataset ve geçmiş çalışmaları silinsin mi?")) return; const res = await fetchWithAuth(`/api/admin/rag-evaluations/datasets/${id}`, { method: "DELETE", noRetry: true }); if (res.ok) { fresh(); await load(); toast.success("Dataset silindi"); } }
+  async function debugRag() {
+    if (!debugQuery.trim()) return toast.error("Debug sorgusu girin");
+    setDebugBusy(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/rag/debug?q=${encodeURIComponent(debugQuery.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "RAG debug çalıştırılamadı");
+      setDebugResult(data);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "RAG debug çalıştırılamadı"); }
+    finally { setDebugBusy(false); }
+  }
 
   const percent = (v: number) => `${(v * 100).toFixed(1)}%`;
   return <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -65,6 +79,11 @@ export default function RagEvaluationsPage() {
         <div><h3 className="font-medium mb-2">Retrieval / reranker cohort'ları</h3><div className="space-y-1">{feedback.configurations.map((x, i)=><div key={`${x.retrievalVersion}-${x.reranker}-${i}`} className="rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><div className="flex justify-between"><span className="truncate">{x.retrievalVersion ?? "retrieval bilinmiyor"} · {x.reranker ?? "reranker bilinmiyor"}</span><span className="ml-2 shrink-0">{percent(x.helpfulRate)} / {x.count}</span></div><div className="truncate text-zinc-500">prompt: {x.promptVersion ?? "—"} · index: {x.indexProfile ?? "—"}</div></div>)}</div></div>
       </div>
     </section>}
+    <section className="border rounded-xl dark:border-zinc-800 p-4 space-y-3">
+      <div><h2 className="font-semibold">Assistant RAG retrieval debug</h2><p className="text-xs text-zinc-500">LLM yanıtı üretmeden query planını, yetkili adayları ve seçilen context'i inceleyin.</p></div>
+      <div className="flex gap-2"><input value={debugQuery} onChange={event=>setDebugQuery(event.target.value)} onKeyDown={event=>{if(event.key==="Enter")void debugRag();}} className="min-w-0 flex-1 border rounded-lg p-2 dark:bg-zinc-900 dark:border-zinc-700" placeholder="Örn. VPN sertifikası nasıl yenilenir?"/><button disabled={debugBusy} onClick={()=>void debugRag()} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"><Play size={16}/>{debugBusy?"Çalışıyor":"Debug"}</button></div>
+      {debugResult !== undefined && <pre className="max-h-96 overflow-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">{JSON.stringify(debugResult, null, 2)}</pre>}
+    </section>
     <div className="grid lg:grid-cols-[260px_1fr] gap-6">
       <aside className="border rounded-xl dark:border-zinc-800 p-3 space-y-2">{datasets.map(d => <button key={d.id} onClick={() => void selectDataset(d.id)} className={`w-full text-left p-3 rounded-lg ${id === d.id ? "bg-blue-50 dark:bg-blue-950" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}><div className="font-medium text-sm">{d.name}</div><div className="text-xs text-zinc-500">v{d.version} · {d.caseCount} vaka</div></button>)}</aside>
       <section className="border rounded-xl dark:border-zinc-800 p-5 space-y-4">

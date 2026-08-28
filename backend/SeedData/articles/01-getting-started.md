@@ -14,12 +14,13 @@
 
 ## Knowledge Portal Nedir?
 
-Knowledge Portal, kurumsal bilgi birikimini organize etmek, aramak ve paylaşmak için tasarlanmış modern bir bilgi yönetim platformudur. Ekip üyeleri makaleler oluşturabilir, etiketleyebilir, versiyonlayabilir ve gelişmiş arama yetenekleri (fulltext, semantic, hybrid, RAG) ile içeriklere hızlıca ulaşabilir.
+Knowledge Portal, kurumsal bilgi birikimini organize etmek, aramak ve paylaşmak için tasarlanmış modern bir bilgi yönetim platformudur. Ekip üyeleri makaleler oluşturabilir, etiketleyebilir, versiyonlayabilir; fulltext, semantic ve hybrid aramayla doküman bulabilir; Bilgi Asistanı ile kaynaklı RAG yanıtı alabilir.
 
 ## Temel Özellikler
 
 - **Zengin İçerik Editörü:** Milkdown tabanlı editör ile başlıklar, listeler, kod blokları, görseller ve tablolar oluşturabilirsiniz.
-- **Gelişmiş Arama:** PostgreSQL fulltext, pgvector tabanlı semantic, RRF ile hybrid ve kaynak doğrulamalı RAG arama modları.
+- **Doküman Arama:** PostgreSQL fulltext, pgvector tabanlı semantic ve RRF ile hybrid sonuç listeleri.
+- **Bilgi Asistanı:** Portal kanıtlarına dayalı, atıflı ve fail-closed RAG yanıtları.
 - **Versiyon Kontrolü:** Her içerik değişikliği otomatik olarak versiyonlanır. Önceki sürümlere geri dönebilirsiniz.
 - **Etiket Sistemi:** Makaleleri etiketlerle kategorize edin, arama sırasında #etiket sözdizimi ile filtreleyin.
 - **Dosya Ekleri:** Makalelere resim, PDF, Word ve diğer dosyaları ekleyebilirsiniz. Metin içerikli dosyalar arama indeksine dahil edilir.

@@ -61,13 +61,14 @@ Frontend'in Geist ve Geist Mono fontları Vite çıktısına dahil edilir ve ngi
 
 ### JWT ve Rate Limiting
 
-JWT issuer, audience ve süre ayarları `Jwt` bölümündedir. Rate limit varsayılanları auth için 10/dakika, search için 30/dakika ve MCP için 60/dakikadır. Partition anahtarı API key kimliği, kullanıcı kimliği veya istemci IP'sidir.
+JWT issuer, audience ve süre ayarları `Jwt` bölümündedir. Rate limit varsayılanları auth için 10/dakika, search için 30/dakika, Assistant için 20/dakika ve MCP için 60/dakikadır. Partition anahtarı API key kimliği, kullanıcı kimliği veya istemci IP'sidir.
 
 ```json
 {
   "RateLimiting": {
     "AuthLimit": 10,
     "SearchLimit": 30,
+    "AssistantLimit": 20,
     "McpLimit": 60
   }
 }
@@ -125,7 +126,8 @@ Gerçek PostgreSQL/pgvector davranışını doğrulayan fidelity testleri için 
 - `GET /api/health/live`: süreç liveness kontrolü, her zaman 200.
 - `GET /api/health`: PostgreSQL readiness ve timeout/cached Ollama kontrolü. DB yoksa 503 `unhealthy`; yalnız Ollama sorunu varsa 200 `degraded`.
 - `GET /metrics`: Prometheus metrikleri; nginx üzerinden public olarak yayınlanmaz.
-- Yönetici endpoint'leri: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
+- Arama/indeks yönetimi: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`.
+- Assistant RAG yönetimi: `/api/admin/rag/observability`, `/api/admin/rag/debug`.
 
 RAG Prometheus alarm kuralları `ops/prometheus/rag-alerts.yml`, Grafana dashboard'u `ops/grafana/rag-overview.json` altındadır.
 

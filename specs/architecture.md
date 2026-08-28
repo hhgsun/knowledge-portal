@@ -29,7 +29,7 @@
      │                           │                             │
      │  ┌────────────────────────▼──────────────────────────┐  │
      │  │  API Controllers                                   │  │
-     │  │  Auth · content · assistant · search/RAG · MCP      │  │
+     │  │  Auth · content · Search · Assistant RAG · MCP      │  │
      │  └──────────────────────┬────────────────────────────┘  │
      │                         │                               │
      │  ┌──────────────────────▼────────────────────────────┐  │
@@ -187,7 +187,7 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 6. **UTC timestamps** — All `DateTime` values stored and transmitted in UTC.
 7. **Private attachment delivery** — Attachment downloads and inline images use authenticated bearer requests and apply the same article-visibility policy as the article itself; credentials are never placed in URLs.
 8. **Durable indexing with eager lexical visibility** — Article changes invalidate separate lexical (`FtsIndexedAt`) and semantic (`IndexedAt`) state and first enqueue a generation-guarded, leased PostgreSQL job. The request then best-effort refreshes local PostgreSQL FTS (savepoint-isolated inside wider import transactions), while semantic embedding remains asynchronous. The worker claims no more jobs than it can run, enforces a configurable per-article timeout, and always re-runs FTS before embedding. Routine admin repair targets only dirty missing/delayed/failed/lease-expired jobs; corpus-wide reindex remains a separate maintenance operation.
-9. **Removable bounded assistant** — REST and verified SSE share `AssistantRequestService`; policy remains independent of routing. The separate keyed small router has safe main-model fallback, route thresholds and empirical calibration. Shadow comparison is queued asynchronously. Owned conversations provide bounded follow-up context. Grounded semantic cache is isolated by principal scope and corpus/runtime versions. Assistant-owned audit/conversation/quality/cache tables are removable by explicit migration without altering search, RAG, MCP, analytics or portal content.
+9. **Strict Search/Assistant boundary** — `SearchExecutionService` returns documents only (`fulltext`, `semantic`, `hybrid`). `KnowledgeAnswerService` is the sole grounded-RAG pipeline for REST Assistant and MCP `ask_knowledge`; neither surface falls back into the other. `KnowledgeQueryScopeService` shares only filter semantics. Owned conversations provide bounded follow-up context, and the grounded semantic cache is isolated by principal scope and corpus/runtime versions.
 
 ## Future Consideration: Controlled Dynamic Metadata Facets
 

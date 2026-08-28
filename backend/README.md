@@ -50,7 +50,7 @@ EF Core AppDbContext
     ↓
 PostgreSQL + pgvector
 
-Search/RAG services ──→ Ollama-compatible embedding/chat endpoint
+Semantic Search / Assistant RAG ──→ Ollama-compatible embedding/chat endpoint
 Background workers  ──→ durable index_jobs and RAG evaluation queues
 ```
 
@@ -71,7 +71,7 @@ backend/
 │   └── Entities/     # EF Core entities
 ├── Migrations/       # PostgreSQL migrations
 ├── SeedData/articles # Product documentation loaded on an empty database
-├── Services/         # Domain, indexing, search/RAG, governance, observability
+├── Services/         # Domain, indexing, document search, Assistant RAG, governance, observability
 ├── Tests/            # Docker-free default test suite
 └── Tests.Postgres/   # PostgreSQL/pgvector fidelity gate
 ```
@@ -87,14 +87,15 @@ backend/
 
 The authoritative RBAC and endpoint authorization matrices are in `../AGENTS.md`.
 
-## Search and RAG
+## Document Search and Assistant RAG
 
-`GET /api/search` supports `fulltext`, `semantic`, `hybrid`, and `rag` modes:
+`GET /api/search` returns documents and supports `fulltext`, `semantic`, and `hybrid` modes:
 
 - Fulltext uses PostgreSQL Turkish FTS with AND → OR → escaped `ILIKE` fallback.
 - Semantic search uses `bge-m3` 1024-dimensional embeddings stored in pgvector.
 - Hybrid search merges a wide lexical/semantic pool with RRF and applies a deterministic reranker.
-- RAG performs hybrid chunk retrieval, provenance-aware reranking, narrow or bounded-parallel map-reduce generation, and fail-closed claim/citation validation.
+
+Grounded answers use `POST /api/assistant` or MCP `ask_knowledge`. Both call `KnowledgeAnswerService`, which performs hybrid chunk retrieval, provenance-aware reranking, narrow or bounded-parallel map-reduce generation, and fail-closed claim/citation validation. Search never invokes this answer pipeline.
 
 Inline filters are `@author`, `#tag`, and `##content-type`. Equivalent repeatable query parameters are also supported.
 
@@ -108,10 +109,9 @@ Important `appsettings.json` sections:
 |---------|---------|
 | `ConnectionStrings` | PostgreSQL connection |
 | `Jwt`, `AzureAd` | Authentication |
-| `RateLimiting` | Per-client auth/search/MCP limits |
+| `RateLimiting` | Per-client auth/search/assistant/MCP limits |
 | `Ollama` | Models, dimensions, retrieval and context limits |
-| `Assistant` | Assistant feature switches, conversations, streaming and semantic answer cache |
-| `AgenticRouting` | Dedicated router model, route thresholds, calibration and shadow-routing controls |
+| `Assistant` | Grounded-RAG feature switch, total timeout, conversations, streaming and semantic answer cache |
 | `Indexing` | Durable queue workers, leases and retry |
 | `RagResilience` | Bulkhead, budgets, timeouts, retry and circuit breaker |
 | `FileStorage` | Upload path, size/type limits and integrity sampling |
@@ -164,7 +164,8 @@ The default suite uses an isolated EF Core InMemory database per test class and 
 - `GET /api/health/live`: liveness, always 200.
 - `GET /api/health`: PostgreSQL readiness plus timeout-bounded/cached Ollama health.
 - `GET /metrics`: internal Prometheus endpoint.
-- Admin diagnostics: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
+- Search/index diagnostics: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`.
+- Assistant RAG diagnostics: `/api/admin/rag/observability`, `/api/admin/rag/debug`.
 - Routine queue recovery: `POST /api/search/repair-indexing` repairs only missing/stuck jobs without invalidating healthy indexes; corpus-wide `POST /api/search/reindex` is reserved for planned maintenance.
 
-Prometheus RAG/Assistant alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`. Assistant observability includes route/source volume, calibrated confidence, semantic-cache outcomes, feedback-derived evaluation candidates and shadow-router agreement.
+Prometheus RAG/Assistant alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`. Assistant observability includes answer latency/outcomes, semantic-cache results, feedback and audit persistence health.

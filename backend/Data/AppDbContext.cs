@@ -226,15 +226,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.Query).IsRequired();
             e.Property(s => s.ResultsCount).HasDefaultValue(0);
             e.Property(s => s.SearchType).IsRequired().HasDefaultValue("fulltext");
-            e.Property(s => s.RagTraceId).HasMaxLength(64);
-            e.Property(s => s.RagPromptVersion).HasMaxLength(100);
-            e.Property(s => s.RagRetrievalVersion).HasMaxLength(100);
-            e.Property(s => s.RagReranker).HasMaxLength(100);
-            e.Property(s => s.RagIndexProfile).HasMaxLength(64);
-            e.Property(s => s.RagGroundingStatus).HasMaxLength(40);
-            e.Property(s => s.RagAnswerHash).HasMaxLength(64);
-            e.Property(s => s.RagFeedback).HasMaxLength(20);
-            e.Property(s => s.RagFeedbackReason).HasMaxLength(40);
             e.Property(s => s.CreatedAt).IsRequired();
             e.HasOne(s => s.User).WithMany().HasForeignKey(s => s.UserId);
             e.HasOne(s => s.ClickedArticle).WithMany().HasForeignKey(s => s.ClickedArticleId).OnDelete(DeleteBehavior.SetNull);
@@ -360,7 +351,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("assistant_messages"); e.HasKey(x => x.Id);
             e.Property(x => x.Role).IsRequired().HasMaxLength(20);
             e.Property(x => x.Content).IsRequired().HasMaxLength(20000);
-            e.Property(x => x.Route).HasMaxLength(40);
             e.Property(x => x.InteractionId).HasMaxLength(21);
             e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
             e.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId)

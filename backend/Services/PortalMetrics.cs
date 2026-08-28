@@ -74,7 +74,7 @@ public sealed class PortalMetrics
         AssistantToolCalls = _meter.CreateCounter<long>("kp_assistant_tool_calls",
             description: "Grounded Assistant retrieval/generation calls by tool and outcome");
         AssistantDuration = _meter.CreateHistogram<double>("kp_assistant_duration_ms", "ms",
-            "End-to-end assistant orchestration duration by route and outcome");
+            "End-to-end grounded Assistant duration by outcome");
         AssistantFeedback = _meter.CreateCounter<long>("kp_assistant_feedback",
             description: "Assistant feedback by bounded outcome and reason");
         AssistantAuditFailures = _meter.CreateCounter<long>("kp_assistant_audit_failures",

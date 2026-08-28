@@ -15,7 +15,7 @@
 
 ## Amaç ve Sınır
 
-Knowledge Portal'ın RAG (Retrieval-Augmented Generation) modu, yayınlanmış portal içeriğinden kanıt getirip bu kanıtlara dayalı bir yanıt üretir. Modelin genel bilgisini doğruluk kaynağı kabul etmez. Yeterli veya doğrulanabilir kanıt yoksa yanıt uydurmak yerine açıkça yetersiz bağlam sonucu döner.
+Knowledge Portal Bilgi Asistanı'nın RAG (Retrieval-Augmented Generation) akışı, yayınlanmış portal içeriğinden kanıt getirip bu kanıtlara dayalı bir yanıt üretir. RAG, Search'ün bir modu değildir; REST'te `/api/assistant`, MCP'de `ask_knowledge` üzerinden çalışır. Modelin genel bilgisini doğruluk kaynağı kabul etmez. Yeterli veya doğrulanabilir kanıt yoksa yanıt uydurmak yerine açıkça yetersiz bağlam sonucu döner.
 
 RAG akışının ana adımları:
 
@@ -109,7 +109,7 @@ Tekil map batch'leri veya reduce aşaması başarısız olursa başarılı parç
 
 ## Kullanıcı Geri Bildirimi
 
-Arama ekranındaki yardımcı oldu/olmadı düğmeleri ve isteğe bağlı negatif neden yalnız kullanıcının kendi RAG `searchQueryId` kaydına bağlanır. Kayıt; trace, prompt/retrieval sürümü, reranker kimliği, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; yalnız SHA-256 fingerprint tutulur. Evaluation ekranı son 30 günün helpful oranını, nedenlerini, grounding ve configuration cohort'larını golden dataset metriklerinin yanında gösterir.
+Asistan ekranındaki yardımcı oldu/olmadı düğmeleri ve isteğe bağlı negatif neden yalnız kullanıcının kendi `interactionId` kaydına bağlanır. `assistant_interactions`; trace, prompt/retrieval sürümü, reranker kimliği, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; yalnız SHA-256 fingerprint tutulur. Evaluation ekranı son 30 günün helpful oranını, nedenlerini, grounding ve configuration cohort'larını golden dataset metriklerinin yanında gösterir.
 
 ## 4. Yapılandırılmış Üretim ve Fail-Closed Doğrulama
 
@@ -159,8 +159,8 @@ Desteklenen production topolojisi tek backend instance olduğu için bu state pr
 
 RAG istekleri privacy-safe query fingerprint ile loglanır; ham kullanıcı sorusu loglanmaz. `kp_rag_*` metrikleri istek sonucu, stage hataları/gecikmeleri, aday/context boyutu, LLM çağrıları, refusal, partial sonuç, citation coverage ve aktif istekleri kapsar. Trace'ler isteğe bağlı OTLP exporter üzerinden gönderilebilir.
 
-- Runtime görünümü: `GET /api/search/rag-observability`
-- Yetkili aday/context debug: `GET /api/search/rag-debug?q=...` (session-admin, LLM çağrısı yok)
+- Runtime görünümü: `GET /api/admin/rag/observability`
+- Yetkili aday/context debug: `GET /api/admin/rag/debug?q=...` (session-admin, LLM çağrısı yok)
 - Prometheus alarmları: `ops/prometheus/rag-alerts.yml`
 - Grafana dashboard: `ops/grafana/rag-overview.json`
 - Ölçülebilir hedefler: `specs/rag-slo.md`

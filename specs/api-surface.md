@@ -68,7 +68,8 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 **Supported Methods**: `server/discover` (2026 era), `initialize` and `notifications/initialized` (2025 era), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Portal-equivalent search across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid|rag`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`; legacy `tags` and `content_type` remain accepted. Supports `@author`, `#tag`, and `##content-type` inline syntax. Full-text/filter searches are paged; semantic/hybrid/RAG use the same top-N/fallback behavior as `GET /api/search`.
+- `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and `##content-type` inline syntax. It never generates an AI answer.
+- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*`, `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline as REST Assistant.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
@@ -83,7 +84,7 @@ The shared scope shape is `{ "tags": ["a", "x", "y"], "contentTypes": ["how-to",
 
 **Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true`.
 
-Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. RAG sources similarly include their canonical URL and source type.
+Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. `ask_knowledge` returns cited/consulted sources, claims and evidence separately.
 
 MCP search hits also include `governance`: optional approval state (`approved` or `not_recorded`), approver/time when recorded, review state (`current`, `due_soon`, `overdue`, `not_recorded`), next review date, dynamic content-type label/authority weight, reliability score, and warnings. Content-type authority is configured as `authorityWeight` (0-100, default 50) on each dynamic `content_type` lookup; no content-type names are hard-coded. Directly published/imported content remains available and is truthfully marked `not_recorded`. Search responses aggregate caution indicators and reliability-ordered `recommendedArticleIds` in `decisionSupport`. Ordinary list/search and source-comparison responses keep `conflictAssessment: not_evaluated`; only RAG answers run the conservative numeric/explicit-polarity conflict screen described below, and no endpoint claims general semantic contradiction detection.
 
@@ -91,7 +92,7 @@ MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, ex
 
 Every `tools/call` response includes `X-Trace-Id`. A structured audit event records trace ID, tool, outcome, auth source, user/API-key identifiers, bounded client user-agent, protocol version, duration, serialized output size, and a privacy-preserving argument shape. Raw argument values, queries, article content, credentials, and reversible hashes are never written to the MCP audit event. Prometheus exports `kp_mcp_tool_calls`, `kp_mcp_tool_errors`, `kp_mcp_tool_duration_ms`, and `kp_mcp_tool_output_bytes`, tagged by bounded tool/outcome/auth dimensions.
 
-MCP uses a fixed 256 KiB request-body ceiling. Configurable resilience limits under `Mcp` include the output default of 1 MiB, tool/mode-specific execution budgets, bounded AI concurrency (default 2), and an instance-local Ollama circuit breaker (3 transient failures, 30-second break by default). Resilience failures use structured tool errors with stable codes (`tool_timeout`, `server_busy`, `circuit_open`, `output_too_large`, `ai_unavailable`, `ai_search_failed`), `retryable`, optional `retryAfterSeconds`, and details. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local; distributed concurrency/rate limiting requires a gateway or shared store when horizontally scaled.
+MCP uses a fixed 256 KiB request-body ceiling. Configurable resilience limits under `Mcp` include the output default of 1 MiB, tool-specific budgets, a semantic-search lane and a separate grounded-answer lane with independent concurrency/circuit state. Resilience failures use structured tool errors with stable retry metadata. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local for the supported single-backend topology.
 
 **Client configuration example (VS Code)**:
 ```json
@@ -573,7 +574,7 @@ Ordered by version number descending.
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
 | `q` | string | — | Required. Inline syntax: `@user-slug` (author), `#tag-slug` (tag), `##content-type` (type) |
-| `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid`, `rag` |
+| `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid` |
 | `limit` | int | 20 | Max results per page (1–50) |
 | `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
@@ -594,11 +595,10 @@ Ordered by version number descending.
 - **Fulltext**: PostgreSQL tsvector (`turkish` config) with `ts_rank_cd` ranking, published articles only. Multi-word queries require **all** terms (AND); if nothing matches, retries with any-term (OR), then falls back to ILIKE on title/excerpt
 - **Semantic**: Ollama embeddings, cosine similarity
 - **Hybrid**: Reciprocal Rank Fusion (fulltext + semantic)
-- **RAG**: AI-generated answer with source citations
 
 **Side effects**: Logs a `SearchQuery` record with query text, result count, response time, and search type (including zero-result tag searches).
 
-**200 Response (non-RAG)**:
+**200 Response**:
 ```json
 {
   "results": [
@@ -627,7 +627,11 @@ Ordered by version number descending.
 > counts plus a distinct `relevantPending` count for the requested mode; unrelated articles outside
 > the active author/tag/content-type/API-key filters do not trigger the warning.
 
-**200 Response (RAG)**:
+## Bilgi Asistanı RAG Yanıt Sözleşmesi
+
+Bu yanıt şekli `POST /api/assistant`, `POST /api/assistant/stream` içindeki `complete` olayı ve MCP `ask_knowledge` tarafından kullanılır. `GET /api/search` bu sözleşmeyi döndürmez.
+
+**Grounded RAG payload**:
 ```json
 {
   "answer": "Doğrulanmış kısa sonuç [S1]\n\n**Açıklama**\n\n- Destekli açıklama [S2]",
@@ -735,44 +739,44 @@ still below the target, query-relevant verified evidence sentences complete the 
 
 ---
 
-## Agentic Assistant
+## Bilgi Asistanı
 
 ### `POST /api/assistant`
-**Auth**: Bearer (JWT or API Key). The analytics route additionally requires an interactive session and `analytics:view`; viewer sessions and all API keys receive `403` for that route.
-**Rate limit**: `search`
+**Auth**: Bearer (JWT or API Key).
+**Rate limit**: `assistant`
 
-The assistant is an isolated, bounded, read-only orchestration surface. It reuses `SearchExecutionService` for hybrid search and grounded RAG, and the shared analytics report service for authorized portal statistics. It exposes no mutation tool and executes no free-form SQL. Removing or disabling it does not alter `GET /api/search`, RAG, MCP, or stored portal content.
+The Assistant has one purpose: produce a grounded answer from authorized portal evidence. It does not return document-search result lists, route to analytics/general chat, execute mutations, or run free-form SQL. `KnowledgeAnswerService` is the canonical RAG entry point shared with MCP `ask_knowledge`; `GET /api/search` remains a separate document-retrieval API.
 
 **Request**:
 
 ```json
 {
-  "message": "VPN politikası nedir ve ilgili rehberleri listele",
-  "preferredRoute": "auto"
+  "message": "VPN politikasının istisnaları nelerdir?",
+  "conversationId": null,
+  "onlyOwnContent": false,
+  "tags": ["security"],
+  "authors": [],
+  "contentTypes": ["policy"]
 }
 ```
 
 | Field | Type | Required | Notes |
 |-------|------|:--------:|-------|
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
-| `preferredRoute` | string | No | `auto`, `search`, `answer`, `analytics`, or `chat`; default `auto` |
 | `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user turns contextualize follow-ups. |
+| `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
+| `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
+| `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |
+| `contentTypes` | string[] | No | Content-type values, OR semantics; merged with inline `##` filters. |
 
-In `auto` mode, explicit safe modes and deterministic Turkish/English signals run first. Only ambiguous input reaches the structured low-token classifier. A classifier decision below `AgenticRouting:MinConfidence` falls back to read-only hybrid search. The server-side policy layer independently authorizes the chosen route; classifier output never grants permission. A compound answer-plus-list request may invoke at most grounded RAG plus hybrid search, bounded by `MaxToolCalls`. If RAG is unavailable or fails, the assistant returns hybrid results with a warning rather than an ungrounded answer.
-
-The classifier cannot rewrite or expand `message`: the normalized original input is always used by retrieval. Classifier traffic has a dedicated concurrency bulkhead, queue timeout, circuit breaker, timeout and fingerprint-only exact-decision cache. A cached classification reports `routeSource: "classifier_cache"`.
+Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search, while execution remains distinct. If RAG is disabled, saturated, circuit-open, or timed out, the endpoint returns a bounded error and never silently falls back to a search result list or ungrounded chat answer.
 
 **200 Response**:
 
 ```json
 {
-  "route": "knowledge_answer",
-  "confidence": 0.94,
-  "routeSource": "deterministic",
-  "reasonCode": "answer_and_results",
-  "normalizedQuery": "VPN politikası nedir ve ilgili rehberleri listele",
+  "normalizedQuery": "VPN politikasının istisnaları nelerdir?",
   "answer": "Portal kaynaklarına dayalı doğrulanmış yanıt [S1]",
-  "results": [{ "id": "...", "title": "VPN Rehberi", "slug": "vpn-rehberi" }],
   "rag": {
     "sources": [{ "articleId": "...", "title": "VPN Politikası", "slug": "vpn-politikasi", "score": 0.95 }],
     "consultedSources": [],
@@ -784,56 +788,46 @@ The classifier cannot rewrite or expand `message`: the normalized original input
     "insufficientContext": false,
     "partialResult": false
   },
-  "analytics": null,
-  "requiresClarification": false,
-  "clarification": null,
-  "toolCalls": ["knowledge_rag", "knowledge_search"],
+  "toolCalls": ["knowledge_rag"],
   "warnings": [],
-  "searchQueryId": "...",
   "interactionId": "...",
   "responseTimeMs": 640,
-  "traceId": "..."
+  "traceId": "...",
+  "conversationId": null,
+  "cacheHit": false
 }
 ```
 
-The response also includes `conversationId`, `rawConfidence`, `confidenceCalibrationSamples`, and `cacheHit`. `confidence` is empirically calibrated when enough route-specific feedback exists; manual routes remain 1.0.
-
-Routes are `knowledge_search`, `knowledge_answer`, `analytics`, `general_chat`, and `clarification`. `routeSource` is `manual`, `deterministic`, `classifier`, `classifier_cache`, `classifier_model_fallback`, `fallback`, or `default`. The model-fallback source keeps the portal available when the configured small router is missing, while the live gate still requires actual dedicated-model cases. `searchQueryId` enables owned search-click/RAG evaluation linkage; `interactionId` enables owned Assistant feedback.
-
 Operational controls:
 
-- `Assistant:Enabled=false`: endpoint returns `404`; search/RAG remain available. Set frontend build variable `VITE_ASSISTANT_ENABLED=false` to remove the sidebar item and route.
-- `AgenticRouting:Enabled=false`: assistant remains available but uses the explicit/default route without classification.
-- The current tool registry is read-only by construction; configuration cannot expose a write or free-form SQL tool.
-- Metrics: `kp_assistant_routes`, `kp_assistant_tool_calls`, `kp_assistant_duration_ms`, `kp_assistant_classifier_requests`, `kp_assistant_classifier_duration_ms`, `kp_assistant_classifier_active`, `kp_assistant_feedback`, and `kp_assistant_audit_failures`; usage operations are persisted as `assistant.<route>`.
+- `Assistant:Enabled=false`: Assistant returns `404`; Search remains available. `VITE_ASSISTANT_ENABLED=false` removes the frontend route/menu.
+- `Assistant:TotalTimeoutSeconds` bounds the end-to-end operation.
+- RAG and semantic Search use separate resilience lanes.
+- Usage operations are `assistant.answer` and `assistant.stream.answer`.
 
-Errors use `{ "error": "..." }`: `400` for invalid input/mode, `403` for a denied route, `404` when the assistant kill switch is off, and `504` when the total bounded deadline expires.
+Errors use `{ "error": "..." }`: `400` for invalid input, `404` when the Assistant kill switch is off, `429` for capacity saturation, `503` for unavailable/open-circuit AI, and `504` for a deadline.
 
 ### `POST /api/assistant/feedback`
 **Auth**: Bearer (JWT or API Key). Feedback is accepted only for an interaction owned by the current principal's user.
-**Rate limit**: `search`
+**Rate limit**: `assistant`
 
 ```json
 {
   "interactionId": "...",
   "helpful": false,
-  "reason": "wrong_route",
-  "correctedRoute": "knowledge_search"
+  "reason": "wrong_source"
 }
 ```
 
-Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `wrong_route`, `outdated`, `no_answer`, and `other`. Corrected routes are validated against the fixed read-only route registry. Audit/feedback persistence stores a SHA-256 query fingerprint and routing/tool/timing metadata, never raw query or answer content. A grounded answer vote is also attached to its owned RAG search record so the existing RAG feedback cohorts include Assistant traffic.
+Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, and `other`. Audit/feedback persistence stores SHA-256 query/answer fingerprints and RAG/tool/timing metadata, never raw query or answer content. Assistant feedback is stored only on the owned `AssistantInteraction`, not on `SearchQuery`.
+
+### `POST /api/assistant/source-click`
+**Auth**: Bearer (JWT or API Key). Records an article-source click only when the interaction belongs to the caller and the article was cited or consulted by that answer.
 
 ### `GET /api/capabilities`
 **Auth**: Bearer (JWT or API Key).
 
-Returns the runtime Assistant enablement, routing/classifier/feedback status, maximum message size, and supported UI modes. The frontend combines this response with the compile-time `VITE_ASSISTANT_ENABLED` flag so a backend kill-switch change cannot leave a visible but unusable Assistant route.
-
-### `POST /api/assistant/route-preview`
-**Auth**: Admin interactive session (`users:manage`; API keys rejected).
-**Rate limit**: `search`
-
-Accepts the normal Assistant request and returns only `route`, `confidence`, `routeSource`, `reasonCode`, `normalizedQuery`, and `includeSearchResults`. No route policy grants access and no search/RAG/analytics tool is executed. The post-deploy live routing gate uses this endpoint to evaluate real classifier behavior independently of document availability.
+Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, and semantic-cache capabilities. The frontend combines this response with `VITE_ASSISTANT_ENABLED`.
 
 ### `POST /api/assistant/stream`
 **Auth/policy/rate limit**: Same as `POST /api/assistant`.
@@ -843,10 +837,6 @@ Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, 
 ### Assistant conversations
 
 `GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. Create returns a new conversation; list returns at most 100 recent items; delete-one and clear-all are recoverable only from database backup. Retention is configured by `Assistant:ConversationRetentionDays`.
-
-### Assistant evaluation candidates
-
-Admin session endpoints `GET /api/admin/assistant-evaluations/candidates?status=...`, `PUT /api/admin/assistant-evaluations/candidates/{id}`, and `GET /api/admin/assistant-evaluations/routing-summary` manage feedback-derived golden routing candidates and primary/shadow agreement. Approval requires a valid expected route. Approved candidates are included by the live routing gate script.
 
 ---
 
@@ -927,11 +917,11 @@ Repairs only published articles whose full-text or semantic index marker is miss
 
 Returns local `data/uploads` bytes/free space, extraction backlog/failures/truncation count, and a bounded checksum/missing-file sample. `truncatedExtraction` identifies attachments whose searchable text reached `FileStorage:MaxExtractedCharacters`.
 
-### `POST /api/search/rag-feedback`
+### `GET /api/admin/rag/observability`
 
-Records feedback for an authenticated user's own RAG search. Body: `{ "searchQueryId": "...", "helpful": false, "reason": "incomplete" }`. Optional negative reason codes are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, and `other`. The search record retains trace, prompt/retrieval/reranker/semantic-index versions, grounding status, and a SHA-256 answer fingerprint; it does not duplicate the generated answer text.
+Session-admin-only runtime snapshot for the Assistant/MCP RAG pipeline, resilience state, model/profile versions, active requests and recent aggregate health.
 
-### `GET /api/search/rag-debug?q=...`
+### `GET /api/admin/rag/debug?q=...`
 
 Session-admin-only diagnostic path. Runs query understanding, hybrid/multi-query child retrieval, reranking, ACL recheck, selective child-to-parent resolution, deduplication and context budgeting without calling the chat model. Returns the rewritten/decomposed query plan, extracted filters, only post-authorization candidates, expanded parent count/locations, and exact bounded context/evidence mapping.
 

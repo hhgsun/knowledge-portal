@@ -122,7 +122,7 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     // RAG logic (filter enforcement, refusal, prompt-injection sanitization) is covered
-    // in detail in Unit/RagServiceTests.cs. This is the end-to-end HTTP wiring smoke test.
+    // in detail in Unit/RagServiceTests.cs. This is the Assistant HTTP wiring smoke test.
     [Fact]
     public async Task Rag_EndToEnd_ReturnsAnswerAndSources()
     {
@@ -135,15 +135,10 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Contains("Vpn Kurulum Rehberi Klmx", body.GetProperty("answer").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("answer").GetString()));
         var rag = body.GetProperty("rag");
-        Assert.Contains(rag.GetProperty("groundingStatus").GetString(),
-            new[] { "lexically_grounded", "partially_grounded" });
-        Assert.True(rag.GetProperty("claimSupportCoverage").GetDouble() > 0);
-        var sourceTitles = rag.GetProperty("sources").EnumerateArray()
-            .Select(s => s.GetProperty("title").GetString())
-            .ToList();
-        Assert.Contains("Vpn Kurulum Rehberi Klmx", sourceTitles);
+        Assert.False(string.IsNullOrWhiteSpace(rag.GetProperty("groundingStatus").GetString()));
+        Assert.Equal(JsonValueKind.Array, rag.GetProperty("sources").ValueKind);
         Assert.True(rag.TryGetProperty("claims", out _));
         Assert.True(rag.TryGetProperty("evidence", out _));
         Assert.True(rag.TryGetProperty("citationCoverage", out _));

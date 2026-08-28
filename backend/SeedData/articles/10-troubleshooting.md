@@ -27,11 +27,11 @@
 
 ### HTTP 429 (Too Many Requests)
 
-Rate limit aşıldığında döner. Auth endpoint'leri için dakikada 10, search için dakikada 30 istek sınırı vardır. Bir dakika bekleyip tekrar deneyin.
+Rate limit aşıldığında döner. Auth endpoint'leri için dakikada 10, Search için 30, Assistant için 20 istek sınırı vardır. Bir dakika bekleyip tekrar deneyin.
 
 ## Arama Sorunları
 
-### Semantic/Hybrid/RAG arama çalışmıyor
+### Semantic/Hybrid arama veya Bilgi Asistanı çalışmıyor
 
 - `Ollama:BaseUrl` ile yapılandırılan Ollama/uyumlu servisin erişilebilir olduğundan emin olun.
 - appsettings.json'da Ollama:Enabled = true olmalı.

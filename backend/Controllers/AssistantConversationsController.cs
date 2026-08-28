@@ -39,7 +39,7 @@ public sealed class AssistantConversationsController(AppDbContext db,
             .AnyAsync(x => x.Id == id && x.UserId == User.GetUserId());
         if (!owned) return NotFound(new { error = "Assistant conversation not found." });
         var messages = await db.AssistantMessages.AsNoTracking().Where(x => x.ConversationId == id)
-            .OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.Role, x.Content, x.Route,
+            .OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.Role, x.Content,
                 x.InteractionId, x.CreatedAt }).ToListAsync();
         return Ok(new { messages });
     }

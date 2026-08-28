@@ -103,8 +103,11 @@ GET /api/search?q=container orchestration&type=semantic
 # Hybrid arama (fulltext + semantic birleşimi)
 GET /api/search?q=docker compose&type=hybrid
 
-# RAG arama (AI yanıtı + kaynaklar)
-GET /api/search?q=nasıl deploy edilir&type=rag
+# Kaynaklı AI-RAG yanıtı (Search'ten ayrı)
+POST /api/assistant
+Content-Type: application/json
+
+{"message":"nasıl deploy edilir?"}
 
 # Tag filtresi ile arama
 GET /api/search?q=react #tutorial #best-practices
@@ -148,5 +151,6 @@ API'nin aşırı kullanımını önlemek için rate limiting uygulanır:
 
 - **Auth endpoint'leri:** Dakikada 10 istek (login, register)
 - **Search endpoint'leri:** Dakikada 30 istek
+- **Assistant endpoint'leri:** Dakikada 20 istek
 
 Rate limit aşıldığında HTTP 429 (Too Many Requests) yanıtı döner.

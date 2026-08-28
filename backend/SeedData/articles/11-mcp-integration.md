@@ -127,12 +127,12 @@ Etiketler serbest anlamlıdır; `project-`, `team-` veya benzeri bir ön ek zoru
 
 ### search_articles
 
-Knowledge Portal'ın REST aramasıyla aynı full-text, semantic, hybrid ve RAG akışlarını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. `@yazar`, `#etiket` ve `##içerik-türü` inline filtreleri desteklenir.
+Knowledge Portal'ın REST Search yüzeyiyle aynı `fulltext`, `semantic` ve `hybrid` doküman aramasını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. AI yanıtı üretmez. `@yazar`, `#etiket` ve `##içerik-türü` inline filtreleri desteklenir.
 
 Parametreler:
 
 - `query` (string, zorunlu) — Arama metni
-- `type` (string) — `fulltext`, `semantic`, `hybrid` veya `rag` (varsayılan `fulltext`)
+- `type` (string) — `fulltext`, `semantic` veya `hybrid` (varsayılan `fulltext`)
 - `limit` (integer) — Maksimum sonuç sayısı (1-50, varsayılan 20)
 - `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
 - `tags` (string) — Geriye uyumlu düz kapsam alanı; virgülle ayrılmış etiket slug'ları
@@ -141,6 +141,19 @@ Parametreler:
 - `include_content` (boolean) — Kanonik Markdown string'ini `contentMarkdown` alanında sonuçlara dahil et (varsayılan false)
 - `include_attachments` (boolean) — Ek dosya metadatasını sonuçlara dahil et (varsayılan false)
 - `only_own_content` (boolean) — API key ile çağrıldığında yalnızca o anahtarla oluşturulan içerikleri döndürür
+
+### ask_knowledge
+
+Portal kanıtlarından doğrulanmış AI-RAG yanıtı üretir. REST'teki Bilgi Asistanı ile aynı `KnowledgeAnswerService`, filtre semantiği, ACL tekrar kontrolü, claim/citation doğrulaması ve fail-closed davranışı kullanır. `search_articles` sonuç listesi içindir; `ask_knowledge` kaynaklı yanıt içindir.
+
+Parametreler:
+
+- `question` (string, zorunlu) — Yanıtlanacak soru
+- `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
+- `authors` (string) — Virgülle ayrılmış yazar slug'ları (OR)
+- `only_own_content` (boolean) — API key ile yalnız o anahtarın oluşturduğu içerikler
+
+Yanıt; `answer`, atıf yapılan `sources`, `consultedSources`, typed `claims`, provenance-bearing `evidence`, citation/claim coverage, `groundingStatus`, `insufficientContext`, `partialResult`, çatışma değerlendirmesi ve uyarıları döndürür.
 
 ### get_article
 
@@ -341,6 +354,9 @@ class KnowledgePortalMCP:
     def search(self, query, limit=20, **kwargs):
         return self.call_tool('search_articles', query=query, limit=limit, **kwargs)
 
+    def ask(self, question, **kwargs):
+        return self.call_tool('ask_knowledge', question=question, **kwargs)
+
     def get_article(self, id_or_slug):
         return self.call_tool('get_article', id_or_slug=id_or_slug)
 
@@ -358,6 +374,8 @@ mcp = KnowledgePortalMCP('{site-url}', 'kp_your_api_key_here')
 results = mcp.search('deployment', limit=5)
 for article in results['results']:
     print(f"- {article['title']} ({article['slug']})")
+answer = mcp.ask('Deployment adımları nelerdir?')
+print(answer['answer'])
 ```
 
 ### TypeScript / Node.js
@@ -411,6 +429,10 @@ class KnowledgePortalMCP {
 
   search(query: string, limit = 20) {
     return this.callTool('search_articles', { query, limit });
+  }
+
+  ask(question: string) {
+    return this.callTool('ask_knowledge', { question });
   }
 
   getArticle(idOrSlug: string) {

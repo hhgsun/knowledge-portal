@@ -48,7 +48,8 @@ const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
 ];
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  search_articles: "Makale arama",
+  search_articles: "Doküman arama (fulltext / semantic / hybrid)",
+  ask_knowledge: "Portal kaynaklarından kanıtlı AI-RAG yanıtı",
   get_article: "Makale detayı",
   list_articles: "Makale listesi",
   list_tags: "Etiket listesi",
@@ -62,6 +63,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
 
 const DEFAULT_TOOLS: ToolSummary[] = [
   { name: "search_articles", desc: TOOL_DESCRIPTIONS.search_articles, params: "query*, type, page, limit, tags, authors, content_type, include_content, include_attachments, only_own_content" },
+  { name: "ask_knowledge", desc: TOOL_DESCRIPTIONS.ask_knowledge, params: "question*, scope, authors, only_own_content" },
   { name: "get_article", desc: "Makale detayı", params: "id_or_slug*" },
   { name: "list_articles", desc: "Makale listesi", params: "page, limit, content_type, tags, sort" },
   { name: "list_tags", desc: "Etiket listesi", params: "—" },
@@ -266,6 +268,7 @@ def call_tool(name, **args):
 
 # Örnekler
 results = call_tool("search_articles", query="deployment", limit=5)
+answer  = call_tool("ask_knowledge", question="Deployment adımları nelerdir?")
 article = call_tool("get_article", id_or_slug="mcp-entegrasyonu")
 tags    = call_tool("list_tags")`;
 
@@ -294,6 +297,7 @@ async Task<JsonElement> CallToolAsync(string name, object args)
 
 // Örnekler
 var results = await CallToolAsync("search_articles", new { query = "deployment", limit = 5 });
+var answer  = await CallToolAsync("ask_knowledge", new { question = "Deployment adımları nelerdir?" });
 var article = await CallToolAsync("get_article", new { id_or_slug = "mcp-entegrasyonu" });
 var tags    = await CallToolAsync("list_tags", new { });`;
 
@@ -324,6 +328,7 @@ String callTool(String name, String argsJson) throws Exception {
 
 // Örnekler
 String results = callTool("search_articles", "{\\"query\\":\\"deployment\\",\\"limit\\":5}");
+String answer  = callTool("ask_knowledge", "{\\"question\\":\\"Deployment adımları nelerdir?\\"}");
 String article = callTool("get_article", "{\\"id_or_slug\\":\\"mcp-entegrasyonu\\"}");
 String tags    = callTool("list_tags", "{}");`;
 

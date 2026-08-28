@@ -96,8 +96,8 @@ This document describes how to verify the Knowledge Portal is functioning correc
 |---|--------|----------|
 | 1 | `GET /api/search?q=test` | 200: results array (may be empty) |
 | 2 | `GET /api/search?q=@tutorial` | 200: tag-based search results |
-| 3 | `GET /api/search?q=test&type=rag` | 200: `{ answer, sources }` (real RAG when Ollama up; graceful message otherwise) |
-| 3b | `GET /api/search?q=test&type=rag&tag=x` | 200: sources restricted to tag `x` (filters apply to RAG) |
+| 3 | `GET /api/search?q=test&type=hybrid` | 200: document `results`; no generated `answer` |
+| 3b | `GET /api/search?q=test&type=rag` | 400: unsupported Search mode |
 | 4 | Check `search_queries` table | New record with query, results_count, response_time_ms |
 
 ---
@@ -115,29 +115,28 @@ This document describes how to verify the Knowledge Portal is functioning correc
 
 ---
 
-## Assistant Routing Tests
+## Bilgi Asistanı Tests
 
 | # | Action | Expected |
 |---|--------|----------|
 | 1 | `POST /api/assistant` without auth | 401 |
-| 2 | Post `{"message":"ilgili dokümanları bul","preferredRoute":"auto"}` | 200: `route: "knowledge_search"`, hybrid results, `toolCalls: ["knowledge_search"]` |
-| 3 | Post a portal policy question | 200: grounded RAG answer and evidence, or an explicit hybrid fallback warning when RAG is unavailable |
-| 4 | Post `{"message":"merhaba"}` | 200: canned `general_chat` response and no tool call |
-| 5 | Request analytics as viewer or API key | 403; router confidence never grants permission |
-| 6 | Request analytics as admin/editor session | 200: analytics DTO and `portal_analytics` tool call |
+| 2 | Post a portal policy question | 200: grounded `answer`, `rag`, `interactionId`, and `toolCalls: ["knowledge_rag"]`; no search results/routing metadata |
+| 3 | Post with tag/author/content-type scope | 200: cited/consulted evidence remains inside the requested scope |
+| 4 | Disable Ollama and post a question | 503; Assistant does not fall back to Search or ungrounded chat |
+| 5 | Call MCP `search_articles` with `type=rag` | Tool validation error; only three document-search modes exist |
+| 6 | Call MCP `ask_knowledge` | Grounded answer payload using the same canonical RAG service |
 | 7 | Set `Assistant:Enabled=false` and restart backend | `POST /api/assistant` returns 404; `/api/search` remains operational |
 | 8 | Call `GET /api/capabilities` after disabling Assistant | `assistant.enabled: false`; the authenticated UI hides navigation and rejects direct `/assistant` routing |
 | 9 | Build with `VITE_ASSISTANT_ENABLED=false` | Assistant navigation and `/assistant` route are omitted regardless of backend capability |
-| 10 | Submit thumbs-down with `wrong_route` and a corrected route | Owned interaction is updated; another user receives 403; admin feedback summary shows the route cohort/correction |
-| 11 | Repeat the same ambiguous query while classifier caching is enabled | First decision source is `classifier`, subsequent decision source is `classifier_cache`; retrieval query remains the original text |
+| 10 | Submit thumbs-down with `wrong_source` | Owned interaction is updated; another user receives 403; admin feedback summary shows RAG cohorts |
+| 11 | Click a cited source | `/api/assistant/source-click` updates only the owned interaction and cited/consulted article |
 | 12 | Cancel an in-flight Assistant request | Browser aborts the request without a failure toast; a retry can be submitted normally |
-| 13 | Call `POST /api/assistant/route-preview` as viewer/API key, then admin session | Viewer/key gets 403; admin gets decision metadata without `toolCalls`, answer or results |
-| 14 | Run `backend/scripts/run-assistant-live-routing-gate.ps1` against deployment | At least 80% cases pass and at least three cases use live `classifier`/`classifier_cache` |
+| 13 | Call `GET /api/admin/rag/debug?q=...` as viewer/API key, then admin session | Viewer/key gets 403; admin gets retrieval/context plan without an LLM answer |
+| 14 | Run `backend/scripts/run-rag-live-quality-gate.ps1` against deployment | Live grounded-answer quality thresholds pass |
 | 15 | Create a conversation, ask a topic, then ask “peki detayları?” | Only the owner can read it; response query contains bounded prior topic context; delete-one/clear remove messages |
 | 16 | Call `/api/assistant/stream` | `text/event-stream`: status → verified token chunks → complete; cancellation closes work without a server failure |
 | 17 | Repeat a fully grounded answer, then update a cited article | Second request may be `cacheHit:true`; update forces miss. Another user/API-key scope never receives the entry |
-| 18 | Submit negative feedback with corrected route and matching question | Pending candidate appears; admin approval adds it to the next live golden gate |
-| 19 | Enable shadow sampling in staging | User route is unchanged; routing summary and `kp_assistant_shadow_comparisons` show async agreement |
+| 18 | Inspect `assistant_interactions` after feedback | RAG versions/profile/grounding/answer hash exist; no raw query/answer or SearchQuery relation exists |
 
 ---
 

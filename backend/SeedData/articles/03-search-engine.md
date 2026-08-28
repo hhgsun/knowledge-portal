@@ -1,20 +1,20 @@
 ---
 {
-  "title": "Arama Motoru — Fulltext, Semantic, Hybrid ve RAG",
+  "title": "Doküman Arama — Fulltext, Semantic ve Hybrid",
   "contentType": "reference",
   "tags": [
     "project-knowledge-portal",
     "best-practices",
     "performance"
   ],
-  "excerpt": "Knowledge Portal'ın dört arama modunun güncel mimarisi, kullanım senaryoları, filtreleri ve indeksleme davranışı.",
+  "excerpt": "Knowledge Portal'ın üç doküman arama modunun güncel mimarisi, kullanım senaryoları, filtreleri ve indeksleme davranışı.",
   "status": "published"
 }
 ---
 
 ## Arama Modları
 
-Knowledge Portal API'si dört arama modu sunar. Doküman arama ekranı fulltext, semantic ve hybrid sonuç listelerine odaklanır; kaynaklı RAG yanıtlarının kanonik kullanıcı deneyimi konuşma geçmişi ve güvenli yönlendirme sağlayan **Bilgi Asistanı**dır. Arama ekranındaki bir sorgu, “Kanıtlı yanıt al” bağlantısıyla metni kaybetmeden Asistan'ın yanıt moduna aktarılabilir; eski `/search?q=...&type=rag` arayüz bağlantıları da Asistan'a yönlendirilir. Doğrudan `GET /api/search?type=rag` API sözleşmesi MCP ve diğer entegrasyonlar için korunur. Varsayılan API modu fulltext'tir ve Ollama olmadan çalışır. Semantic ve RAG için Ollama embedding/chat servisleri kullanılır; hybrid arama lexical ve semantic sonuçları birleştirir.
+Knowledge Portal Search API'si yalnız üç doküman arama modu sunar: `fulltext`, `semantic` ve `hybrid`. Yanıt sentezlemez; sıralanmış makale sonuçları döndürür. Kaynaklı AI-RAG yanıtlarının tek kullanıcı deneyimi **Bilgi Asistanı**dır. Arama ekranındaki “Bilgi Asistanına sor” eylemi sorguyu metni kaybetmeden `/assistant?q=...` adresine taşır. REST entegrasyonları `POST /api/assistant`, MCP istemcileri `ask_knowledge` kullanır. `GET /api/search?type=rag` desteklenmez. Varsayılan arama modu fulltext'tir ve Ollama olmadan çalışır; semantic ve hybrid modları embedding servisini kullanır.
 
 ## 1. Fulltext Arama
 
@@ -51,15 +51,9 @@ Fulltext ve semantic adaylar Reciprocal Rank Fusion (RRF) ile birleştirilir. Va
 
 Her iki sinyalden yararlanmak istediğiniz genel aramalarda hybrid mod önerilir. Semantic bacak kullanılamazsa lexical sonuçlarla kontrollü fallback uygulanır.
 
-## 4. RAG Arama
+## Kaynaklı Yanıt İçin Bilgi Asistanı
 
-RAG modu yalnızca makale listesi döndürmez; getirilen kanıtlara dayanarak önce kısa sonuç, ardından rol bazlı kanıtlı açıklama oluşturur. Model doküman başlıklarını veya sonuçları tek tek aktarmak yerine ilgili pasajları sentezler; açıklamadaki her olgusal cümle yine deterministik grounding kontrolünden geçer. Retrieval katmanı lexical ve semantic chunk adaylarını RRF ile birleştirir, dinamik content-type otoritesiyle yeniden sıralar, yakın kopyaları bastırır ve kaynak çeşitliliğini korur. Dar sorularda kaynak genişliği query token karmaşıklığı ve marjinal relevance skoruna göre varsayılan 3-10 makale arasında seçilir; context model-calibrated token bütçesiyle sınırlandırılır. Tüm içerikleri özetleme/karşılaştırma gibi geniş sorular bounded-parallel map-reduce akışına yönlendirilir. API ve arayüz, cevapta atıf yapılan kaynaklarla yalnız incelenen kaynakları ayrı gösterir; deterministik sayısal/polarity uyuşmazlıkları yönetişim önceliğiyle ayrıca raporlar.
-
-Üretilen yanıt yapılandırılmış claim ve `[S1]` biçimindeki kanıt atıflarıyla doğrulanır. Her evidence öğesi ayrıca gerçek embedding satırının stabil `chunkId` değerini (lexical fallback için deterministik kimlik), yetki kontrollü canonical makale URL'sini ve varsa ayrıştırılmış PDF sayfa numarasını taşır. Bilinmeyen kanıt, lexical olarak desteklenmeyen iddia, sayı uyuşmazlığı veya negation çelişkisi bulunan claim kullanıcı yanıtına alınmaz. Yeterli kanıt yoksa sistem cevap uydurmak yerine açıkça reddeder.
-
-Bilgi Asistanı AI yanıtında atıf yapılan ve yalnız incelenen kaynakları ayrı gösterir; kanıt pasajları ve varsa sayfa/ek konumu ayrıca incelenebilir. Kaynak bağlantıları makaleyi açar ve tıklama mevcut arama kalite telemetrisine bağlanır. Doğrudan RAG API yanıtı aynı claim, evidence, kaynak yönetişimi ve conflict assessment alanlarını korur.
-
-Uygulama ayrıntıları, güvenlik ve dayanıklılık kontrolleri için **RAG Mimarisi ve İşleyişi** makalesine bakın.
+Bir doküman listesi yerine kaynaklardan sentezlenmiş ve atıflı yanıt gerektiğinde Bilgi Asistanı kullanılır. Asistan Search'ün dördüncü modu değildir; ayrı API, telemetri, feedback ve dayanıklılık sınırına sahip RAG ürünüdür. Uygulama ayrıntıları için **Bilgi Asistanı ve Kaynaklı RAG** ile **RAG Mimarisi ve İşleyişi** makalelerine bakın.
 
 ## Arama Filtreleri
 
@@ -80,6 +74,6 @@ Yayınlama, içerik değişikliği ve ek ekleme/silme işlemleri önce PostgreSQ
 
 Editör ve yöneticiler makale listesinde, detay sayfasında ve düzenleme ekranında sürüme duyarlı indeks durumunu görür: `İndekslendi`, `İndeksleniyor`, `İndeks bekliyor`, `İndeks güncel değil` veya `İndeksleme başarısız`. İşaret yalnızca embedding satırının varlığına dayanmaz; makalenin güncel revizyonu için gerekli lexical ve (etkinse) semantic indekslerin tamamlanmış olmasını doğrular. Normal okuyucu yanıtları bu operasyonel alanı içermez.
 
-Arama yanıtındaki indeks kapsamı uyarısı seçilen moda ve aktif filtrelere göre hesaplanır. Fulltext arama yalnız `FtsIndexedAt`, semantic arama yalnız `IndexedAt`, hybrid ve RAG ise iki indeksi birlikte değerlendirir. Böylece yalnız semantic indeksi bekleyen bir makale Full‑Text sonuçlarında gereksiz uyarı oluşturmaz; filtre kapsamı dışındaki makaleler de mevcut aramayı eksikmiş gibi göstermez. Güncel olmayan semantic indekslerde eski embedding'ler geçici olarak hizmet vermeye devam edebileceği için mesaj, sonuçların "eksik veya eski" olabileceğini açıkça belirtir.
+Arama yanıtındaki indeks kapsamı uyarısı seçilen moda ve aktif filtrelere göre hesaplanır. Fulltext arama yalnız `FtsIndexedAt`, semantic arama yalnız `IndexedAt`, hybrid ise iki indeksi birlikte değerlendirir. Böylece yalnız semantic indeksi bekleyen bir makale Full‑Text sonuçlarında gereksiz uyarı oluşturmaz; filtre kapsamı dışındaki makaleler de mevcut aramayı eksikmiş gibi göstermez. Güncel olmayan semantic indekslerde eski embedding'ler geçici olarak hizmet vermeye devam edebileceği için mesaj, sonuçların "eksik veya eski" olabileceğini açıkça belirtir.
 
-Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics`, `/api/search/storage-status`, `/api/search/rag-observability` ve `/api/search/rag-debug` endpoint'leriyle arama altyapısını izleyebilir. Debug işlemi LLM çağırmadan rewrite/alt sorgu/filtre planını, yalnız yetkili rerank adaylarını, child→parent genişletmesini ve gerçek context bütçesini gösterir. Arama teşhis ekranı başarısız ve karakter sınırında kırpılmış ek çıkarımlarını da görünür kılar. `/settings/search` ekranındaki onarım yalnız indeksi eksik, retry bekleyen, terminal-hatalı veya lease süresi geçmiş kuyruk işlerini yeniden açar; sağlıklı veya aktif işleri değiştirmez.
+Yönetici kullanıcılar `/api/search/embedding-status`, `/api/search/diagnostics` ve `/api/search/storage-status` endpoint'leriyle arama/indeks altyapısını izleyebilir. Assistant RAG çalışma görünümü ve modelsiz query/context debug işlemleri ayrı olarak `/api/admin/rag/observability` ve `/api/admin/rag/debug` altındadır. `/settings/search` ekranındaki onarım yalnız indeksi eksik, retry bekleyen, terminal-hatalı veya lease süresi geçmiş kuyruk işlerini yeniden açar; sağlıklı veya aktif işleri değiştirmez.

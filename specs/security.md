@@ -102,15 +102,15 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 | Inline RBAC checks | Inside controller actions | Principal-aware ownership checks (`RbacService.CanEditArticle(User, …)` etc.) |
 | `[RequireSessionAuth]` attribute | Controller/action level | `source == "api-key"` returns 403 for session-only endpoints |
 
-### Assistant Route Policy
+### Bilgi Asistanı RAG Policy
 
-`POST /api/assistant` is authenticated and exposes a fixed read-only route registry. The router may classify intent, but it cannot authorize a route or invoke a tool. `AssistantPolicyService` re-checks every selected route against the authenticated principal; analytics requires both an interactive session and `analytics:view`, exactly like `GET /api/analytics`. The search and RAG routes reuse `SearchExecutionService`, including its article visibility and API-key ownership filters.
+`POST /api/assistant` is authenticated and has one read-only behavior: grounded RAG over authorized portal content. It does not route to Search, analytics, general chat, mutation tools, or free-form SQL. `KnowledgeAnswerService` and MCP `ask_knowledge` apply the same article visibility, API-key ownership and explicit/inline scope filters. Search remains a separate document-retrieval API.
 
-User text is serialized as untrusted data for the optional structured classifier. The classifier has no tool access and its schema cannot return a rewritten query; retrieval always receives the original normalized user input. It has a separate bulkhead, queue timeout, circuit breaker and fingerprint-only exact decision cache. General chat is canned so it cannot invent company facts, and company answers use the existing grounded RAG validation path. No mutation or free-form SQL operation is registered; changing configuration cannot create one. The request has bounded message, classifier, total-time and tool-call budgets. `/api/capabilities` lets the authenticated UI honor the runtime backend kill switch in addition to the compile-time flag.
+User text and retrieved content are treated as untrusted data. The request has bounded message, queue, stage and total-time budgets; semantic Search and RAG answer generation have separate resilience lanes. Grounding/citation validation is fail-closed, and an AI failure never becomes a document-list or ungrounded-chat fallback. `/api/capabilities` lets the authenticated UI honor the runtime backend kill switch in addition to the compile-time flag.
 
-Assistant audit stores only a SHA-256 query fingerprint plus route/tool/timing identifiers; raw prompts and generated answers are not persisted in `assistant_interactions`. Feedback updates require ownership of the interaction. When an interaction produced a RAG query, the vote is also attached to the existing owned `search_queries` evaluation record. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
+Assistant audit stores SHA-256 query/answer fingerprints plus RAG version/profile/grounding, tool and timing identifiers; raw prompts and generated answers are not persisted in `assistant_interactions`. Feedback and source-click updates require interaction ownership. No feedback or RAG metadata is written to `search_queries`. `Assistant:Enabled=false` is the backend kill switch; `VITE_ASSISTANT_ENABLED=false` removes frontend navigation and routing at build time.
 
-Conversation history is an explicit separate data class: only interactive sessions can create/read/delete it, every query is owner-filtered, context is bounded to recent user messages, retention is configurable, and user/conversation deletion cascades content. Semantic answer cache never crosses a user/role/auth/API-key scope and becomes unusable on any published-corpus, review/approval/authority, prompt/retrieval/model/chunking change. Only fully grounded non-partial answers qualify. SSE never exposes pre-validation model output. Shadow routing runs asynchronously and persists only a query fingerprint.
+Conversation history is an explicit separate data class: only interactive sessions can create/read/delete it, every query is owner-filtered, context is bounded to recent user messages, retention is configurable, and user/conversation deletion cascades content. Semantic answer cache never crosses a user/role/auth/API-key scope and becomes unusable on any published-corpus, review/approval/authority, prompt/retrieval/model/chunking change. Only fully grounded non-partial answers qualify. SSE never exposes pre-validation model output.
 
 ### API Key Capability Model ("editor minus delete")
 
@@ -129,8 +129,8 @@ These endpoints explicitly reject API key authentication:
 |----------|--------|
 | `GET/POST/PUT/DELETE /api/admin/users` | User management is sensitive admin operation |
 | `GET /api/analytics` | Analytics data should not be programmatically scraped |
-| `POST /api/assistant` when routed to analytics | Route policy preserves the same session-only analytics boundary |
-| `POST /api/assistant/route-preview` | Admin-only live classifier quality probe; never executes the selected tool |
+| `GET/POST/DELETE /api/assistant/conversations` | Assistant history is interactive-session-only and owner scoped |
+| `GET /api/admin/rag/observability`, `GET /api/admin/rag/debug` | RAG operational data is admin-session-only |
 | `GET/POST/DELETE /api/keys` | Prevents API key from creating/managing other API keys |
 | `GET/POST/PUT/DELETE /api/admin/keys` | Admin all-user key management; same reason as above |
 | `DELETE /api/articles/{id}`, `DELETE .../attachments/{id}`, `DELETE .../comments/{id}`, `DELETE /api/tags`, `DELETE /api/lookups`, `DELETE /api/featured-links` | Destructive deletes are session-only (API key capability model) |

@@ -13,8 +13,7 @@ public sealed record AnalyticsReport(AnalyticsOverviewReport Overview,
     UsageAnalytics Usage);
 
 /// <summary>
-/// Shared analytics read model for the REST analytics page and the read-only assistant route.
-/// Keeping it outside both controllers prevents assistant removal from affecting analytics logic.
+/// Analytics read model used by the dedicated REST analytics surface.
 /// </summary>
 public sealed class AnalyticsReportService(
     AppDbContext db,

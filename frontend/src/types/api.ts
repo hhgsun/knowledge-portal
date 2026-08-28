@@ -277,7 +277,7 @@ export interface AssistantConversation {
   id: string; title: string; createdAt: string; updatedAt: string; messageCount: number;
 }
 export interface AssistantConversationMessage {
-  id: string; role: "user" | "assistant"; content: string; route?: string | null;
+  id: string; role: "user" | "assistant"; content: string;
   interactionId?: string | null; createdAt: string;
 }
 

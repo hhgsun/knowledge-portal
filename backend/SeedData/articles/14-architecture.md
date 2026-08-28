@@ -43,7 +43,7 @@ Desteklenen production topolojisi tek backend instance'ıdır. TLS şirket rever
 - **Arka plan işleri:** PostgreSQL-backed dayanıklı indeks kuyruğu ve RAG kalite değerlendirme worker'ı.
 - **Gözlemlenebilirlik:** Serilog, OpenTelemetry trace/metric, Prometheus `/metrics`, RAG dashboard ve alarm kuralları.
 
-Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. `ArticleMutationService` normal, toplu ve kaynak içe aktarma yazma kurallarını; `ContentTypeService` aktif içerik türü invariant'ını; `SearchExecutionService` REST ve MCP arama akışını ortaklaştırır. Veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
+Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. `ArticleMutationService` yazma kurallarını; `ContentTypeService` aktif içerik türü invariant'ını; `SearchExecutionService` yalnız REST/MCP doküman aramasını; `KnowledgeAnswerService` ise Assistant/MCP kaynaklı RAG yanıtını ortaklaştırır. `KnowledgeQueryScopeService` iki ürünün filtre semantiğini paylaşır. Veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
 
 ## Middleware Sırası
 
@@ -76,11 +76,11 @@ Başlıca entity grupları:
 
 Makale gövdesi kanonik CommonMark/GFM Markdown olarak saklanır. `includeContent` yanıtı bu kanonik string'i `contentMarkdown` olarak döndürür. Arama, embedding, okuma süresi ve detay yanıtındaki `contentText` için ayrıca okunabilir düz metin türetilir; URL ve biçim sözdizimi indekse taşınmaz.
 
-## Arama ve RAG
+## Doküman Arama ve Bilgi Asistanı RAG
 
-Lexical arama PostgreSQL FTS, semantic arama pgvector kullanır. Hybrid arama iki aday listesini RRF ile birleştirip yerel reranker uygular. RAG, provenance taşıyan makale/ek chunk'larını getirir; dar soruları tek geçişte, geniş soruları bounded-parallel map-reduce ile yanıtlar. Üretilen claim'ler kanıt ve atıf doğrulamasından geçmeden kullanıcı yanıtına alınmaz.
+Search yalnız doküman listesi döndürür: lexical arama PostgreSQL FTS, semantic arama pgvector kullanır; hybrid arama iki aday listesini RRF ile birleştirip yerel reranker uygular. Bilgi Asistanı RAG ise ayrı girişte provenance taşıyan makale/ek chunk'larını getirir; dar soruları tek geçişte, geniş soruları bounded-parallel map-reduce ile yanıtlar. Üretilen claim'ler kanıt ve atıf doğrulamasından geçmeden kullanıcı yanıtına alınmaz.
 
-Ayrıntılı akış için **Arama Motoru — Fulltext, Semantic, Hybrid ve RAG** ile **RAG Mimarisi ve İşleyişi** makalelerine bakın.
+Ayrıntılı akış için **Doküman Arama — Fulltext, Semantic ve Hybrid**, **Bilgi Asistanı ve Kaynaklı RAG** ile **RAG Mimarisi ve İşleyişi** makalelerine bakın.
 
 ## Önemli Tasarım Kararları
 
