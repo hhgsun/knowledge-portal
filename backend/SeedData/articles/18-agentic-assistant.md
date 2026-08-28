@@ -38,7 +38,7 @@ Bağımlılık tek yönlüdür: Assistant katmanı mevcut servislere bağımlıd
 
 ## Routing Akışı
 
-Kullanıcı arayüzünde `Auto`, `Yanıt`, `Arama`, `Analitik` ve `Sohbet` modları bulunur. Açıkça seçilen mod model çağırmadan uygulanır. `Auto` modunda sıralama şöyledir:
+Kullanıcı arayüzünde birincil seçenekler `Otomatik yönlendir`, `Kanıtlı yanıt` ve `Doküman ara` modlarıdır; `Portal analitiği` yalnız yetkili kullanıcıya gösterilir. `general_chat` güvenli selamlama rotası Auto yönlendirmesinde desteklenmeye devam eder, fakat serbest bir sohbet modeli olmadığı için ayrı bir manuel mod olarak sunulmaz. Açıkça seçilen mod model çağırmadan uygulanır. `Auto` modunda sıralama şöyledir:
 
 1. Türkçe ve İngilizce yüksek güvenli sinyaller deterministik olarak değerlendirilir.
 2. Yalnız belirsiz istekler düşük token bütçeli, temperature 0 ve zorunlu JSON şemalı sınıflandırıcıya gider.
@@ -75,7 +75,7 @@ POST /api/assistant
 }
 ```
 
-Yanıt; gerçek rota, routing kaynağı ve confidence değerinin yanında `answer`, `results`, kaynak/claim/evidence içeren `rag`, yetkili `analytics`, `toolCalls`, `warnings`, `searchQueryId`, `interactionId`, süre ve trace kimliği döndürür. Arayüzde kaynaklar tıklanabilir, kanıt konumları/sayfaları gösterilir ve arama sonucu tıklamaları mevcut kalite telemetrisine bağlanır. Kullanıcı isteği iptal edebilir veya yanlış rota için tek tıkla güvenli `answer`/`search` modunda yeniden deneyebilir. Arayüz modelden türetilmiş görsel açıklamalar gibi ingestion verisini makale gövdesine sessizce yazmaz; Assistant yalnız indekslenmiş kanıtı kaynak/provenance ile sunar.
+Yanıt; gerçek rota, routing kaynağı ve confidence değerinin yanında `answer`, `results`, kaynak/claim/evidence içeren `rag`, yetkili `analytics`, `toolCalls`, `warnings`, `searchQueryId`, `interactionId`, süre ve trace kimliği döndürür. Asistan portalın kanonik kaynaklı-soru deneyimidir: Doküman Ara ekranındaki “Kanıtlı yanıt al” bağlantısı sorguyu `/assistant?q=...&mode=answer` üzerinden önceden doldurur; kullanıcı göndermeden önce metni ve modu değiştirebilir. Arayüzde kaynaklar tıklanabilir, kanıt konumları/sayfaları gösterilir ve arama sonucu tıklamaları mevcut kalite telemetrisine bağlanır. Kullanıcı isteği iptal edebilir veya yanlış rota için tek tıkla güvenli `answer`/`search` modunda yeniden deneyebilir. Arayüz modelden türetilmiş görsel açıklamalar gibi ingestion verisini makale gövdesine sessizce yazmaz; Assistant yalnız indekslenmiş kanıtı kaynak/provenance ile sunar.
 
 ## Çok Turlu Konuşma ve Streaming
 

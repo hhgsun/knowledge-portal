@@ -50,8 +50,8 @@ frontend/
     ├── EditArticlePage.tsx    # Edit article form with versioning + change summary
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
-    ├── SearchPage.tsx         # Multi-mode search + typed RAG synthesis, cited/consulted source labels, governance/conflict signals and accent-insensitive evidence highlighting
-    ├── AssistantPage.tsx      # Bounded auto/manual routing over search, grounded RAG, authorized analytics and canned chat
+    ├── SearchPage.tsx         # Document discovery via fulltext/semantic/hybrid modes, metadata autocomplete and query handoff to Assistant
+    ├── AssistantPage.tsx      # Canonical grounded-answer UI with bounded auto/manual routing, owned conversations, search and authorized analytics
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
@@ -131,8 +131,8 @@ graph TD
 | `/articles/:slug` | ArticleViewPage | Protected | AppShell | — |
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
-| `/search` | SearchPage | Protected | AppShell | — |
-| `/assistant` | AssistantPage | Protected | AppShell | Runtime capabilities; verified SSE, owned history/new/delete/clear, route retry, citations, feedback and cache/calibration indicators |
+| `/search` | SearchPage | Protected | AppShell | Document-result modes; a populated query can be handed to `/assistant?q=...&mode=answer` |
+| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface; query/mode prefill, runtime capabilities, verified SSE, owned history/new/delete/clear, route retry, citations, feedback and cache/calibration indicators |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |
@@ -164,7 +164,7 @@ Shows loading state while auth is being validated. Redirects to `/login` if no u
 ### Navigation
 
 Sidebar navigation is **role-aware**:
-- All users see: Home, Articles (with "New Article" nested), Search, Profile and featured links. Assistant is also visible unless `VITE_ASSISTANT_ENABLED=false` at build time.
+- All users see: Home, Articles (with "New Article" nested), Doküman Ara, Profile and featured links. Bilgi Asistanı is also visible unless `VITE_ASSISTANT_ENABLED=false` at build time. Doküman Ara exposes result-list modes; Bilgi Asistanı is the single visible grounded-answer experience.
 - Admin/editor users also see Analytics, Tags, Lookups and bulk-transfer/import operations.
 - Admins additionally see user/API-key administration, featured-link management, logs, search diagnostics and RAG evaluations.
 

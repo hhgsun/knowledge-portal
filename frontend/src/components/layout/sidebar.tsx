@@ -48,7 +48,7 @@ interface NavItem {
 
 const baseNavigation: NavItem[] = [
   { label: "Home", href: "/", icon: <Home size={18} /> },
-  { label: "Search", href: "/search", icon: <Search size={18} /> },
+  { label: "Doküman Ara", href: "/search", icon: <Search size={18} /> },
   {
     label: "Articles",
     href: "/articles",
@@ -194,7 +194,7 @@ export function Sidebar() {
   const { links: featuredLinks } = useFeaturedLinks();
   const { assistantEnabled } = useCapabilities();
   const navigation: NavItem[] = assistantEnabled
-    ? [baseNavigation[0], { label: "Assistant", href: "/assistant", icon: <Bot size={18} /> }, ...baseNavigation.slice(1)]
+    ? [baseNavigation[0], { label: "Bilgi Asistanı", href: "/assistant", icon: <Bot size={18} /> }, ...baseNavigation.slice(1)]
     : baseNavigation;
 
   // Close mobile sidebar on route change

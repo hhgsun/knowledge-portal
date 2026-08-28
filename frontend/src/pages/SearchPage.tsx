@@ -10,6 +10,7 @@ import { useSearchHistory } from "../hooks/useNetworkStatus";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
 import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue, SearchIndexCoverage } from "../types/api";
+import { useCapabilities } from "../contexts/CapabilitiesContext";
 
 type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
 type SuggestionType = "tag" | "author" | "contentType";
@@ -47,6 +48,7 @@ function getGroundingLabel(status: NonNullable<RagResponse["groundingStatus"]>) 
 
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
+  const { assistantEnabled, capabilities } = useCapabilities();
   const { contentTypes } = useLookups();
   const { history, addToHistory, removeFromHistory, clearHistory } = useSearchHistory();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -113,6 +115,12 @@ export default function SearchPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(-1);
   const navigate = useNavigate();
+  const redirectLegacyRagToAssistant = capabilities?.enabled === true && initialType === "rag";
+
+  useEffect(() => {
+    if (!redirectLegacyRagToAssistant) return;
+    navigate(`/assistant?q=${encodeURIComponent(initialQuery)}&mode=answer`, { replace: true });
+  }, [initialQuery, navigate, redirectLegacyRagToAssistant]);
 
   // Autocomplete data
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -272,11 +280,11 @@ export default function SearchPage() {
   // Auto-search on mount if query param exists
   const hasAutoSearched = useRef(false);
   useEffect(() => {
-    if (initialQuery && !hasAutoSearched.current) {
+    if (initialQuery && !redirectLegacyRagToAssistant && !hasAutoSearched.current) {
       hasAutoSearched.current = true;
       handleSearch();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [redirectLegacyRagToAssistant]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire-and-forget click analytics; navigation is handled by the result <Link>
   const trackClick = useCallback((articleId: string) => {
@@ -297,12 +305,12 @@ export default function SearchPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-4">Bilgi Bankasında Ara</h1>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Doküman Ara</h1>
+        <p className="mb-4 mt-1 text-sm text-zinc-500">Makale ve ekleri anahtar kelime, anlam benzerliği ve metadata filtreleriyle bulun.</p>
         <div className="flex gap-1 mb-3 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit" role="tablist" aria-label="Search type">
           <SearchTypeTab active={searchType === "hybrid"} onClick={() => setSearchType("hybrid")} icon={<Zap size={14} />} label="Hybrid" />
           <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
           <SearchTypeTab active={searchType === "semantic"} onClick={() => setSearchType("semantic")} icon={<Sparkles size={14} />} label="Semantic" />
-          <SearchTypeTab active={searchType === "rag"} onClick={() => setSearchType("rag")} icon={<Bot size={14} />} label="Ask AI" />
         </div>
         <p id="search-help" className="sr-only">Use @ for author filter, # for tag filter, ## for content type filter. Press Enter to search.</p>
         <form onSubmit={handleSearch} className="relative" role="search" aria-label="Search knowledge base">
@@ -419,6 +427,18 @@ export default function SearchPage() {
             </div>
           )}
         </form>
+        {assistantEnabled && query.trim() && searchType !== "rag" && (
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/30">
+            <span className="text-blue-700 dark:text-blue-300">Doküman listesi yerine kaynaklara dayalı bir açıklama mı istiyorsunuz?</span>
+            <Link
+              to={`/assistant?q=${encodeURIComponent(query.trim())}&mode=answer`}
+              className="inline-flex shrink-0 items-center gap-1.5 font-medium text-blue-700 hover:underline dark:text-blue-300"
+            >
+              <Bot size={15} />
+              Kanıtlı yanıt al
+            </Link>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -641,7 +661,7 @@ export default function SearchPage() {
               {results.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
                   <p className="text-zinc-500">Sonuç bulunamadı</p>
-                  <p className="text-sm text-zinc-400 mt-1">Farklı anahtar kelimeler deneyin veya yapay zekâ arama modunu kullanın</p>
+                  <p className="text-sm text-zinc-400 mt-1">Farklı anahtar kelimeler veya daha geniş bir arama modu deneyin.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -762,8 +782,8 @@ export default function SearchPage() {
       ) : (
         <div className="text-center py-8">
           <Sparkles size={32} className="mx-auto text-zinc-300 mb-3" />
-          <p className="text-zinc-500">Search across all knowledge articles with AI-powered hybrid search</p>
-          <p className="text-xs text-zinc-400 mt-1">Combines full-text and semantic search, or ask AI directly</p>
+          <p className="text-zinc-500">Tüm bilgi makalelerinde hybrid arama yapın</p>
+          <p className="text-xs text-zinc-400 mt-1">Tam metin ve anlam benzerliği sonuçlarını birlikte değerlendirir.</p>
         </div>
       )}
     </div>

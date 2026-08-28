@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { Bot, Send, Sparkles, Search, BarChart3, MessageCircle, FileText, ShieldCheck, AlertTriangle, Loader2, ExternalLink, ThumbsUp, ThumbsDown, Square, RotateCcw, Plus, Trash2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Bot, Send, Sparkles, Search, BarChart3, FileText, ShieldCheck, AlertTriangle, Loader2, ExternalLink, ThumbsUp, ThumbsDown, Square, RotateCcw, Plus, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -16,8 +16,13 @@ const modes: { value: AssistantPreferredRoute; label: string; icon: typeof Spark
   { value: "answer", label: "Kanıtlı yanıt", icon: Bot },
   { value: "search", label: "Doküman ara", icon: Search },
   { value: "analytics", label: "Portal analitiği", icon: BarChart3 },
-  { value: "chat", label: "Genel sohbet", icon: MessageCircle },
 ];
+
+function initialMode(value: string | null): AssistantPreferredRoute {
+  return value === "answer" || value === "search"
+    ? value
+    : "auto";
+}
 
 const routeLabels: Record<AssistantResponse["route"], string> = {
   knowledge_search: "Doküman arama",
@@ -31,8 +36,9 @@ export default function AssistantPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
   const { capabilities } = useCapabilities();
-  const [message, setMessage] = useState("");
-  const [mode, setMode] = useState<AssistantPreferredRoute>("auto");
+  const [searchParams] = useSearchParams();
+  const [message, setMessage] = useState(() => searchParams.get("q")?.trim() ?? "");
+  const [mode, setMode] = useState<AssistantPreferredRoute>(() => initialMode(searchParams.get("mode")));
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<AssistantResponse | null>(null);
   const [conversationList, setConversationList] = useState<AssistantConversation[]>([]);
@@ -155,6 +161,7 @@ export default function AssistantPage() {
           placeholder="Örn. VPN politikası nedir ve ilgili rehberleri listele"
           className="w-full resize-none bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
           aria-label="Asistana sorunuz"
+          autoFocus
         />
         <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
           <div className="flex flex-wrap gap-2">
