@@ -443,6 +443,7 @@ export interface ArticleAttachment {
   contentType: string;
   sizeBytes: number;
   downloadUrl: string;
+  includeInIndex: boolean;
   extractionStatus: "pending" | "completed" | "no_text" | "failed";
   extractionTruncated: boolean;
   extractedCharacters: number;

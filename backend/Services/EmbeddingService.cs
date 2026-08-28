@@ -56,6 +56,7 @@ public class EmbeddingService(
             parentTarget,
             childTarget,
             childOverlap,
+            AttachmentHelper.IndexInclusionVersion,
             AttachmentProcessingService.ComputeProfile(source)))[..16];
     }
 
@@ -202,7 +203,8 @@ public class EmbeddingService(
             article.Id, "article");
 
         var attachments = await db.ArticleAttachments
-            .Where(a => a.ArticleId == article.Id).OrderBy(a => a.CreatedAt).ToListAsync(ct);
+            .Where(a => a.ArticleId == article.Id && a.IncludeInIndex)
+            .OrderBy(a => a.CreatedAt).ToListAsync(ct);
         foreach (var attachment in attachments)
         {
             var extraction = AttachmentHelper.GetOrExtract(config, attachment);

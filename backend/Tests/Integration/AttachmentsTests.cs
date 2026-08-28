@@ -35,6 +35,27 @@ public class AttachmentsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("text/plain", body.GetProperty("contentType").GetString());
         Assert.Equal(fileBytes.Length, body.GetProperty("sizeBytes").GetInt64());
         Assert.StartsWith("/api/attachments/", body.GetProperty("downloadUrl").GetString());
+        Assert.True(body.GetProperty("includeInIndex").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Upload_WithIndexingDisabled_PersistsExplicitFlag()
+    {
+        await AuthenticateAsAdmin();
+        var articleId = await CreateArticle("Non-indexed Attachment Test");
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent("# Body copy"u8.ToArray());
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/markdown");
+        content.Add(fileContent, "file", "body-copy.md");
+        content.Add(new StringContent("false"), "includeInIndex");
+
+        var uploadResponse = await _client.PostAsync($"/api/articles/{articleId}/attachments", content);
+        var uploaded = await uploadResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var list = await _client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}/attachments");
+
+        Assert.Equal(HttpStatusCode.Created, uploadResponse.StatusCode);
+        Assert.False(uploaded.GetProperty("includeInIndex").GetBoolean());
+        Assert.False(list.GetProperty("attachments")[0].GetProperty("includeInIndex").GetBoolean());
     }
 
     [Fact]

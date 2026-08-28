@@ -299,6 +299,7 @@ erDiagram
 | ContentType | `string` | `content_type` | Required | — |
 | SizeBytes | `long` | `size_bytes` | Required | — |
 | Sha256 | `string` | `sha256` | Required, 64 chars | — |
+| IncludeInIndex | `bool` | `include_in_index` | Controls FTS, semantic search and RAG inclusion | `true` |
 | ExtractionStatus | `string` | `extraction_status` | Required | `pending` |
 | ExtractionError | `string?` | `extraction_error` | Max 2000 | `null` |
 | ExtractedAt | `DateTime?` | `extracted_at` | — | `null` |

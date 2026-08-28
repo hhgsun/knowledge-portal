@@ -115,10 +115,15 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
             try
             {
                 var additionalIndexes = draft.AdditionalAttachmentIndexes ?? [];
+                var additionalIncludeInIndex = draft.AdditionalAttachmentIncludeInIndex
+                    ?? Enumerable.Repeat(true, additionalIndexes.Length).ToArray();
                 if (additionalIndexes.Distinct().Count() != additionalIndexes.Length)
                     throw new InvalidDataException("Additional attachment indexes must be unique");
                 if (additionalIndexes.Any(index => index < 0 || index >= attachments.Count))
                     throw new InvalidDataException("An additional attachment is missing from the request");
+                if (additionalIncludeInIndex.Length != additionalIndexes.Length)
+                    throw new InvalidDataException(
+                        "Additional attachment index-inclusion flags must match the attachment indexes");
                 var attachmentCount = additionalIndexes.Length
                     + (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count ? 1 : 0);
                 if (attachmentCount > maxAttachments)
@@ -137,10 +142,11 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
 
                 if (draft.KeepOriginal && draft.SourceIndex >= 0 && draft.SourceIndex < files.Count)
                     storedAttachments.Add(await SaveAttachmentAsync(article, files[draft.SourceIndex], maxSize, allowed,
-                        user.GetUserId(), ct));
-                foreach (var attachmentIndex in additionalIndexes)
-                    storedAttachments.Add(await SaveAttachmentAsync(article, attachments[attachmentIndex], maxSize, allowed,
-                        user.GetUserId(), ct));
+                        user.GetUserId(), draft.OriginalIncludeInIndex, ct));
+                for (var i = 0; i < additionalIndexes.Length; i++)
+                    storedAttachments.Add(await SaveAttachmentAsync(article,
+                        attachments[additionalIndexes[i]], maxSize, allowed, user.GetUserId(),
+                        additionalIncludeInIndex[i], ct));
                 await articleService.QueueReindexAsync(article, ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
                 committed = true;
@@ -173,7 +179,8 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
         return new(results.Count(x => x.ArticleId != null), results.Count(x => x.Error != null), results.ToArray());
     }
 
-    private async Task<string> SaveAttachmentAsync(Article article, IFormFile file, long maxSize, string[] allowed, string userId, CancellationToken ct)
+    private async Task<string> SaveAttachmentAsync(Article article, IFormFile file, long maxSize,
+        string[] allowed, string userId, bool includeInIndex, CancellationToken ct)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (file.Length == 0 || file.Length > maxSize) throw new InvalidDataException("Original file is empty or exceeds the attachment size limit");
@@ -194,6 +201,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 ContentType = file.ContentType,
                 SizeBytes = file.Length,
                 Sha256 = sha256,
+                IncludeInIndex = includeInIndex,
                 ExtractionCharacterLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
                     AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000),
                 UploadedById = userId

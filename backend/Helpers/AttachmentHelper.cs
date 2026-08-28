@@ -13,6 +13,10 @@ namespace KnowledgePortal.Api.Helpers;
 /// </summary>
 public static class AttachmentHelper
 {
+    // Included in the semantic index profile so a policy change rolls the corpus through the
+    // durable queue. The worker refreshes FTS in the same job before replacing embeddings.
+    internal const string IndexInclusionVersion = "attachment-include-flag-v1";
+
     public static string GetArticleDirectory(IConfiguration config, string articleId)
     {
         var basePath = config["FileStorage:BasePath"] ?? "../data/uploads";
@@ -88,10 +92,11 @@ public static class AttachmentHelper
     /// Extracts and concatenates searchable text from all attachments of an article.
     /// Used by both the embedding pipeline and the FTS index builder.
     /// </summary>
-    public static async Task<string> GetAttachmentTextAsync(AppDbContext db, IConfiguration config, string articleId, CancellationToken ct = default)
+    public static async Task<string> GetAttachmentTextAsync(AppDbContext db, IConfiguration config,
+        string articleId, CancellationToken ct = default)
     {
         var attachments = await db.ArticleAttachments
-            .Where(a => a.ArticleId == articleId)
+            .Where(a => a.ArticleId == articleId && a.IncludeInIndex)
             .ToListAsync(ct);
 
         if (attachments.Count == 0) return "";
@@ -164,7 +169,8 @@ public static class AttachmentHelper
             .Where(a => articleIds.Contains(a.ArticleId))
             .OrderBy(a => a.CreatedAt)
             .Select(a => new { a.Id, a.ArticleId, a.FileName, a.ContentType, a.SizeBytes, a.CreatedAt,
-                a.ExtractionStatus, a.ExtractionTruncated, a.ExtractedCharacters, a.ExtractionCharacterLimit })
+                a.IncludeInIndex, a.ExtractionStatus, a.ExtractionTruncated,
+                a.ExtractedCharacters, a.ExtractionCharacterLimit })
             .ToListAsync();
 
         return attachments.GroupBy(a => a.ArticleId).ToDictionary(
@@ -176,6 +182,7 @@ public static class AttachmentHelper
                 a.ContentType,
                 a.SizeBytes,
                 DownloadUrl = GetDownloadUrl(a.Id),
+                a.IncludeInIndex,
                 a.ExtractionStatus,
                 a.ExtractionTruncated,
                 a.ExtractedCharacters,

@@ -176,6 +176,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(a => a.ContentType).IsRequired();
             e.Property(a => a.SizeBytes).IsRequired();
             e.Property(a => a.Sha256).IsRequired().HasMaxLength(64);
+            e.Property(a => a.IncludeInIndex).HasDefaultValue(true);
             e.Property(a => a.ExtractionStatus).IsRequired().HasMaxLength(20);
             e.Property(a => a.ExtractionError).HasMaxLength(2000);
             e.Property(a => a.ExtractedText).HasColumnType("text");

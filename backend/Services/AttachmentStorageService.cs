@@ -20,9 +20,9 @@ public class AttachmentStorageService(AppDbContext db, IConfiguration config)
         {
             Files = g.LongCount(),
             Bytes = g.Sum(x => x.SizeBytes),
-            Pending = g.LongCount(x => x.ExtractionStatus == "pending"),
-            Failed = g.LongCount(x => x.ExtractionStatus == "failed"),
-            Truncated = g.LongCount(x => x.ExtractionTruncated)
+            Pending = g.LongCount(x => x.IncludeInIndex && x.ExtractionStatus == "pending"),
+            Failed = g.LongCount(x => x.IncludeInIndex && x.ExtractionStatus == "failed"),
+            Truncated = g.LongCount(x => x.IncludeInIndex && x.ExtractionTruncated)
         }).SingleOrDefaultAsync(ct);
 
         var sampleSize = Math.Clamp(config.GetValue("FileStorage:IntegritySampleSize", 100), 0, 1000);

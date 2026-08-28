@@ -17,14 +17,21 @@ function formatFileSize(bytes: number): string {
 }
 
 // Pending file list for deferred upload mode (used in NewArticlePage)
+export interface PendingAttachment {
+  file: File;
+  includeInIndex: boolean;
+}
+
 interface PendingFileListProps {
-  files: File[];
+  files: Array<File | PendingAttachment>;
   onAdd: (files: File[]) => void;
   onRemove: (index: number) => void;
+  onToggleIndexing?: (index: number, includeInIndex: boolean) => void;
   title?: string;
 }
 
-export function PendingFileList({ files, onAdd, onRemove, title = "Attachments" }: PendingFileListProps) {
+export function PendingFileList({ files, onAdd, onRemove, onToggleIndexing,
+  title = "Attachments" }: PendingFileListProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,18 +81,29 @@ export function PendingFileList({ files, onAdd, onRemove, title = "Attachments" 
         </div>
       ) : (
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {files.map((file, index) => (
-            <li key={`${file.name}-${index}`} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors">
-              {getFileIconForType(file.type)}
-              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={file.name}>
-                {file.name}
+          {files.map((item, index) => {
+            const pending = "file" in item ? item : { file: item, includeInIndex: true };
+            return (
+            <li key={`${pending.file.name}-${index}`} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors">
+              {getFileIconForType(pending.file.type)}
+              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={pending.file.name}>
+                {pending.file.name}
               </span>
+              {onToggleIndexing && <label className="inline-flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400 whitespace-nowrap" title="Kapalıysa dosya indirilebilir kalır fakat arama ve RAG indeksine eklenmez">
+                <input
+                  type="checkbox"
+                  checked={pending.includeInIndex}
+                  onChange={(event) => onToggleIndexing(index, event.target.checked)}
+                  className="accent-blue-600"
+                />
+                İndekse dahil et
+              </label>}
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
                 <Clock size={10} />
                 Kaydedilince yüklenecek
               </span>
               <span className="text-xs text-zinc-400 whitespace-nowrap">
-                {formatFileSize(file.size)}
+                {formatFileSize(pending.file.size)}
               </span>
               <button
                 onClick={() => onRemove(index)}
@@ -95,7 +113,7 @@ export function PendingFileList({ files, onAdd, onRemove, title = "Attachments" 
                 <Trash2 size={14} className="text-red-500" />
               </button>
             </li>
-          ))}
+          );})}
         </ul>
       )}
     </div>

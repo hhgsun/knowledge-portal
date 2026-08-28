@@ -8,6 +8,7 @@ import { useApi } from "../hooks/useApi";
 import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
 import { PendingFileList } from "../components/attachments/file-upload-zone";
+import type { PendingAttachment } from "../components/attachments/file-upload-zone";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
 
@@ -21,7 +22,8 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
 
 type Draft = {
   sourceIndex: number; fileName: string; title: string; excerpt?: string; contentMarkdown: string;
-  parsed: boolean; keepOriginal: boolean; processingMode: string; warning?: string;
+  parsed: boolean; keepOriginal: boolean; originalIncludeInIndex: boolean;
+  processingMode: string; warning?: string;
   analysisError?: string;
   contentType: string; status: string; tags: string[];
 };
@@ -61,6 +63,7 @@ function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
     contentMarkdown: "",
     parsed: false,
     keepOriginal: true,
+    originalIncludeInIndex: true,
     processingMode: "failed",
     analysisError: reason,
     contentType: "reference",
@@ -105,7 +108,7 @@ export default function KnowledgeImportPage() {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState<ImportIssue[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [additionalAttachments, setAdditionalAttachments] = useState<Record<number, File[]>>({});
+  const [additionalAttachments, setAdditionalAttachments] = useState<Record<number, PendingAttachment[]>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const current = drafts[selected];
   const currentAdditionalAttachments = current ? additionalAttachments[current.sourceIndex] ?? [] : [];
@@ -154,7 +157,8 @@ export default function KnowledgeImportPage() {
           }
           const draft = data.drafts?.[0];
           analyzedDrafts.push(draft
-            ? { ...draft, sourceIndex, fileName: file.name, contentType: "reference", status: "draft", tags: [] }
+            ? { ...draft, sourceIndex, fileName: file.name, contentType: "reference",
+                status: "draft", tags: [], originalIncludeInIndex: !draft.parsed }
             : failedDraft(file, sourceIndex, "The server returned no analysis result for this file."));
         } catch (cause) {
           analyzedDrafts.push(failedDraft(file, sourceIndex, cause instanceof Error ? cause.message : "The source could not be analyzed."));
@@ -208,7 +212,7 @@ export default function KnowledgeImportPage() {
       .map(issue => issue.sourceIndex > removedSourceIndex ? { ...issue, sourceIndex: issue.sourceIndex - 1 } : issue);
     setFiles(items => items.filter((_, index) => index !== removedSourceIndex));
     setAdditionalAttachments(items => {
-      const next: Record<number, File[]> = {};
+      const next: Record<number, PendingAttachment[]> = {};
       for (const [sourceIndex, attachments] of Object.entries(items)) {
         const numericIndex = Number(sourceIndex);
         if (numericIndex === removedSourceIndex) continue;
@@ -244,13 +248,18 @@ export default function KnowledgeImportPage() {
     try {
       const body = new FormData(); files.forEach(file => body.append("files", file));
       const attachmentFiles: File[] = [];
-      const manifestDrafts = drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType, status, tags, keepOriginal }) => {
-        const additionalAttachmentIndexes = (additionalAttachments[sourceIndex] ?? []).map(file => {
+      const manifestDrafts = drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType,
+        status, tags, keepOriginal, originalIncludeInIndex }) => {
+        const sourceAttachments = additionalAttachments[sourceIndex] ?? [];
+        const additionalAttachmentIndexes = sourceAttachments.map(pending => {
           const attachmentIndex = attachmentFiles.length;
-          attachmentFiles.push(file);
+          attachmentFiles.push(pending.file);
           return attachmentIndex;
         });
-        return { sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined, contentType, status, tags, keepOriginal, additionalAttachmentIndexes };
+        return { sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined,
+          contentType, status, tags, keepOriginal, originalIncludeInIndex,
+          additionalAttachmentIndexes,
+          additionalAttachmentIncludeInIndex: sourceAttachments.map(pending => pending.includeInIndex) };
       });
       attachmentFiles.forEach(file => body.append("attachments", file));
       body.append("manifest", JSON.stringify({ drafts: manifestDrafts }));
@@ -376,22 +385,40 @@ export default function KnowledgeImportPage() {
           </div>
         </div>
 
-        <label className="mb-5 flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 transition-colors hover:border-blue-300 hover:bg-blue-50/50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-blue-800 dark:hover:bg-blue-950/20">
-          <input type="checkbox" checked={current.keepOriginal} onChange={event => update({ keepOriginal: event.target.checked })} className="size-4 accent-blue-600"/>
-          <Paperclip size={18} className="shrink-0 text-zinc-500"/>
-          <span className="min-w-0 text-sm text-zinc-700 dark:text-zinc-300">Orijinal <strong className="break-all">{current.fileName}</strong> dosyasını ek dosya olarak sakla</span>
-        </label>
+        <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 dark:border-zinc-800 dark:bg-zinc-900">
+          <label className="flex cursor-pointer items-center gap-3">
+            <input type="checkbox" checked={current.keepOriginal} onChange={event => update({ keepOriginal: event.target.checked })} className="size-4 accent-blue-600"/>
+            <Paperclip size={18} className="shrink-0 text-zinc-500"/>
+            <span className="min-w-0 text-sm text-zinc-700 dark:text-zinc-300">Orijinal <strong className="break-all">{current.fileName}</strong> dosyasını ek dosya olarak sakla</span>
+          </label>
+          <label className={`ml-7 mt-3 flex items-center gap-2 text-sm ${current.keepOriginal ? "cursor-pointer text-zinc-600 dark:text-zinc-400" : "cursor-not-allowed text-zinc-400 opacity-60"}`} title="Kapalıysa özgün dosya indirilebilir kalır fakat arama ve RAG indeksine eklenmez">
+            <input
+              type="checkbox"
+              checked={current.originalIncludeInIndex}
+              disabled={!current.keepOriginal}
+              onChange={event => update({ originalIncludeInIndex: event.target.checked })}
+              className="size-4 accent-blue-600"
+            />
+            Orijinal dosyayı indekse dahil et
+          </label>
+        </div>
 
         <PendingFileList
           title="Additional attachments"
           files={currentAdditionalAttachments}
           onAdd={newFiles => setAdditionalAttachments(items => ({
             ...items,
-            [current.sourceIndex]: [...(items[current.sourceIndex] ?? []), ...newFiles],
+            [current.sourceIndex]: [...(items[current.sourceIndex] ?? []),
+              ...newFiles.map(file => ({ file, includeInIndex: true }))],
           }))}
           onRemove={attachmentIndex => setAdditionalAttachments(items => ({
             ...items,
             [current.sourceIndex]: (items[current.sourceIndex] ?? []).filter((_, index) => index !== attachmentIndex),
+          }))}
+          onToggleIndexing={(attachmentIndex, includeInIndex) => setAdditionalAttachments(items => ({
+            ...items,
+            [current.sourceIndex]: (items[current.sourceIndex] ?? []).map((pending, index) =>
+              index === attachmentIndex ? { ...pending, includeInIndex } : pending),
           }))}
         />
 

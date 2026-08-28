@@ -9,6 +9,7 @@ public class ArticleAttachment
     public string ContentType { get; set; } = null!;
     public long SizeBytes { get; set; }
     public string Sha256 { get; set; } = null!;
+    public bool IncludeInIndex { get; set; } = true;
     public string ExtractionStatus { get; set; } = "pending";
     public string? ExtractionError { get; set; }
     public string? ExtractedText { get; set; }

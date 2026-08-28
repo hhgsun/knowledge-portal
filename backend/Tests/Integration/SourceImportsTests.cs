@@ -81,6 +81,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         var articleId = result.GetProperty("items")[0].GetProperty("articleId").GetString();
         var attachments = await client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}/attachments");
         Assert.Equal("source.txt", attachments.GetProperty("attachments")[0].GetProperty("fileName").GetString());
+        Assert.False(attachments.GetProperty("attachments")[0].GetProperty("includeInIndex").GetBoolean());
     }
 
     [Fact]
@@ -91,7 +92,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         using var body = FileBody("not an Open XML package", "damaged.docx");
         body.Add(new StringContent(JsonSerializer.Serialize(new
         {
-            drafts = new[] { new { sourceIndex = 0, title, contentMarkdown = "Manually entered content", contentType = "reference", status = "draft", tags = Array.Empty<string>(), keepOriginal = true } }
+            drafts = new[] { new { sourceIndex = 0, title, contentMarkdown = "Manually entered content", contentType = "reference", status = "draft", tags = Array.Empty<string>(), keepOriginal = true, originalIncludeInIndex = true } }
         })), "manifest");
 
         var response = await client.PostAsync("/api/source-imports/commit", body);
@@ -105,6 +106,7 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("Manually entered content", article.GetProperty("contentMarkdown").GetString());
         var attachments = await client.GetFromJsonAsync<JsonElement>($"/api/articles/{articleId}/attachments");
         Assert.Equal("damaged.docx", attachments.GetProperty("attachments")[0].GetProperty("fileName").GetString());
+        Assert.True(attachments.GetProperty("attachments")[0].GetProperty("includeInIndex").GetBoolean());
     }
 
     [Fact]
@@ -131,7 +133,8 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
                     status = "draft",
                     tags = Array.Empty<string>(),
                     keepOriginal = true,
-                    additionalAttachmentIndexes = new[] { 0, 1 }
+                    additionalAttachmentIndexes = new[] { 0, 1 },
+                    additionalAttachmentIncludeInIndex = new[] { false, true }
                 }
             }
         })), "manifest");
@@ -150,6 +153,11 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("source.txt", names);
         Assert.Contains("diagram.png", names);
         Assert.Contains("notes.txt", names);
+        var byName = attachments.GetProperty("attachments").EnumerateArray()
+            .ToDictionary(item => item.GetProperty("fileName").GetString()!);
+        Assert.False(byName["source.txt"].GetProperty("includeInIndex").GetBoolean());
+        Assert.False(byName["diagram.png"].GetProperty("includeInIndex").GetBoolean());
+        Assert.True(byName["notes.txt"].GetProperty("includeInIndex").GetBoolean());
     }
 
     [Fact]

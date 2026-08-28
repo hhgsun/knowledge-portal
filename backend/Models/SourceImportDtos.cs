@@ -21,7 +21,9 @@ public record SourceImportDraft(
     string? Status,
     string[]? Tags,
     bool KeepOriginal = true,
-    int[]? AdditionalAttachmentIndexes = null);
+    bool OriginalIncludeInIndex = false,
+    int[]? AdditionalAttachmentIndexes = null,
+    bool[]? AdditionalAttachmentIncludeInIndex = null);
 
 public record SourceImportCommitRequest(SourceImportDraft[] Drafts);
 

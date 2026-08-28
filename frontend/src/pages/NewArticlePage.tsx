@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { PendingFileList } from "../components/attachments/file-upload-zone";
+import type { PendingAttachment } from "../components/attachments/file-upload-zone";
 import { ArticleForm } from "../components/editor/article-form";
 import { useArticleImages } from "../hooks/useArticleImages";
 
@@ -21,7 +22,7 @@ export default function NewArticlePage() {
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
 
   const { uploadImage, deleteBlobImage, uploadPendingImages, commitUploadedImages, uploadPendingFiles } = useArticleImages();
 
@@ -124,8 +125,12 @@ export default function NewArticlePage() {
       attachmentSection={
         <PendingFileList
           files={pendingFiles}
-          onAdd={(newFiles) => setPendingFiles(prev => [...prev, ...newFiles])}
+          onAdd={(newFiles) => setPendingFiles(prev => [
+            ...prev, ...newFiles.map(file => ({ file, includeInIndex: true }))
+          ])}
           onRemove={(index) => setPendingFiles(prev => prev.filter((_, i) => i !== index))}
+          onToggleIndexing={(index, includeInIndex) => setPendingFiles(prev =>
+            prev.map((pending, i) => i === index ? { ...pending, includeInIndex } : pending))}
         />
       }
     />

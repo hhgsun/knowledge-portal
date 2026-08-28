@@ -9,6 +9,7 @@ import AttachmentList from "../components/attachments/attachment-list";
 import { ArticleForm } from "../components/editor/article-form";
 import { useArticleImages } from "../hooks/useArticleImages";
 import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
+import type { PendingAttachment } from "../components/attachments/file-upload-zone";
 
 export default function EditArticlePage() {
   const params = useParams();
@@ -28,7 +29,7 @@ export default function EditArticlePage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<Set<string>>(new Set());
 
   const {
@@ -196,8 +197,12 @@ export default function EditArticlePage() {
           onDeferredDelete={(attachment) => setDeletedAttachmentIds(prev => new Set(prev).add(attachment.id))}
           onUndoDelete={(id) => setDeletedAttachmentIds(prev => { const next = new Set(prev); next.delete(id); return next; })}
           pendingFiles={pendingFiles}
-          onAddFiles={(newFiles) => setPendingFiles(prev => [...prev, ...newFiles])}
+          onAddFiles={(newFiles) => setPendingFiles(prev => [
+            ...prev, ...newFiles.map(file => ({ file, includeInIndex: true }))
+          ])}
           onRemovePendingFile={(index) => setPendingFiles(prev => prev.filter((_, i) => i !== index))}
+          onTogglePendingFileIndexing={(index, includeInIndex) => setPendingFiles(prev =>
+            prev.map((pending, i) => i === index ? { ...pending, includeInIndex } : pending))}
         />
       }
     />

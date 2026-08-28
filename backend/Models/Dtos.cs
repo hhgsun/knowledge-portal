@@ -160,7 +160,7 @@ public record FeaturedLinkDto(string Id, string Label, string LinkType, string T
 
 // Attachments
 public record AttachmentResponse(string Id, string FileName, string ContentType, long SizeBytes, string DownloadUrl,
-    string ExtractionStatus, bool ExtractionTruncated, int ExtractedCharacters,
+    bool IncludeInIndex, string ExtractionStatus, bool ExtractionTruncated, int ExtractedCharacters,
     int ExtractionCharacterLimit, string CreatedAt);
 public record AttachmentListResponse(AttachmentResponse[] Attachments, int Total);
 

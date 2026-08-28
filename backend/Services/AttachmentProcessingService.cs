@@ -57,7 +57,8 @@ public sealed class AttachmentProcessingService(
 
     public async Task PrepareArticleAsync(string articleId, CancellationToken ct = default)
     {
-        var attachments = await db.ArticleAttachments.Where(x => x.ArticleId == articleId)
+        var attachments = await db.ArticleAttachments
+            .Where(x => x.ArticleId == articleId && x.IncludeInIndex)
             .OrderBy(x => x.CreatedAt).ToListAsync(ct);
         foreach (var attachment in attachments)
             await PrepareAsync(attachment, ct);

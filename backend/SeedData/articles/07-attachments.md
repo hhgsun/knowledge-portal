@@ -37,7 +37,8 @@ Aşağıdaki uzantılara sahip dosyalar yüklenebilir:
 1. Makale düzenleme sayfasında 'Ekler' bölümüne gidin.
 2. Dosya seçin veya sürükle-bırak ile ekleyin.
 3. Dosyalar 'Kaydedilince yüklenecek' badge'i ile gösterilir (deferred upload).
-4. Makaleyi kaydettiğinizde dosyalar sunucuya yüklenir.
+4. Dosyanın metni arama ve RAG'e girmemeliyse (örneğin aynı `.md` içeriği editör gövdesine de konduysa) **İndekse dahil et** seçeneğini kapatın.
+5. Makaleyi kaydettiğinizde dosyalar sunucuya yüklenir.
 
 ### Görsel Yapıştırma (Paste/Drop)
 
@@ -59,7 +60,8 @@ Bu bölümdeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal
 # Dosya yükleme (multipart/form-data)
 curl -X POST "{site-url}/api/articles/{articleId}/attachments" \
   -H "Authorization: Bearer {token}" \
-  -F "file=@document.pdf"
+  -F "file=@document.pdf" \
+  -F "includeInIndex=false"
 
 # Ek listesi
 GET /api/articles/{articleId}/attachments
@@ -73,8 +75,9 @@ DELETE /api/articles/{articleId}/attachments/{attachmentId}
 
 ## İndeksleme Davranışı
 
-Metin içerikli dosyalar otomatik olarak arama indeksine dahil edilir:
+Metin içerikli dosyalar varsayılan olarak arama indeksine dahil edilir:
 
+- **Açık kontrol:** Multipart `includeInIndex` alanı varsayılan `true` değeridir. `false` olduğunda dosya saklanır ve indirilebilir, fakat FTS, semantic search ve RAG kanıtlarına girmez.
 - **İndekslenen formatlar:** .pdf, .docx, .txt, .md, .csv, .json, .yaml
 - **Maksimum metin:** Her ek için yapılandırılmış sınır kadar karakter çıkarılır. Kullanılan sınır, çıkarılan karakter sayısı ve truncation bilgisi ek metadata'sında saklanır.
 - Yapılandırılmış sınır değiştiğinde önbellekteki çıkarım bir sonraki indeks geçişinde dosyadan yeniden üretilir.

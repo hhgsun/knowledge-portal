@@ -240,7 +240,7 @@ Behavior:
       "viewCount": 5, "wilsonScore": 0.72,
       "indexingStatus": { "state": "indexed", "indexedAt": "2026-08-21T10:30:00Z" },
       "contentMarkdown": "## Canonical Markdown (only if includeContent=true)",
-      "attachments": [{ "id": "...", "fileName": "...", "contentType": "...", "sizeBytes": 1024, "downloadUrl": "/api/attachments/.../download" }]
+      "attachments": [{ "id": "...", "fileName": "...", "contentType": "...", "sizeBytes": 1024, "downloadUrl": "/api/attachments/.../download", "includeInIndex": true }]
     }
   ],
   "total": 42
@@ -349,7 +349,7 @@ Removes the recorded approval without unpublishing the article.
 ```json
 {
   "attachments": [
-    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "completed", "extractionTruncated": false, "extractedCharacters": 846, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
+    { "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "includeInIndex": true, "extractionStatus": "completed", "extractionTruncated": false, "extractedCharacters": 846, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
   ],
   "total": 1
 }
@@ -358,16 +358,16 @@ Removes the recorded approval without unpublishing the article.
 ### `POST /api/articles/{id}/attachments`
 **Auth**: Bearer (JWT or API Key) — requires `articles:edit_own` (if owner) or `articles:edit_any`
 **Content-Type**: `multipart/form-data`
-**Body**: `file` (IFormFile, max 20MB, extension whitelist enforced)
+**Body**: `file` (IFormFile, max 20MB, extension whitelist enforced), `includeInIndex` (boolean, optional, default `true`). When false, the file remains downloadable but contributes no FTS, semantic-search, or RAG source content.
 
 **201 Response**:
 ```json
-{ "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "extractionStatus": "pending", "extractionTruncated": false, "extractedCharacters": 0, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
+{ "id": "...", "fileName": "diagram.png", "contentType": "image/png", "sizeBytes": 102400, "downloadUrl": "/api/attachments/.../download", "includeInIndex": true, "extractionStatus": "pending", "extractionTruncated": false, "extractedCharacters": 0, "extractionCharacterLimit": 50000, "createdAt": "2026-01-01T00:00:00Z" }
 ```
 **400**: Empty file, invalid extension, MIME mismatch, max attachments reached.
 **403**: No edit permission.
 
-Attachment extraction runs in the durable indexing job. PDF/DOCX/PPTX/XLSX/CSV tables are retained as GFM Markdown with page, slide, or sheet provenance; image attachments and supported embedded visuals are described and OCR'd by the configured local vision model. The resulting canonical extraction is shared by full-text and semantic indexing. `DocumentParsing:External` can optionally target an Unstructured-compatible `hi_res` partition endpoint for complex or scanned layouts; native parsing remains the default fallback unless `Required` is enabled. Parser, vision-model, or extraction-setting changes alter the extraction profile, so existing attachments are re-extracted during the next repair/reindex cycle instead of reusing stale text.
+Attachment extraction runs in the durable indexing job for attachments whose `includeInIndex` flag is true. PDF/DOCX/PPTX/XLSX/CSV tables are retained as GFM Markdown with page, slide, or sheet provenance; image attachments and supported embedded visuals are described and OCR'd by the configured local vision model. The resulting canonical extraction is shared by full-text and semantic indexing. `DocumentParsing:External` can optionally target an Unstructured-compatible `hi_res` partition endpoint for complex or scanned layouts; native parsing remains the default fallback unless `Required` is enabled. Parser, vision-model, extraction-setting, or index-inclusion-policy changes alter the index profile, so affected attachments are refreshed during the next repair/reindex cycle instead of reusing stale content.
 
 ### `DELETE /api/articles/{id}/attachments/{attachmentId}`
 **Auth**: Bearer session only — requires `articles:edit_own` (if owner) or `articles:edit_any`
@@ -579,7 +579,7 @@ Ordered by version number descending.
 | `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
 | `onlyOwnContent` | bool | false | Optional. When true + API key auth → filters to articles created by that API key |
 | `includeContent` | bool | false | Optional. When true → includes canonical Markdown as the string field `contentMarkdown` |
-| `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl) per article |
+| `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl, includeInIndex) per article |
 | `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
 | `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |
 | `contentType` | string[] | — | Optional, repeatable. Content type values (merged with ##syntax) |
@@ -1247,7 +1247,7 @@ All endpoints require authentication. Bulk/source commit operations use the same
 | `/api/source-imports/analyze` | POST multipart | `articles:create` | Convert supported source files to editable Markdown previews |
 | `/api/source-imports/commit` | POST multipart | `articles:create` | Create articles from the approved preview manifest and optionally retain originals as attachments |
 
-Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; PDF and Office previews reuse the production structure-aware attachment extractor, including GFM table and page/sheet/slide provenance, so previewed Markdown and later retrieval do not diverge. Unsupported but valid files can be offered as attachments. Analyze responses retain one draft per source without aborting the remaining files. A recoverable conversion condition is returned in the draft's `warning`; a damaged or unreadable source is returned in `analysisError`. Every preview, including failed analyses, exposes the Markdown editor, the original-file attachment option, and a draft-specific additional-attachment picker. The commit manifest maps each draft to its files through `additionalAttachmentIndexes`; multipart `attachments` carries the corresponding files. Original and additional files share the configured size, extension and maximum-per-article limits and are committed atomically with their article. The review UI blocks commit only while an `analysisError` draft has no manual content; entering content or removing every unresolved failed draft enables commit. Commit response items include `sourceIndex`, `fileName`, article identity/title fields, and a file-specific `error` when that draft fails.
+Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in bulk exports. Source import supports text/Markdown, CSV/TSV, JSON/YAML, PDF, DOCX, XLSX and PPTX conversion; PDF and Office previews reuse the production structure-aware attachment extractor, including GFM table and page/sheet/slide provenance, so previewed Markdown and later retrieval do not diverge. Unsupported but valid files can be offered as attachments. Analyze responses retain one draft per source without aborting the remaining files. A recoverable conversion condition is returned in the draft's `warning`; a damaged or unreadable source is returned in `analysisError`. Every preview, including failed analyses, exposes the Markdown editor, the original-file attachment option, an explicit original-file index-inclusion checkbox, and a draft-specific additional-attachment picker whose files each have their own inclusion checkbox. The commit manifest maps each draft to its files through `additionalAttachmentIndexes`; multipart `attachments` carries the corresponding files and `additionalAttachmentIncludeInIndex` carries the aligned flags. `originalIncludeInIndex` defaults to false because a parsed original is already represented by `contentMarkdown`; the review UI initially enables it for unparsed originals, and the user can override both original and supporting-file choices. Original and additional files share the configured size, extension and maximum-per-article limits and are committed atomically with their article. The review UI blocks commit only while an `analysisError` draft has no manual content; entering content or removing every unresolved failed draft enables commit. Commit response items include `sourceIndex`, `fileName`, article identity/title fields, and a file-specific `error` when that draft fails.
 
 ---
 

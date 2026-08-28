@@ -49,6 +49,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
                 a.ContentType,
                 a.SizeBytes,
                 AttachmentHelper.GetDownloadUrl(a.Id),
+                a.IncludeInIndex,
                 a.ExtractionStatus,
                 a.ExtractionTruncated,
                 a.ExtractedCharacters,
@@ -61,7 +62,8 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
 
     [HttpPost("api/articles/{articleId}/attachments")]
     [RequestSizeLimit(20_971_520)]
-    public async Task<IActionResult> Upload(string articleId, IFormFile file)
+    public async Task<IActionResult> Upload(string articleId, IFormFile file,
+        [FromForm] bool includeInIndex = true)
     {
         var article = await db.Articles.FindAsync(articleId);
         if (article == null) return NotFound(new { error = "Article not found" });
@@ -121,6 +123,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             ContentType = file.ContentType,
             SizeBytes = file.Length,
             Sha256 = sha256,
+            IncludeInIndex = includeInIndex,
             ExtractionCharacterLimit = Math.Clamp(config.GetValue("FileStorage:MaxExtractedCharacters",
                 AttachmentTextExtractor.DefaultMaxCharacters), 1_000, 5_000_000),
             UploadedById = userId
@@ -145,6 +148,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             attachment.ContentType,
             attachment.SizeBytes,
             AttachmentHelper.GetDownloadUrl(attachment.Id),
+            attachment.IncludeInIndex,
             attachment.ExtractionStatus,
             attachment.ExtractionTruncated,
             attachment.ExtractedCharacters,

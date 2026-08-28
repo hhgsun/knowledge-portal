@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type { ArticleAttachment, AttachmentListResponse } from "../../types/api";
+import type { PendingAttachment } from "./file-upload-zone";
 
 interface AttachmentListProps {
   articleId: string;
@@ -29,11 +30,13 @@ interface AttachmentListProps {
   /** Attachment IDs marked for deletion (shown with strikethrough) */
   deletedIds?: Set<string>;
   /** Pending files to show inline (not yet uploaded) */
-  pendingFiles?: File[];
+  pendingFiles?: PendingAttachment[];
   /** Callback to add new files to pending queue */
   onAddFiles?: (files: File[]) => void;
   /** Callback to remove a pending file by index */
   onRemovePendingFile?: (index: number) => void;
+  /** Change whether a pending file contributes searchable/RAG content */
+  onTogglePendingFileIndexing?: (index: number, includeInIndex: boolean) => void;
 }
 
 const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.yaml,.json,.csv,.svg";
@@ -59,7 +62,9 @@ function formatAttachmentDate(value: string): { date: string; dateTime: string }
   };
 }
 
-export default function AttachmentList({ articleId, canEdit, initialAttachments, onDeferredDelete, onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile }: AttachmentListProps) {
+export default function AttachmentList({ articleId, canEdit, initialAttachments, onDeferredDelete,
+  onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile,
+  onTogglePendingFileIndexing }: AttachmentListProps) {
   const { fetchWithAuth } = useApi();
   const [attachments, setAttachments] = useState<ArticleAttachment[]>(initialAttachments ?? []);
   const [loading, setLoading] = useState(!initialAttachments);
@@ -321,6 +326,11 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
                   {formattedDate.date}
                 </span>
               )}
+              {!attachment.includeInIndex && !isDeleted && (
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                  İndeks dışı
+                </span>
+              )}
               {!isDeleted && (
                 <button
                   onClick={() => handleDownload(attachment)}
@@ -351,18 +361,29 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
             </li>
             );
           })}
-          {pendingFiles && pendingFiles.map((file, index) => (
-            <li key={`pending-${file.name}-${index}`} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors">
-              {getFileIcon(file.type || "application/octet-stream")}
-              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={file.name}>
-                {file.name}
+          {pendingFiles && pendingFiles.map((pending, index) => (
+            <li key={`pending-${pending.file.name}-${index}`} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors">
+              {getFileIcon(pending.file.type || "application/octet-stream")}
+              <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={pending.file.name}>
+                {pending.file.name}
               </span>
+              {onTogglePendingFileIndexing && (
+                <label className="inline-flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400 whitespace-nowrap" title="Kapalıysa dosya indirilebilir kalır fakat arama ve RAG indeksine eklenmez">
+                  <input
+                    type="checkbox"
+                    checked={pending.includeInIndex}
+                    onChange={(event) => onTogglePendingFileIndexing(index, event.target.checked)}
+                    className="accent-blue-600"
+                  />
+                  İndekse dahil et
+                </label>
+              )}
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
                 <Clock size={10} />
                 Kaydedilince yüklenecek
               </span>
               <span className="text-xs text-zinc-400 whitespace-nowrap">
-                {formatFileSize(file.size)}
+                {formatFileSize(pending.file.size)}
               </span>
               {onRemovePendingFile && (
                 <button

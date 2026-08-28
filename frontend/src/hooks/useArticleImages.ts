@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useApi } from "./useApi";
 import { toast } from "sonner";
+import type { PendingAttachment } from "../components/attachments/file-upload-zone";
 
 /**
  * Shared hook for deferred image upload logic used by both
@@ -75,19 +76,20 @@ export function useArticleImages() {
   }, []);
 
   const uploadPendingFiles = useCallback(
-    async (articleId: string, files: File[]): Promise<string[]> => {
+    async (articleId: string, files: PendingAttachment[]): Promise<string[]> => {
       const uploadedIds: string[] = [];
       try {
-        for (const file of files) {
+        for (const pending of files) {
           const formData = new FormData();
-          formData.append("file", file);
+          formData.append("file", pending.file);
+          formData.append("includeInIndex", String(pending.includeInIndex));
           const res = await fetchWithAuth(`/api/articles/${articleId}/attachments`, {
             method: "POST",
             body: formData,
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `Failed to upload ${file.name}`);
+            throw new Error(err.error || `Failed to upload ${pending.file.name}`);
           }
           const data = await res.json();
           uploadedIds.push(data.id);
