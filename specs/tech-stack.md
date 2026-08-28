@@ -85,7 +85,7 @@
 
 ## External APIs & Services
 
-- **Ollama (optional)** — local embedding and chat models for semantic/hybrid/RAG search. Full-text search continues to work when it is disabled or unavailable.
+- **Ollama (optional)** — local embeddings for semantic/hybrid Search and chat generation for Assistant/MCP `ask_knowledge` RAG. Full-text Search continues to work when it is disabled or unavailable.
 - **Microsoft Graph** — validates Azure AD access tokens during Azure login.
 - **PostgreSQL/pgvector** — persistent relational, full-text, vector, and durable index-queue storage.
 
@@ -97,7 +97,7 @@
 | Integration testing | `Microsoft.AspNetCore.Mvc.Testing` | WebApplicationFactory-based API tests |
 | Database (tests) | `Microsoft.EntityFrameworkCore.InMemory` | Whole suite is Docker-free: isolated in-memory database per test class. App degrades to `EnsureCreated` + LINQ FTS fallback on non-relational providers |
 | AI (tests) | Fake in-process clients | `FakeEmbeddingGenerator` (deterministic 1024-dim) + `FakeChatClient` replace Ollama; `FakeVectorSearchService` replaces pgvector search (`IVectorSearchService`) — no Docker, no network |
-| Test project | `backend/Tests/` | 315 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
+| Test project | `backend/Tests/` | 376 tests (unit + integration), gating CI stage in `azure-pipelines.yml` |
 
 Run tests: `cd backend/Tests && dotnet test` (no Docker required)
 

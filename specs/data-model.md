@@ -395,7 +395,6 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 | `article_embeddings` | `tag_slugs` | GIN |
 | `tags` | `slug` | Unique |
 | `assistant_interactions` | `created_at` | B-tree |
-| `assistant_interactions` | `route`, `created_at` | Composite |
 | `assistant_interactions` | `user_id`, `created_at` | Composite |
 | `assistant_interactions` | `api_key_id` | B-tree |
 
@@ -422,7 +421,6 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 | User | AssistantConversation | Cascade |
 | AssistantConversation | AssistantMessage | Cascade |
 | AssistantConversation | AssistantInteraction | SetNull |
-| AssistantInteraction | AssistantEvaluationCandidate | Cascade |
 | User | AssistantAnswerCacheEntry | Cascade |
 
 ## Seed Data

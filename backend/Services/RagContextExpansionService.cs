@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,8 +13,7 @@ public sealed record RagExpansionResult(List<VectorChunkResult> Chunks, int Expa
 /// </summary>
 public sealed class RagContextExpansionService(IConfiguration config)
 {
-    private static readonly Regex LegacyChunkLocation = new(
-        @"^(?<parent>.+):chunk:(?<index>\d+)$", RegexOptions.Compiled, TimeSpan.FromMilliseconds(50));
+    private const string LegacyChunkSeparator = ":chunk:";
     private readonly bool _enabled = config.GetValue("Ollama:ContextExpansion:Enabled", true);
     private readonly int _legacyNeighborCount = Math.Clamp(
         config.GetValue("Ollama:ContextExpansion:NeighborCount", 1), 0, 2);
@@ -125,9 +123,16 @@ public sealed class RagContextExpansionService(IConfiguration config)
     internal static (string Parent, int Index)? Parse(string? location)
     {
         if (string.IsNullOrWhiteSpace(location)) return null;
-        var match = LegacyChunkLocation.Match(location);
-        return match.Success && int.TryParse(match.Groups["index"].Value, out var index)
-            ? (match.Groups["parent"].Value, index)
+        var separator = location.LastIndexOf(LegacyChunkSeparator, StringComparison.Ordinal);
+        if (separator <= 0) return null;
+
+        var indexText = location.AsSpan(separator + LegacyChunkSeparator.Length);
+        if (indexText.IsEmpty) return null;
+        foreach (var character in indexText)
+            if (character is < '0' or > '9') return null;
+
+        return int.TryParse(indexText, out var index)
+            ? (location[..separator], index)
             : null;
     }
 

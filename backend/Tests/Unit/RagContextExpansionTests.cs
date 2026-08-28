@@ -84,6 +84,14 @@ public class RagContextExpansionTests
         Assert.Equal(index, parsed.Value.Index);
     }
 
+    [Fact]
+    public void Parse_LongMalformedLocation_ReturnsNullWithoutRegexBacktracking()
+    {
+        var location = new string('x', 100_000) + ":chunk:not-a-number";
+
+        Assert.Null(RagContextExpansionService.Parse(location));
+    }
+
     private static ArticleEmbedding Embedding(string articleId, int index, string location, string content) => new()
     {
         Id = $"{articleId}-{index}", ArticleId = articleId, ChunkIndex = index, Content = content,
