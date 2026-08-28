@@ -130,21 +130,23 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         await CreatePublishedArticleAsync("Vpn Kurulum Rehberi Klmx",
             "Vpn Kurulum Rehberi Klmx, kurumsal VPN profilinin nasıl kurulacağını açıklar.");
 
-        var response = await _client.GetAsync("/api/search?q=vpn%20kurulum%20klmx&type=rag");
+        var response = await _client.PostAsJsonAsync("/api/assistant",
+            new { message = "vpn kurulum klmx nedir?" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("Vpn Kurulum Rehberi Klmx", body.GetProperty("answer").GetString());
-        Assert.Contains(body.GetProperty("groundingStatus").GetString(),
+        var rag = body.GetProperty("rag");
+        Assert.Contains(rag.GetProperty("groundingStatus").GetString(),
             new[] { "lexically_grounded", "partially_grounded" });
-        Assert.True(body.GetProperty("claimSupportCoverage").GetDouble() > 0);
-        var sourceTitles = body.GetProperty("sources").EnumerateArray()
+        Assert.True(rag.GetProperty("claimSupportCoverage").GetDouble() > 0);
+        var sourceTitles = rag.GetProperty("sources").EnumerateArray()
             .Select(s => s.GetProperty("title").GetString())
             .ToList();
         Assert.Contains("Vpn Kurulum Rehberi Klmx", sourceTitles);
-        Assert.True(body.TryGetProperty("claims", out _));
-        Assert.True(body.TryGetProperty("evidence", out _));
-        Assert.True(body.TryGetProperty("citationCoverage", out _));
+        Assert.True(rag.TryGetProperty("claims", out _));
+        Assert.True(rag.TryGetProperty("evidence", out _));
+        Assert.True(rag.TryGetProperty("citationCoverage", out _));
 
         await Task.Delay(400); // Prometheus exporter caches scrape output briefly.
         var metrics = await _client.GetStringAsync("/metrics");
@@ -153,34 +155,37 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task RagFeedback_IsBoundToOwnedRagQueryAndStoresReproducibilityMetadata()
+    public async Task RagFeedback_IsBoundToAssistantInteractionAndStoresReproducibilityMetadata()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         await CreatePublishedArticleAsync("Rag Feedback Kaynağı " + Guid.NewGuid().ToString("N"));
-        var search = await _client.GetFromJsonAsync<JsonElement>(
-            "/api/search?q=rag%20feedback%20kaynağı&type=rag");
-        var searchQueryId = search.GetProperty("searchQueryId").GetString()!;
+        var answerResponse = await _client.PostAsJsonAsync("/api/assistant",
+            new { message = "rag feedback kaynağı nedir?" });
+        answerResponse.EnsureSuccessStatusCode();
+        var answer = await answerResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var interactionId = answer.GetProperty("interactionId").GetString()!;
 
-        var response = await _client.PostAsJsonAsync("/api/search/rag-feedback", new
+        var response = await _client.PostAsJsonAsync("/api/assistant/feedback", new
         {
-            searchQueryId,
+            interactionId,
             helpful = false,
             reason = "incomplete"
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var scope = _factory.Services.CreateScope();
-        var record = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
-            .SearchQueries.FindAsync(searchQueryId);
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var record = await database.AssistantInteractions.FindAsync(interactionId);
         Assert.NotNull(record);
-        Assert.Equal("not_helpful", record.RagFeedback);
-        Assert.Equal("incomplete", record.RagFeedbackReason);
-        Assert.NotNull(record.RagFeedbackAt);
+        Assert.False(record.Helpful);
+        Assert.Equal("incomplete", record.FeedbackReason);
+        Assert.NotNull(record.FeedbackAt);
         Assert.Equal(RagService.PromptVersion, record.RagPromptVersion);
         Assert.Equal(RagService.RetrievalVersion, record.RagRetrievalVersion);
         Assert.Equal("local-deterministic-v1", record.RagReranker);
         Assert.NotNull(record.RagIndexProfile);
         Assert.Equal(64, record.RagAnswerHash?.Length);
+        Assert.DoesNotContain(database.SearchQueries, query => query.SearchType == "rag");
 
         var summary = await _client.GetFromJsonAsync<JsonElement>(
             "/api/admin/rag-evaluations/feedback-summary?days=30");
@@ -195,7 +200,7 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         await CreatePublishedArticleAsync("VPN Debug Kaynağı", "VPN sertifika yenileme adımları burada açıklanır.");
 
         var response = await _client.GetAsync(
-            "/api/search/rag-debug?q=VPN%20kurulumu%20ve%20sertifika%20yenileme");
+            "/api/admin/rag/debug?q=VPN%20kurulumu%20ve%20sertifika%20yenileme");
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -259,7 +264,7 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
 
-        var response = await _client.GetAsync("/api/search/rag-observability");
+        var response = await _client.GetAsync("/api/admin/rag/observability");
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -285,7 +290,8 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(client);
         await CreatePublishedArticleAsync(client, "Timeout RAG Belgesi", "Timeout doğrulama içeriği.");
 
-        var response = await client.GetAsync("/api/search?q=timeout%20doğrulama&type=rag");
+        var response = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "timeout doğrulama nedir?" });
 
         Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
     }
@@ -308,9 +314,9 @@ public class SemanticSearchTests : IClassFixture<TestWebApplicationFactory>
         await CreatePublishedArticleAsync(client, "Circuit RAG Belgesi", "Circuit doğrulama içeriği.");
 
         Assert.Equal(HttpStatusCode.InternalServerError,
-            (await client.GetAsync("/api/search?q=circuit%20doğrulama&type=rag")).StatusCode);
+            (await client.PostAsJsonAsync("/api/assistant", new { message = "circuit doğrulama nedir?" })).StatusCode);
         Assert.Equal(HttpStatusCode.ServiceUnavailable,
-            (await client.GetAsync("/api/search?q=circuit%20doğrulama&type=rag")).StatusCode);
+            (await client.PostAsJsonAsync("/api/assistant", new { message = "circuit doğrulama nedir?" })).StatusCode);
     }
 
     private static async Task CreatePublishedArticleAsync(HttpClient client, string title, string content)

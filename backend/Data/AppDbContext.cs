@@ -26,8 +26,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AssistantInteraction> AssistantInteractions => Set<AssistantInteraction>();
     public DbSet<AssistantConversation> AssistantConversations => Set<AssistantConversation>();
     public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
-    public DbSet<AssistantEvaluationCandidate> AssistantEvaluationCandidates => Set<AssistantEvaluationCandidate>();
-    public DbSet<AssistantRoutingShadowSample> AssistantRoutingShadowSamples => Set<AssistantRoutingShadowSample>();
     public DbSet<AssistantAnswerCacheEntry> AssistantAnswerCacheEntries => Set<AssistantAnswerCacheEntry>();
     public DbSet<RagEvaluationDataset> RagEvaluationDatasets => Set<RagEvaluationDataset>();
     public DbSet<RagEvaluationRun> RagEvaluationRuns => Set<RagEvaluationRun>();
@@ -328,21 +326,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("assistant_interactions");
             e.HasKey(x => x.Id);
             e.Property(x => x.QueryFingerprint).IsRequired().HasMaxLength(64);
-            e.Property(x => x.Route).IsRequired().HasMaxLength(40);
-            e.Property(x => x.RouteSource).IsRequired().HasMaxLength(30);
-            e.Property(x => x.ReasonCode).IsRequired().HasMaxLength(80);
-            e.Property(x => x.SearchQueryId).HasMaxLength(21);
+            e.Property(x => x.RagTraceId).HasMaxLength(32);
+            e.Property(x => x.RagPromptVersion).HasMaxLength(100);
+            e.Property(x => x.RagRetrievalVersion).HasMaxLength(100);
+            e.Property(x => x.RagReranker).HasMaxLength(200);
+            e.Property(x => x.RagIndexProfile).HasMaxLength(64);
+            e.Property(x => x.RagGroundingStatus).HasMaxLength(40);
+            e.Property(x => x.RagAnswerHash).HasMaxLength(64);
+            e.Property(x => x.ClickedArticleId).HasMaxLength(21);
             e.Property(x => x.ToolCallsJson).IsRequired().HasColumnType("jsonb");
             e.Property(x => x.FeedbackReason).HasMaxLength(40);
-            e.Property(x => x.CorrectedRoute).HasMaxLength(40);
-            e.Property(x => x.RoutingPromptVersion).IsRequired().HasMaxLength(100);
-            e.Property(x => x.ClassifierModel).IsRequired().HasMaxLength(200);
-            e.Property(x => x.RoutingConfigSnapshotJson).IsRequired().HasColumnType("jsonb");
             e.Property(x => x.ApplicationVersion).IsRequired().HasMaxLength(50);
             e.Property(x => x.ConversationId).HasMaxLength(21);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => new { x.UserId, x.CreatedAt });
-            e.HasIndex(x => new { x.Route, x.CreatedAt });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.ApiKey).WithMany().HasForeignKey(x => x.ApiKeyId)
@@ -368,31 +365,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
             e.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId)
                 .OnDelete(DeleteBehavior.Cascade);
-        });
-        modelBuilder.Entity<AssistantEvaluationCandidate>(e =>
-        {
-            e.ToTable("assistant_evaluation_candidates"); e.HasKey(x => x.Id);
-            e.Property(x => x.Question).IsRequired().HasMaxLength(4000);
-            e.Property(x => x.ActualRoute).IsRequired().HasMaxLength(40);
-            e.Property(x => x.ExpectedRoute).HasMaxLength(40);
-            e.Property(x => x.Reason).IsRequired().HasMaxLength(40);
-            e.Property(x => x.Status).IsRequired().HasMaxLength(20);
-            e.HasIndex(x => x.InteractionId).IsUnique();
-            e.HasIndex(x => new { x.Status, x.CreatedAt });
-            e.HasOne(x => x.Interaction).WithMany().HasForeignKey(x => x.InteractionId)
-                .OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(x => x.ReviewedBy).WithMany().HasForeignKey(x => x.ReviewedById)
-                .OnDelete(DeleteBehavior.SetNull);
-        });
-        modelBuilder.Entity<AssistantRoutingShadowSample>(e =>
-        {
-            e.ToTable("assistant_routing_shadow_samples"); e.HasKey(x => x.Id);
-            e.Property(x => x.QueryFingerprint).IsRequired().HasMaxLength(64);
-            e.Property(x => x.PrimaryRoute).IsRequired().HasMaxLength(40);
-            e.Property(x => x.ShadowRoute).IsRequired().HasMaxLength(40);
-            e.Property(x => x.PrimaryModel).IsRequired().HasMaxLength(200);
-            e.Property(x => x.ShadowModel).IsRequired().HasMaxLength(200);
-            e.HasIndex(x => x.CreatedAt);
         });
         modelBuilder.Entity<AssistantAnswerCacheEntry>(e =>
         {

@@ -487,6 +487,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             .ToList();
 
         Assert.Contains("search_articles", toolNames);
+        Assert.Contains("ask_knowledge", toolNames);
         Assert.Contains("get_article", toolNames);
         Assert.Contains("list_articles", toolNames);
         Assert.Contains("list_tags", toolNames);
@@ -501,6 +502,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             .First(t => t.GetProperty("name").GetString() == "search_articles");
         var properties = search.GetProperty("inputSchema").GetProperty("properties");
         Assert.Equal("fulltext", properties.GetProperty("type").GetProperty("default").GetString());
+        Assert.DoesNotContain(properties.GetProperty("type").GetProperty("enum").EnumerateArray(),
+            value => value.GetString() == "rag");
         Assert.True(properties.TryGetProperty("include_attachments", out _));
         Assert.True(properties.TryGetProperty("only_own_content", out _));
         var scope = properties.GetProperty("scope");
@@ -512,7 +515,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("array", scope.GetProperty("properties").GetProperty("contentTypes").GetProperty("type").GetString());
         var scopedTools = new[]
         {
-            "search_articles", "list_articles", "get_project_context", "get_integration_guidance",
+            "search_articles", "ask_knowledge", "list_articles", "get_project_context", "get_integration_guidance",
             "find_authoritative_content", "compare_sources", "get_recent_changes"
         };
         foreach (var toolName in scopedTools)
@@ -747,7 +750,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Mcp_SearchArticles_RagReturnsAnswerAndSources()
+    public async Task Mcp_AskKnowledge_ReturnsAnswerAndSources()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         await _client.PostAsJsonAsync("/api/articles", new
@@ -757,8 +760,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             status = "published"
         });
 
-        var result = await RpcResultAsync(ToolCall("search_articles",
-            new { query = "vpn kurulum yqnx", type = "rag" }));
+        var result = await RpcResultAsync(ToolCall("ask_knowledge",
+            new { question = "vpn kurulum yqnx nedir?" }));
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
 
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("answer").GetString()));
@@ -770,7 +773,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Mcp_SearchArticles_RagDefinitionReturnsSourceDefinitionInsteadOfArticleMetadata()
+    public async Task Mcp_AskKnowledge_DefinitionReturnsSourceDefinitionInsteadOfArticleMetadata()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         await _client.PostAsJsonAsync("/api/articles", new
@@ -781,8 +784,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
             status = "published"
         });
 
-        var result = await RpcResultAsync(ToolCall("search_articles",
-            new { query = "Zcar nedir?", type = "rag" }));
+        var result = await RpcResultAsync(ToolCall("ask_knowledge",
+            new { question = "Zcar nedir?" }));
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
         var answer = payload.GetProperty("answer").GetString() ?? "";
 

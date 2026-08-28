@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, FileInput, Search, Sparkles, Layers, Bot, ArrowDown } from "lucide-react";
+import { X, FileInput, Search, Sparkles, Layers, ArrowDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface SearchFlowModalProps {
@@ -8,7 +8,7 @@ interface SearchFlowModalProps {
   onClose: () => void;
 }
 
-type FlowId = "indexing" | "fulltext" | "semantic" | "hybrid" | "rag";
+type FlowId = "indexing" | "fulltext" | "semantic" | "hybrid";
 
 interface Step {
   title: string;
@@ -195,52 +195,6 @@ const FLOWS: Flow[] = [
         detail:
           "Semantik tarafa biraz daha fazla ağırlık verilir. İki listede birden geçen bir aday iki puanı da toplar ve doğal olarak yukarı çıkar; sonuçta 'fulltext', 'semantic' veya 'both' etiketiyle döner.",
         refs: ["α tam metin = 0.4", "α semantik = 0.6"],
-      },
-    ],
-  },
-  {
-    id: "rag",
-    label: "RAG",
-    icon: <Bot size={15} />,
-    summary:
-      "Soruya, makalelerden bulunan pasajlara dayanarak dil modeliyle yanıt üretir. Semantik aramanın üstüne kurulur.",
-    steps: [
-      {
-        title: "Pasajlar toplanır",
-        detail:
-          "Hybrid aramanın parça seviyeli hali kullanılır: makale başına en iyi birkaç parça alınır, böylece uzun bir doküman tek bir pencereye indirgenmez. Benzerlik eşiği liste aramasından daha düşüktür; nihai yanıt ayrıca deterministic grounding kontrolünden geçer.",
-        refs: ["RagCandidateLimit: 60", "RagMaxChunksPerArticle: 3", "RagMinSimilarityScore: 0.3"],
-      },
-      {
-        title: "Filtre ve yayın kontrolü",
-        detail:
-          "Başlık ve slug bilgisi çözülürken filtre ikinci kez uygulanır. Bu bir güvenlik ağıdır: yetkisiz bir makalenin metni modele bağlam olarak gitmemelidir.",
-        refs: ["ApplyFilter"],
-      },
-      {
-        title: "Sorunun kapsamı belirlenir",
-        detail:
-          "Soru 'özetle', 'karşılaştır', 'hepsi', 'listele' gibi bir sözcük içeriyorsa geniş kapsamlı sayılır. Böyle sorular tek bir bağlam penceresine sığmaz; bu ayrım hangi yolun izleneceğini belirler.",
-        refs: ["RagBroadIntentKeywords"],
-        branch: true,
-      },
-      {
-        title: "Dar yol — tek çağrı",
-        detail:
-          "Sorgu token karmaşıklığı, decomposition ve açıklama niyeti kaynak sayısını 3-10 arasında belirler; düşük marjinal skorlu kaynaklar elenir. Pasajlar model-calibrated token bütçesine dengeli yerleştirilir ve tek model çağrısı yapılır.",
-        refs: ["RagMinimumSourceLimit: 3", "RagSourceLimit: 10", "RagMaxContextTokens: 12000"],
-      },
-      {
-        title: "Geniş yol — böl ve birleştir",
-        detail:
-          "Pasajlar gruplara ayrılır, her grup için ayrı bir model çağrısıyla ara not çıkarılır (map), sonra bu notlar ikinci bir çağrıyla tek yanıtta birleştirilir (reduce). Bir grupta bilgi yoksa model 'YOK' der ve o not elenir.",
-        refs: ["RagMapReduceBatchChunks: 6", "map → reduce"],
-      },
-      {
-        title: "Yanıt ve kaynaklar",
-        detail:
-          "Claim'ler özet, açıklama, adım, sınır, istisna veya uyuşmazlık rolüyle gösterilir. Atıf yapılan ve yalnız incelenen kaynaklar ayrılır; sayısal/polarity çelişkileri yönetişim sinyalleriyle raporlanır. Yeterli kanıt yoksa sistem fail-closed sonuç döndürür.",
-        refs: ["claims.role", "sources", "consultedSources", "conflictAssessment"],
       },
     ],
   },

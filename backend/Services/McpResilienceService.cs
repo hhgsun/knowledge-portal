@@ -7,10 +7,10 @@ namespace KnowledgePortal.Api.Services;
 
 public sealed class McpResilienceService(IConfiguration config)
 {
-    private readonly SemaphoreSlim _aiSlots = new(Math.Max(1, config.GetValue("Mcp:AiConcurrencyLimit", 2)));
-    private readonly object _circuitLock = new();
-    private int _consecutiveAiFailures;
-    private DateTime _circuitOpenUntil;
+    private readonly ResilienceLane _semanticSearch = new(Math.Max(1,
+        config.GetValue("Mcp:SemanticConcurrencyLimit", config.GetValue("Mcp:AiConcurrencyLimit", 2))));
+    private readonly ResilienceLane _knowledgeAnswer = new(Math.Max(1,
+        config.GetValue("Mcp:AnswerConcurrencyLimit", config.GetValue("Mcp:AiConcurrencyLimit", 2))));
     private readonly int _failureThreshold = Math.Max(1, config.GetValue("Mcp:CircuitBreakerFailureThreshold", 3));
     private readonly TimeSpan _breakDuration = TimeSpan.FromSeconds(Math.Max(1, config.GetValue("Mcp:CircuitBreakerSeconds", 30)));
     private readonly int _maxOutputBytes = Math.Max(16_384, config.GetValue("Mcp:MaxOutputBytes", 1_048_576));
@@ -18,16 +18,16 @@ public sealed class McpResilienceService(IConfiguration config)
     public async Task<McpToolCallResult> ExecuteAsync(string toolName, JsonElement? arguments,
         Func<CancellationToken, Task<McpToolCallResult>> action, CancellationToken requestAborted)
     {
-        var aiBound = IsAiBound(toolName, arguments);
-        if (aiBound && IsCircuitOpen(out var retryAfter))
-            return ResilienceError("circuit_open", "AI search is temporarily unavailable after repeated failures.", true, retryAfter);
+        var lane = LaneFor(toolName, arguments);
+        if (lane != null && IsCircuitOpen(lane, out var retryAfter))
+            return ResilienceError("circuit_open", "The requested AI capability is temporarily unavailable after repeated failures.", true, retryAfter);
 
         var acquired = false;
-        if (aiBound)
+        if (lane != null)
         {
-            acquired = await _aiSlots.WaitAsync(0, requestAborted);
+            acquired = await lane.Slots.WaitAsync(0, requestAborted);
             if (!acquired)
-                return ResilienceError("server_busy", "AI search capacity is currently full.", true, 5);
+                return ResilienceError("server_busy", "The requested AI capability is at capacity.", true, 5);
         }
 
         var timeoutSeconds = TimeoutSeconds(toolName, arguments);
@@ -36,17 +36,17 @@ public sealed class McpResilienceService(IConfiguration config)
         try
         {
             var result = await action(linked.Token);
-            if (aiBound) UpdateCircuit(IsTransientAiFailure(result));
+            if (lane != null) UpdateCircuit(lane, IsTransientAiFailure(result));
             return EnforceOutputLimit(result);
         }
         catch (OperationCanceledException) when (!requestAborted.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            if (aiBound) UpdateCircuit(true);
+            if (lane != null) UpdateCircuit(lane, true);
             return ResilienceError("tool_timeout", $"Tool exceeded its {timeoutSeconds}s execution budget.", true, 10);
         }
         finally
         {
-            if (acquired) _aiSlots.Release();
+            if (acquired) lane!.Slots.Release();
         }
     }
 
@@ -60,7 +60,7 @@ public sealed class McpResilienceService(IConfiguration config)
             "compare_sources" or "get_recent_changes" => 15,
             "get_project_context" or "find_authoritative_content" => 30,
             "get_integration_guidance" => 30,
-            "search_articles" when mode == "rag" => 120,
+            "ask_knowledge" => 120,
             "search_articles" when mode is "semantic" or "hybrid" => 30,
             _ => 5
         };
@@ -77,24 +77,24 @@ public sealed class McpResilienceService(IConfiguration config)
                 new JsonObject { ["maxOutputBytes"] = _maxOutputBytes, ["actualOutputBytes"] = bytes });
     }
 
-    private bool IsCircuitOpen(out int retryAfter)
+    private bool IsCircuitOpen(ResilienceLane lane, out int retryAfter)
     {
-        lock (_circuitLock)
+        lock (lane.CircuitLock)
         {
-            retryAfter = Math.Max(1, (int)Math.Ceiling((_circuitOpenUntil - DateTime.UtcNow).TotalSeconds));
-            return _circuitOpenUntil > DateTime.UtcNow;
+            retryAfter = Math.Max(1, (int)Math.Ceiling((lane.CircuitOpenUntil - DateTime.UtcNow).TotalSeconds));
+            return lane.CircuitOpenUntil > DateTime.UtcNow;
         }
     }
 
-    private void UpdateCircuit(bool failed)
+    private void UpdateCircuit(ResilienceLane lane, bool failed)
     {
-        lock (_circuitLock)
+        lock (lane.CircuitLock)
         {
-            if (!failed) { _consecutiveAiFailures = 0; _circuitOpenUntil = default; return; }
-            if (++_consecutiveAiFailures >= _failureThreshold)
+            if (!failed) { lane.ConsecutiveFailures = 0; lane.CircuitOpenUntil = default; return; }
+            if (++lane.ConsecutiveFailures >= _failureThreshold)
             {
-                _circuitOpenUntil = DateTime.UtcNow.Add(_breakDuration);
-                _consecutiveAiFailures = 0;
+                lane.CircuitOpenUntil = DateTime.UtcNow.Add(_breakDuration);
+                lane.ConsecutiveFailures = 0;
             }
         }
     }
@@ -104,17 +104,30 @@ public sealed class McpResilienceService(IConfiguration config)
         if (result.IsError) return true;
         var json = result.StructuredContent?.ToJsonString() ?? "";
         return json.Contains("Semantic search failed", StringComparison.OrdinalIgnoreCase)
-               || json.Contains("RAG search failed", StringComparison.OrdinalIgnoreCase)
+               || json.Contains("answer generation failed", StringComparison.OrdinalIgnoreCase)
                || json.Contains("AI arama şu anda kullanılamıyor", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsAiBound(string tool, JsonElement? args) => tool is
-        "get_integration_guidance" or "find_authoritative_content"
-        || tool == "search_articles" && GetMode(args) is "semantic" or "hybrid" or "rag";
+    private ResilienceLane? LaneFor(string tool, JsonElement? args)
+    {
+        if (tool == "ask_knowledge") return _knowledgeAnswer;
+        return tool is "get_integration_guidance" or "find_authoritative_content"
+               || tool == "search_articles" && GetMode(args) is "semantic" or "hybrid"
+            ? _semanticSearch
+            : null;
+    }
 
     private static string GetMode(JsonElement? args) => args is { ValueKind: JsonValueKind.Object }
         && args.Value.TryGetProperty("type", out var mode) && mode.ValueKind == JsonValueKind.String
             ? mode.GetString()?.ToLowerInvariant() ?? "fulltext" : "fulltext";
+
+    private sealed class ResilienceLane(int concurrencyLimit)
+    {
+        public SemaphoreSlim Slots { get; } = new(concurrencyLimit);
+        public object CircuitLock { get; } = new();
+        public int ConsecutiveFailures { get; set; }
+        public DateTime CircuitOpenUntil { get; set; }
+    }
 
     public static McpToolCallResult ResilienceError(string code, string message, bool retryable,
         int? retryAfterSeconds, JsonObject? details = null)

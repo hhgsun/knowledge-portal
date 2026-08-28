@@ -228,14 +228,13 @@ public class SearchTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Search_RagPlaceholder_ReturnsStub()
+    public async Task Search_RejectsRagBecauseAnswerGenerationBelongsToAssistant()
     {
         await AuthenticateAsAdmin();
         var response = await _client.GetAsync("/api/search?q=test&type=rag");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(body.TryGetProperty("answer", out _));
+        Assert.Contains("fulltext, semantic, hybrid", body.GetProperty("error").GetString());
     }
 
     private async Task AuthenticateAsAdmin()

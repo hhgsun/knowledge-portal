@@ -11,17 +11,7 @@ type FeedbackSummary = {
   averageResponseTimeMs: number; reasons: { reason: string; count: number }[];
   grounding: { status: string; count: number; helpfulRate: number }[];
   configurations: { promptVersion?: string; retrievalVersion?: string; reranker?: string; indexProfile?: string; count: number; helpfulRate: number }[];
-  assistant: {
-    total: number; helpful: number; notHelpful: number; helpfulRate: number; averageResponseTimeMs: number;
-    reasons: { reason: string; count: number }[];
-    routes: { route: string; source: string; count: number; helpfulRate: number }[];
-    corrections: { route: string; count: number }[];
-  };
 };
-type AssistantCandidate = { id: string; question: string; actualRoute: string; expectedRoute?: string;
-  reason: string; status: string; createdAt: string };
-type RoutingSummary = { days: number; total: number; agreementRate: number;
-  disagreements: { primaryRoute: string; shadowRoute: string; count: number }[] };
 
 const defaultThresholds = { recallAtK: .8, mrr: .75, ndcgAtK: .75, factCoverage: .7, citationCoverage: .8, groundingCoverage: .8, refusalAccuracy: .9, forbiddenFactPassRate: 1, p95LatencyMs: 30000 };
 const exampleCases = [{ id: "ornek-1", category: "focused", question: "API key hangi header ile gönderilir?", expectedSourceSlugs: ["api-kullanim-kilavuzu"], expectedFacts: ["X-API-Key"], forbiddenFacts: [], expectedRefusal: false, filters: { tag: [], authorIds: [], contentType: [] } }];
@@ -38,16 +28,12 @@ export default function RagEvaluationsPage() {
   const [thresholds, setThresholds] = useState(JSON.stringify(defaultThresholds, null, 2));
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackSummary>();
-  const [assistantCandidates, setAssistantCandidates] = useState<AssistantCandidate[]>([]);
-  const [routingSummary, setRoutingSummary] = useState<RoutingSummary>();
 
   const load = useCallback(async () => {
-    const [d, r, f, c, s] = await Promise.all([fetchWithAuth("/api/admin/rag-evaluations/datasets"), fetchWithAuth("/api/admin/rag-evaluations/runs"), fetchWithAuth("/api/admin/rag-evaluations/feedback-summary?days=30"), fetchWithAuth("/api/admin/assistant-evaluations/candidates?status=pending"), fetchWithAuth("/api/admin/assistant-evaluations/routing-summary?days=30")]);
+    const [d, r, f] = await Promise.all([fetchWithAuth("/api/admin/rag-evaluations/datasets"), fetchWithAuth("/api/admin/rag-evaluations/runs"), fetchWithAuth("/api/admin/rag-evaluations/feedback-summary?days=30")]);
     if (d.ok) setDatasets((await d.json()).datasets);
     if (r.ok) setRuns((await r.json()).runs.map((x: Run & { metricsJson?: string }) => ({ ...x, metrics: x.metricsJson ? JSON.parse(x.metricsJson) : undefined })));
     if (f.ok) setFeedback(await f.json());
-    if (c.ok) setAssistantCandidates((await c.json()).candidates);
-    if (s.ok) setRoutingSummary(await s.json());
   }, [fetchWithAuth]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (!runs.some(r => r.status === "pending" || r.status === "running")) return; const timer = setInterval(() => void load(), 2000); return () => clearInterval(timer); }, [runs, load]);
@@ -66,7 +52,6 @@ export default function RagEvaluationsPage() {
   }
   async function run() { if (!id) return toast.error("Önce dataset'i kaydedin"); const res = await fetchWithAuth(`/api/admin/rag-evaluations/datasets/${id}/runs`, { method: "POST", noRetry: true }); const data = await res.json(); if (!res.ok) return toast.error(data.error); toast.success("Değerlendirme kuyruğa alındı"); await load(); }
   async function remove() { if (!id || !confirm("Dataset ve geçmiş çalışmaları silinsin mi?")) return; const res = await fetchWithAuth(`/api/admin/rag-evaluations/datasets/${id}`, { method: "DELETE", noRetry: true }); if (res.ok) { fresh(); await load(); toast.success("Dataset silindi"); } }
-  async function reviewCandidate(candidate: AssistantCandidate, status: "approved"|"rejected") { if(status === "approved"&&!candidate.expectedRoute)return toast.error("Önce beklenen rotayı seçin"); const res = await fetchWithAuth(`/api/admin/assistant-evaluations/candidates/${candidate.id}`, { method: "PUT", noRetry: true, body: JSON.stringify({ status, expectedRoute: candidate.expectedRoute }) }); if (!res.ok) return toast.error("Aday güncellenemedi"); toast.success(status === "approved" ? "Golden routing vakası onaylandı" : "Aday reddedildi"); await load(); }
 
   const percent = (v: number) => `${(v * 100).toFixed(1)}%`;
   return <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -79,18 +64,6 @@ export default function RagEvaluationsPage() {
         <div><h3 className="font-medium mb-2">Grounding cohort'ları</h3><div className="space-y-1">{feedback.grounding.map(x=><div key={x.status} className="flex justify-between rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><span>{x.status} · {x.count}</span><span>{percent(x.helpfulRate)} yararlı</span></div>)}</div></div>
         <div><h3 className="font-medium mb-2">Retrieval / reranker cohort'ları</h3><div className="space-y-1">{feedback.configurations.map((x, i)=><div key={`${x.retrievalVersion}-${x.reranker}-${i}`} className="rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><div className="flex justify-between"><span className="truncate">{x.retrievalVersion ?? "retrieval bilinmiyor"} · {x.reranker ?? "reranker bilinmiyor"}</span><span className="ml-2 shrink-0">{percent(x.helpfulRate)} / {x.count}</span></div><div className="truncate text-zinc-500">prompt: {x.promptVersion ?? "—"} · index: {x.indexProfile ?? "—"}</div></div>)}</div></div>
       </div>
-      <div className="border-t dark:border-zinc-800 pt-4 space-y-3">
-        <div className="flex items-center justify-between"><div><h3 className="font-medium">Assistant yönlendirme geri bildirimi</h3><p className="text-xs text-zinc-500">Rota doğruluğunu RAG yanıt kalitesinden ayrı izler.</p></div><span className="text-sm font-semibold">{percent(feedback.assistant.helpfulRate)} yararlı · {feedback.assistant.total} oy</span></div>
-        <div className="grid md:grid-cols-2 gap-4 text-xs">
-          <div className="space-y-1">{feedback.assistant.routes.map(x=><div key={`${x.route}-${x.source}`} className="flex justify-between rounded bg-zinc-50 dark:bg-zinc-900 px-2 py-1"><span>{x.route} · {x.source} · {x.count}</span><span>{percent(x.helpfulRate)}</span></div>)}</div>
-          <div className="flex flex-wrap content-start gap-2">{feedback.assistant.reasons.map(x=><span key={x.reason} className="rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-1">{x.reason}: {x.count}</span>)}{feedback.assistant.corrections.map(x=><span key={x.route} className="rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 px-2 py-1">önerilen {x.route}: {x.count}</span>)}</div>
-        </div>
-      </div>
-    </section>}
-    {(assistantCandidates.length > 0 || routingSummary) && <section className="border rounded-xl dark:border-zinc-800 p-4 space-y-4">
-      <div className="flex items-center justify-between"><div><h2 className="font-semibold">Assistant routing kalite döngüsü</h2><p className="text-xs text-zinc-500">Olumsuz kullanıcı geri bildirimlerini onaylı golden vakalara dönüştürün.</p></div>{routingSummary&&<span className="text-sm font-semibold">Shadow uyumu {percent(routingSummary.agreementRate)} · {routingSummary.total}</span>}</div>
-      <div className="space-y-2">{assistantCandidates.map(candidate=><div key={candidate.id} className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-900 md:flex-row md:items-center"><div className="min-w-0 flex-1"><div className="font-medium">{candidate.question}</div><div className="text-zinc-500">gerçek: {candidate.actualRoute} · {candidate.reason}</div></div><select value={candidate.expectedRoute??""} onChange={event=>setAssistantCandidates(items=>items.map(x=>x.id===candidate.id?{...x,expectedRoute:event.target.value||undefined}:x))} className="rounded border border-zinc-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-950"><option value="">Beklenen rota</option><option value="knowledge_search">knowledge_search</option><option value="knowledge_answer">knowledge_answer</option><option value="analytics">analytics</option><option value="general_chat">general_chat</option><option value="clarification">clarification</option></select><div className="flex gap-2"><button onClick={()=>void reviewCandidate(candidate,"approved")} className="rounded bg-green-600 px-2 py-1 text-white">Onayla</button><button onClick={()=>void reviewCandidate(candidate,"rejected")} className="rounded border border-red-300 px-2 py-1 text-red-600">Reddet</button></div></div>)}</div>
-      {routingSummary&&routingSummary.disagreements.length>0&&<div className="flex flex-wrap gap-2 text-xs">{routingSummary.disagreements.map(x=><span key={`${x.primaryRoute}-${x.shadowRoute}`} className="rounded-full bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{x.primaryRoute} → {x.shadowRoute}: {x.count}</span>)}</div>}
     </section>}
     <div className="grid lg:grid-cols-[260px_1fr] gap-6">
       <aside className="border rounded-xl dark:border-zinc-800 p-3 space-y-2">{datasets.map(d => <button key={d.id} onClick={() => void selectDataset(d.id)} className={`w-full text-left p-3 rounded-lg ${id === d.id ? "bg-blue-50 dark:bg-blue-950" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}><div className="font-medium text-sm">{d.name}</div><div className="text-xs text-zinc-500">v{d.version} · {d.caseCount} vaka</div></button>)}</aside>

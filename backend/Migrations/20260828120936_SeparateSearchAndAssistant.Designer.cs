@@ -3,6 +3,7 @@ using System;
 using KnowledgePortal.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace KnowledgePortal.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828120936_SeparateSearchAndAssistant")]
+    partial class SeparateSearchAndAssistant
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -781,6 +784,74 @@ namespace KnowledgePortal.Api.Migrations
                     b.ToTable("assistant_conversations", (string)null);
                 });
 
+            modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantEvaluationCandidate", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActualRoute")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("actual_route");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ExpectedRoute")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("expected_route");
+
+                    b.Property<string>("InteractionId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("interaction_id");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("question");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewedById")
+                        .HasColumnType("text")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assistant_evaluation_candidates");
+
+                    b.HasIndex("InteractionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_assistant_evaluation_candidates_interaction_id");
+
+                    b.HasIndex("ReviewedById")
+                        .HasDatabaseName("ix_assistant_evaluation_candidates_reviewed_by_id");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_assistant_evaluation_candidates_status_created_at");
+
+                    b.ToTable("assistant_evaluation_candidates", (string)null);
+                });
+
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantInteraction", b =>
                 {
                     b.Property<string>("Id")
@@ -797,15 +868,34 @@ namespace KnowledgePortal.Api.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("application_version");
 
+                    b.Property<string>("ClassifierModel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("classifier_model");
+
                     b.Property<string>("ClickedArticleId")
                         .HasMaxLength(21)
                         .HasColumnType("character varying(21)")
                         .HasColumnName("clicked_article_id");
 
+                    b.Property<double>("Confidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("confidence");
+
+                    b.Property<int>("ConfidenceCalibrationSamples")
+                        .HasColumnType("integer")
+                        .HasColumnName("confidence_calibration_samples");
+
                     b.Property<string>("ConversationId")
                         .HasMaxLength(21)
                         .HasColumnType("character varying(21)")
                         .HasColumnName("conversation_id");
+
+                    b.Property<string>("CorrectedRoute")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("corrected_route");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone")
@@ -869,6 +959,44 @@ namespace KnowledgePortal.Api.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("rag_trace_id");
 
+                    b.Property<double>("RawConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("raw_confidence");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("reason_code");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("route");
+
+                    b.Property<string>("RouteSource")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("route_source");
+
+                    b.Property<string>("RoutingConfigSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("routing_config_snapshot_json");
+
+                    b.Property<string>("RoutingPromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("routing_prompt_version");
+
+                    b.Property<string>("SearchQueryId")
+                        .HasMaxLength(21)
+                        .HasColumnType("character varying(21)")
+                        .HasColumnName("search_query_id");
+
                     b.Property<string>("ToolCallsJson")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -889,6 +1017,9 @@ namespace KnowledgePortal.Api.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_assistant_interactions_created_at");
+
+                    b.HasIndex("Route", "CreatedAt")
+                        .HasDatabaseName("ix_assistant_interactions_route_created_at");
 
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("ix_assistant_interactions_user_id_created_at");
@@ -940,6 +1071,67 @@ namespace KnowledgePortal.Api.Migrations
                         .HasDatabaseName("ix_assistant_messages_conversation_id_created_at");
 
                     b.ToTable("assistant_messages", (string)null);
+                });
+
+            modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantRoutingShadowSample", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Agreed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agreed");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<double>("PrimaryConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("primary_confidence");
+
+                    b.Property<string>("PrimaryModel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("primary_model");
+
+                    b.Property<string>("PrimaryRoute")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("primary_route");
+
+                    b.Property<string>("QueryFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("query_fingerprint");
+
+                    b.Property<double>("ShadowConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("shadow_confidence");
+
+                    b.Property<string>("ShadowModel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("shadow_model");
+
+                    b.Property<string>("ShadowRoute")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("shadow_route");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assistant_routing_shadow_samples");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_assistant_routing_shadow_samples_created_at");
+
+                    b.ToTable("assistant_routing_shadow_samples", (string)null);
                 });
 
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.FeaturedLink", b =>
@@ -1766,6 +1958,26 @@ namespace KnowledgePortal.Api.Migrations
                         .HasConstraintName("fk_assistant_conversations_users_user_id");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantEvaluationCandidate", b =>
+                {
+                    b.HasOne("KnowledgePortal.Api.Models.Entities.AssistantInteraction", "Interaction")
+                        .WithMany()
+                        .HasForeignKey("InteractionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_assistant_evaluation_candidates_assistant_interactions_inte~");
+
+                    b.HasOne("KnowledgePortal.Api.Models.Entities.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_assistant_evaluation_candidates_users_reviewed_by_id");
+
+                    b.Navigation("Interaction");
+
+                    b.Navigation("ReviewedBy");
                 });
 
             modelBuilder.Entity("KnowledgePortal.Api.Models.Entities.AssistantInteraction", b =>

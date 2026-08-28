@@ -1,18 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, ThumbsDown, Key, Clock, X, Trash2, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Copy, ShieldCheck } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
 import { useSearchHistory } from "../hooks/useNetworkStatus";
 import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { toast } from "sonner";
-import type { SearchResult, RagResponse, RagSource, TagWithCount, LookupValue, SearchIndexCoverage } from "../types/api";
+import type { SearchResult, TagWithCount, LookupValue, SearchIndexCoverage } from "../types/api";
 import { useCapabilities } from "../contexts/CapabilitiesContext";
 
-type SearchType = "hybrid" | "fulltext" | "semantic" | "rag";
+type SearchType = "hybrid" | "fulltext" | "semantic";
 type SuggestionType = "tag" | "author" | "contentType";
 interface AuthorItem { id: string; name: string; slug: string; }
 
@@ -33,32 +31,19 @@ function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
   return `${count} makalenin semantic arama indeksi güncel değil. Sonuçlar geçici olarak eksik veya eski olabilir.`;
 }
 
-function getGroundingLabel(status: NonNullable<RagResponse["groundingStatus"]>) {
-  const labels: Partial<Record<NonNullable<RagResponse["groundingStatus"]>, string>> = {
-    lexically_grounded: "Kanıtla doğrulandı",
-    partially_grounded: "Kısmen doğrulandı",
-    extractive_fallback: "Doğrulanmış kaynak pasajı fallback'i",
-    extractive_enrichment: "Doğrulanmış kaynak açıklaması",
-    insufficient_context: "Yetersiz bağlam",
-    rejected_unsupported: "Desteklenmeyen iddia",
-    rejected_unstructured: "Geçersiz model çıktısı",
-  };
-  return labels[status] ?? status.replaceAll("_", " ");
-}
-
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
-  const { assistantEnabled, capabilities } = useCapabilities();
+  const { assistantEnabled } = useCapabilities();
   const { contentTypes } = useLookups();
   const { history, addToHistory, removeFromHistory, clearHistory } = useSearchHistory();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
-  const initialType = (searchParams.get("type") as SearchType) || "hybrid";
+  const requestedType = searchParams.get("type");
+  const initialType: SearchType = requestedType === "fulltext" || requestedType === "semantic"
+    ? requestedType : "hybrid";
   const [query, setQuery] = useState(initialQuery);
   const [searchType, setSearchType] = useState<SearchType>(initialType);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [ragResponse, setRagResponse] = useState<RagResponse | null>(null);
-  const [expandedRagSources, setExpandedRagSources] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -68,59 +53,11 @@ export default function SearchPage() {
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexCoverage, setIndexCoverage] = useState<SearchIndexCoverage | null>(null);
-  const [ragFeedback, setRagFeedback] = useState<"helpful" | "not_helpful" | null>(null);
-  const [ragFeedbackReason, setRagFeedbackReason] = useState("");
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const searchInFlightRef = useRef(false);
-
-  const toggleRagSource = (articleId: string) => {
-    setExpandedRagSources((current) => {
-      const next = new Set(current);
-      if (next.has(articleId)) next.delete(articleId);
-      else next.add(articleId);
-      return next;
-    });
-  };
-
-  const copyRagAnswer = async () => {
-    if (!ragResponse?.answer) return;
-
-    try {
-      await navigator.clipboard.writeText(ragResponse.answer);
-      toast.success("AI yanıtı kopyalandı");
-    } catch {
-      toast.error("Yanıt kopyalanamadı");
-    }
-  };
-
-  const submitRagFeedback = async (helpful: boolean, reason?: string) => {
-    if (!searchQueryId || feedbackSubmitting) return;
-    setFeedbackSubmitting(true);
-    try {
-      const response = await fetchWithAuth("/api/search/rag-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ searchQueryId, helpful, reason: reason || null }),
-      });
-      if (!response.ok) throw new Error("feedback failed");
-      setRagFeedback(helpful ? "helpful" : "not_helpful");
-      toast.success("Geri bildiriminiz kaydedildi");
-    } catch {
-      toast.error("Geri bildirim kaydedilemedi");
-    } finally {
-      setFeedbackSubmitting(false);
-    }
-  };
   const [warning, setWarning] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(-1);
   const navigate = useNavigate();
-  const redirectLegacyRagToAssistant = capabilities?.enabled === true && initialType === "rag";
-
-  useEffect(() => {
-    if (!redirectLegacyRagToAssistant) return;
-    navigate(`/assistant?q=${encodeURIComponent(initialQuery)}&mode=answer`, { replace: true });
-  }, [initialQuery, navigate, redirectLegacyRagToAssistant]);
 
   // Autocomplete data
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -236,13 +173,9 @@ export default function SearchPage() {
 
     setLoading(true);
     setSearched(true);
-    setRagResponse(null);
-    setExpandedRagSources(new Set());
     setResults([]);
     setActiveTags([]);
     setSearchQueryId(null);
-    setRagFeedback(null);
-    setRagFeedbackReason("");
     setIndexCoverage(null);
     setWarning(null);
 
@@ -257,14 +190,10 @@ export default function SearchPage() {
       setIndexCoverage(data.indexCoverage ?? null);
       if (data.warning) setWarning(data.warning);
 
-      if (searchType === "rag") {
-        setRagResponse({ ...data, sources: data.sources || [], type: "rag" });
-      } else {
-        setResults(data.results || []);
-        setTotal(data.total ?? (data.results || []).length);
-        setPage(data.page ?? 1);
-        setTotalPages(data.totalPages ?? 1);
-      }
+      setResults(data.results || []);
+      setTotal(data.total ?? (data.results || []).length);
+      setPage(data.page ?? 1);
+      setTotalPages(data.totalPages ?? 1);
       setResponseTime(data.responseTimeMs || null);
     } finally {
       searchInFlightRef.current = false;
@@ -280,11 +209,11 @@ export default function SearchPage() {
   // Auto-search on mount if query param exists
   const hasAutoSearched = useRef(false);
   useEffect(() => {
-    if (initialQuery && !redirectLegacyRagToAssistant && !hasAutoSearched.current) {
+    if (initialQuery && !hasAutoSearched.current) {
       hasAutoSearched.current = true;
       handleSearch();
     }
-  }, [redirectLegacyRagToAssistant]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire-and-forget click analytics; navigation is handled by the result <Link>
   const trackClick = useCallback((articleId: string) => {
@@ -296,11 +225,6 @@ export default function SearchPage() {
       }).catch(() => { });
     }
   }, [searchQueryId, fetchWithAuth]);
-
-  const displayedRagSources = ragResponse?.consultedSources?.length
-    ? ragResponse.consultedSources
-    : ragResponse?.sources ?? [];
-  const citedRagSourceIds = new Set(ragResponse?.sources.map(source => source.articleId) ?? []);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -340,8 +264,8 @@ export default function SearchPage() {
                 }
               }
             }}
-            placeholder={searchType === "rag" ? "Ask a question..." : "Search... (@user #tag ##type)"}
-            aria-label={searchType === "rag" ? "Ask a question" : "Search articles"}
+            placeholder="Search... (@user #tag ##type)"
+            aria-label="Search articles"
             aria-describedby="search-help"
             aria-autocomplete="list"
             aria-expanded={showSuggestions || showHistory}
@@ -351,11 +275,11 @@ export default function SearchPage() {
           <button
             type="submit"
             disabled={loading || !query.trim()}
-            aria-label={searchType === "rag" ? "Ask AI" : "Search"}
+            aria-label="Search"
             aria-busy={loading}
             className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600"
           >
-            {loading ? "Bekleyin..." : searchType === "rag" ? "Ask" : "Search"}
+            {loading ? "Bekleyin..." : "Search"}
           </button>
 
           {/* Arama geçmişi dropdown */}
@@ -427,11 +351,11 @@ export default function SearchPage() {
             </div>
           )}
         </form>
-        {assistantEnabled && query.trim() && searchType !== "rag" && (
+        {assistantEnabled && query.trim() && (
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/30">
             <span className="text-blue-700 dark:text-blue-300">Doküman listesi yerine kaynaklara dayalı bir açıklama mı istiyorsunuz?</span>
             <Link
-              to={`/assistant?q=${encodeURIComponent(query.trim())}&mode=answer`}
+              to={`/assistant?q=${encodeURIComponent(query.trim())}`}
               className="inline-flex shrink-0 items-center gap-1.5 font-medium text-blue-700 hover:underline dark:text-blue-300"
             >
               <Bot size={15} />
@@ -443,20 +367,7 @@ export default function SearchPage() {
 
       {loading ? (
         <div aria-live="polite" aria-busy="true" className="space-y-3">
-          {searchType === "rag" ? (
-            <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl animate-pulse">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-4 h-4 rounded bg-blue-200 dark:bg-blue-700" />
-                <div className="w-20 h-4 rounded bg-blue-200 dark:bg-blue-700" />
-              </div>
-              <div className="space-y-2">
-                <div className="h-4 w-full rounded bg-blue-100 dark:bg-blue-900" />
-                <div className="h-4 w-5/6 rounded bg-blue-100 dark:bg-blue-900" />
-                <div className="h-4 w-4/6 rounded bg-blue-100 dark:bg-blue-900" />
-              </div>
-            </div>
-          ) : (
-            Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl animate-pulse">
                 <div className="h-5 w-2/3 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
                 <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2" />
@@ -466,9 +377,8 @@ export default function SearchPage() {
                   <div className="h-4 w-12 bg-zinc-100 dark:bg-zinc-800 rounded" />
                 </div>
               </div>
-            ))
-          )}
-          <p className="sr-only">{searchType === "rag" ? "AI is thinking..." : "Searching..."}</p>
+            ))}
+          <p className="sr-only">Searching...</p>
         </div>
       ) : searched ? (
         <div aria-live="polite" aria-atomic="true">
@@ -485,165 +395,7 @@ export default function SearchPage() {
             </div>
           )}
 
-          {searchType === "rag" && ragResponse ? (
-            <div className="space-y-4">
-              <div className="p-5 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl">
-                <div className="flex items-center gap-2 mb-3">
-                  <Bot size={16} className="text-blue-600" />
-                  <div>
-                    <span className="block text-sm font-medium text-blue-700 dark:text-blue-300">Yapay Zekâ Yanıtı</span>
-                    <span className="block text-[11px] text-blue-500 dark:text-blue-400">Bulunan kaynaklardan doğrulanmış özet ve açıklama</span>
-                  </div>
-                  <div className="ml-auto flex items-center gap-2">
-                    {responseTime !== null && <span className="text-xs text-blue-400">{responseTime}ms</span>}
-                    <button
-                      type="button"
-                      onClick={copyRagAnswer}
-                      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-300 dark:hover:bg-blue-900"
-                      aria-label="AI yanıtını kopyala"
-                      title="Yanıtı kopyala"
-                    >
-                      <Copy size={14} />
-                      Kopyala
-                    </button>
-                  </div>
-                </div>
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      a: ({ children, ...props }) => (
-                        <a {...props} target="_blank" rel="noopener noreferrer">{children}</a>
-                      ),
-                    }}
-                  >
-                    {ragResponse.answer}
-                  </ReactMarkdown>
-                </div>
-                {searchQueryId && (
-                  <div className="mt-4 flex items-center gap-2 border-t border-blue-200 pt-3 text-xs text-blue-700 dark:border-blue-800 dark:text-blue-300">
-                    <span>Bu yanıt yardımcı oldu mu?</span>
-                    <button type="button" disabled={feedbackSubmitting} onClick={() => submitRagFeedback(true)}
-                      aria-pressed={ragFeedback === "helpful"}
-                      className={cn("rounded-md p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900", ragFeedback === "helpful" && "bg-blue-200 dark:bg-blue-800")}
-                      aria-label="Yanıt yardımcı oldu"><ThumbsUp size={14} /></button>
-                    <button type="button" disabled={feedbackSubmitting} onClick={() => submitRagFeedback(false)}
-                      aria-pressed={ragFeedback === "not_helpful"}
-                      className={cn("rounded-md p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900", ragFeedback === "not_helpful" && "bg-blue-200 dark:bg-blue-800")}
-                      aria-label="Yanıt yardımcı olmadı"><ThumbsDown size={14} /></button>
-                    {ragFeedback === "not_helpful" && <select value={ragFeedbackReason} onChange={e=>{setRagFeedbackReason(e.target.value); if(e.target.value) void submitRagFeedback(false,e.target.value);}} className="ml-1 rounded-md border border-blue-200 bg-transparent px-2 py-1 dark:border-blue-800" aria-label="Yararlı olmama nedeni"><option value="">Neden? (isteğe bağlı)</option><option value="incorrect">Yanlış</option><option value="incomplete">Eksik</option><option value="wrong_source">Yanlış kaynak</option><option value="outdated">Güncel değil</option><option value="no_answer">Bilgi bulunamadı</option><option value="other">Diğer</option></select>}
-                  </div>
-                )}
-              </div>
-
-              {ragResponse.groundingStatus && (
-                <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-xs",
-                  ragResponse.groundingStatus === "lexically_grounded" || ragResponse.groundingStatus === "citations_verified" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300" :
-                  ragResponse.groundingStatus === "insufficient_context" ? "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300" :
-                  "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300") }>
-                  <ShieldCheck size={14}/><span>Grounding: {getGroundingLabel(ragResponse.groundingStatus)}</span>
-                  <span className="ml-auto">{ragResponse.groundingStatus === "extractive_fallback" ? "Fallback atıf desteği" : "Atıf kimlikleri"}: {((ragResponse.citationCoverage ?? 0) * 100).toFixed(0)}%</span>
-                  <span>{ragResponse.groundingStatus === "extractive_fallback" ? "Fallback claim desteği" : "Claim desteği"}: {((ragResponse.claimSupportCoverage ?? 0) * 100).toFixed(0)}%</span>
-                </div>
-              )}
-
-              {ragResponse.conflictAssessment?.status === "conflicts_detected" && (
-                <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
-                  <p className="font-medium">Kaynaklar arasında doğrulanması gereken uyuşmazlık bulundu.</p>
-                  {ragResponse.conflictAssessment.conflicts.map((conflict, index) => (
-                    <p key={`${conflict.kind}-${index}`} className="mt-1">
-                      {conflict.kind === "numeric" ? "Sayısal değer" : "Olumlu/olumsuz ifade"}: {conflict.sourceIds.join(" ↔ ")}
-                      {conflict.preferredSourceId
-                        ? ` · Yönetişim önceliği: ${conflict.preferredSourceId}`
-                        : " · Yönetişim sinyalleri eşit; otomatik seçim yapılmadı."}
-                    </p>
-                  ))}
-                </div>
-              )}
-
-              {(ragResponse.partialResult || (ragResponse.warnings?.length ?? 0) > 0) && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-                  {ragResponse.partialResult && <p className="font-medium">{ragResponse.groundingStatus === "extractive_fallback"
-                    ? "LLM yanıtı grounding kontrolünden geçmedi; aşağıdaki içerik doğrulanmış kaynak pasajlarından oluşturuldu."
-                    : ragResponse.groundingStatus === "extractive_enrichment"
-                      ? "LLM'in doğrulanmış özeti korundu; eksik açıklama doğrulanmış kaynak pasajlarından eklendi."
-                      : "Yanıt bazı başarılı kaynak gruplarıyla oluşturuldu; sonuç kısmi olabilir."}</p>}
-                  {ragResponse.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
-                </div>
-              )}
-
-              {displayedRagSources.length > 0 && (
-                <section aria-labelledby="rag-sources-heading">
-                  <h3 id="rag-sources-heading" className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Kaynak kullanımı
-                    <span className="ml-1 font-normal text-zinc-500">· {ragResponse.sources.length} atıf · {displayedRagSources.length} incelendi · {ragResponse.evidence?.length ?? 0} kanıt</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {displayedRagSources.map((source: RagSource) => {
-                      const sourceEvidence = ragResponse.evidence?.filter(evidence => evidence.articleId === source.articleId) ?? [];
-                      const isExpanded = expandedRagSources.has(source.articleId);
-                      const evidenceId = `rag-source-evidence-${source.articleId}`;
-                      const isCited = citedRagSourceIds.has(source.articleId);
-
-                      return (
-                        <article key={source.articleId} className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-                          <div className="flex items-stretch">
-                            <button
-                              type="button"
-                              onClick={() => toggleRagSource(source.articleId)}
-                              aria-expanded={isExpanded}
-                              aria-controls={evidenceId}
-                              className="flex min-w-0 flex-1 items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-900"
-                            >
-                              <FileText size={14} className="shrink-0 text-blue-500" aria-hidden="true" />
-                              <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">{source.title}</span>
-                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", isCited
-                                ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
-                                : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400")}>{isCited ? "Yanıtta kullanıldı" : "Yalnız incelendi"}</span>
-                              <span className="text-[10px] text-zinc-400" title={`Otorite ${source.authorityWeight}/100 · ${source.approved ? "onaylı" : "onay kaydı yok"}`}>Güven {source.reliabilityScore}</span>
-                              <span className="text-xs font-medium text-purple-500">{(source.score * 100).toFixed(0)}%</span>
-                              <ChevronDown size={15} className={cn("shrink-0 text-zinc-400 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
-                            </button>
-                            <a
-                              href={`/articles/${source.slug}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex shrink-0 items-center border-l border-zinc-200 px-3 text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:border-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-blue-400"
-                              aria-label={`${source.title} kaynağını yeni sekmede aç`}
-                              title="Yeni sekmede aç"
-                            >
-                              <ExternalLink size={15} aria-hidden="true" />
-                            </a>
-                          </div>
-                          {isExpanded && (
-                            <div id={evidenceId} className="space-y-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-                              {sourceEvidence.length > 0 ? (
-                                sourceEvidence.map(evidence => (
-                                  <div key={evidence.sourceId} className="border-l-2 border-blue-400 pl-3 text-xs">
-                                    <div className="font-medium text-zinc-700 dark:text-zinc-300">
-                                      <span className="text-blue-600 dark:text-blue-400">{evidence.sourceId}</span>
-                                      {evidence.sourceName ? ` · ${evidence.sourceName}` : ""}
-                                      {evidence.pageNumber ? ` · sayfa ${evidence.pageNumber}` : ""}
-                                    </div>
-                                    <p className="mt-1 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
-                                      <HighlightedText text={evidence.passage} query={ragResponse.query} />
-                                    </p>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400">Bu kaynak için kanıt pasajı bulunmuyor.</p>
-                              )}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-            </div>
-          ) : (
-            <div>
+          <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-zinc-500">
                   {total} result{total !== 1 ? "s" : ""}
@@ -777,7 +529,6 @@ export default function SearchPage() {
                 </div>
               )}
             </div>
-          )}
         </div>
       ) : (
         <div className="text-center py-8">

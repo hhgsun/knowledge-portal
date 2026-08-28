@@ -23,6 +23,7 @@ public class McpToolExecutor
     private readonly ArticleService _articleService;
     private readonly TagService _tagService;
     private readonly SearchExecutionService _searchExecution;
+    private readonly KnowledgeAnswerService _knowledgeAnswers;
     private readonly ContentGovernanceService _governance;
     private readonly ILogger<McpToolExecutor> _logger;
 
@@ -38,13 +39,15 @@ public class McpToolExecutor
     }
 
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
-        SearchExecutionService searchExecution, ContentGovernanceService governance,
+        SearchExecutionService searchExecution, KnowledgeAnswerService knowledgeAnswers,
+        ContentGovernanceService governance,
         ILogger<McpToolExecutor> logger)
     {
         _db = db;
         _articleService = articleService;
         _tagService = tagService;
         _searchExecution = searchExecution;
+        _knowledgeAnswers = knowledgeAnswers;
         _governance = governance;
         _logger = logger;
     }
@@ -60,13 +63,13 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "search_articles",
-                    Description = "Search published Knowledge Portal articles using full-text, semantic, hybrid, or RAG search. Uses the shared scope where tags are AND and content types are OR, with the same response behavior as GET /api/search.",
+                    Description = "Retrieve published Knowledge Portal articles using full-text, semantic, or hybrid search. Returns ranked documents and never generates an AI answer.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["query"] = new() { Type = "string", Description = "Search query text" },
-                            ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid", "rag" }, Default = "fulltext" },
+                            ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid" }, Default = "fulltext" },
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["scope"] = ScopePropertySchema(),
@@ -80,6 +83,23 @@ public class McpToolExecutor
                         Required = new List<string> { "query" }
                     },
                     OutputSchema = SearchOutputSchema()
+                },
+                new()
+                {
+                    Name = "ask_knowledge",
+                    Description = "Generate a grounded AI answer from authorized Knowledge Portal evidence. Returns citations, claims, sources, and evidence; use search_articles when document retrieval is wanted instead.",
+                    InputSchema = new McpInputSchema
+                    {
+                        Properties = new Dictionary<string, McpPropertySchema>
+                        {
+                            ["question"] = new() { Type = "string", Description = "Question to answer from portal knowledge" },
+                            ["scope"] = ScopePropertySchema(),
+                            ["authors"] = new() { Type = "string", Description = "Filter evidence by author slugs, comma-separated (OR logic)" },
+                            ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict evidence to articles created by that key", Default = false }
+                        },
+                        Required = ["question"]
+                    },
+                    OutputSchema = KnowledgeAnswerOutputSchema()
                 },
                 new()
                 {
@@ -325,6 +345,7 @@ public class McpToolExecutor
             return toolName switch
             {
                 "search_articles" => await SearchArticlesAsync(arguments, principal, ct),
+                "ask_knowledge" => await AskKnowledgeAsync(arguments, principal, ct),
                 "get_article" => await GetArticleAsync(arguments),
                 "list_articles" => await ListArticlesAsync(arguments),
                 "list_tags" => await ListTagsAsync(),
@@ -380,66 +401,92 @@ public class McpToolExecutor
             return result.Failure switch
             {
                 SearchFailureKind.AiUnavailable => McpResilienceService.ResilienceError(
-                    "ai_unavailable", result.Warning ?? "AI search is unavailable.", true, 30),
-                SearchFailureKind.RagBusy => McpResilienceService.ResilienceError(
-                    "capacity_full", "RAG capacity is full.", true, 5),
-                SearchFailureKind.RagCircuitOpen => McpResilienceService.ResilienceError(
-                    "circuit_open", "RAG generation is temporarily unavailable.", true, 30),
-                SearchFailureKind.RagTimeout => McpResilienceService.ResilienceError(
-                    "deadline_exceeded", "RAG request exceeded its processing deadline.", true, 10),
+                    "ai_unavailable", result.Warning ?? "Semantic search is unavailable.", true, 30),
                 _ => McpResilienceService.ResilienceError(
                     "ai_search_failed", result.Warning ?? "AI search failed.", true, 10)
             };
         }
 
-        object payload;
-        if (result.Rag is { } rag)
+        var payload = new
         {
-            payload = new
-            {
-                answer = rag.Answer,
-                sources = rag.Sources.Select(source => new
-                {
-                    source.ArticleId, source.Title, source.Slug, source.Score,
-                    source.AuthorityWeight, source.Approved, source.ReviewState,
-                    source.ReliabilityScore, source.UpdatedAt,
-                    canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
-                }),
-                consultedSources = rag.ConsultedSources.Select(source => new
-                {
-                    source.ArticleId, source.Title, source.Slug, source.Score,
-                    source.AuthorityWeight, source.Approved, source.ReviewState,
-                    source.ReliabilityScore, source.UpdatedAt,
-                    canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
-                }),
-                claims = rag.Claims,
-                evidence = rag.Evidence.Select(evidence => new
-                {
-                    evidence.SourceId, evidence.ArticleId, evidence.Title, evidence.Slug,
-                    canonicalUrl = $"/api/articles/{evidence.Slug}", evidence.SourceType,
-                    evidence.AttachmentId, evidence.SourceName, evidence.SourceLocation,
-                    evidence.Passage, evidence.Score
-                }),
-                rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
-                rag.InsufficientContext, rag.PartialResult, rag.ConflictAssessment, rag.Warnings,
-                scope = ScopeNode(scope), result.Query, result.Type, result.ResponseTimeMs, result.IndexingPending,
-                result.IndexCoverage, result.SearchQueryId
-            };
-        }
-        else
-        {
-            payload = new
-            {
-                results = result.Results, scope = ScopeNode(scope), result.Query, result.Type, result.Tags,
-                result.Total, result.Page, result.TotalPages, result.ResponseTimeMs,
-                result.IndexingPending, result.IndexCoverage, result.SearchQueryId, result.Warning
-            };
-        }
+            results = result.Results, scope = ScopeNode(scope), result.Query, result.Type, result.Tags,
+            result.Total, result.Page, result.TotalPages, result.ResponseTimeMs,
+            result.IndexingPending, result.IndexCoverage, result.SearchQueryId, result.Warning
+        };
 
         var json = JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject();
         await AddGovernanceAsync(json, ct);
         AddEvidence(json);
         return StructuredResult(json);
+    }
+
+    private async Task<McpToolCallResult> AskKnowledgeAsync(
+        JsonElement? args, ClaimsPrincipal? principal, CancellationToken ct)
+    {
+        var question = GetString(args, "question");
+        if (string.IsNullOrWhiteSpace(question))
+            return ErrorResult("Parameter 'question' is required");
+        var (scope, scopeError) = ParseScope(args);
+        if (scopeError != null) return ErrorResult(scopeError);
+
+        var execution = await _knowledgeAnswers.ExecuteAsync(new KnowledgeAnswerRequest(
+            question,
+            GetBool(args, "only_own_content"),
+            scope.Tags,
+            SplitCsv(GetString(args, "authors")),
+            scope.ContentTypes), principal ?? new ClaimsPrincipal(), ct);
+        if (execution.Error != null) return ErrorResult(execution.Error.Message);
+
+        var result = execution.Result!;
+        if (result.Failure != KnowledgeAnswerFailureKind.None || result.Rag == null)
+        {
+            return result.Failure switch
+            {
+                KnowledgeAnswerFailureKind.Unavailable => McpResilienceService.ResilienceError(
+                    "ai_unavailable", result.Warning ?? "Knowledge Assistant is unavailable.", true, 30),
+                KnowledgeAnswerFailureKind.Busy => McpResilienceService.ResilienceError(
+                    "capacity_full", "Knowledge Assistant capacity is full.", true, 5),
+                KnowledgeAnswerFailureKind.CircuitOpen => McpResilienceService.ResilienceError(
+                    "circuit_open", "Knowledge Assistant is temporarily unavailable.", true, 30),
+                KnowledgeAnswerFailureKind.Timeout => McpResilienceService.ResilienceError(
+                    "deadline_exceeded", "Grounded answer generation timed out.", true, 10),
+                _ => McpResilienceService.ResilienceError(
+                    "answer_failed", result.Warning ?? "Grounded answer generation failed.", true, 10)
+            };
+        }
+
+        var rag = result.Rag;
+        var payload = new
+        {
+            answer = rag.Answer,
+            sources = rag.Sources.Select(source => new
+            {
+                source.ArticleId, source.Title, source.Slug, source.Score,
+                source.AuthorityWeight, source.Approved, source.ReviewState,
+                source.ReliabilityScore, source.UpdatedAt,
+                canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
+            }),
+            consultedSources = rag.ConsultedSources.Select(source => new
+            {
+                source.ArticleId, source.Title, source.Slug, source.Score,
+                source.AuthorityWeight, source.Approved, source.ReviewState,
+                source.ReliabilityScore, source.UpdatedAt,
+                canonicalUrl = $"/api/articles/{source.Slug}", sourceType = "article"
+            }),
+            claims = rag.Claims,
+            evidence = rag.Evidence.Select(evidence => new
+            {
+                evidence.SourceId, evidence.ArticleId, evidence.Title, evidence.Slug,
+                canonicalUrl = $"/api/articles/{evidence.Slug}", evidence.SourceType,
+                evidence.AttachmentId, evidence.SourceName, evidence.SourceLocation,
+                evidence.Passage, evidence.Score, evidence.ChunkId, evidence.PageNumber
+            }),
+            rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
+            rag.InsufficientContext, rag.PartialResult, rag.ConflictAssessment, rag.Warnings,
+            scope = ScopeNode(scope), question = result.Question, result.ResponseTimeMs,
+            result.IndexingPending, result.IndexCoverage, result.TraceId
+        };
+        return StructuredResult(JsonSerializer.SerializeToNode(payload, _jsonOptions)!.AsObject());
     }
 
     private async Task<McpToolCallResult> GetArticleAsync(JsonElement? args)
@@ -1041,15 +1088,6 @@ public class McpToolExecutor
                     }
                 }
             },
-            ["answer"] = new JsonObject { ["type"] = "string" },
-            ["sources"] = new JsonObject { ["type"] = "array" },
-            ["claims"] = new JsonObject { ["type"] = "array" },
-            ["evidence"] = new JsonObject { ["type"] = "array" },
-            ["citationCoverage"] = new JsonObject { ["type"] = "number" },
-            ["groundingStatus"] = new JsonObject { ["type"] = "string" },
-            ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
-            ["partialResult"] = new JsonObject { ["type"] = "boolean" },
-            ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
             ["indexingPending"] = new JsonObject { ["type"] = "boolean" },
             ["indexCoverage"] = new JsonObject
             {
@@ -1068,6 +1106,30 @@ public class McpToolExecutor
             ["error"] = ErrorPropertySchema()
         },
         ["oneOf"] = SuccessOrError("query", "type")
+    };
+
+    private static JsonObject KnowledgeAnswerOutputSchema() => new()
+    {
+        ["type"] = "object",
+        ["additionalProperties"] = true,
+        ["properties"] = new JsonObject
+        {
+            ["answer"] = new JsonObject { ["type"] = "string" },
+            ["sources"] = new JsonObject { ["type"] = "array" },
+            ["consultedSources"] = new JsonObject { ["type"] = "array" },
+            ["claims"] = new JsonObject { ["type"] = "array" },
+            ["evidence"] = new JsonObject { ["type"] = "array" },
+            ["citationCoverage"] = new JsonObject { ["type"] = "number" },
+            ["claimSupportCoverage"] = new JsonObject { ["type"] = "number" },
+            ["groundingStatus"] = new JsonObject { ["type"] = "string" },
+            ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
+            ["partialResult"] = new JsonObject { ["type"] = "boolean" },
+            ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
+            ["question"] = new JsonObject { ["type"] = "string" },
+            ["traceId"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+            ["error"] = ErrorPropertySchema()
+        },
+        ["oneOf"] = SuccessOrError("question", "answer", "sources", "evidence")
     };
 
     private static McpToolCallResult ErrorResult(string message)

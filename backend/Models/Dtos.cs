@@ -46,18 +46,17 @@ public record CommentRequest(string Comment);
 
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
-public record RagFeedbackRequest(string SearchQueryId, bool Helpful, string? Reason = null);
 
-// Assistant / bounded agentic routing. Kept separate from search DTOs so the entire
-// assistant surface can be disabled or removed without changing /api/search contracts.
-public record AssistantRequest(string Message, string? PreferredRoute = "auto", string? ConversationId = null);
-public record AssistantFeedbackRequest(string InteractionId, bool Helpful,
-    string? Reason = null, string? CorrectedRoute = null, string? Question = null);
-public record ReviewAssistantCandidateRequest(string Status, string? ExpectedRoute = null);
-public record AssistantCapabilitiesDto(bool Enabled, bool AgenticRoutingEnabled,
-    bool ClassifierEnabled, bool FeedbackEnabled, int MaxMessageCharacters,
-    string[] SupportedModes, bool StreamingEnabled, bool ConversationHistoryEnabled,
-    bool SemanticCacheEnabled, string RoutingModel);
+// Assistant is a grounded AI/RAG surface. Its scope controls mirror search filters,
+// but it returns synthesized evidence-backed answers rather than document result lists.
+public record AssistantRequest(string Message, string? ConversationId = null,
+    bool OnlyOwnContent = false, IEnumerable<string>? Tags = null,
+    IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null);
+public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
+public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
+public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,
+    bool FeedbackEnabled, int MaxMessageCharacters, bool StreamingEnabled,
+    bool ConversationHistoryEnabled, bool SemanticCacheEnabled);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
@@ -74,34 +73,16 @@ public record AssistantRagDto(
     string GroundingStatus,
     bool InsufficientContext,
     bool PartialResult);
-public record AssistantAnalyticsOverviewDto(int TotalArticles, int ViewsThisWeek,
-    int SearchesToday, int StaleArticles);
-public record AssistantQueryCountDto(string Query, int Count);
-public record AssistantTopArticleDto(string ArticleId, string Title, string Slug, int Views);
-public record AssistantAnalyticsDto(AssistantAnalyticsOverviewDto Overview,
-    AssistantQueryCountDto[] TopSearches, AssistantQueryCountDto[] FailedSearches,
-    AssistantTopArticleDto[] TopArticles, int PeriodDays);
 public record AssistantResponseDto(
-    string Route,
-    double Confidence,
-    string RouteSource,
-    string ReasonCode,
     string NormalizedQuery,
     string? Answer,
-    List<ArticleSummaryDto> Results,
     AssistantRagDto? Rag,
-    AssistantAnalyticsDto? Analytics,
-    bool RequiresClarification,
-    string? Clarification,
     string[] ToolCalls,
     string[] Warnings,
-    string? SearchQueryId,
     string? InteractionId,
     long ResponseTimeMs,
     string TraceId,
     string? ConversationId,
-    double RawConfidence,
-    int ConfidenceCalibrationSamples,
     bool CacheHit);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.

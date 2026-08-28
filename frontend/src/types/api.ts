@@ -200,7 +200,7 @@ export interface SearchResult {
 }
 
 export interface SearchIndexCoverage {
-  mode: "fulltext" | "semantic" | "hybrid" | "rag";
+  mode: "fulltext" | "semantic" | "hybrid";
   fullTextPending: number;
   semanticPending: number;
   relevantPending: number;
@@ -232,83 +232,44 @@ export interface RagSource {
   updatedAt: string;
 }
 
-export interface RagResponse {
-  answer: string;
-  sources: RagSource[];
-  consultedSources?: RagSource[];
-  query: string;
-  type: "rag";
-  responseTimeMs: number;
-  indexingPending?: boolean;
-  indexCoverage?: SearchIndexCoverage;
-  claims?: { text: string; sourceIds: string[]; role: "summary" | "explanation" | "step" | "constraint" | "exception" | "conflict" }[];
-  evidence?: { sourceId: string; articleId: string; title: string; slug: string; sourceType: string; attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null; passage: string; score: number; chunkId?: string | null; canonicalUrl?: string | null; pageNumber?: number | null; authorityWeight: number; approved: boolean; reviewState: string; reliabilityScore: number; updatedAt?: string | null }[];
-  citationCoverage?: number;
-  claimSupportCoverage?: number;
-  groundingStatus?: "lexically_grounded" | "partially_grounded" | "rejected_unsupported" |
-    "rejected_unstructured" | "extractive_fallback" | "extractive_enrichment" | "insufficient_context" |
-    "citations_verified" | "partially_verified" | "failed" | "unverified";
-  insufficientContext?: boolean;
-  partialResult?: boolean;
-  warnings?: string[];
-  conflictAssessment?: { status: "none_detected" | "conflicts_detected"; conflicts: { kind: "numeric" | "polarity"; sourceIds: string[]; preferredSourceId?: string | null; resolution: "preferred_by_governance" | "unresolved_equal_governance" }[] };
-  searchQueryId?: string;
+export interface AssistantEvidence {
+  sourceId: string; articleId: string; title: string; slug: string; sourceType: string;
+  attachmentId?: string | null; sourceName?: string | null; sourceLocation?: string | null;
+  passage: string; score: number; chunkId?: string | null; canonicalUrl?: string | null;
+  pageNumber?: number | null;
 }
 
-// ─── Assistant / Agentic Routing ────────────────────────────
-export type AssistantRoute = "knowledge_search" | "knowledge_answer" | "analytics" | "general_chat" | "clarification";
-export type AssistantPreferredRoute = "auto" | "search" | "answer" | "analytics" | "chat";
-
+// ─── Grounded Knowledge Assistant ───────────────────────────
 export interface AssistantCapabilities {
   enabled: boolean;
-  agenticRoutingEnabled: boolean;
-  classifierEnabled: boolean;
+  groundedRagEnabled: boolean;
   feedbackEnabled: boolean;
   maxMessageCharacters: number;
-  supportedModes: AssistantPreferredRoute[];
   streamingEnabled: boolean;
   conversationHistoryEnabled: boolean;
   semanticCacheEnabled: boolean;
-  routingModel: string;
 }
 
 export interface AssistantResponse {
-  route: AssistantRoute;
-  confidence: number;
-  routeSource: "manual" | "deterministic" | "classifier" | "classifier_cache" | "classifier_model_fallback" | "fallback" | "default";
-  reasonCode: string;
   normalizedQuery: string;
   answer: string | null;
-  results: SearchResult[];
   rag: {
     sources: RagSource[];
     consultedSources: RagSource[];
     claims: { text: string; role: "summary" | "explanation" | "step" | "constraint" | "exception" | "conflict"; sourceIds: string[] }[];
-    evidence: NonNullable<RagResponse["evidence"]>;
+    evidence: AssistantEvidence[];
     citationCoverage: number;
     claimSupportCoverage: number;
     groundingStatus: string;
     insufficientContext: boolean;
     partialResult: boolean;
   } | null;
-  analytics: {
-    overview: { totalArticles: number; viewsThisWeek: number; searchesToday: number; staleArticles: number };
-    topSearches: { query: string; count: number }[];
-    failedSearches: { query: string; count: number }[];
-    topArticles: { articleId: string; title: string; slug: string; views: number }[];
-    periodDays: number;
-  } | null;
-  requiresClarification: boolean;
-  clarification: string | null;
   toolCalls: string[];
   warnings: string[];
-  searchQueryId: string | null;
   interactionId: string | null;
   responseTimeMs: number;
   traceId: string;
   conversationId?: string | null;
-  rawConfidence: number;
-  confidenceCalibrationSamples: number;
   cacheHit: boolean;
 }
 

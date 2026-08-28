@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
@@ -27,10 +25,7 @@ public enum SearchFailureKind
 {
     None,
     AiUnavailable,
-    AiFailed,
-    RagBusy,
-    RagCircuitOpen,
-    RagTimeout
+    AiFailed
 }
 
 public sealed record PortalSearchResult(
@@ -45,7 +40,6 @@ public sealed record PortalSearchResult(
     SearchIndexCoverage? IndexCoverage = null,
     IReadOnlyList<string>? Tags = null,
     string? Warning = null,
-    RagService.RagResult? Rag = null,
     SearchFailureKind Failure = SearchFailureKind.None)
 {
     public bool IndexingPending => IndexCoverage?.RelevantPending > 0;
@@ -60,10 +54,11 @@ public sealed class SearchExecutionService(
     IConfiguration config,
     ArticleService articles,
     ISearchReranker reranker,
+    KnowledgeQueryScopeService scopeResolver,
     IServiceProvider services,
     ILogger<SearchExecutionService> logger)
 {
-    private static readonly HashSet<string> ValidTypes = ["fulltext", "semantic", "hybrid", "rag"];
+    private static readonly HashSet<string> ValidTypes = ["fulltext", "semantic", "hybrid"];
 
     public async Task<(PortalSearchResult? Result, ServiceError? Error)> ExecuteAsync(
         PortalSearchRequest request,
@@ -75,41 +70,29 @@ public sealed class SearchExecutionService(
 
         var type = request.Type.Trim().ToLowerInvariant();
         if (!ValidTypes.Contains(type))
-            return (null, new ServiceError(400, "Search type must be one of: fulltext, semantic, hybrid, rag"));
+            return (null, new ServiceError(400, "Search type must be one of: fulltext, semantic, hybrid"));
 
         var page = Math.Max(1, request.Page);
         var limit = Math.Clamp(request.Limit, 1, 50);
         var stopwatch = Stopwatch.StartNew();
-        var parsed = Parse(request);
+        var scope = await scopeResolver.ResolveAsync(new KnowledgeQueryScopeRequest(
+            request.Query,
+            request.OnlyOwnContent,
+            request.Tags,
+            request.Authors,
+            request.ContentTypes), principal, ct);
 
-        var authorIds = parsed.AuthorSlugs.Count > 0
-            ? await db.ResolveAuthorIdsAsync(parsed.AuthorSlugs)
-            : null;
-
-        List<string>? resolvedTags = null;
-        if (parsed.TagSlugs.Count > 0)
+        if (scope.HasUnknownTags)
         {
-            resolvedTags = await db.Tags
-                .Where(tag => parsed.TagSlugs.Contains(tag.Slug))
-                .Select(tag => tag.Slug)
-                .ToListAsync(ct);
-            if (resolvedTags.Count != parsed.TagSlugs.Count)
-            {
-                return (await CompleteAsync(request.Query, "tag", [], 0, 1, 0, stopwatch, principal,
-                    ct, tags: parsed.TagSlugs), null);
-            }
+            return (await CompleteAsync(request.Query, "tag", [], 0, 1, 0, stopwatch, principal,
+                ct, tags: scope.Tags), null);
         }
 
-        var apiKeyId = request.OnlyOwnContent ? principal.GetApiKeyId() : null;
-        var filter = new ArticleFilter(
-            OwnerIds: parsed.AuthorSlugs.Count > 0 ? authorIds : null,
-            ContentTypes: parsed.ContentTypes.Count > 0 ? parsed.ContentTypes : null,
-            ApiKeyId: apiKeyId,
-            TagSlugs: resolvedTags);
-        var snippetTokens = parsed.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var filter = scope.Filter;
+        var snippetTokens = scope.QueryText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
-        if ((parsed.TagSlugs.Count > 0 || parsed.ContentTypes.Count > 0 || parsed.AuthorSlugs.Count > 0)
-            && string.IsNullOrWhiteSpace(parsed.Text))
+        if ((scope.Tags.Count > 0 || scope.ContentTypes.Count > 0 || scope.Authors.Count > 0)
+            && string.IsNullOrWhiteSpace(scope.QueryText))
         {
             var query = ArticleService.ApplyFilter(db.Articles.WherePublished(), filter);
             var total = await query.CountAsync(ct);
@@ -117,50 +100,15 @@ public sealed class SearchExecutionService(
                 .Skip((page - 1) * limit).Take(limit).ToListAsync(ct);
             var results = await BuildResultsAsync(found, request.IncludeContent,
                 request.IncludeAttachments, snippetTokens, ct: ct);
-            var filterType = parsed.ContentTypes.Count == 0 && parsed.AuthorSlugs.Count == 0 ? "tag" : "filter";
+            var filterType = scope.ContentTypes.Count == 0 && scope.Authors.Count == 0 ? "tag" : "filter";
             return (await CompleteAsync(request.Query, filterType, results, total, page,
                 (int)Math.Ceiling(total / (double)limit), stopwatch, principal, ct,
-                tags: parsed.TagSlugs), null);
+                tags: scope.Tags), null);
         }
 
         var coverage = await articles.GetSearchIndexCoverageAsync(type, filter, ct);
         var ollamaEnabled = config.GetValue("Ollama:Enabled", false);
         var vectors = ollamaEnabled ? services.GetService<IVectorSearchService>() : null;
-
-        if (type == "rag")
-        {
-            if (!ollamaEnabled || vectors == null || services.GetService<RagService>() is not { } ragService)
-                return (await CompleteAsync(request.Query, type, [], 0, 1, 1, stopwatch, principal,
-                    ct, coverage, warning: "AI search is unavailable because Ollama is disabled.",
-                    failure: SearchFailureKind.AiUnavailable), null);
-            try
-            {
-                var rag = await ragService.AskAsync(parsed.Text, filter, ct);
-                return (await CompleteAsync(request.Query, type, [], rag.Sources.Count, 1, 1,
-                    stopwatch, principal, ct, coverage, rag: rag), null);
-            }
-            catch (RagBusyException)
-            {
-                return (await CompleteAsync(request.Query, type, [], 0, 1, 1, stopwatch, principal,
-                    ct, coverage, failure: SearchFailureKind.RagBusy), null);
-            }
-            catch (RagCircuitOpenException)
-            {
-                return (await CompleteAsync(request.Query, type, [], 0, 1, 1, stopwatch, principal,
-                    ct, coverage, failure: SearchFailureKind.RagCircuitOpen), null);
-            }
-            catch (RagStageTimeoutException)
-            {
-                return (await CompleteAsync(request.Query, type, [], 0, 1, 1, stopwatch, principal,
-                    ct, coverage, failure: SearchFailureKind.RagTimeout), null);
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(exception, "RAG search failed");
-                return (await CompleteAsync(request.Query, type, [], 0, 1, 1, stopwatch, principal,
-                    ct, coverage, warning: "RAG search failed.", failure: SearchFailureKind.AiFailed), null);
-            }
-        }
 
         if (type == "semantic")
         {
@@ -170,7 +118,7 @@ public sealed class SearchExecutionService(
                     failure: SearchFailureKind.AiUnavailable), null);
             try
             {
-                var hits = await vectors.SearchAsync(parsed.Text, limit, ct, filter: filter);
+                var hits = await vectors.SearchAsync(scope.QueryText, limit, ct, filter: filter);
                 var ids = hits.Select(hit => hit.ArticleId).ToList();
                 var found = await ArticleService.ApplyFilter(
                         db.Articles.WherePublished().Where(article => ids.Contains(article.Id)), filter)
@@ -195,12 +143,12 @@ public sealed class SearchExecutionService(
         if (type == "hybrid")
         {
             var candidateLimit = Math.Clamp(config.GetValue("Search:HybridCandidateLimit", 200), limit, 500);
-            var fulltextIds = (await articles.SearchPublishedAsync(parsed.Text, candidateLimit, filter))
+            var fulltextIds = (await articles.SearchPublishedAsync(scope.QueryText, candidateLimit, filter))
                 .Select(article => article.Id).ToList();
             List<VectorSearchResult>? semanticHits = null;
             if (ollamaEnabled && vectors != null)
             {
-                try { semanticHits = await vectors.SearchAsync(parsed.Text, candidateLimit, ct, filter: filter); }
+                try { semanticHits = await vectors.SearchAsync(scope.QueryText, candidateLimit, ct, filter: filter); }
                 catch (Exception exception) { logger.LogWarning(exception, "Hybrid semantic leg failed"); }
             }
 
@@ -213,7 +161,7 @@ public sealed class SearchExecutionService(
             var authorityByType = await db.LookupValues
                 .Where(value => value.Category == "content_type" && contentTypes.Contains(value.Value))
                 .ToDictionaryAsync(value => value.Value, value => value.AuthorityWeight, ct);
-            var reranked = reranker.Rerank(parsed.Text, found.Select(article => new RerankCandidate(
+            var reranked = reranker.Rerank(scope.QueryText, found.Select(article => new RerankCandidate(
                 article.Id, article.Title, article.Excerpt, article.Content, scores[article.Id].Score,
                 article.UpdatedAt, article.ApprovedAt, article.ContentType,
                 authorityByType.GetValueOrDefault(article.ContentType, 50))).ToList()).Take(limit).ToList();
@@ -231,7 +179,7 @@ public sealed class SearchExecutionService(
                 stopwatch, principal, ct, coverage, warning: warning), null);
         }
 
-        var pageResult = await articles.SearchPublishedPagedAsync(parsed.Text, page, limit, filter);
+        var pageResult = await articles.SearchPublishedPagedAsync(scope.QueryText, page, limit, filter);
         var fulltextResults = await BuildResultsAsync(pageResult.Articles, request.IncludeContent,
             request.IncludeAttachments, snippetTokens, ct: ct);
         return (await CompleteAsync(request.Query, type, fulltextResults, pageResult.Total, page,
@@ -281,7 +229,6 @@ public sealed class SearchExecutionService(
         SearchIndexCoverage? coverage = null,
         IReadOnlyList<string>? tags = null,
         string? warning = null,
-        RagService.RagResult? rag = null,
         SearchFailureKind failure = SearchFailureKind.None)
     {
         stopwatch.Stop();
@@ -291,48 +238,12 @@ public sealed class SearchExecutionService(
             UserId = principal.Identity?.IsAuthenticated == true ? principal.GetUserId() : null,
             ResultsCount = total,
             SearchType = type,
-            ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-            RagTraceId = rag == null ? null : Activity.Current?.TraceId.ToString(),
-            RagPromptVersion = rag == null ? null : RagService.PromptVersion,
-            RagRetrievalVersion = rag == null ? null : RagService.RetrievalVersion,
-            RagReranker = rag == null ? null : config.GetValue("Reranking:External:Enabled", false)
-                ? $"external:{config["Reranking:External:Model"] ?? "unspecified"}"
-                : "local-deterministic-v1",
-            RagIndexProfile = rag == null ? null : EmbeddingService.ComputeIndexProfile(config),
-            RagGroundingStatus = rag?.GroundingStatus,
-            RagAnswerHash = rag == null ? null : Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(rag.Answer))).ToLowerInvariant()
+            ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
         };
         db.SearchQueries.Add(record);
         await db.SaveChangesAsync(ct);
 
         return new PortalSearchResult(query, type, results, total, page, totalPages,
-            stopwatch.ElapsedMilliseconds, record.Id, coverage, tags, warning, rag, failure);
+            stopwatch.ElapsedMilliseconds, record.Id, coverage, tags, warning, failure);
     }
-
-    private static ParsedSearch Parse(PortalSearchRequest request)
-    {
-        var tags = Split(request.Tags);
-        var authors = Split(request.Authors);
-        var contentTypes = Split(request.ContentTypes);
-        var remaining = new List<string>();
-        foreach (var word in request.Query.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (word.StartsWith("##") && word.Length > 2) contentTypes.Add(word[2..]);
-            else if (word.StartsWith('#') && word.Length > 1) tags.Add(word[1..]);
-            else if (word.StartsWith('@') && word.Length > 1) authors.Add(word[1..]);
-            else remaining.Add(word);
-        }
-        return new ParsedSearch(string.Join(' ', remaining).Trim(),
-            tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-            authors.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-            contentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
-    }
-
-    private static List<string> Split(IEnumerable<string>? values) => values?
-        .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        .Where(value => !string.IsNullOrWhiteSpace(value)).ToList() ?? [];
-
-    private sealed record ParsedSearch(string Text, List<string> TagSlugs,
-        List<string> AuthorSlugs, List<string> ContentTypes);
 }

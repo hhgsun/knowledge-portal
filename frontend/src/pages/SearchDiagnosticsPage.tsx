@@ -3,7 +3,7 @@ import { useApi } from "../hooks/useApi";
 import {
   RefreshCw, AlertTriangle, CheckCircle2, XCircle, Database,
   FileSearch, Boxes, ChevronDown, ChevronRight, Settings2, Workflow, Wrench,
-  HardDrive, Bug, Search,
+  HardDrive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -66,14 +66,6 @@ interface StorageHealth {
   checksumMismatches: number; freeBytes: number; rootPath: string;
 }
 
-interface RagDebugSnapshot {
-  queryPlan: { originalQuery: string; rewrittenQuery: string; queries: string[]; expansions: string[]; isComplex: boolean; prefersFreshSources: boolean; extractedFilters: { tags: string[]; authors: string[]; contentTypes: string[] } };
-  mode: string; retrievedCount: number; authorizedCount: number; expandedParentCount: number;
-  expandedParents: string[]; contextWords: number; budgetTruncated: boolean;
-  candidates: { rank: number; articleId: string; title: string; chunkId?: string; sourceName?: string; sourceLocation?: string; score: number; matchType: string; passage: string }[];
-  selectedContext: { evidenceId: string; articleId: string; chunkId?: string; title: string; sourceName?: string; sourceLocation?: string; wordCount: number; passage: string }[];
-}
-
 /** Coverage bar: how much of the corpus each index actually covers. */
 function Coverage({ done, total }: { done: number; total: number }) {
   const pct = total === 0 ? 100 : Math.round((done / total) * 100);
@@ -123,9 +115,6 @@ export default function SearchDiagnosticsPage() {
   const [showFlow, setShowFlow] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [storage, setStorage] = useState<StorageHealth | null>(null);
-  const [debugQuery, setDebugQuery] = useState("");
-  const [debugResult, setDebugResult] = useState<RagDebugSnapshot | null>(null);
-  const [debugging, setDebugging] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -179,17 +168,6 @@ export default function SearchDiagnosticsPage() {
 
   const fmt = (n: number) => n.toLocaleString("tr-TR");
   const fmtBytes = (n: number) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
-
-  const runDebug = async () => {
-    if (!debugQuery.trim()) return;
-    setDebugging(true); setDebugResult(null);
-    try {
-      const res = await fetchWithAuth(`/api/search/rag-debug?q=${encodeURIComponent(debugQuery.trim())}`);
-      const body = await res.json();
-      if (!res.ok) return toast.error(body.error || "RAG debug çalıştırılamadı");
-      setDebugResult(body);
-    } finally { setDebugging(false); }
-  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -362,12 +340,6 @@ export default function SearchDiagnosticsPage() {
             </div>
           </div>
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
-            <div className="flex items-center gap-2"><Bug size={16}/><div><h2 className="text-sm font-semibold">Korumalı RAG debug</h2><p className="text-xs text-zinc-500">LLM çağrısı yapmadan query planı, rerank adayları, komşu genişletme ve final context'i gösterir.</p></div></div>
-            <div className="flex gap-2"><input value={debugQuery} onChange={e=>setDebugQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void runDebug();}} placeholder="Teşhis edilecek soru" className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm"/><button onClick={()=>void runDebug()} disabled={debugging||!debugQuery.trim()} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">{debugging?<RefreshCw size={15} className="animate-spin"/>:<Search size={15}/>}Çalıştır</button></div>
-            {debugResult && <div className="space-y-4 text-xs"><div className="grid md:grid-cols-4 gap-2"><Stat label="Mod" value={debugResult.mode}/><Stat label="Aday / yetkili" value={`${debugResult.retrievedCount} / ${debugResult.authorizedCount}`}/><Stat label="Genişletilen parent" value={debugResult.expandedParentCount}/><Stat label="Context" value={`${debugResult.contextWords} kelime`}/></div><div className="rounded-lg bg-zinc-50 dark:bg-zinc-900 p-3 space-y-1"><div><b>Orijinal:</b> {debugResult.queryPlan.originalQuery}</div><div><b>Rewrite:</b> {debugResult.queryPlan.rewrittenQuery}</div><div><b>Alt sorgular:</b> {debugResult.queryPlan.queries.join(" · ")}</div><div><b>Expansion:</b> {debugResult.queryPlan.expansions.join(", ") || "—"}</div><div><b>Filtreler:</b> {[...debugResult.queryPlan.extractedFilters.tags,...debugResult.queryPlan.extractedFilters.authors,...debugResult.queryPlan.extractedFilters.contentTypes].join(", ")||"—"}</div></div><details><summary className="cursor-pointer font-medium">Rerank adayları ({debugResult.candidates.length})</summary><div className="mt-2 max-h-80 overflow-auto divide-y dark:divide-zinc-800">{debugResult.candidates.map(x=><div key={`${x.rank}-${x.chunkId}`} className="py-2"><div className="font-medium">#{x.rank} {x.title} · {(x.score*100).toFixed(1)}% · {x.matchType}</div><div className="text-zinc-500">{x.sourceName||"makale"} · {x.sourceLocation||"—"} · {x.chunkId}</div><p className="mt-1 text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">{x.passage}</p></div>)}</div></details><details open><summary className="cursor-pointer font-medium">Seçilen context ({debugResult.selectedContext.length})</summary><div className="mt-2 max-h-96 overflow-auto divide-y dark:divide-zinc-800">{debugResult.selectedContext.map(x=><div key={x.evidenceId} className="py-2"><div className="font-medium text-blue-600">{x.evidenceId} · {x.title} · {x.wordCount} kelime</div><div className="text-zinc-500">{x.sourceName||"makale"} · {x.sourceLocation||"—"} · {x.chunkId}</div><p className="mt-1 whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">{x.passage}</p></div>)}</div></details></div>}
-          </section>
-
           {/* Traffic: the only evidence of what users actually experience. */}
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
@@ -410,7 +382,7 @@ export default function SearchDiagnosticsPage() {
               </div>
             )}
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Semantic, hybrid ve RAG süreleri Ollama model çağrılarını da içerir — yavaşlık her zaman
+              Semantic ve hybrid süreleri Ollama embedding çağrılarını da içerir — yavaşlık her zaman
               veritabanı kaynaklı değildir.
             </p>
           </div>

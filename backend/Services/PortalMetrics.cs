@@ -40,15 +40,10 @@ public sealed class PortalMetrics
     public Counter<long> RagFailures { get; }
     public Histogram<double> RagCitationCoverage { get; }
     public UpDownCounter<long> RagActiveRequests { get; }
-    public Counter<long> AssistantRoutes { get; }
     public Counter<long> AssistantToolCalls { get; }
     public Histogram<double> AssistantDuration { get; }
     public Counter<long> AssistantFeedback { get; }
     public Counter<long> AssistantAuditFailures { get; }
-    public Counter<long> AssistantClassifierRequests { get; }
-    public Histogram<double> AssistantClassifierDuration { get; }
-    public UpDownCounter<long> AssistantClassifierActive { get; }
-    public Counter<long> AssistantShadowComparisons { get; }
     public Counter<long> AssistantAnswerCache { get; }
 
     public PortalMetrics(IServiceScopeFactory scopeFactory, IConfiguration? config = null)
@@ -76,24 +71,14 @@ public sealed class PortalMetrics
         RagFailures = _meter.CreateCounter<long>("kp_rag_failures", description: "RAG failures by stage and error type");
         RagCitationCoverage = _meter.CreateHistogram<double>("kp_rag_citation_coverage", description: "Fraction of claims linked to valid evidence");
         RagActiveRequests = _meter.CreateUpDownCounter<long>("kp_rag_active_requests", description: "RAG requests currently inside the process bulkhead");
-        AssistantRoutes = _meter.CreateCounter<long>("kp_assistant_routes",
-            description: "Assistant route decisions by route and classifier source");
         AssistantToolCalls = _meter.CreateCounter<long>("kp_assistant_tool_calls",
-            description: "Bounded read-only assistant tool calls by tool and outcome");
+            description: "Grounded Assistant retrieval/generation calls by tool and outcome");
         AssistantDuration = _meter.CreateHistogram<double>("kp_assistant_duration_ms", "ms",
             "End-to-end assistant orchestration duration by route and outcome");
         AssistantFeedback = _meter.CreateCounter<long>("kp_assistant_feedback",
             description: "Assistant feedback by bounded outcome and reason");
         AssistantAuditFailures = _meter.CreateCounter<long>("kp_assistant_audit_failures",
             description: "Assistant interaction audit records that could not be persisted");
-        AssistantClassifierRequests = _meter.CreateCounter<long>("kp_assistant_classifier_requests",
-            description: "Assistant classifier executions by outcome");
-        AssistantClassifierDuration = _meter.CreateHistogram<double>("kp_assistant_classifier_duration_ms", "ms",
-            "Assistant classifier execution duration by outcome");
-        AssistantClassifierActive = _meter.CreateUpDownCounter<long>("kp_assistant_classifier_active",
-            description: "Assistant classifier requests currently holding a concurrency slot");
-        AssistantShadowComparisons = _meter.CreateCounter<long>("kp_assistant_shadow_comparisons",
-            description: "Asynchronous primary/shadow route comparison outcomes");
         AssistantAnswerCache = _meter.CreateCounter<long>("kp_assistant_answer_cache",
             description: "ACL and corpus-version scoped semantic answer cache outcomes");
 

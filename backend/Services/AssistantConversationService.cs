@@ -61,7 +61,7 @@ public sealed class AssistantConversationService(AppDbContext db, IConfiguration
         db.AssistantMessages.AddRange(
             new AssistantMessage { ConversationId = conversationId, Role = "user", Content = userText.Trim() },
             new AssistantMessage { ConversationId = conversationId, Role = "assistant",
-                Content = response.Answer ?? response.Clarification ?? "", Route = response.Route,
+                Content = response.Answer ?? "", Route = "knowledge_answer",
                 InteractionId = interactionId });
         await db.SaveChangesAsync(ct);
     }

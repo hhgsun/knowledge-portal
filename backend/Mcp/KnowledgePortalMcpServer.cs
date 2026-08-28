@@ -16,7 +16,7 @@ namespace KnowledgePortal.Api.Mcp;
 public static class KnowledgePortalMcpServer
 {
     public const string ServerName = "knowledge-portal";
-    public const string ServerVersion = "2.0.0";
+    public const string ServerVersion = "3.0.0";
 
     private static readonly JsonSerializerOptions SchemaJsonOptions = new(JsonSerializerDefaults.Web)
     {
