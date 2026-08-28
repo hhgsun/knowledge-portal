@@ -110,6 +110,8 @@ Important `appsettings.json` sections:
 | `Jwt`, `AzureAd` | Authentication |
 | `RateLimiting` | Per-client auth/search/MCP limits |
 | `Ollama` | Models, dimensions, retrieval and context limits |
+| `Assistant` | Assistant feature switches, conversations, streaming and semantic answer cache |
+| `AgenticRouting` | Dedicated router model, route thresholds, calibration and shadow-routing controls |
 | `Indexing` | Durable queue workers, leases and retry |
 | `RagResilience` | Bulkhead, budgets, timeouts, retry and circuit breaker |
 | `FileStorage` | Upload path, size/type limits and integrity sampling |
@@ -165,4 +167,4 @@ The default suite uses an isolated EF Core InMemory database per test class and 
 - Admin diagnostics: `/api/search/diagnostics`, `/api/search/embedding-status`, `/api/search/storage-status`, `/api/search/rag-observability`.
 - Routine queue recovery: `POST /api/search/repair-indexing` repairs only missing/stuck jobs without invalidating healthy indexes; corpus-wide `POST /api/search/reindex` is reserved for planned maintenance.
 
-Prometheus RAG alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`.
+Prometheus RAG/Assistant alerts are under `../ops/prometheus/`; the Grafana dashboard is under `../ops/grafana/`. Assistant observability includes route/source volume, calibrated confidence, semantic-cache outcomes, feedback-derived evaluation candidates and shadow-router agreement.

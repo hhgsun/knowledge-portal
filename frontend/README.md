@@ -27,6 +27,8 @@ Dev server starts on **http://localhost:5173**. API requests to `/api/*` are pro
 
 Set `VITE_ASSISTANT_ENABLED=false` before build/start to omit the Assistant sidebar item and `/assistant` route. The default is enabled; after authentication the UI also reads `/api/capabilities`, so the independent backend `Assistant:Enabled` kill switch hides the route without requiring a frontend rebuild.
 
+When enabled by runtime capabilities, the Assistant page uses SSE for verified-answer streaming and provides session-owned multi-turn conversation history, new/delete/clear conversation actions, source citations, confidence details, semantic-cache indicators and feedback controls. Administrators review feedback-derived routing dataset candidates and shadow-routing summaries on the RAG evaluations page.
+
 ## Project Structure
 
 ```
