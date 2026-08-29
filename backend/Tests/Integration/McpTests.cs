@@ -807,7 +807,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         });
 
         var result = await RpcResultAsync(ToolCall("search_articles",
-            new { query = "wqtx #mcp-inline-tag ##how-to", include_content = true }));
+            new { query = "wqtx #mcp-inline-tag +content_type:how-to", include_content = true }));
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
         var article = payload.GetProperty("results").EnumerateArray()
             .First(item => item.GetProperty("title").GetString() == "MCP Inline Filtre Wqtx");

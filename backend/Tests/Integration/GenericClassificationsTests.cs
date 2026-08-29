@@ -73,6 +73,11 @@ public sealed class GenericClassificationsTests : IClassFixture<TestWebApplicati
         Assert.Contains(filtered.GetProperty("results").EnumerateArray(),
             result => result.GetProperty("id").GetString() == id);
 
+        var inlineFiltered = await client.GetFromJsonAsync<JsonElement>(
+            "/api/search?q=classification%20%2Bdepartment%3Ahuman-resources&type=fulltext");
+        Assert.Contains(inlineFiltered.GetProperty("results").EnumerateArray(),
+            result => result.GetProperty("id").GetString() == id);
+
         var unknown = await client.GetFromJsonAsync<JsonElement>(
             "/api/search?q=classification&type=fulltext&facet=department:unknown");
         Assert.Empty(unknown.GetProperty("results").EnumerateArray());

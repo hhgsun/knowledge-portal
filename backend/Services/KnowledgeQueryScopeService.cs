@@ -92,15 +92,19 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db, Classifi
     {
         var tags = TagPattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
         var authors = AuthorPattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
-        var contentTypes = ContentTypePattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
-        var facets = FacetPattern().Matches(rawQuery)
-            .GroupBy(match => ClassificationService.NormalizeKey(match.Groups[1].Value))
+        var contentTypes = Array.Empty<string>();
+        var facetPairs = GenericFacetPattern().Matches(rawQuery)
+            .Select(match => (Category: match.Groups[1].Value, Value: match.Groups[2].Value))
+            .Concat(LegacyFacetPattern().Matches(rawQuery)
+                .Select(match => (Category: match.Groups[1].Value, Value: match.Groups[2].Value)));
+        var facets = facetPairs
+            .GroupBy(match => ClassificationService.NormalizeKey(match.Category))
             .ToDictionary(group => group.Key,
-                group => group.Select(match => match.Groups[2].Value).Distinct().ToArray(),
+                group => group.Select(match => match.Value).Distinct().ToArray(),
                 StringComparer.OrdinalIgnoreCase);
 
-        var text = FacetPattern().Replace(rawQuery, " ");
-        text = ContentTypePattern().Replace(text, " ");
+        var text = GenericFacetPattern().Replace(rawQuery, " ");
+        text = LegacyFacetPattern().Replace(text, " ");
         text = TagPattern().Replace(text, " ");
         text = AuthorPattern().Replace(text, " ");
         text = WhitespacePattern().Replace(text, " ").Trim();
@@ -131,12 +135,13 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db, Classifi
         return result;
     }
 
+    [GeneratedRegex(@"(?<!\S)\+([\p{L}\p{N}_-]+):([\p{L}\p{N}_.-]+)",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex GenericFacetPattern();
+
     [GeneratedRegex(@"(?<!\S)facet:([\p{L}\p{N}_-]+)=([\p{L}\p{N}_.-]+)",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
-    private static partial Regex FacetPattern();
-
-    [GeneratedRegex(@"(?<!\S)##([\p{L}\p{N}_-]+)", RegexOptions.CultureInvariant)]
-    private static partial Regex ContentTypePattern();
+    private static partial Regex LegacyFacetPattern();
 
     [GeneratedRegex(@"(?<!\S)#(?!#)([\p{L}\p{N}_-]+)", RegexOptions.CultureInvariant)]
     private static partial Regex TagPattern();

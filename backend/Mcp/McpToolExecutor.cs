@@ -120,7 +120,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "list_articles",
-                    Description = "List published articles with pagination and an optional shared scope. Scope tags use AND logic; content types use OR logic.",
+                    Description = "List published articles with pagination and an optional shared scope. Scope supports dynamic category:value facets with OR-within and AND-across semantics.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
@@ -820,9 +820,9 @@ public class McpToolExecutor
 
     private static string ScopeQuery(McpScope scope) => string.Join(' ',
         scope.Tags.Select(tag => $"#{tag}")
-            .Concat(scope.ContentTypes.Select(contentType => $"##{contentType}"))
+            .Concat(scope.ContentTypes.Select(contentType => $"+content_type:{contentType}"))
             .Concat(scope.Facets.SelectMany(entry => entry.Value
-                .Select(value => $"facet:{entry.Key}={value}"))));
+                .Select(value => $"+{entry.Key}:{value}"))));
 
     private async Task<List<ArticleSummaryDto>> BuildSearchResultsAsync(
         IReadOnlyList<Article> articles,

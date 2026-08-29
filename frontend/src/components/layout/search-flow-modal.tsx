@@ -103,7 +103,7 @@ const FLOWS: Flow[] = [
       {
         title: "Sorgu ayrıştırılır",
         detail:
-          "#etiket, ##içerikTipi ve @yazar önekleri metinden ayrılıp filtreye dönüşür. Kalan kelimeler tsquery işaretlerinden temizlenir ve indeksleme tarafıyla aynı biçimde aksanları katlanır.",
+          "#etiket, @yazar ve +kategori:değer tokenları metinden ayrılıp filtreye dönüşür. Kategori ve değerler lookup tanımlarından dinamik çözülür; kalan kelimeler tsquery işaretlerinden temizlenir ve indeksleme tarafıyla aynı biçimde aksanları katlanır.",
         refs: ["SearchController", "TokenizeQuery"],
       },
       {

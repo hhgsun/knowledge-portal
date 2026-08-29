@@ -68,7 +68,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 **Supported Methods**: `server/discover` (2026 era), `initialize` and `notifications/initialized` (2025 era), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and `##content-type` inline syntax. It never generates an AI answer.
+- `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and generic `+category:value` inline syntax. It never generates an AI answer.
 - `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*`, `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline as REST Assistant.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
@@ -573,7 +573,7 @@ Ordered by version number descending.
 
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
-| `q` | string | — | Required. Inline syntax: `@user-slug` (author), `#tag-slug` (tag), `##content-type` (type) |
+| `q` | string | — | Required. Inline syntax: `@user-slug` (author), `#tag-slug` (tag), `+category:value` (dynamic lookup) |
 | `type` | string | `"fulltext"` | `fulltext`, `semantic`, `hybrid` |
 | `limit` | int | 20 | Max results per page (1–50) |
 | `page` | int | 1 | Page number (min 1). Applies to `fulltext` and tag-browse; `semantic`/`hybrid` are top-N only |
@@ -582,13 +582,14 @@ Ordered by version number descending.
 | `includeAttachments` | bool | false | Optional. When true → includes attachment metadata (id, fileName, contentType, sizeBytes, downloadUrl, includeInIndex) per article |
 | `tag` | string[] | — | Optional, repeatable. Tag slugs (merged with #syntax) |
 | `author` | string[] | — | Optional, repeatable. User slugs (merged with @syntax) |
-| `contentType` | string[] | — | Optional, repeatable. Content type values (merged with ##syntax) |
+| `contentType` | string[] | — | Optional, repeatable legacy content type values |
+| `facet` | string[] | — | Optional, repeatable generic `category:value` filters; merged with inline `+category:value` |
 
-**Inline query syntax** (parsed in order: `##` → `#` → `@` → text):
+**Inline query syntax**:
 - `@user-slug` — filter by author (OR when multiple)
 - `#tag-slug` — filter by tag (AND when multiple)
-- `##content-type` — filter by content type (OR when multiple)
-- Example: `@ahmet #react #typescript ##guide nasıl yapılır`
+- `+category:value` — filter by any active dynamic lookup category (OR within one category, AND across categories)
+- Example: `@ahmet #react +department:finance +content_type:guide nasıl yapılır`
 
 **Search modes**:
 - **Tag-only** (only `#` tags, no remaining text): Returns tag-browse results, paged
@@ -767,7 +768,7 @@ The Assistant has one purpose: produce a grounded answer from authorized portal 
 | `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |
-| `contentTypes` | string[] | No | Content-type values, OR semantics; merged with inline `##` filters. |
+| `contentTypes` | string[] | No | Legacy content-type values, OR semantics. Generic query filtering uses `facets` or inline `+content_type:value`. |
 
 Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search, while execution remains distinct. If RAG is disabled, saturated, circuit-open, or timed out, the endpoint returns a bounded error and never silently falls back to a search result list or ungrounded chat answer.
 
@@ -1264,7 +1265,7 @@ Bulk files carry `contentMarkdown` as a string. Attachments are not embedded in 
 
 Content-type selectors expose active `lookup_values(category="content_type")` entries while the seeded category is active. Create, update, bulk import and source import validate explicit legacy values against that active category and mirror them to generic assignments. Omitted classifications use the category's configured active default on create; `reference` is only the initial seed default. If the category is deactivated or removed, the legacy column remains available for backwards compatibility without recreating the category at startup.
 
-Generic category definitions expose stable `key`, `label`, `single|multiple` cardinality, required/default behavior, active state, editable display order, and `none|filter` RAG behavior (default `filter`). Values also expose editable display order. Classification inputs use canonical lookup values. Article create/update accepts `classifications: { "department": ["finance"] }`; article summaries/details return the same canonical map. Repeatable REST `facet=department:finance` is supported by article lists, bulk exports and Search; inline `facet:department=finance`, Assistant `facets`, and MCP `scope.facets[]` use the same OR-within/AND-across semantics. Unknown/inactive category or value filters fail closed.
+Generic category definitions expose stable `key`, `label`, `single|multiple` cardinality, required/default behavior, active state, editable display order, and `none|filter` RAG behavior (default `filter`). Values also expose editable display order. Classification inputs use canonical lookup values. Article create/update accepts `classifications: { "department": ["finance"] }`; article summaries/details return the same canonical map. Repeatable REST `facet=department:finance` is supported by article lists, bulk exports and Search; inline `+department:finance`, Assistant `facets`, and MCP `scope.facets[]` use the same OR-within/AND-across semantics. Unknown/inactive category or value filters fail closed.
 
 Bulk JSONL and Markdown carry `classifications` as an object. CSV carries the same object as JSON in a `classifications` column. Import validation requires canonical values and enforces category cardinality/required/default rules; exports preserve canonical assignments.
 

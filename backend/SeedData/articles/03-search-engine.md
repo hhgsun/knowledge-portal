@@ -61,12 +61,12 @@ Inline sözdizimi ve eşdeğer query parametreleri birlikte kullanılabilir:
 
 - `#etiket-slug` — etiket filtresi; birden fazlası AND mantığıyla birleşir.
 - `@yazar-slug` — yazar filtresi; birden fazlası OR mantığıyla birleşir.
-- `##icerik-turu` — içerik türü filtresi; birden fazlası OR mantığıyla birleşir.
+- `+kategori:değer` — aktif lookup kategorileri için dinamik filtre. Aynı kategoride birden fazla değer OR, farklı kategoriler AND mantığıyla birleşir.
 - `onlyOwnContent=true` — API key ile yalnız o key üzerinden oluşturulan içerikleri sınırlar.
 - `includeContent=true` — kanonik Markdown string'ini `contentMarkdown` alanında ekler. Türetilmiş düz metin yalnızca detay yanıtındaki `contentText` alanında sunulur.
 - `includeAttachments=true` — ek dosya metadatasını ekler.
 
-Örnek: `@admin #tutorial ##how-to react hooks`
+Örnek: `@admin #tutorial +content_type:how-to +department:finance react hooks`. Arama kutusunda `+` yazıldığında kategoriler, `+kategori:` yazıldığında o kategorinin aktif değerleri dinamik önerilir.
 
 ## İndeksleme
 

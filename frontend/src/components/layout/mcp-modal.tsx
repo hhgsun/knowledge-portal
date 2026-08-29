@@ -62,10 +62,10 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
 };
 
 const DEFAULT_TOOLS: ToolSummary[] = [
-  { name: "search_articles", desc: TOOL_DESCRIPTIONS.search_articles, params: "query*, type, page, limit, tags, authors, content_type, include_content, include_attachments, only_own_content" },
+  { name: "search_articles", desc: TOOL_DESCRIPTIONS.search_articles, params: "query*, type, page, limit, scope.tags, scope.contentTypes, scope.facets, authors, include_content, include_attachments, only_own_content" },
   { name: "ask_knowledge", desc: TOOL_DESCRIPTIONS.ask_knowledge, params: "question*, scope, authors, only_own_content" },
   { name: "get_article", desc: "Makale detayı", params: "id_or_slug*" },
-  { name: "list_articles", desc: "Makale listesi", params: "page, limit, content_type, tags, sort" },
+  { name: "list_articles", desc: "Makale listesi", params: "page, limit, scope.tags, scope.contentTypes, scope.facets, sort" },
   { name: "list_tags", desc: "Etiket listesi", params: "—" },
   { name: "get_portal_info", desc: "Portal istatistikleri", params: "—" },
   { name: "get_project_context", desc: "Proje bağlamı", params: "project_tag*, limit, include_content, include_attachments" },

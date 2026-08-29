@@ -116,7 +116,7 @@ GET /api/search?q=react #tutorial #best-practices
 GET /api/search?q=deployment @admin
 
 # İçerik türü filtresi
-GET /api/search?q=kurulum ##how-to
+GET /api/search?q=kurulum +content_type:how-to
 ```
 
 ### Etiketler

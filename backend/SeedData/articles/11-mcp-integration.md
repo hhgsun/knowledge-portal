@@ -127,7 +127,7 @@ Etiketler serbest anlamlıdır; `project-`, `team-` veya benzeri bir ön ek zoru
 
 ### search_articles
 
-Knowledge Portal'ın REST Search yüzeyiyle aynı `fulltext`, `semantic` ve `hybrid` doküman aramasını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. AI yanıtı üretmez. `@yazar`, `#etiket` ve `##içerik-türü` inline filtreleri desteklenir.
+Knowledge Portal'ın REST Search yüzeyiyle aynı `fulltext`, `semantic` ve `hybrid` doküman aramasını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. AI yanıtı üretmez. `@yazar`, `#etiket` ve tüm dinamik lookup kategorileri için `+kategori:değer` inline filtreleri desteklenir.
 
 Parametreler:
 

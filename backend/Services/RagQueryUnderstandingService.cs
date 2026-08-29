@@ -20,7 +20,7 @@ public sealed record RagQueryPlan(string OriginalQuery, string RewrittenQuery,
 public sealed class RagQueryUnderstandingService(IConfiguration config)
 {
     private static readonly Regex FilterPattern = new(
-        @"(?:^|\s)(?<kind>##|#|@|tag:|etiket:|author:|yazar:|type:|tür:|tur:)(?<value>[\p{L}\p{N}_-]+)",
+        @"(?:^|\s)(?<kind>#|@|tag:|etiket:|author:|yazar:)(?<value>[\p{L}\p{N}_-]+)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
     private static readonly Regex CompoundSeparator = new(
         @"\s+(?:ve\s+ayrıca|ayrıca|bununla\s+birlikte|ve|ile|and|also|versus|vs\.?)\s+|[;]",
@@ -50,7 +50,6 @@ public sealed class RagQueryUnderstandingService(IConfiguration config)
             var value = match.Groups["value"].Value.Trim().ToLowerInvariant();
             if (kind is "#" or "tag:" or "etiket:") tags.Add(value);
             else if (kind is "@" or "author:" or "yazar:") authors.Add(value);
-            else contentTypes.Add(value);
         }
 
         var cleaned = FilterPattern.Replace(query, " ");

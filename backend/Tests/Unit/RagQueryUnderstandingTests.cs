@@ -23,7 +23,8 @@ public class RagQueryUnderstandingTests
         var service = new RagQueryUnderstandingService(config);
 
         var plan = await service.UnderstandAsync(db,
-            "VPN kurulumu ve sertifika yenileme @ayse #network ##how-to");
+            "VPN kurulumu ve sertifika yenileme @ayse #network",
+            new ArticleFilter(ContentTypes: ["how-to"]));
 
         Assert.Contains("virtual private network", plan.RewrittenQuery);
         Assert.True(plan.IsComplex);

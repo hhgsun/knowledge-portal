@@ -48,7 +48,7 @@ public sealed partial class AssistantQueryContextualizer(
         - Resolve pronouns and omitted subjects from the conversation.
         - standaloneQuery must be a concise, self-contained search question in the user's language.
         - Preserve exact product names, configuration keys, identifiers, negation, dates, and scope
-          tokens such as #tag, @author, ##type, tag:, author:, and type:.
+          tokens such as #tag, @author, and +category:value.
         - Do not answer the question in standaloneQuery.
         - hypotheticalDocument may be a short passage shaped like a relevant knowledge-base excerpt.
           It is only a semantic retrieval hint, so include likely terminology but no citations,

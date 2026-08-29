@@ -28,7 +28,7 @@ RagService → authorized evidence → grounded answer
         └── optional semantic answer cache
 ```
 
-`SearchExecutionService` yalnız `fulltext`, `semantic` ve `hybrid` doküman araması yürütür. `KnowledgeAnswerService` ise Assistant ve MCP için tek kanonik RAG girişidir. Her ikisi inline `#etiket`, `@yazar`, `##icerik-turu` ve açık filtreleri aynı `KnowledgeQueryScopeService` üzerinden çözer; böylece filtre semantiği ortak, ürün davranışı ayrıdır.
+`SearchExecutionService` yalnız `fulltext`, `semantic` ve `hybrid` doküman araması yürütür. `KnowledgeAnswerService` ise Assistant ve MCP için tek kanonik RAG girişidir. Her ikisi inline `#etiket`, `@yazar`, generic `+kategori:değer` ve açık filtreleri aynı `KnowledgeQueryScopeService` üzerinden çözer; böylece filtre semantiği ortak, ürün davranışı ayrıdır.
 
 ## API ve Arayüz
 

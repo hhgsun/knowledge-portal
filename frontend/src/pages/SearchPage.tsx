@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search as SearchIcon, Sparkles, Bot, FileText, Zap, Tag, AlertTriangle, User, Hash, Eye, ThumbsUp, Key, Clock, X, Trash2, ChevronLeft, ChevronRight, ListFilter } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
@@ -11,7 +11,7 @@ import type { SearchResult, TagWithCount, LookupValue, SearchIndexCoverage } fro
 import { useCapabilities } from "../contexts/CapabilitiesContext";
 
 type SearchType = "hybrid" | "fulltext" | "semantic";
-type SuggestionType = "tag" | "author" | "contentType";
+type SuggestionType = "tag" | "author" | "facetCategory" | "facetValue";
 interface AuthorItem { id: string; name: string; slug: string; }
 
 function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
@@ -34,7 +34,7 @@ function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
   const { assistantEnabled } = useCapabilities();
-  const { contentTypes, categories, lookups } = useLookups();
+  const { categories, lookups } = useLookups();
   const { history, addToHistory, removeFromHistory, clearHistory } = useSearchHistory();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
@@ -88,18 +88,38 @@ export default function SearchPage() {
       .catch(() => { });
   }, [fetchWithAuth]);
 
-  // Autocomplete logic for @user, #tag, ##contentType
+  // Generic autocomplete: +category:value, #tag and @author.
   useEffect(() => {
-    // Check for ## first (contentType), then # (tag), then @ (user)
-    const ctMatch = query.match(/##(\S*)$/);
-    if (ctMatch) {
-      const partial = ctMatch[1].toLowerCase();
-      const existing = [...query.matchAll(/##(\S+)/g)].map(m => m[1].toLowerCase()).filter(t => t !== partial);
-      const filtered = contentTypes
-        .filter((ct: LookupValue) => (ct.value.includes(partial) || ct.label.toLowerCase().includes(partial)) && !existing.includes(ct.value))
-        .map((ct: LookupValue) => ({ id: ct.id, label: ct.label, value: ct.value }));
+    const facetValueMatch = query.match(/\+([\p{L}\p{N}_-]+):([\p{L}\p{N}_.-]*)$/u);
+    if (facetValueMatch) {
+      const categoryKey = facetValueMatch[1].toLowerCase();
+      const partial = facetValueMatch[2].toLowerCase();
+      const category = categories.find(item => item.key === categoryKey && item.isActive && item.ragBehavior !== "none");
+      const existing = [...query.matchAll(/\+([\p{L}\p{N}_-]+):([\p{L}\p{N}_.-]+)/gu)]
+        .filter(match => match[1].toLowerCase() === categoryKey && match[2].toLowerCase() !== partial)
+        .map(match => match[2].toLowerCase());
+      const filtered = category ? lookups
+        .filter((lookup: LookupValue) => lookup.category === categoryKey && lookup.isActive
+          && (lookup.value.includes(partial) || lookup.label.toLowerCase().includes(partial))
+          && !existing.includes(lookup.value))
+        .map((lookup: LookupValue) => ({ id: lookup.id, label: lookup.label, value: lookup.value, extra: category.label })) : [];
       setFilteredSuggestions(filtered);
-      setSuggestionType("contentType");
+      setSuggestionType("facetValue");
+      setShowSuggestions(filtered.length > 0);
+      return;
+    }
+
+    const facetCategoryMatch = query.match(/\+([\p{L}\p{N}_-]*)$/u);
+    if (facetCategoryMatch) {
+      const partial = facetCategoryMatch[1].toLowerCase();
+      const filtered = categories
+        .filter(category => category.isActive && category.ragBehavior !== "none"
+          && (category.key.includes(partial) || category.label.toLowerCase().includes(partial))
+          && lookups.some(lookup => lookup.category === category.key && lookup.isActive))
+        .map(category => ({ id: category.id, label: category.label, value: category.key,
+          extra: `${lookups.filter(lookup => lookup.category === category.key && lookup.isActive).length} değer` }));
+      setFilteredSuggestions(filtered);
+      setSuggestionType("facetCategory");
       setShowSuggestions(filtered.length > 0);
       return;
     }
@@ -131,7 +151,7 @@ export default function SearchPage() {
     }
 
     setShowSuggestions(false);
-  }, [query, availableTags, authors, contentTypes]);
+  }, [query, availableTags, authors, categories, lookups]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -150,8 +170,10 @@ export default function SearchPage() {
 
   const selectSuggestion = (value: string) => {
     let newQuery: string;
-    if (suggestionType === "contentType") {
-      newQuery = query.replace(/##\S*$/, `##${value} `);
+    if (suggestionType === "facetCategory") {
+      newQuery = query.replace(/\+[\p{L}\p{N}_-]*$/u, `+${value}:`);
+    } else if (suggestionType === "facetValue") {
+      newQuery = query.replace(/\+([\p{L}\p{N}_-]+):[\p{L}\p{N}_.-]*$/u, `+$1:${value} `);
     } else if (suggestionType === "tag") {
       newQuery = query.replace(/(?<![#])#\S*$/, `#${value} `);
     } else {
@@ -246,7 +268,7 @@ export default function SearchPage() {
           <SearchTypeTab active={searchType === "fulltext"} onClick={() => setSearchType("fulltext")} icon={<FileText size={14} />} label="Full-Text" />
           <SearchTypeTab active={searchType === "semantic"} onClick={() => setSearchType("semantic")} icon={<Sparkles size={14} />} label="Semantic" />
         </div>
-        <p id="search-help" className="sr-only">Use @ for author filter, # for tag filter, ## for content type filter. Press Enter to search.</p>
+        <p id="search-help" className="sr-only">Yazar için @, etiket için #, dinamik sınıflandırma için +kategori:değer kullanın. Aramak için Enter tuşuna basın.</p>
         <form onSubmit={handleSearch} className="relative" role="search" aria-label="Search knowledge base">
           <SearchIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
           <input
@@ -274,7 +296,7 @@ export default function SearchPage() {
                 }
               }
             }}
-            placeholder="Search... (@user #tag ##type)"
+            placeholder="Ara... (@yazar #etiket +kategori:değer)"
             aria-label="Search articles"
             aria-describedby="search-help"
             aria-autocomplete="list"
@@ -341,7 +363,8 @@ export default function SearchPage() {
               <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
                 {suggestionType === "tag" && "Etiket seç (#)"}
                 {suggestionType === "author" && "Yazar seç (@)"}
-                {suggestionType === "contentType" && "İçerik tipi seç (##)"}
+                {suggestionType === "facetCategory" && "Sınıflandırma kategorisi seç (+)"}
+                {suggestionType === "facetValue" && "Sınıflandırma değeri seç (+kategori:değer)"}
               </div>
               {filteredSuggestions.map((item) => (
                 <button
@@ -353,9 +376,11 @@ export default function SearchPage() {
                 >
                   {suggestionType === "tag" && <Hash size={14} className="text-emerald-500 shrink-0" aria-hidden="true" />}
                   {suggestionType === "author" && <User size={14} className="text-violet-500 shrink-0" aria-hidden="true" />}
-                  {suggestionType === "contentType" && <FileText size={14} className="text-orange-500 shrink-0" aria-hidden="true" />}
+                  {(suggestionType === "facetCategory" || suggestionType === "facetValue") && <ListFilter size={14} className="text-orange-500 shrink-0" aria-hidden="true" />}
                   <span className="text-zinc-900 dark:text-zinc-100">{item.label}</span>
-                  {item.extra && <span className="ml-auto text-xs text-zinc-400">{item.extra} article{item.extra !== "1" ? "s" : ""}</span>}
+                  {item.extra && <span className="ml-auto text-xs text-zinc-400">
+                    {suggestionType === "tag" ? `${item.extra} makale` : item.extra}
+                  </span>}
                 </button>
               ))}
             </div>
