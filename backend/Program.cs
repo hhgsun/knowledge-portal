@@ -245,6 +245,7 @@ builder.Services.AddHostedService<EmbeddingBackgroundService>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<ArticleMutationService>();
 builder.Services.AddScoped<ContentTypeService>();
+builder.Services.AddScoped<ClassificationService>();
 builder.Services.AddScoped<KnowledgeQueryScopeService>();
 builder.Services.AddScoped<SearchExecutionService>();
 builder.Services.AddScoped<KnowledgeAnswerService>();

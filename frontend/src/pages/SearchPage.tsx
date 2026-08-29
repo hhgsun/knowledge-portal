@@ -34,7 +34,7 @@ function getIndexCoverageMessage(coverage: SearchIndexCoverage) {
 export default function SearchPage() {
   const { fetchWithAuth } = useApi();
   const { assistantEnabled } = useCapabilities();
-  const { contentTypes } = useLookups();
+  const { contentTypes, categories, lookups } = useLookups();
   const { history, addToHistory, removeFromHistory, clearHistory } = useSearchHistory();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
@@ -51,6 +51,12 @@ export default function SearchPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [facetFilters, setFacetFilters] = useState<Record<string, string[]>>(() =>
+    searchParams.getAll("facet").reduce<Record<string, string[]>>((result, item) => {
+      const [category, value] = item.split(":", 2);
+      if (category && value) result[category] = [...(result[category] ?? []), value];
+      return result;
+    }, {}));
   const [searchQueryId, setSearchQueryId] = useState<string | null>(null);
   const [indexCoverage, setIndexCoverage] = useState<SearchIndexCoverage | null>(null);
   const searchInFlightRef = useRef(false);
@@ -169,6 +175,8 @@ export default function SearchPage() {
     const params = new URLSearchParams();
     params.set("q", query.trim());
     if (searchType !== "hybrid") params.set("type", searchType);
+    Object.entries(facetFilters).forEach(([category, values]) =>
+      values.forEach(value => params.append("facet", `${category}:${value}`)));
     setSearchParams(params, { replace: true });
 
     setLoading(true);
@@ -180,8 +188,10 @@ export default function SearchPage() {
     setWarning(null);
 
     try {
+      const facetQuery = Object.entries(facetFilters).flatMap(([category, values]) =>
+        values.map(value => `facet=${encodeURIComponent(`${category}:${value}`)}`)).join("&");
       const res = await fetchWithAuth(
-        `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}&page=${pageArg}`
+        `/api/search?q=${encodeURIComponent(query.trim())}&type=${searchType}&page=${pageArg}${facetQuery ? `&${facetQuery}` : ""}`
       );
       const data = await res.json();
 
@@ -351,6 +361,29 @@ export default function SearchPage() {
             </div>
           )}
         </form>
+        {categories.some(category => category.isActive && category.key !== "content_type") && (
+          <div className="mt-3 flex flex-wrap gap-3">
+            {categories.filter(category => category.isActive && category.key !== "content_type" && category.ragBehavior !== "none")
+              .map(category => (
+                <label key={category.id} className="text-xs text-zinc-500">
+                  <span className="mb-1 block font-medium">{category.label}</span>
+                  <select
+                    multiple={category.cardinality === "multiple"}
+                    value={facetFilters[category.key] ?? []}
+                    onChange={(event) => setFacetFilters(previous => ({ ...previous,
+                      [category.key]: Array.from(event.target.selectedOptions, option => option.value).filter(Boolean),
+                    }))}
+                    className="min-w-40 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                  >
+                    {category.cardinality === "single" && <option value="">Tümü</option>}
+                    {lookups.filter(value => value.category === category.key && value.isActive).map(value => (
+                      <option key={value.id} value={value.value}>{value.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+          </div>
+        )}
         {assistantEnabled && query.trim() && (
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/30">
             <span className="text-blue-700 dark:text-blue-300">Doküman listesi yerine kaynaklara dayalı bir açıklama mı istiyorsunuz?</span>

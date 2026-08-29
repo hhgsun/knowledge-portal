@@ -52,6 +52,22 @@ public static class DbInitializer
         }
         await db.SaveChangesAsync();
 
+        // Controlled classification definitions. content_type remains the backwards-compatible
+        // first-class article column while also participating in the generic assignment model.
+        if (!await db.LookupCategories.AnyAsync(category => category.Key == "content_type"))
+        {
+            db.LookupCategories.Add(new LookupCategory
+            {
+                Key = "content_type",
+                Label = "Content Type",
+                Cardinality = "single",
+                IsRequired = true,
+                RagBehavior = "filter",
+                SortOrder = 1
+            });
+            await db.SaveChangesAsync();
+        }
+
         // Default lookup values
         if (!await db.LookupValues.AnyAsync())
         {
@@ -82,10 +98,37 @@ public static class DbInitializer
             await db.SaveChangesAsync();
         }
 
+        var contentTypeCategory = await db.LookupCategories
+            .FirstAsync(category => category.Key == "content_type");
+        if (contentTypeCategory.DefaultValueId == null)
+        {
+            contentTypeCategory.DefaultValueId = await db.LookupValues
+                .Where(value => value.Category == "content_type" && value.Value == "reference")
+                .Select(value => value.Id).FirstAsync();
+            await db.SaveChangesAsync();
+        }
+
         // Seed articles (only if no articles exist)
         if (!await db.Articles.AnyAsync())
         {
             await SeedArticlesAsync(db);
+        }
+
+
+        // Idempotent compatibility backfill for databases/tests created without the migration.
+        var missingAssignments = await db.Articles
+            .Where(article => !article.ArticleLookupValues.Any(value =>
+                value.LookupValue.Category == "content_type"))
+            .Select(article => new { article.Id, article.ContentType }).ToListAsync();
+        if (missingAssignments.Count > 0)
+        {
+            var valuesByName = await db.LookupValues.Where(value => value.Category == "content_type")
+                .ToDictionaryAsync(value => value.Value, StringComparer.OrdinalIgnoreCase);
+            foreach (var article in missingAssignments)
+                if (valuesByName.TryGetValue(article.ContentType, out var value))
+                    db.ArticleLookupValues.Add(new ArticleLookupValue
+                        { ArticleId = article.Id, LookupValueId = value.Id });
+            await db.SaveChangesAsync();
         }
     }
 

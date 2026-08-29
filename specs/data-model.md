@@ -365,6 +365,10 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 
 `rag_evaluation_datasets` stores named/versioned JSONB cases and thresholds plus timestamps. `rag_evaluation_runs` stores the requesting admin, durable lease/retry state, immutable dataset/config/runtime snapshots, progress, JSONB metrics/results, errors and lifecycle timestamps. Dataset deletion cascades to runs; deleting a requesting user is restricted while runs reference that user.
 
+### LookupCategory
+
+Controlled classification dimensions are stored in `lookup_categories`: `id`, unique stable `key`, `label`, `cardinality` (`single|multiple`), `is_required`, optional `default_value_id`, `rag_behavior` (`none|filter|boost`), `sort_order`, `is_active`, and `created_at`. The protected `content_type` category is required and single-select.
+
 ### LookupValue
 
 | Column | C# Type | DB Column | Constraints | Default |
@@ -379,6 +383,10 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 | AuthorityWeight | `int` | `authority_weight` | 0–100 | `50` |
 | IsActive | `bool` | `is_active` | Required | `true` |
 | CreatedAt | `DateTime` | `created_at` | Required | UTC Now |
+
+### ArticleLookupValue
+
+`article_lookup_values` stores the many-to-many controlled-classification assignments with composite key `(article_id, lookup_value_id)`. Article deletion cascades assignments. A used value cannot be deleted through the application; it is deactivated to preserve historical classification. Values within one category use OR in retrieval, while categories combine with AND. `content_type` assignments mirror the legacy `articles.content_type` column during the compatibility period.
 
 ## Indexes
 
@@ -395,6 +403,10 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 | `article_embeddings` | `embedding` | HNSW cosine |
 | `article_embeddings` | `tag_slugs` | GIN |
 | `tags` | `slug` | Unique |
+| `lookup_categories` | `key` | Unique |
+| `lookup_values` | `category`, `value` | Unique (composite) |
+| `article_lookup_values` | `article_id`, `lookup_value_id` | Primary key |
+| `article_lookup_values` | `lookup_value_id` | B-tree |
 | `assistant_interactions` | `created_at` | B-tree |
 | `assistant_interactions` | `user_id`, `created_at` | Composite |
 | `assistant_interactions` | `api_key_id` | B-tree |

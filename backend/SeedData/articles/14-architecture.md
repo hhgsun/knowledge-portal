@@ -69,7 +69,7 @@ Tüm authenticated API çağrıları JWT ekleme ve 401'de logout davranışını
 Başlıca entity grupları:
 
 - **Kimlik ve yetki:** User, ApiKey.
-- **İçerik:** Article, ArticleVersion, Tag, ArticleTag, LookupValue, FeaturedLink.
+- **İçerik:** Article, ArticleVersion, Tag, ArticleTag, LookupCategory, LookupValue, ArticleLookupValue, FeaturedLink. Generic sınıflandırmalar kategori tanımı → kontrollü değer → makale ataması şeklinde saklanır; `content_type` korumalı uyumluluk kategorisidir.
 - **Etkileşim ve analitik:** ArticleVote, ArticleComment, ArticleView, SearchQuery, UsageEvent.
 - **Dosya ve arama:** ArticleAttachment, ArticleEmbedding, IndexJob.
 - **RAG kalite yönetimi:** RagEvaluationDataset, RagEvaluationRun.

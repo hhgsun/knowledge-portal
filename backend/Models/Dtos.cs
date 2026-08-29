@@ -10,7 +10,8 @@ public record CreateArticleRequest(
     string? Status = null,
     string? ContentType = null,
     string[]? Tags = null,
-    int? ReviewIntervalDays = null);
+    int? ReviewIntervalDays = null,
+    Dictionary<string, string[]>? Classifications = null);
 
 public record UpdateArticleRequest(
     string? Title = null,
@@ -20,7 +21,8 @@ public record UpdateArticleRequest(
     string? ContentType = null,
     string? ChangeSummary = null,
     string[]? Tags = null,
-    int? ReviewIntervalDays = null);
+    int? ReviewIntervalDays = null,
+    Dictionary<string, string[]>? Classifications = null);
 
 // Auth
 public record LoginRequest(string Email, string Password);
@@ -51,7 +53,8 @@ public record RecordClickRequest(string SearchQueryId, string ArticleId);
 // but it returns synthesized evidence-backed answers rather than document result lists.
 public record AssistantRequest(string Message, string? ConversationId = null,
     bool OnlyOwnContent = false, IEnumerable<string>? Tags = null,
-    IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null);
+    IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null,
+    Dictionary<string, string[]>? Facets = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
 public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
 public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,
@@ -110,7 +113,8 @@ public record ArticleSummaryDto(
     // Match-context window from the article body (search results only; null → clients show Excerpt)
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Snippet = null,
     // Operational metadata: populated only for editor/admin article-list requests.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Dictionary<string, string[]>? Classifications = null);
 
 public record ArticleIndexingStatusDto(string State, string? IndexedAt);
 
@@ -141,7 +145,8 @@ public record ArticleDetailDto(
     int ViewCount,
     List<object>? Attachments,
     // Operational metadata: populated only for editor/admin article-detail requests.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArticleIndexingStatusDto? IndexingStatus = null,
+    Dictionary<string, string[]>? Classifications = null);
 
 // Tags
 public record CreateTagRequest(string Name);
@@ -149,9 +154,17 @@ public record UpdateTagRequest(string Id, string Name);
 public record TagWithCountDto(string Id, string Name, string Slug, int ArticleCount);
 public record TagListResponse(List<TagWithCountDto> Tags, int Total, int Page, int TotalPages);
 
-// Lookups
-public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null, string? Icon = null, int? SortOrder = null, int? AuthorityWeight = null);
-public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null, string? Icon = null, int? SortOrder = null, bool? IsActive = null, int? AuthorityWeight = null);
+// Controlled, generic lookup classifications
+public record CreateLookupCategoryRequest(string Key, string Label, string Cardinality = "single",
+    bool IsRequired = false, string RagBehavior = "filter", int? SortOrder = null);
+public record UpdateLookupCategoryRequest(string Id, string? Label = null, string? Cardinality = null,
+    bool? IsRequired = null, string? DefaultValueId = null, string? RagBehavior = null,
+    int? SortOrder = null, bool? IsActive = null);
+public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null,
+    string? Icon = null, int? SortOrder = null, int? AuthorityWeight = null);
+public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null,
+    string? Icon = null, int? SortOrder = null, bool? IsActive = null,
+    int? AuthorityWeight = null);
 
 // Featured links (sidebar)
 public record CreateFeaturedLinkRequest(string Label, string LinkType, string Target, string? Icon = null, string? Color = null, int? SortOrder = null);

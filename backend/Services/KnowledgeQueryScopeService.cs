@@ -11,7 +11,8 @@ public sealed record KnowledgeQueryScopeRequest(
     bool OnlyOwnContent = false,
     IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null,
-    IEnumerable<string>? ContentTypes = null);
+    IEnumerable<string>? ContentTypes = null,
+    IReadOnlyDictionary<string, string[]>? Facets = null);
 
 public sealed record KnowledgeQueryScope(
     string QueryText,
@@ -19,14 +20,16 @@ public sealed record KnowledgeQueryScope(
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> Authors,
     IReadOnlyList<string> ContentTypes,
-    bool HasUnknownTags);
+    IReadOnlyDictionary<string, string[]> Facets,
+    bool HasUnknownTags,
+    bool HasUnknownFacets);
 
 /// <summary>
 /// Resolves the query syntax and ACL-aware filters shared by document search and
 /// grounded knowledge answering. Retrieval consumers stay separate while their
 /// interpretation of scope remains identical.
 /// </summary>
-public sealed partial class KnowledgeQueryScopeService(AppDbContext db)
+public sealed partial class KnowledgeQueryScopeService(AppDbContext db, ClassificationService classifications)
 {
     public async Task<KnowledgeQueryScope> ResolveAsync(
         KnowledgeQueryScopeRequest request,
@@ -37,6 +40,8 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db)
         var requestedTags = Merge(parsed.Tags, request.Tags);
         var requestedAuthors = Merge(parsed.Authors, request.Authors);
         var requestedContentTypes = Merge(parsed.ContentTypes, request.ContentTypes);
+        var requestedFacets = MergeFacets(parsed.Facets, request.Facets);
+        var resolvedFacets = await classifications.ResolveFacetFiltersAsync(requestedFacets, cancellationToken);
 
         var resolvedTags = requestedTags.Count == 0
             ? []
@@ -58,7 +63,8 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db)
             OwnerIds: requestedAuthors.Count > 0 ? authorIds : null,
             ContentTypes: requestedContentTypes.Count > 0 ? requestedContentTypes.ToList() : null,
             ApiKeyId: request.OnlyOwnContent ? principal.GetApiKeyId() : null,
-            TagSlugs: requestedTags.Count > 0 ? resolvedTags : null);
+            TagSlugs: requestedTags.Count > 0 ? resolvedTags : null,
+            Facets: requestedFacets.Count > 0 ? resolvedFacets.Facets : null);
 
         return new KnowledgeQueryScope(
             parsed.Text,
@@ -66,7 +72,9 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db)
             requestedTags,
             requestedAuthors,
             requestedContentTypes,
-            requestedTags.Count != resolvedTags.Count);
+            resolvedFacets.Facets,
+            requestedTags.Count != resolvedTags.Count,
+            resolvedFacets.HasUnknown);
     }
 
     private static IReadOnlyList<string> Merge(
@@ -85,20 +93,47 @@ public sealed partial class KnowledgeQueryScopeService(AppDbContext db)
         var tags = TagPattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
         var authors = AuthorPattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
         var contentTypes = ContentTypePattern().Matches(rawQuery).Select(match => match.Groups[1].Value).ToArray();
+        var facets = FacetPattern().Matches(rawQuery)
+            .GroupBy(match => ClassificationService.NormalizeKey(match.Groups[1].Value))
+            .ToDictionary(group => group.Key,
+                group => group.Select(match => match.Groups[2].Value).Distinct().ToArray(),
+                StringComparer.OrdinalIgnoreCase);
 
-        var text = ContentTypePattern().Replace(rawQuery, " ");
+        var text = FacetPattern().Replace(rawQuery, " ");
+        text = ContentTypePattern().Replace(text, " ");
         text = TagPattern().Replace(text, " ");
         text = AuthorPattern().Replace(text, " ");
         text = WhitespacePattern().Replace(text, " ").Trim();
 
-        return new ParsedKnowledgeQuery(text, tags, authors, contentTypes);
+        return new ParsedKnowledgeQuery(text, tags, authors, contentTypes, facets);
     }
 
     private sealed record ParsedKnowledgeQuery(
         string Text,
         IReadOnlyList<string> Tags,
         IReadOnlyList<string> Authors,
-        IReadOnlyList<string> ContentTypes);
+        IReadOnlyList<string> ContentTypes,
+        IReadOnlyDictionary<string, string[]> Facets);
+
+    private static Dictionary<string, string[]> MergeFacets(
+        IReadOnlyDictionary<string, string[]> inline,
+        IReadOnlyDictionary<string, string[]>? explicitValues)
+    {
+        var result = inline.ToDictionary(entry => entry.Key, entry => entry.Value,
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var (rawCategory, values) in explicitValues ?? new Dictionary<string, string[]>())
+        {
+            var category = ClassificationService.NormalizeKey(rawCategory);
+            result[category] = result.GetValueOrDefault(category, [])
+                .Concat(values ?? []).Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+        return result;
+    }
+
+    [GeneratedRegex(@"(?<!\S)facet:([\p{L}\p{N}_-]+)=([\p{L}\p{N}_.-]+)",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex FacetPattern();
 
     [GeneratedRegex(@"(?<!\S)##([\p{L}\p{N}_-]+)", RegexOptions.CultureInvariant)]
     private static partial Regex ContentTypePattern();

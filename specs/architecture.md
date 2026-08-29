@@ -189,23 +189,23 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 8. **Durable indexing with eager lexical visibility** — Article changes invalidate separate lexical (`FtsIndexedAt`) and semantic (`IndexedAt`) state and first enqueue a generation-guarded, leased PostgreSQL job. The request then best-effort refreshes local PostgreSQL FTS (savepoint-isolated inside wider import transactions), while semantic embedding remains asynchronous. The worker claims no more jobs than it can run, enforces a configurable per-article timeout, and always re-runs FTS before embedding. Routine admin repair targets only dirty missing/delayed/failed/lease-expired jobs; corpus-wide reindex remains a separate maintenance operation.
 9. **Strict Search/Assistant boundary** — `SearchExecutionService` returns documents only (`fulltext`, `semantic`, `hybrid`). `KnowledgeAnswerService` is the sole grounded-RAG pipeline for REST Assistant and MCP `ask_knowledge`; neither surface falls back into the other. `KnowledgeQueryScopeService` shares only filter semantics. Owned conversations provide bounded follow-up context, and the grounded semantic cache is isolated by principal scope and corpus/runtime versions.
 
-## Future Consideration: Controlled Dynamic Metadata Facets
+## Controlled Dynamic Metadata Facets
 
-`lookup_values` currently supports only the `content_type` category in application behavior. A future iteration may generalize it into a controlled metadata taxonomy for bounded facets that users genuinely search by, such as `product`, `system`, `business_domain`, `owning_team`, `audience`, or `environment`. This is a retrieval and governance improvement, not an increase in the corpus or the model's intrinsic knowledge: embeddings and article content remain the primary semantic evidence.
+`lookup_categories`, `lookup_values`, and `article_lookup_values` implement a controlled metadata taxonomy for bounded facets that users genuinely search by, such as `department`, `product`, `system`, `business_domain`, `owning_team`, `audience`, or `environment`. This improves retrieval and governance; it does not increase the corpus or the model's intrinsic knowledge. Embeddings and article content remain the primary semantic evidence.
 
-The implementation must not merely allow arbitrary category strings. It should introduce explicit category definitions (label, single/multiple cardinality, required/default behavior, active state, and RAG use such as `none`, `filter`, or `boost`), controlled values with aliases, and article-to-value assignments. Existing first-class fields such as status, author, approval state, and free-form tags must not be duplicated as lookup facets.
+Category definitions carry label, single/multiple cardinality, required/default behavior, active state, and RAG use (`none`, `filter`, or `boost`). Values are canonical and article assignments are relational. Existing first-class fields such as status, author, approval state, and free-form tags are not duplicated as lookup facets.
 
-RAG integration must be delivered end to end:
+The end-to-end integration follows these rules:
 
 - Persist and validate article assignments, including safe deactivation and in-use protections.
 - Expose relevant facets consistently through REST, MCP, imports, exports, article forms, and search UI.
-- Extend query understanding to resolve category/value aliases. Explicit user-selected facets may be hard filters; metadata inferred from natural language should normally be a ranking boost unless confidence is high, so incomplete classification does not unnecessarily reduce recall.
-- Make filterable metadata available to PostgreSQL lexical/vector candidate retrieval with appropriate denormalization and indexes. Metadata-only edits should refresh retrieval metadata without requiring content re-embedding unless metadata is intentionally included in embedding text.
+- Query understanding validates canonical category/value pairs for explicit `facet:category=value`, REST `facet=category:value`, JSON `facets`, and MCP `scope.facets[]` inputs. Explicit facets are hard filters. General natural-language inference is not performed, preventing low-confidence classification from reducing recall.
+- Filterable metadata is applied inside PostgreSQL lexical/vector candidate queries through indexed relational assignments. Metadata-only edits do not change embedding text and therefore do not require content re-embedding.
 - Include selected metadata in RAG evidence/context only when it improves disambiguation or governance; metadata must never be treated as a substitute for cited article evidence.
 - Ranking authority is centrally governed by dynamic content-type `lookup_values.authority_weight` and bounded to 0-100. Hybrid and RAG rerankers receive that value from the database; per-content-type `Ollama:Ranking:Authority:*` configuration is not used. `Ollama:Ranking:AuthorityWeight` remains only the bounded contribution multiplier.
 - Add golden-dataset cases for facet-bearing and unclassified content, then compare Recall, MRR, NDCG, grounding/citation coverage, refusal rate, and latency before enabling a category in production.
 
-Rollout should start with one or two low-cardinality, high-value facets backed by real query patterns. Additional categories should be added only after metadata coverage and evaluation results demonstrate a retrieval benefit; uncontrolled or high-cardinality categories should remain tags or ordinary article content.
+Operational rollout should still start with one or two low-cardinality, high-value facets backed by real query patterns. Additional categories should be enabled only after metadata coverage and evaluation results demonstrate a retrieval benefit; uncontrolled or high-cardinality categories remain tags or ordinary article content.
 
 ## Future Consideration: Content-Aware Attachment Indexing and Parser Routing
 

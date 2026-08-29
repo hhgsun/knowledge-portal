@@ -38,8 +38,8 @@ The following items are explicit owner decisions and are not open findings unles
 - **Auth**: `[Authorize]` attribute on controllers, `[AllowAnonymous]` for public endpoints
 - **RBAC**: `RequirePermission` attribute with permission constants from `Permissions` class
 - **API prefix**: All routes under `/api/` (e.g. `/api/articles`, `/api/auth/login`)
-- **Entities**: `backend/Models/Entities/` — User (with AzureObjectId, Slug), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupValue, FeaturedLink, ArticleChunkParent, ArticleEmbedding, IndexJob, UsageEvent, RagEvaluationDataset/Run, AssistantInteraction, AssistantConversation/Message, AssistantAnswerCacheEntry
-- **Enum Validation**: `contentType` is validated server-side against `lookup_values` table (DB-driven, managed via `/api/lookups`)
+- **Entities**: `backend/Models/Entities/` — User (with AzureObjectId, Slug), Article, ArticleVersion, ArticleView, Tag, ArticleTag, ArticleVote, ArticleComment, ApiKey, SearchQuery, ArticleAttachment, LookupCategory, LookupValue, ArticleLookupValue, FeaturedLink, ArticleChunkParent, ArticleEmbedding, IndexJob, UsageEvent, RagEvaluationDataset/Run, AssistantInteraction, AssistantConversation/Message, AssistantAnswerCacheEntry
+- **Controlled classifications**: `lookup_categories` defines generic DB-driven dimensions (single/multiple, optional/required with default, active state, and `none|filter|boost` RAG behavior); `lookup_values` stores controlled canonical options; `article_lookup_values` stores assignments. `content_type` is the protected required compatibility category and remains mirrored to `articles.content_type`/legacy `contentType` APIs.
 - **Seed data**: `DbInitializer.SeedAsync()` — admin user + 11 default tags + content types + project documentation articles
 - **Port**: 5174
 - **Rate Limiting**: ASP.NET Core built-in rate limiter with distinct auth, search, Assistant, and MCP policies (defaults: auth=10/min, search=30/min, Assistant=20/min, MCP=60/min, configurable via `appsettings.json` → `RateLimiting`). **Partitioned per client**: partition key = `apiKeyId` claim > `id` (user) claim > client IP — one noisy caller can't exhaust everyone's budget; login brute-force throttled per source IP (requires ForwardedHeaders for real IPs behind the proxy)
@@ -90,7 +90,7 @@ backend/Tests/
 
 frontend/
 ├── src/contexts/         # AuthContext (JWT auth state)
-├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (content types)
+├── src/hooks/            # useApi (fetch wrapper), useArticleImages (deferred upload), useLookups (classification categories/values)
 ├── src/types/            # Shared TypeScript API types
 ├── src/components/       # layout/ + editor/ + attachments/
 ├── src/pages/            # Flat page components
@@ -254,6 +254,9 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `/api/lookups` | POST | ✓ | `tags:manage` | ✗ |
 | `/api/lookups` | PUT | ✓ | `tags:manage` | ✗ |
 | `/api/lookups?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
+| `/api/lookups/categories` | GET | ✓ | — | ✗ |
+| `/api/lookups/categories` | POST/PUT | ✓ | `tags:manage` | ✗ |
+| `/api/lookups/categories?id={id}` | DELETE | ✓ | `tags:manage` | ✓ |
 | `/api/logs` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | GET | ✓ | `users:manage` | ✓ |
 | `/api/logs/{fileName}` | DELETE | ✓ | `users:manage` | ✓ |
@@ -277,6 +280,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `article.excerpt` | — | — | Optional, trimmed |
 | `article.status` | — | — | Enum: draft, published, archived. All roles may publish; approval is independent. |
 | `article.contentType` | — | — | DB-driven via `lookup_values` table (category: content_type) |
+| `article.classifications` | — | — | Optional object of category keys to value arrays; active values only, category cardinality/required/default rules enforced |
 | `tag.name` | 1 | 50 | Required, unique slug generated |
 | `search.q` | 1 | — | Required |
 | `search.limit` | 1 | 50 | Default 20 |
@@ -287,10 +291,12 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `search.tag` | — | — | Optional, repeatable, tag slugs (merged with #syntax) |
 | `search.author` | — | — | Optional, repeatable, user slugs (merged with @syntax) |
 | `search.contentType` | — | — | Optional, repeatable, content type values (merged with ##syntax) |
+| `search.facet` | — | — | Optional, repeatable `category:value`; values within a category use OR and categories use AND; inline form is `facet:category=value` |
 | `assistant.message` | 1 | 4000 | Required; configurable via `Assistant:MaxMessageCharacters` |
 | `assistant.conversationId` | — | 21 | Optional; session-only and ownership checked; bounded recent user/assistant turns are rewritten into a standalone follow-up query, with fail-open deterministic fallback and optional retrieval-only HyDE |
 | `assistant.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → limits RAG evidence to articles created by that API key |
 | `assistant.tags/authors/contentTypes` | — | — | Optional evidence-scope arrays; share the same parser and ACL-safe filter semantics as Search |
+| `assistant.facets` | — | — | Optional classification object `{ category: [values] }`; unknown/inactive categories or values fail closed before RAG context construction |
 | `assistant.feedback.reason` | — | — | Optional: `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_answer`, or `other` |
 | `articles.limit` | 1 | 100 | Default 20 |
 | `articles.onlyOwnContent` | — | — | Optional, boolean. When true + API key auth → filters to articles created by that API key |
@@ -405,7 +411,7 @@ No known gaps at this time.
 - **Tag delete constraint**: DELETE `/api/tags?id=` returns 409 if tag has associated articles; only content-free tags can be deleted
 - **Article GET supports slug**: `GET /api/articles/{idOrSlug}` accepts both article ID and slug for lookup
 - **Publish/Archive enforcement**: All roles carry `articles:publish`; `status: "archived"` requires `articles:archive`. `ArticleMutationService` applies the same rule to REST, bulk import, and source import.
-- **Content-type invariant**: Article writes accept only active `lookup_values` entries in category `content_type`; omitted values resolve to the active `reference` entry. `ContentTypeService` and `ArticleMutationService` apply this identically to REST, bulk import, and source import. Seed startup fails fast on unknown/inactive content types or tags instead of silently creating inconsistent documentation.
+- **Classification invariant**: Article writes accept only active category/value definitions, require canonical lookup values, enforce single/multiple cardinality and required/default rules, and synchronize assignments through `ClassificationService`/`ArticleMutationService`. `contentType` remains backwards compatible, accepts only active `content_type` values, defaults to `reference`, and is mirrored into generic assignments. REST, bulk import/export and source import share the same mutation rules.
 - **RBAC enforcement patterns**: `[RequirePermission("...")]` handles simple endpoint checks; `ArticleMutationService` and `RbacService.CanEditArticle(User, …)` handle ownership-based or conditional article writes. Article deletion requires both session authentication and `articles:delete_any`, so it is admin-only.
 - **Attachment upload**: Files remain at `data/uploads/{articleId}/{storedFileName}`. Uploads are written to a same-volume temporary file, flushed, SHA-256 hashed, then atomically renamed. Metadata records checksum, extraction status, extracted character count, the configured extraction limit, and whether text was truncated. Deletes move files/directories to `data/uploads/.trash` for recoverability. `/api/search/storage-status` samples checksums and reports missing files, extraction failures/truncations, bytes, and free disk.
 - **Attachment deferred upload**: Frontend uses deferred upload pattern — files are queued locally and only uploaded when the article is saved. New files show "Kaydedilince yüklenecek" badge with green background.
@@ -430,7 +436,7 @@ No known gaps at this time.
 - **Available tools**: `search_articles`, `get_article`, `list_articles`, `list_tags`, `get_portal_info`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, `get_recent_changes` (all snake_case)
 - **Error handling**: JSON-RPC 2.0 error format on protocol errors: `{error: {code, message}, jsonrpc: "2.0"}`. Tool errors use `isError: true` in content result. Unexpected tool exceptions are logged server-side with full detail; the client receives only a generic "Tool execution failed" (no internal detail leakage).
 - **search_articles pagination**: accepts `page` (1-based) + `limit` (1-50); returns true post-filter `total`, `page`, `limit`, `totalPages` (same paged pipeline as `GET /api/search`).
-- **Shared MCP scope**: `search_articles`, `list_articles`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, and `get_recent_changes` accept `scope.tags[]` (AND) plus `scope.contentTypes[]` (OR). Tags have no required semantic prefix. Legacy flat scope fields remain accepted and are merged/deduplicated with the object form.
+- **Shared MCP scope**: `search_articles`, `ask_knowledge`, `list_articles`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, and `get_recent_changes` accept `scope.tags[]` (AND), `scope.contentTypes[]` (OR), and generic `scope.facets[]` values in `category:value` form. Values within one category use OR; categories combine with AND. Legacy flat scope fields remain accepted and are merged/deduplicated with the object form.
 - **get_portal_info counts**: `totalAuthors` = distinct owners of published articles; `totalTags` = tags used by ≥1 published article (consistent with the published-only scope of all tools). `list_articles` `sort` is validated against `newest|oldest|most_viewed` — invalid values return `isError`.
 - **Authentication**: **NO OAUTH.** All `/mcp` requests require ONE of:
   - **API Key**: `X-API-Key: kp_*` header (BCrypt hashed, prefix-indexed lookup)
@@ -450,17 +456,14 @@ No known gaps at this time.
 - Replace unconditional visual processing with an adaptive policy: perceptual-hash duplicate logos/icons, reject low-information/tiny assets, prefer inexpensive OCR/layout extraction first, and invoke the multimodal model only for likely tables, diagrams, charts, scanned pages, or low-confidence OCR. Add a cross-document visual-description cache and configurable per-type/page budgets. Continue persisting the derived result so vision is ingestion-time work, never repeated per RAG query.
 - Any rollout must preserve ACL/provenance, extraction-profile invalidation, durable retries, source citations, and native fallback. It must add golden-dataset cases that compare Recall/MRR/NDCG, table fact accuracy, citation correctness, ingestion latency, vision calls per document, and GPU/provider cost before enabling a new route in production.
 
-### Generic Article Classifications
+## Generic Article Classifications (Implemented)
 
-- Generalize the current DB-driven `content_type` lookup into admin-configurable classification definitions and options. Example definitions: Content Type, Team, Project, Department, Product, or Location.
-- Do not hardcode or globally require organizational dimensions. An installation may enable only Team, use several dimensions, or disable all optional dimensions. Each definition independently controls active/inactive, required/optional, single/multiple selection, display order, search filtering, and AI filtering.
-- Keep Content Type as a protected system definition (single-select and required by default); admins may manage its options but cannot accidentally delete the definition or change its stable slug.
-- Store definitions, options, and article-option assignments separately (candidate entities: `ClassificationDefinition`, `ClassificationOption`, `ArticleClassification`). Used options should be deactivated rather than deleted so historical articles remain valid.
-- Render article form fields and search filters dynamically from active definitions. Keep free-form Tags separate from managed classifications.
-- Apply classification filters consistently to article lists, full-text, semantic, hybrid, RAG, and MCP searches. For RAG, enforce filters during retrieval before sources enter the model context.
-- Suggested filter semantics: values within the same definition are OR; different definitions are AND.
-- Migration path: create a protected `content-type` definition, migrate existing `lookup_values(category = "content_type")` and article values, temporarily accept the legacy `contentType` API field, then remove the compatibility path after frontend/API consumers migrate.
-- Initial scope should support managed single-select and multi-select fields only; arbitrary text/number/date custom fields are intentionally deferred.
+- Admin/editor users define categories and controlled values through `/api/lookups/categories` and `/api/lookups`; examples include Department, Team, System, Product, or Location. Category keys are stable after creation.
+- Each category independently controls active state, required/default behavior, `single|multiple` cardinality, display order, and `none|filter|boost` RAG behavior. Classification inputs require canonical lookup values. Arbitrary text/number/date fields remain out of scope.
+- `content_type` is the protected required compatibility category. Existing `articles.content_type`, `contentType`, `##type`, and `scope.contentTypes` contracts remain supported while generic responses additionally expose `classifications`.
+- Values within a category use OR and different categories use AND. Explicit facets are enforced before full-text, vector, hybrid, or RAG candidates enter result/context sets. REST uses repeatable `facet=category:value`; query text accepts `facet:category=value`; MCP uses `scope.facets[]`.
+- Dynamic article fields and Search filters come from active category definitions. JSONL/Markdown/CSV bulk transfers preserve classifications; CSV stores the classification object as JSON.
+- Metadata-only changes update relational assignments and invalidate scoped answer-cache fingerprints without placing metadata into embedding text or forcing content re-embedding.
 
 ## Rules for AI Agents
 

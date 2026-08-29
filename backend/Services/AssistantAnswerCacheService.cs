@@ -88,11 +88,17 @@ public sealed class AssistantAnswerCacheService(AppDbContext db, IServiceProvide
         var rows = await db.Articles.AsNoTracking().Where(x => x.Status == "published")
             .OrderBy(x => x.Id).Select(x => new { x.Id, x.UpdatedAt, x.IndexedAt, x.ApprovedAt,
                 x.LastReviewedAt }).ToListAsync(ct);
-        var authority = await db.LookupValues.AsNoTracking().Where(x => x.Category == "content_type")
-            .OrderBy(x => x.Value).Select(x => new { x.Value, x.AuthorityWeight, x.IsActive }).ToListAsync(ct);
+        var categories = await db.LookupCategories.AsNoTracking().OrderBy(x => x.Key)
+            .Select(x => new { x.Key, x.Cardinality, x.IsRequired, x.DefaultValueId,
+                x.RagBehavior, x.IsActive }).ToListAsync(ct);
+        var lookups = await db.LookupValues.AsNoTracking().OrderBy(x => x.Category).ThenBy(x => x.Value)
+            .Select(x => new { x.Category, x.Value, x.AuthorityWeight, x.IsActive }).ToListAsync(ct);
         return Fingerprint(string.Join('\n', rows.Select(x =>
             $"{x.Id}|{x.UpdatedAt:o}|{x.IndexedAt:o}|{x.ApprovedAt:o}|{x.LastReviewedAt:o}"))
-            + "\n" + string.Join('\n', authority.Select(x => $"{x.Value}|{x.AuthorityWeight}|{x.IsActive}")));
+            + "\n" + string.Join('\n', categories.Select(x =>
+                $"{x.Key}|{x.Cardinality}|{x.IsRequired}|{x.DefaultValueId}|{x.RagBehavior}|{x.IsActive}"))
+            + "\n" + string.Join('\n', lookups.Select(x =>
+                $"{x.Category}|{x.Value}|{x.AuthorityWeight}|{x.IsActive}")));
     }
 
     private string RuntimeFingerprint() => Fingerprint(string.Join('|', RagService.PromptVersion,

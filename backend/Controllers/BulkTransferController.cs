@@ -32,12 +32,21 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
             .OrderBy(x => x.SortOrder)
             .Select(x => new { x.Value, x.Label })
             .ToListAsync(ct);
+        var classifications = await db.LookupCategories.Where(category => category.IsActive)
+            .OrderBy(category => category.SortOrder).Select(category => new
+            {
+                category.Key, category.Label, category.Cardinality, category.IsRequired,
+                category.RagBehavior,
+                Values = category.Values.Where(value => value.IsActive).OrderBy(value => value.SortOrder)
+                    .Select(value => new { value.Value, value.Label })
+            }).ToListAsync(ct);
         return Ok(new
         {
             maxRecords = BulkTransferService.MaxRecords,
             maxFileSizeMb = BulkTransferService.MaxFileSizeMb,
             statuses = new[] { "draft", "published", "archived" },
             contentTypes,
+            classifications,
             conflictPolicies = new[] { "skip", "update", "duplicate" },
             attachmentsIncluded = false,
             formats = new[] { "md", "zip", "jsonl", "csv" },
@@ -49,6 +58,7 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
                 new { name = "status", required = false, description = "Article lifecycle status; defaults to draft." },
                 new { name = "contentType", required = false, description = "An active content type value." },
                 new { name = "tags", required = false, description = "JSON array in JSONL; pipe-separated values in CSV." },
+                new { name = "classifications", required = false, description = "Object of category keys to value arrays; JSON object in CSV." },
                 new { name = "contentMarkdown", required = false, description = "Canonical CommonMark/GFM Markdown." }
             }
         });

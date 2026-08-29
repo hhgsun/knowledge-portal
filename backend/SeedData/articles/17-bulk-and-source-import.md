@@ -59,6 +59,8 @@ Birden fazla kaynak seçildiğinde her dosya bağımsız analiz edilir; bir iste
 
 İçerik türü verilmezse aktif `reference` değeri kullanılır. `reference` pasif veya eksikse istek varsayılanı sessizce yazmaz; doğrulama hatası verir. Açıkça gönderilen tüm değerler de yalnızca aktif `lookup_values(category = "content_type")` kayıtlarından seçilebilir.
 
+Generic sınıflandırmalar JSONL ve Markdown front matter içinde `classifications` nesnesiyle taşınır. CSV'de aynı nesne JSON metni olarak `classifications` sütununda bulunur. Export kategori/değer atamalarını korur; import canonical değer, aktiflik, tekli/çoklu ve zorunlu/varsayılan kurallarını normal makale yazma akışıyla aynı biçimde doğrular.
+
 Tüm roller makale oluşturabilir ve yayınlayabilir. `archived` durumu yalnızca admin/editor için geçerlidir. Makale silme aktarım akışının parçası değildir ve yalnızca admin JWT oturumuna açıktır.
 
 ## İndeksleme ve Atomiklik

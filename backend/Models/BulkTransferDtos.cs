@@ -7,7 +7,8 @@ public record BulkImportItem(
     string? Status,
     string? ContentType,
     string? ContentMarkdown,
-    string[]? Tags);
+    string[]? Tags,
+    Dictionary<string, string[]>? Classifications = null);
 
 public record BulkImportError(int Row, string? Title, string Error);
 

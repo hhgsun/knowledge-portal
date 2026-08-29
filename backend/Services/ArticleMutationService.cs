@@ -16,7 +16,8 @@ public sealed record CreateArticleCommand(
     string? ContentType,
     string[]? Tags,
     int? ReviewIntervalDays = null,
-    string? ExternalId = null);
+    string? ExternalId = null,
+    Dictionary<string, string[]>? Classifications = null);
 
 /// <summary>
 /// Owns article write invariants shared by REST create/update, bulk import and source import.
@@ -25,7 +26,8 @@ public sealed record CreateArticleCommand(
 public sealed class ArticleMutationService(
     AppDbContext db,
     ArticleService articles,
-    ContentTypeService contentTypes)
+    ContentTypeService contentTypes,
+    ClassificationService classifications)
 {
     private static readonly HashSet<string> ValidStatuses = ["draft", "published", "archived"];
 
@@ -33,8 +35,14 @@ public sealed class ArticleMutationService(
         CreateArticleCommand command,
         ClaimsPrincipal user,
         CancellationToken ct = default)
-        => (await ValidateAsync(command.Title, command.Status, command.ContentType,
-            command.ReviewIntervalDays, user, requireArchivePermission: true, ct)).Error;
+    {
+        var classification = await classifications.ResolveAsync(command.ContentType,
+            command.Classifications, isCreate: true, ct);
+        if (classification.Error != null) return classification.Error;
+        return (await ValidateAsync(command.Title, command.Status,
+            classification.Resolution!.ContentType, command.ReviewIntervalDays, user,
+            requireArchivePermission: true, ct)).Error;
+    }
 
     public async Task<(Article? Article, ServiceError? Error)> CreateAsync(
         CreateArticleCommand command,
@@ -43,7 +51,11 @@ public sealed class ArticleMutationService(
         bool queueReindex = true,
         CancellationToken ct = default)
     {
-        var validation = await ValidateAsync(command.Title, command.Status, command.ContentType,
+        var classification = await classifications.ResolveAsync(command.ContentType,
+            command.Classifications, isCreate: true, ct);
+        if (classification.Error != null) return (null, classification.Error);
+        var validation = await ValidateAsync(command.Title, command.Status,
+            classification.Resolution!.ContentType,
             command.ReviewIntervalDays, user, requireArchivePermission: true, ct);
         if (validation.Error != null) return (null, validation.Error);
 
@@ -65,6 +77,7 @@ public sealed class ArticleMutationService(
         };
 
         db.Articles.Add(article);
+        await classifications.ApplyAsync(article.Id, classification.Resolution, ct);
         await articles.AddVersionAsync(article.Id, article.Title, article.Content, user.GetUserId(), changeSummary);
         if (command.Tags is { Length: > 0 })
             await articles.AttachTagsAsync(article.Id, command.Tags, allowCreate: true);
@@ -83,10 +96,14 @@ public sealed class ArticleMutationService(
         if (!RbacService.CanEditArticle(user, article.OwnerId == user.GetUserId()))
             return new ServiceError(403, "You do not have permission to edit this article");
 
+        var classification = await classifications.ResolveAsync(request.ContentType,
+            request.Classifications, isCreate: false, ct);
+        if (classification.Error != null) return classification.Error;
+        var updatesContentType = classification.Resolution!.ChangedCategories.Contains("content_type");
         var validation = await ValidateAsync(
             request.Title ?? article.Title,
             request.Status ?? article.Status,
-            request.ContentType ?? article.ContentType,
+            updatesContentType ? classification.Resolution.ContentType : article.ContentType,
             request.ReviewIntervalDays ?? article.ReviewIntervalDays,
             user,
             requireArchivePermission: request.Status?.Equals("archived", StringComparison.OrdinalIgnoreCase) == true
@@ -117,7 +134,7 @@ public sealed class ArticleMutationService(
             approvalInvalidated |= excerpt != article.Excerpt;
             article.Excerpt = excerpt;
         }
-        if (request.ContentType != null)
+        if (updatesContentType)
         {
             approvalInvalidated |= validation.ContentType != article.ContentType;
             article.ContentType = validation.ContentType!;
@@ -143,6 +160,12 @@ public sealed class ArticleMutationService(
             await ReplaceTagsAsync(article.Id, request.Tags, ct);
         }
 
+        if (classification.Resolution.ChangedCategories.Count > 0)
+        {
+            ArticleService.InvalidateApproval(article);
+            await classifications.ApplyAsync(article.Id, classification.Resolution, ct);
+        }
+
         await db.SaveChangesAsync(ct);
         await articles.QueueReindexAsync(article, ct);
         return null;
@@ -158,7 +181,12 @@ public sealed class ArticleMutationService(
         if (!RbacService.CanEditArticle(user, article.OwnerId == user.GetUserId()))
             return new ServiceError(403, "You do not have permission to update the matching article");
 
-        var validation = await ValidateAsync(command.Title, command.Status, command.ContentType,
+        var classification = await classifications.ResolveAsync(command.ContentType,
+            command.Classifications, isCreate: false, ct);
+        if (classification.Error != null) return classification.Error;
+        var updatesContentType = classification.Resolution!.ChangedCategories.Contains("content_type");
+        var validation = await ValidateAsync(command.Title, command.Status,
+            updatesContentType ? classification.Resolution.ContentType : article.ContentType,
             command.ReviewIntervalDays ?? article.ReviewIntervalDays, user,
             requireArchivePermission: !string.Equals(article.Status, command.Status, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(command.Status, "archived", StringComparison.OrdinalIgnoreCase),
@@ -190,6 +218,7 @@ public sealed class ArticleMutationService(
         if (contentChanged)
             await articles.AddVersionAsync(article.Id, article.Title, content, user.GetUserId(), changeSummary);
         await ReplaceTagsAsync(article.Id, command.Tags ?? [], ct);
+        await classifications.ApplyAsync(article.Id, classification.Resolution, ct);
 
         await db.SaveChangesAsync(ct);
         await articles.QueueReindexAsync(article, ct);

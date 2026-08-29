@@ -9,6 +9,7 @@ public sealed record KnowledgeAnswerRequest(
     IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null,
     IEnumerable<string>? ContentTypes = null,
+    IReadOnlyDictionary<string, string[]>? Facets = null,
     string? HypotheticalDocument = null);
 
 public enum KnowledgeAnswerFailureKind
@@ -58,9 +59,10 @@ public sealed class KnowledgeAnswerService(
             request.OnlyOwnContent,
             request.Tags,
             request.Authors,
-            request.ContentTypes), principal, cancellationToken);
+            request.ContentTypes,
+            request.Facets), principal, cancellationToken);
 
-        if (scope.HasUnknownTags)
+        if (scope.HasUnknownTags || scope.HasUnknownFacets)
             return (null, new ServiceError(404, "No knowledge sources matched the requested scope"));
         if (string.IsNullOrWhiteSpace(scope.QueryText))
             return (null, new ServiceError(400, "A question is required in addition to scope filters"));

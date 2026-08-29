@@ -28,17 +28,19 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
             status = "draft",
             contentType = "how-to",
             contentMarkdown = "## Kurulum adımları\n\nVPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.",
-            tags = new[] { "vpn", "network" }
+            tags = new[] { "vpn", "network" },
+            classifications = new Dictionary<string, string[]> { ["department"] = ["it"] }
         };
         return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(row, JsonOptions) + Environment.NewLine);
     }
 
     public static byte[] CreateCsvTemplate()
     {
-        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,contentMarkdown\r\n");
+        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,classifications,contentMarkdown\r\n");
         output.AppendJoin(',', Csv("example-howto-001"), Csv("VPN Kurulum Rehberi"),
             Csv("Windows için şirket VPN kurulumu."), Csv("draft"), Csv("how-to"),
-            Csv("vpn|network"), Csv("VPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.")).Append("\r\n");
+            Csv("vpn|network"), Csv("{\"department\":[\"it\"]}"),
+            Csv("VPN istemcisini kurun ve kurumsal hesabınızla giriş yapın.")).Append("\r\n");
         return Encoding.UTF8.GetBytes(output.ToString());
     }
 
@@ -82,7 +84,8 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
         {
             var item = items[index];
             var command = new CreateArticleCommand(item.Title, item.ContentMarkdown, item.Excerpt,
-                item.Status, item.ContentType, item.Tags, ExternalId: item.ExternalId);
+                item.Status, item.ContentType, item.Tags, ExternalId: item.ExternalId,
+                Classifications: item.Classifications);
             var validationError = item.ExternalId?.Trim().Length > 200
                 ? new ServiceError(400, "externalId may contain at most 200 characters")
                 : await mutations.ValidateAsync(command, user, ct);
@@ -169,6 +172,7 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
     public async Task<byte[]> ExportJsonLinesAsync(IQueryable<Article> query, CancellationToken ct)
     {
         var articles = await query.Include(a => a.ArticleTags).ThenInclude(x => x.Tag)
+            .Include(a => a.ArticleLookupValues).ThenInclude(x => x.LookupValue)
             .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
         var output = new StringBuilder();
         foreach (var article in articles)
@@ -181,7 +185,8 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
                 article.Status,
                 article.ContentType,
                 contentMarkdown = article.Content,
-                tags = article.ArticleTags.Select(x => x.Tag.Slug).ToArray()
+                tags = article.ArticleTags.Select(x => x.Tag.Slug).ToArray(),
+                classifications = ClassificationMap(article)
             }, JsonOptions));
         }
         return Encoding.UTF8.GetBytes(output.ToString());
@@ -190,17 +195,20 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
     public async Task<byte[]> ExportCsvAsync(IQueryable<Article> query, CancellationToken ct)
     {
         var articles = await query.Include(a => a.ArticleTags).ThenInclude(x => x.Tag)
+            .Include(a => a.ArticleLookupValues).ThenInclude(x => x.LookupValue)
             .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
-        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,contentMarkdown\r\n");
+        var output = new StringBuilder("externalId,title,excerpt,status,contentType,tags,classifications,contentMarkdown\r\n");
         foreach (var a in articles)
             output.AppendJoin(',', Csv(a.ExternalId ?? a.Id), Csv(a.Title), Csv(a.Excerpt), Csv(a.Status), Csv(a.ContentType),
-                Csv(string.Join('|', a.ArticleTags.Select(x => x.Tag.Slug))), Csv(a.Content)).Append("\r\n");
+                Csv(string.Join('|', a.ArticleTags.Select(x => x.Tag.Slug))),
+                Csv(JsonSerializer.Serialize(ClassificationMap(a), JsonOptions)), Csv(a.Content)).Append("\r\n");
         return Encoding.UTF8.GetBytes(output.ToString());
     }
 
     public async Task<byte[]> ExportMarkdownArchiveAsync(IQueryable<Article> query, CancellationToken ct)
     {
         var articles = await query.Include(a => a.ArticleTags).ThenInclude(x => x.Tag)
+            .Include(a => a.ArticleLookupValues).ThenInclude(x => x.LookupValue)
             .OrderBy(a => a.CreatedAt).Take(MaxRecords).ToListAsync(ct);
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -217,7 +225,7 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
                 await using var writer = new StreamWriter(entryStream, new UTF8Encoding(false));
                 await writer.WriteAsync(SerializeMarkdown(new BulkImportItem(article.ExternalId ?? article.Id, article.Title, article.Excerpt,
                     article.Status, article.ContentType, article.Content,
-                    article.ArticleTags.Select(x => x.Tag.Slug).ToArray())));
+                    article.ArticleTags.Select(x => x.Tag.Slug).ToArray(), ClassificationMap(article))));
             }
         }
         return output.ToArray();
@@ -251,8 +259,14 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
         foreach (var row in rows.Skip(1).Where(r => r.Any(x => !string.IsNullOrWhiteSpace(x))))
         {
             var content = Get(row, "contentMarkdown");
+            Dictionary<string, string[]>? classifications = null;
+            if (Get(row, "classifications") is { } rawClassifications)
+            {
+                try { classifications = JsonSerializer.Deserialize<Dictionary<string, string[]>>(rawClassifications, JsonOptions); }
+                catch (JsonException ex) { throw new InvalidDataException($"Invalid classifications JSON at record {result.Count + 1}: {ex.Message}"); }
+            }
             result.Add(new(Get(row, "externalId"), Get(row, "title") ?? "", Get(row, "excerpt"), Get(row, "status"),
-                Get(row, "contentType"), content, Get(row, "tags")?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
+                Get(row, "contentType"), content, Get(row, "tags")?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), classifications));
             if (result.Count > MaxRecords) throw new InvalidDataException($"A single import may contain at most {MaxRecords} records");
         }
         return result;
@@ -323,7 +337,8 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
             item.Excerpt,
             status = item.Status ?? "draft",
             contentType = item.ContentType ?? "reference",
-            tags = item.Tags ?? []
+            tags = item.Tags ?? [],
+            classifications = item.Classifications ?? []
         };
         return $"---\n{JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })}\n---\n\n{item.ContentMarkdown?.Trim() ?? ""}\n";
     }
@@ -354,4 +369,10 @@ public class BulkTransferService(AppDbContext db, ArticleMutationService mutatio
         if (value.Length > 0 && "=+-@".Contains(value[0])) value = "'" + value;
         return $"\"{value.Replace("\"", "\"\"")}\"";
     }
+
+    private static Dictionary<string, string[]> ClassificationMap(Article article)
+        => article.ArticleLookupValues.GroupBy(value => value.LookupValue.Category)
+            .ToDictionary(group => group.Key,
+                group => group.Select(value => value.LookupValue.Value).Distinct().Order().ToArray(),
+                StringComparer.OrdinalIgnoreCase);
 }

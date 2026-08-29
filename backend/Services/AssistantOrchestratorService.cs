@@ -69,6 +69,7 @@ public sealed class AssistantOrchestratorService(
                 request.Tags,
                 request.Authors,
                 request.ContentTypes,
+                request.Facets,
                 hypotheticalDocument), principal, budget.Token);
             if (execution.Error != null) return (null, execution.Error);
 
@@ -151,8 +152,11 @@ public sealed class AssistantOrchestratorService(
         static string Join(IEnumerable<string>? values) => string.Join(',',
             (values ?? []).Select(value => value.Trim().ToLowerInvariant())
                 .Where(value => value.Length > 0).OrderBy(value => value, StringComparer.Ordinal));
+        var facets = string.Join(';', (request.Facets ?? [])
+            .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
         return $"{request.Message.Trim()}\n[scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
-               $"authors={Join(request.Authors)};types={Join(request.ContentTypes)}]";
+               $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 
     private static string[] ToolCalls(string terminalTool, string contextualizationStrategy) =>

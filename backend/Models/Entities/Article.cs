@@ -29,6 +29,7 @@ public class Article
     public ApiKey? CreatedViaApiKey { get; set; }
     public ICollection<ArticleVersion> Versions { get; set; } = [];
     public ICollection<ArticleTag> ArticleTags { get; set; } = [];
+    public ICollection<ArticleLookupValue> ArticleLookupValues { get; set; } = [];
     public ICollection<ArticleVote> Votes { get; set; } = [];
     public ICollection<ArticleComment> Comments { get; set; } = [];
     public ICollection<ArticleView> Views { get; set; } = [];

@@ -1,32 +1,39 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, ToggleLeft, ToggleRight, Palette } from "lucide-react";
+import { Plus, Trash2, ToggleLeft, ToggleRight, Palette, Layers } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useLookups } from "../hooks/useLookups";
 import { toast } from "sonner";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import { ColorPicker, IconPicker } from "../components/lookup-pickers";
 import { LookupsListSkeleton } from "../components/ui/skeleton";
-import type { LookupValue } from "../types/api";
+import type { LookupCategory, LookupValue } from "../types/api";
 
 export default function LookupsPage() {
   const { fetchWithAuth } = useApi();
   const { invalidateCache } = useLookups();
   const [lookups, setLookups] = useState<LookupValue[]>([]);
+  const [categories, setCategories] = useState<LookupCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("content_type");
   const [newValue, setNewValue] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newColor, setNewColor] = useState("blue");
   const [newIcon, setNewIcon] = useState("file-text");
   const [newAuthorityWeight, setNewAuthorityWeight] = useState(50);
+  const [newCategoryKey, setNewCategoryKey] = useState("");
+  const [newCategoryLabel, setNewCategoryLabel] = useState("");
+  const [newCardinality, setNewCardinality] = useState<"single" | "multiple">("single");
+  const [newRagBehavior, setNewRagBehavior] = useState<"none" | "filter" | "boost">("filter");
 
   const loadLookups = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/lookups");
-      if (res.ok) {
-        setLookups(await res.json());
-      }
+      const [valuesResponse, categoriesResponse] = await Promise.all([
+        fetchWithAuth("/api/lookups"), fetchWithAuth("/api/lookups/categories"),
+      ]);
+      if (valuesResponse.ok) setLookups(await valuesResponse.json());
+      if (categoriesResponse.ok) setCategories(await categoriesResponse.json());
     } catch {
       // useApi displays the shared network error.
     } finally {
@@ -43,7 +50,8 @@ export default function LookupsPage() {
     }
     const res = await fetchWithAuth("/api/lookups", {
       method: "POST",
-      body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon, authorityWeight: newAuthorityWeight }),
+      body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon,
+        authorityWeight: newCategory === "content_type" ? newAuthorityWeight : undefined }),
     });
     if (res.ok) {
       toast.success("Tanım değeri eklendi");
@@ -59,6 +67,31 @@ export default function LookupsPage() {
       const err = await res.json();
       toast.error(err.error || "Ekleme başarısız");
     }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryKey.trim() || !newCategoryLabel.trim()) {
+      toast.error("Kategori anahtarı ve etiketi zorunludur");
+      return;
+    }
+    const res = await fetchWithAuth("/api/lookups/categories", {
+      method: "POST",
+      body: JSON.stringify({ key: newCategoryKey, label: newCategoryLabel,
+        cardinality: newCardinality, ragBehavior: newRagBehavior }),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      toast.error(error.error || "Kategori eklenemedi");
+      return;
+    }
+    const created = await res.json() as LookupCategory;
+    setNewCategory(created.key);
+    setNewCategoryKey("");
+    setNewCategoryLabel("");
+    setShowAddCategory(false);
+    invalidateCache();
+    await loadLookups();
+    toast.success("Sınıflandırma kategorisi eklendi");
   };
 
   const handleToggle = async (item: LookupValue) => {
@@ -89,8 +122,6 @@ export default function LookupsPage() {
     }
   };
 
-  const contentTypes = lookups.filter((l) => l.category === "content_type");
-
   if (loading) return <LookupsListSkeleton />;
 
   return (
@@ -98,16 +129,31 @@ export default function LookupsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Tanım Değerleri</h1>
-          <p className="text-sm text-zinc-500 mt-1">Makale içerik türlerini yönetin</p>
+          <p className="text-sm text-zinc-500 mt-1">İçerik türü, departman, sistem ve diğer kontrollü sınıflandırmaları yönetin</p>
         </div>
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
-        >
-          <Plus size={16} />
-          Add Value
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowAddCategory(!showAddCategory)} className="flex items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700">
+            <Layers size={16} /> Kategori Ekle
+          </button>
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+            <Plus size={16} /> Değer Ekle
+          </button>
+        </div>
       </div>
+
+      {showAddCategory && (
+        <div className="mb-6 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900">
+          <input value={newCategoryKey} onChange={(event) => setNewCategoryKey(event.target.value)} placeholder="Anahtar (örn. department)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800" />
+          <input value={newCategoryLabel} onChange={(event) => setNewCategoryLabel(event.target.value)} placeholder="Etiket (örn. Departman)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800" />
+          <select value={newCardinality} onChange={(event) => setNewCardinality(event.target.value as "single" | "multiple")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+            <option value="single">Tek değer</option><option value="multiple">Birden çok değer</option>
+          </select>
+          <select value={newRagBehavior} onChange={(event) => setNewRagBehavior(event.target.value as "none" | "filter" | "boost")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+            <option value="filter">AI filtresi</option><option value="boost">AI boost/filtresi</option><option value="none">AI dışında</option>
+          </select>
+          <button onClick={handleAddCategory} className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white sm:col-span-2">Kategori Ekle</button>
+        </div>
+      )}
 
       {showAdd && (
         <div className="mb-6 p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-900">
@@ -119,7 +165,9 @@ export default function LookupsPage() {
                 onChange={(e) => setNewCategory(e.target.value)}
                 className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
               >
-                <option value="content_type">Content Type</option>
+                {categories.filter((category) => category.isActive).map((category) => (
+                  <option key={category.id} value={category.key}>{category.label}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -150,10 +198,10 @@ export default function LookupsPage() {
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
               <IconPicker value={newIcon} onChange={setNewIcon} />
             </div>
-            <div>
+            {newCategory === "content_type" && <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
               <input type="number" min={0} max={100} value={newAuthorityWeight} onChange={(e) => setNewAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
-            </div>
+            </div>}
             <button
               onClick={handleAdd}
               className="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg"
@@ -165,14 +213,18 @@ export default function LookupsPage() {
       )}
 
       <div className="space-y-6">
-        <LookupSection title="Content Types" items={contentTypes} onToggle={handleToggle} onDelete={handleDelete} onReload={loadLookups} />
+        {categories.map((category) => (
+          <LookupSection key={category.id} category={category}
+            items={lookups.filter((lookup) => lookup.category === category.key)}
+            onToggle={handleToggle} onDelete={handleDelete} onReload={loadLookups} />
+        ))}
       </div>
     </div>
   );
 }
 
-function LookupSection({ title, items, onToggle, onDelete, onReload }: {
-  title: string;
+function LookupSection({ category, items, onToggle, onDelete, onReload }: {
+  category: LookupCategory;
   items: LookupValue[];
   onToggle: (item: LookupValue) => void;
   onDelete: (item: LookupValue) => void;
@@ -185,6 +237,25 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
   const [editIcon, setEditIcon] = useState("");
   const [editAuthorityWeight, setEditAuthorityWeight] = useState(50);
 
+  const updateCategory = async (patch: Partial<LookupCategory>) => {
+    const response = await fetchWithAuth("/api/lookups/categories", {
+      method: "PUT", body: JSON.stringify({ id: category.id, ...patch }),
+    });
+    if (!response.ok) {
+      const error = await response.json(); toast.error(error.error || "Kategori güncellenemedi"); return;
+    }
+    invalidateCache(); onReload(); toast.success("Kategori güncellendi");
+  };
+
+  const deleteCategory = async () => {
+    if (!confirm(`Delete category "${category.label}"?`)) return;
+    const response = await fetchWithAuth(`/api/lookups/categories?id=${category.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const error = await response.json(); toast.error(error.error || "Kategori silinemedi"); return;
+    }
+    invalidateCache(); onReload(); toast.success("Kategori silindi");
+  };
+
   const handleEdit = (item: LookupValue) => {
     setEditingId(item.id);
     setEditColor(item.color || "blue");
@@ -195,7 +266,8 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
   const handleSaveEdit = async (item: LookupValue) => {
     const res = await fetchWithAuth("/api/lookups", {
       method: "PUT",
-      body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon, authorityWeight: editAuthorityWeight }),
+      body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon,
+        authorityWeight: item.category === "content_type" ? editAuthorityWeight : undefined }),
     });
     if (res.ok) {
       toast.success("Updated");
@@ -210,7 +282,23 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
 
   return (
     <div>
-      <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">{title}</h2>
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <h2 className="mr-auto text-sm font-medium text-zinc-700 dark:text-zinc-300">{category.label} <span className="text-zinc-400">({category.key})</span></h2>
+        {category.key !== "content_type" && <>
+          <select value={category.cardinality} onChange={event => void updateCategory({ cardinality: event.target.value as "single" | "multiple" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+            <option value="single">Tekli</option><option value="multiple">Çoklu</option>
+          </select>
+          <select value={category.ragBehavior} onChange={event => void updateCategory({ ragBehavior: event.target.value as "none" | "filter" | "boost" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+            <option value="filter">AI filter</option><option value="boost">AI boost</option><option value="none">AI none</option>
+          </select>
+          <select value={category.defaultValueId ?? ""} onChange={event => { if (event.target.value) void updateCategory({ defaultValueId: event.target.value }); }} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+            <option value="">Varsayılan yok</option>{items.filter(item => item.isActive).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+          <label className="flex items-center gap-1 text-xs text-zinc-500"><input type="checkbox" checked={category.isRequired} onChange={event => void updateCategory({ isRequired: event.target.checked })}/> Zorunlu</label>
+          <button onClick={() => void updateCategory({ isActive: !category.isActive })} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{category.isActive ? "Pasifleştir" : "Aktifleştir"}</button>
+          <button onClick={() => void deleteCategory()} className="rounded px-2 py-1 text-xs text-red-600">Kategoriyi sil</button>
+        </>}
+      </div>
       <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl">
         {items.length === 0 ? (
           <p className="p-4 text-sm text-zinc-500">Tanımlı değer yok</p>
@@ -233,7 +321,7 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                     <div>
                       <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.label}</span>
                       <span className="text-xs text-zinc-400 ml-2">({item.value})</span>
-                      <span className="text-xs text-zinc-400 ml-2">Authority: {item.authorityWeight}</span>
+                      {item.category === "content_type" && <span className="text-xs text-zinc-400 ml-2">Authority: {item.authorityWeight}</span>}
                       {!item.isActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Etkin değil</span>}
                     </div>
                   </div>
@@ -272,10 +360,10 @@ function LookupSection({ title, items, onToggle, onDelete, onReload }: {
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
                         <IconPicker value={editIcon} onChange={setEditIcon} />
                       </div>
-                      <div>
+                      {item.category === "content_type" && <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
                         <input type="number" min={0} max={100} value={editAuthorityWeight} onChange={(e) => setEditAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
-                      </div>
+                      </div>}
                       <div className="flex gap-2 ml-auto">
                         <button
                           onClick={() => handleSaveEdit(item)}

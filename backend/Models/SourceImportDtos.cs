@@ -20,6 +20,7 @@ public record SourceImportDraft(
     string? ContentType,
     string? Status,
     string[]? Tags,
+    Dictionary<string, string[]>? Classifications = null,
     bool KeepOriginal = true,
     bool OriginalIncludeInIndex = false,
     int[]? AdditionalAttachmentIndexes = null,

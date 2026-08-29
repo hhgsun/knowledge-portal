@@ -19,7 +19,8 @@ public sealed record PortalSearchRequest(
     bool IncludeAttachments = false,
     IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null,
-    IEnumerable<string>? ContentTypes = null);
+    IEnumerable<string>? ContentTypes = null,
+    IReadOnlyDictionary<string, string[]>? Facets = null);
 
 public enum SearchFailureKind
 {
@@ -80,9 +81,10 @@ public sealed class SearchExecutionService(
             request.OnlyOwnContent,
             request.Tags,
             request.Authors,
-            request.ContentTypes), principal, ct);
+            request.ContentTypes,
+            request.Facets), principal, ct);
 
-        if (scope.HasUnknownTags)
+        if (scope.HasUnknownTags || scope.HasUnknownFacets)
         {
             return (await CompleteAsync(request.Query, "tag", [], 0, 1, 0, stopwatch, principal,
                 ct, tags: scope.Tags), null);
@@ -91,7 +93,8 @@ public sealed class SearchExecutionService(
         var filter = scope.Filter;
         var snippetTokens = scope.QueryText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
-        if ((scope.Tags.Count > 0 || scope.ContentTypes.Count > 0 || scope.Authors.Count > 0)
+        if ((scope.Tags.Count > 0 || scope.ContentTypes.Count > 0 || scope.Authors.Count > 0
+                || scope.Facets.Count > 0)
             && string.IsNullOrWhiteSpace(scope.QueryText))
         {
             var query = ArticleService.ApplyFilter(db.Articles.WherePublished(), filter);
@@ -200,6 +203,7 @@ public sealed class SearchExecutionService(
             ? await AttachmentHelper.GetAttachmentMapAsync(db, ids)
             : null;
         var enrichment = await articles.GetEnrichmentAsync(ids);
+        var classifications = await articles.GetClassificationsAsync(ids, ct);
         return found.Select(article =>
         {
             var plainText = includeContent || snippetTokens.Length > 0
@@ -212,7 +216,8 @@ public sealed class SearchExecutionService(
                 attachments?.GetValueOrDefault(article.Id),
                 scores?.GetValueOrDefault(article.Id),
                 matchTypes?.GetValueOrDefault(article.Id),
-                SearchSnippetHelper.Build(plainText, snippetTokens));
+                SearchSnippetHelper.Build(plainText, snippetTokens),
+                classifications.GetValueOrDefault(article.Id));
         }).ToList();
     }
 

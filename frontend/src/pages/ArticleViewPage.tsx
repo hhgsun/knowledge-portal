@@ -12,8 +12,10 @@ import { ArticleViewSkeleton } from "../components/ui/skeleton";
 import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from "../types/api";
 import AttachmentList from "../components/attachments/attachment-list";
 import { AuthenticatedImage } from "../components/attachments/authenticated-image";
+import { useLookups } from "../hooks/useLookups";
 
 export default function ArticleViewPage() {
+  const { categories, lookups } = useLookups();
   const params = useParams();
   const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
@@ -343,6 +345,18 @@ export default function ArticleViewPage() {
                 {tag.name}
               </Link>
             ))}
+          </div>
+        )}
+        {Object.entries(article.classifications ?? {}).some(([category]) => category !== "content_type") && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {Object.entries(article.classifications ?? {}).filter(([category]) => category !== "content_type")
+              .flatMap(([categoryKey, values]) => values.map(value => {
+                const category = categories.find(item => item.key === categoryKey);
+                const option = lookups.find(item => item.category === categoryKey && item.value === value);
+                return <span key={`${categoryKey}:${value}`} className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {category?.label ?? categoryKey}: {option?.label ?? value}
+                </span>;
+              }))}
           </div>
         )}
       </div>

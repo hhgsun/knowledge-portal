@@ -29,13 +29,15 @@ public class McpToolExecutor
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
 
-    private sealed record McpScope(List<string> Tags, List<string> ContentTypes)
+    private sealed record McpScope(List<string> Tags, List<string> ContentTypes,
+        Dictionary<string, string[]> Facets)
     {
-        public bool IsEmpty => Tags.Count == 0 && ContentTypes.Count == 0;
+        public bool IsEmpty => Tags.Count == 0 && ContentTypes.Count == 0 && Facets.Count == 0;
 
         public ArticleFilter ToArticleFilter() => new(
             ContentTypes: ContentTypes.Count == 0 ? null : ContentTypes,
-            TagSlugs: Tags.Count == 0 ? null : Tags);
+            TagSlugs: Tags.Count == 0 ? null : Tags,
+            Facets: Facets.Count == 0 ? null : Facets);
     }
 
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
@@ -392,7 +394,8 @@ public class McpToolExecutor
             GetBool(args, "include_attachments"),
             scope.Tags,
             SplitCsv(GetString(args, "authors")),
-            scope.ContentTypes), principalValue, ct);
+            scope.ContentTypes,
+            scope.Facets), principalValue, ct);
         if (execution.Error != null) return ErrorResult(execution.Error.Message);
 
         var result = execution.Result!;
@@ -434,7 +437,8 @@ public class McpToolExecutor
             GetBool(args, "only_own_content"),
             scope.Tags,
             SplitCsv(GetString(args, "authors")),
-            scope.ContentTypes), principal ?? new ClaimsPrincipal(), ct);
+            scope.ContentTypes,
+            scope.Facets), principal ?? new ClaimsPrincipal(), ct);
         if (execution.Error != null) return ErrorResult(execution.Error.Message);
 
         var result = execution.Result!;
@@ -725,6 +729,12 @@ public class McpToolExecutor
                 Type = "array",
                 Description = "Content-type values; an article may match any supplied value (OR logic)",
                 Items = new McpPropertySchema { Type = "string" }
+            },
+            ["facets"] = new()
+            {
+                Type = "array",
+                Description = "Generic classifications as category:value pairs; categories combine with AND and values within a category with OR",
+                Items = new McpPropertySchema { Type = "string" }
             }
         }
     };
@@ -737,6 +747,7 @@ public class McpToolExecutor
     {
         var tags = new List<string>();
         var contentTypes = new List<string>();
+        var facets = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         if (args is { ValueKind: JsonValueKind.Object }
             && args.Value.TryGetProperty("scope", out var scopeElement))
@@ -747,7 +758,7 @@ public class McpToolExecutor
                 {
                     var item = value.GetString()?.Trim();
                     if (string.IsNullOrWhiteSpace(item))
-                        return (new McpScope([], []), "Parameter 'scope.tags' cannot contain blank values");
+                        return (new McpScope([], [], []), "Parameter 'scope.tags' cannot contain blank values");
                     tags.Add(item);
                 }
             }
@@ -758,8 +769,22 @@ public class McpToolExecutor
                 {
                     var item = value.GetString()?.Trim();
                     if (string.IsNullOrWhiteSpace(item))
-                        return (new McpScope([], []), "Parameter 'scope.contentTypes' cannot contain blank values");
+                        return (new McpScope([], [], []), "Parameter 'scope.contentTypes' cannot contain blank values");
                     contentTypes.Add(item);
+                }
+            }
+
+            if (scopeElement.TryGetProperty("facets", out var scopeFacets))
+            {
+                foreach (var value in scopeFacets.EnumerateArray())
+                {
+                    var item = value.GetString()?.Trim();
+                    var parts = item?.Split(':', 2, StringSplitOptions.TrimEntries);
+                    if (parts is not { Length: 2 } || parts.Any(part => part.Length == 0))
+                        return (new McpScope([], [], []),
+                            "Parameter 'scope.facets' values must use category:value format");
+                    if (!facets.TryGetValue(parts[0], out var values)) facets[parts[0]] = values = [];
+                    values.Add(parts[1]);
                 }
             }
         }
@@ -774,13 +799,18 @@ public class McpToolExecutor
 
         return (new McpScope(
             tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-            contentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList()), null);
+            contentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            facets.ToDictionary(entry => entry.Key,
+                entry => entry.Value.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                StringComparer.OrdinalIgnoreCase)), null);
     }
 
     private static JsonObject ScopeNode(McpScope scope) => new()
     {
         ["tags"] = new JsonArray(scope.Tags.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray()),
-        ["contentTypes"] = new JsonArray(scope.ContentTypes.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray())
+        ["contentTypes"] = new JsonArray(scope.ContentTypes.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray()),
+        ["facets"] = new JsonArray(scope.Facets.SelectMany(entry => entry.Value
+            .Select(value => (JsonNode?)JsonValue.Create($"{entry.Key}:{value}"))).ToArray())
     };
 
     private static JsonObject ScopeMetadata(McpScope scope) => new()
@@ -790,7 +820,9 @@ public class McpToolExecutor
 
     private static string ScopeQuery(McpScope scope) => string.Join(' ',
         scope.Tags.Select(tag => $"#{tag}")
-            .Concat(scope.ContentTypes.Select(contentType => $"##{contentType}")));
+            .Concat(scope.ContentTypes.Select(contentType => $"##{contentType}"))
+            .Concat(scope.Facets.SelectMany(entry => entry.Value
+                .Select(value => $"facet:{entry.Key}={value}"))));
 
     private async Task<List<ArticleSummaryDto>> BuildSearchResultsAsync(
         IReadOnlyList<Article> articles,
@@ -802,6 +834,7 @@ public class McpToolExecutor
     {
         var ids = articles.Select(a => a.Id).ToList();
         var enrichment = await _articleService.GetEnrichmentAsync(ids);
+        var classifications = await _articleService.GetClassificationsAsync(ids);
         var attachments = includeAttachments
             ? await AttachmentHelper.GetAttachmentMapAsync(_db, ids)
             : null;
@@ -818,7 +851,8 @@ public class McpToolExecutor
                 attachments?.GetValueOrDefault(article.Id),
                 scores?.GetValueOrDefault(article.Id),
                 matchTypes?.GetValueOrDefault(article.Id),
-                SearchSnippetHelper.Build(plainText, snippetTokens));
+                SearchSnippetHelper.Build(plainText, snippetTokens),
+                classifications.GetValueOrDefault(article.Id));
         }).ToList();
     }
 

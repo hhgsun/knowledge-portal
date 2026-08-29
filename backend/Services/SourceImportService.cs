@@ -134,7 +134,7 @@ public class SourceImportService(AppDbContext db, ArticleService articleService,
                 var contentMarkdown = draft.ContentMarkdown?.Trim() ?? "";
                 var create = await mutations.CreateAsync(
                     new CreateArticleCommand(title, contentMarkdown, draft.Excerpt, draft.Status,
-                        draft.ContentType, draft.Tags),
+                        draft.ContentType, draft.Tags, Classifications: draft.Classifications),
                     user, "Source import", queueReindex: false, ct: ct);
                 if (create.Error != null) throw new InvalidDataException(create.Error.Message);
                 var article = create.Article!;

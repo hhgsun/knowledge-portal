@@ -85,7 +85,7 @@ public sealed class RagQueryUnderstandingService(IConfiguration config)
         var effective = existingFilter == null && resolvedOwners == null && mergedTags == null && mergedTypes == null
             ? null
             : new ArticleFilter(resolvedOwners, mergedTypes, existingFilter?.ApiKeyId,
-                existingFilter?.ArticleIds, mergedTags);
+                existingFilter?.ArticleIds, mergedTags, existingFilter?.Facets);
 
         return new(query, rewritten, queries,
             new(tags.Distinct().ToList(), authors.Distinct().ToList(), contentTypes.Distinct().ToList()),

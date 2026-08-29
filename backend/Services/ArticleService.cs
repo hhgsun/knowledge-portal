@@ -15,7 +15,8 @@ public record ArticleFilter(
     ICollection<string>? ContentTypes = null,
     string? ApiKeyId = null,
     List<string>? ArticleIds = null,
-    IEnumerable<string>? TagSlugs = null);
+    IEnumerable<string>? TagSlugs = null,
+    IReadOnlyDictionary<string, string[]>? Facets = null);
 
 /// <summary>Presentation metadata shared by article list and search responses.</summary>
 public record ArticleEnrichment(
@@ -50,6 +51,17 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             query = query.Where(a => filter.ArticleIds.Contains(a.Id));
         if (filter.TagSlugs != null)
             query = query.WhereHasAllTags(filter.TagSlugs);
+        if (filter.Facets != null)
+        {
+            foreach (var (category, values) in filter.Facets)
+            {
+                var categoryValue = category;
+                var requestedValues = values;
+                query = query.Where(article => article.ArticleLookupValues.Any(assignment =>
+                    assignment.LookupValue.Category == categoryValue
+                    && requestedValues.Contains(assignment.LookupValue.Value)));
+            }
+        }
         return query;
     }
 
@@ -352,6 +364,27 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 a.ReadTimeMinutes));
     }
 
+    /// <summary>Returns canonical value keys grouped by dynamic classification category.</summary>
+    public async Task<Dictionary<string, Dictionary<string, string[]>>> GetClassificationsAsync(
+        IEnumerable<string> articleIds, CancellationToken ct = default)
+    {
+        var ids = articleIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+        var rows = await db.ArticleLookupValues.AsNoTracking()
+            .Where(assignment => ids.Contains(assignment.ArticleId))
+            .Select(assignment => new
+            {
+                assignment.ArticleId,
+                assignment.LookupValue.Category,
+                assignment.LookupValue.Value
+            }).ToListAsync(ct);
+        return rows.GroupBy(row => row.ArticleId).ToDictionary(group => group.Key,
+            group => group.GroupBy(row => row.Category).ToDictionary(
+                category => category.Key,
+                category => category.Select(row => row.Value).Distinct().Order().ToArray(),
+                StringComparer.OrdinalIgnoreCase));
+    }
+
     /// <summary>Loads an article by ID or slug with Owner and Tags included (tracked).</summary>
     public Task<Article?> GetByIdOrSlugAsync(string idOrSlug)
         => db.Articles
@@ -384,6 +417,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         var indexingStatus = includeIndexingStatus
             ? (await GetIndexingStatusesAsync([article.Id])).GetValueOrDefault(article.Id)
             : null;
+        var classifications = (await GetClassificationsAsync([article.Id]))
+            .GetValueOrDefault(article.Id);
 
         return new ArticleDetailDto(
             article.Id, article.Title, article.Slug, article.Excerpt,
@@ -399,7 +434,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             article.ArticleTags.Select(at => (object)new { at.Tag.Id, at.Tag.Name, at.Tag.Slug }).ToList(),
             viewCount,
             attachmentMap.GetValueOrDefault(article.Id) ?? [],
-            indexingStatus);
+            indexingStatus,
+            classifications);
     }
 
     /// <summary>Builds enriched summaries for already-loaded articles, preserving their order (e.g. search rank).</summary>
@@ -408,12 +444,14 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         var ids = articles.Select(a => a.Id).ToList();
         var enrichment = await GetEnrichmentAsync(ids);
         var attachmentMap = includeAttachments ? await AttachmentHelper.GetAttachmentMapAsync(db, ids) : null;
+        var classifications = await GetClassificationsAsync(ids);
 
         return articles.Select(a => BuildSummary(
                 a.Id, a.Title, a.Slug, a.Excerpt, a.ContentType, a.UpdatedAt.ToString("o"),
                 enrichment.GetValueOrDefault(a.Id),
                 includeContent ? a.Content : null,
-                attachmentMap?.GetValueOrDefault(a.Id)))
+                attachmentMap?.GetValueOrDefault(a.Id),
+                classifications: classifications.GetValueOrDefault(a.Id)))
             .ToList();
     }
 
@@ -473,7 +511,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
     public static ArticleSummaryDto BuildSummary(
         string id, string title, string slug, string? excerpt, string contentType, string updatedAt,
         ArticleEnrichment? enrichment, string? content = null, List<object>? attachments = null,
-        double? score = null, string? matchType = null, string? snippet = null)
+        double? score = null, string? matchType = null, string? snippet = null,
+        Dictionary<string, string[]>? classifications = null)
     {
         return new ArticleSummaryDto(
             id, title, slug, excerpt,
@@ -493,7 +532,8 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
             content,
             attachments,
             snippet,
-            null);
+            null,
+            classifications);
     }
 
     /// <summary>
@@ -530,12 +570,14 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
         var indexingStatuses = includeIndexingStatus
             ? await GetIndexingStatusesAsync(rows.Select(r => r.Id))
             : null;
+        var classifications = await GetClassificationsAsync(rows.Select(row => row.Id));
 
         var articles = rows.Select(r => BuildSummary(
                 r.Id, r.Title, r.Slug, r.Excerpt, r.ContentType, r.UpdatedAt,
                 enrichment.GetValueOrDefault(r.Id),
                 includeContent ? r.Content : null,
-                attachmentMap?.GetValueOrDefault(r.Id)) with
+                attachmentMap?.GetValueOrDefault(r.Id),
+                classifications: classifications.GetValueOrDefault(r.Id)) with
             {
                 IndexingStatus = indexingStatuses?.GetValueOrDefault(r.Id)
             })

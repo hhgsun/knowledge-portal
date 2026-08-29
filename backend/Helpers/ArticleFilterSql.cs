@@ -59,6 +59,22 @@ public static class ArticleFilterSql
                         """);
         }
 
+        // One EXISTS per category gives AND semantics between classification dimensions;
+        // values inside a category use OR semantics. The same predicate works against both
+        // articles (id) and article_embeddings (article_id) without changing the base schema.
+        foreach (var (category, values) in filter.Facets ??
+            new Dictionary<string, string[]>())
+        {
+            if (values.Length == 0) continue;
+            sb.Append($"""
+                 AND EXISTS (SELECT 1 FROM article_lookup_values alv
+                             JOIN lookup_values lv ON lv.id = alv.lookup_value_id
+                             WHERE alv.article_id = {alias}.{idColumn}
+                               AND lv.category = {Placeholder(args, category)}
+                               AND lv.value = ANY({Placeholder(args, values)}))
+                """);
+        }
+
         return sb.ToString();
     }
 

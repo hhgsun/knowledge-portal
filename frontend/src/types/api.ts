@@ -18,6 +18,18 @@ export interface LookupValue {
   isActive: boolean;
 }
 
+export interface LookupCategory {
+  id: string;
+  key: string;
+  label: string;
+  cardinality: "single" | "multiple";
+  isRequired: boolean;
+  defaultValueId: string | null;
+  ragBehavior: "none" | "filter" | "boost";
+  sortOrder: number;
+  isActive: boolean;
+}
+
 export interface FeaturedLink {
   id: string;
   label: string;
@@ -98,6 +110,7 @@ export interface ArticleListItem {
   viewCount: number;
   wilsonScore: number;
   indexingStatus?: ArticleIndexingStatus | null;
+  classifications?: Record<string, string[]>;
 }
 
 export interface ArticlesResponse {
@@ -128,6 +141,7 @@ export interface Article {
   viewCount: number;
   attachments: ArticleAttachment[];
   indexingStatus?: ArticleIndexingStatus | null;
+  classifications?: Record<string, string[]>;
 }
 
 // ─── Article Versions ────────────────────────────────────────

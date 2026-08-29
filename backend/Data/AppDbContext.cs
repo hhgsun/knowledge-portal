@@ -18,6 +18,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SearchQuery> SearchQueries => Set<SearchQuery>();
     public DbSet<ArticleAttachment> ArticleAttachments => Set<ArticleAttachment>();
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+    public DbSet<LookupCategory> LookupCategories => Set<LookupCategory>();
+    public DbSet<ArticleLookupValue> ArticleLookupValues => Set<ArticleLookupValue>();
     public DbSet<FeaturedLink> FeaturedLinks => Set<FeaturedLink>();
     public DbSet<ArticleChunkParent> ArticleChunkParents => Set<ArticleChunkParent>();
     public DbSet<ArticleEmbedding> ArticleEmbeddings => Set<ArticleEmbedding>();
@@ -126,6 +128,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(at => at.Tag).WithMany(t => t.ArticleTags).HasForeignKey(at => at.TagId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        // ─── Generic article classifications ─────────────
+        modelBuilder.Entity<ArticleLookupValue>(e =>
+        {
+            e.ToTable("article_lookup_values");
+            e.HasKey(value => new { value.ArticleId, value.LookupValueId });
+            e.HasOne(value => value.Article).WithMany(article => article.ArticleLookupValues)
+                .HasForeignKey(value => value.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(value => value.LookupValue).WithMany(lookup => lookup.ArticleLookupValues)
+                .HasForeignKey(value => value.LookupValueId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(value => value.LookupValueId);
+        });
+
         // ─── ArticleVotes ─────────────────────────────────────────
         modelBuilder.Entity<ArticleVote>(e =>
         {
@@ -191,7 +205,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(a => a.UploadedBy).WithMany().HasForeignKey(a => a.UploadedById);
         });
 
-        // ─── LookupValues ─────────────────────────────────
+        // ─── Lookup categories and values ────────────────
+        modelBuilder.Entity<LookupCategory>(e =>
+        {
+            e.ToTable("lookup_categories");
+            e.HasKey(category => category.Id);
+            e.Property(category => category.Key).IsRequired().HasMaxLength(50);
+            e.Property(category => category.Label).IsRequired().HasMaxLength(100);
+            e.Property(category => category.Cardinality).IsRequired().HasMaxLength(10).HasDefaultValue("single");
+            e.Property(category => category.RagBehavior).IsRequired().HasMaxLength(10).HasDefaultValue("filter");
+            e.Property(category => category.SortOrder).HasDefaultValue(0);
+            e.Property(category => category.IsActive).HasDefaultValue(true);
+            e.Property(category => category.CreatedAt).IsRequired();
+            e.HasIndex(category => category.Key).IsUnique();
+            e.HasOne(category => category.DefaultValue).WithMany()
+                .HasForeignKey(category => category.DefaultValueId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<LookupValue>(e =>
         {
             e.ToTable("lookup_values");
@@ -204,6 +234,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(l => l.IsActive).HasDefaultValue(true);
             e.Property(l => l.CreatedAt).IsRequired();
             e.HasIndex(l => new { l.Category, l.Value }).IsUnique();
+            e.HasOne(l => l.CategoryDefinition).WithMany(category => category.Values)
+                .HasPrincipalKey(category => category.Key).HasForeignKey(l => l.Category)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── FeaturedLinks ────────────────────────────────

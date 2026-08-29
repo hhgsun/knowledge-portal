@@ -30,7 +30,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
         [FromQuery] string? dateTo = null,
         [FromQuery] bool onlyOwnContent = false,
         [FromQuery] bool includeContent = false,
-        [FromQuery] bool includeAttachments = false)
+        [FromQuery] bool includeAttachments = false,
+        [FromQuery] string[]? facet = null)
     {
         page = Math.Max(1, page);
         limit = Math.Clamp(limit, 1, 100);
@@ -71,6 +72,15 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
                 query = query.WhereHasAllTags(tagSlugs);
         }
 
+        var facetFilters = (facet ?? []).Select(value => value.Split(':', 2, StringSplitOptions.TrimEntries))
+            .Where(parts => parts.Length == 2 && parts.All(part => part.Length > 0))
+            .GroupBy(parts => parts[0], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key,
+                group => group.Select(parts => parts[1]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        if (facetFilters.Count > 0)
+            query = ArticleService.ApplyFilter(query, new ArticleFilter(Facets: facetFilters));
+
         if (DateTime.TryParse(dateFrom, out var from))
             query = query.Where(a => a.UpdatedAt >= from.ToUniversalTime());
 
@@ -97,7 +107,8 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
     {
         var result = await mutations.CreateAsync(
             new CreateArticleCommand(req.Title, req.ContentMarkdown, req.Excerpt, req.Status,
-                req.ContentType, req.Tags, req.ReviewIntervalDays),
+                req.ContentType, req.Tags, req.ReviewIntervalDays,
+                Classifications: req.Classifications),
             User, "Initial version", ct: HttpContext.RequestAborted);
         if (result.Error != null) return result.Error.ToActionResult();
         var article = result.Article!;

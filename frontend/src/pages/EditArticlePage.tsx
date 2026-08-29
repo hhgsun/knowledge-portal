@@ -22,6 +22,7 @@ export default function EditArticlePage() {
   const [contentMarkdown, setContentMarkdown] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [contentType, setContentType] = useState("reference");
+  const [classifications, setClassifications] = useState<Record<string, string[]>>({});
   const [status, setStatus] = useState("draft");
   const [reviewIntervalDays, setReviewIntervalDays] = useState(90);
   const [changeSummary, setChangeSummary] = useState("");
@@ -73,6 +74,7 @@ export default function EditArticlePage() {
             setContentMarkdown(data.contentMarkdown || "");
             setExcerpt(data.excerpt || "");
             setContentType(data.contentType);
+            setClassifications(data.classifications || {});
             setStatus(data.status);
             setReviewIntervalDays(data.reviewIntervalDays ?? 90);
             setTags((data.tags || []).map((t: { id: string }) => t.id));
@@ -111,6 +113,7 @@ export default function EditArticlePage() {
           contentMarkdown: images.markdown,
           excerpt: excerpt.trim() || undefined,
           contentType,
+          classifications,
           status,
           reviewIntervalDays,
           changeSummary: changeSummary.trim() || undefined,
@@ -171,6 +174,8 @@ export default function EditArticlePage() {
       onExcerptChange={setExcerpt}
       contentType={contentType}
       onContentTypeChange={setContentType}
+      classifications={classifications}
+      onClassificationsChange={setClassifications}
       status={status}
       onStatusChange={setStatus}
       reviewIntervalDays={reviewIntervalDays}

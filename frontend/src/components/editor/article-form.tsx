@@ -24,6 +24,8 @@ export interface ArticleFormProps {
   onExcerptChange: (v: string) => void;
   contentType: string;
   onContentTypeChange: (v: string) => void;
+  classifications: Record<string, string[]>;
+  onClassificationsChange: (v: Record<string, string[]>) => void;
   status: string;
   onStatusChange: (v: string) => void;
   reviewIntervalDays: number;
@@ -58,6 +60,8 @@ export function ArticleForm({
   onExcerptChange,
   contentType,
   onContentTypeChange,
+  classifications,
+  onClassificationsChange,
   status,
   onStatusChange,
   reviewIntervalDays,
@@ -77,7 +81,7 @@ export function ArticleForm({
   attachmentSection,
   statusIndicator,
 }: ArticleFormProps) {
-  const { contentTypes } = useLookups();
+  const { contentTypes, categories, lookups } = useLookups();
   const titleRef = useAutoResizeTextArea(title);
   const excerptRef = useAutoResizeTextArea(excerpt);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -178,6 +182,54 @@ export function ArticleForm({
           <Tag size={14} className="mt-2 shrink-0 text-zinc-400" />
           <TagSelector selectedTags={tags} onChange={onTagsChange} />
         </div>
+
+        {categories.some((category) => category.isActive && category.key !== "content_type") && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {categories
+              .filter((category) => category.isActive && category.key !== "content_type")
+              .map((category) => {
+                const options = lookups.filter((value) =>
+                  value.category === category.key && value.isActive);
+                const selected = classifications[category.key] ?? [];
+                return (
+                  <label key={category.id} className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="mb-1 block font-medium">
+                      {category.label}{category.isRequired ? " *" : ""}
+                    </span>
+                    {category.cardinality === "single" ? (
+                      <select
+                        value={selected[0] ?? ""}
+                        onChange={(event) => onClassificationsChange({
+                          ...classifications,
+                          [category.key]: event.target.value ? [event.target.value] : [],
+                        })}
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                      >
+                        {!category.isRequired && <option value="">Seçilmedi</option>}
+                        {options.map((option) => (
+                          <option key={option.id} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        multiple
+                        value={selected}
+                        onChange={(event) => onClassificationsChange({
+                          ...classifications,
+                          [category.key]: Array.from(event.target.selectedOptions, option => option.value),
+                        })}
+                        className="min-h-20 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                      >
+                        {options.map((option) => (
+                          <option key={option.id} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    )}
+                  </label>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {error && (

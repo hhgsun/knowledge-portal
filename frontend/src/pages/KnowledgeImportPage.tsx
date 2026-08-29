@@ -25,7 +25,7 @@ type Draft = {
   parsed: boolean; keepOriginal: boolean; originalIncludeInIndex: boolean;
   processingMode: string; warning?: string;
   analysisError?: string;
-  contentType: string; status: string; tags: string[];
+  contentType: string; status: string; tags: string[]; classifications: Record<string, string[]>;
 };
 
 type ImportIssue = {
@@ -69,6 +69,7 @@ function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
     contentType: "reference",
     status: "draft",
     tags: [],
+    classifications: {},
   };
 }
 
@@ -99,7 +100,7 @@ function ImportFeedback({ message, issues }: { message: string; issues: ImportIs
 export default function KnowledgeImportPage() {
   const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
-  const { contentTypes } = useLookups();
+  const { contentTypes, categories, lookups } = useLookups();
   const [files, setFiles] = useState<File[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selected, setSelected] = useState(0);
@@ -158,7 +159,7 @@ export default function KnowledgeImportPage() {
           const draft = data.drafts?.[0];
           analyzedDrafts.push(draft
             ? { ...draft, sourceIndex, fileName: file.name, contentType: "reference",
-                status: "draft", tags: [], originalIncludeInIndex: !draft.parsed }
+                status: "draft", tags: [], classifications: {}, originalIncludeInIndex: !draft.parsed }
             : failedDraft(file, sourceIndex, "The server returned no analysis result for this file."));
         } catch (cause) {
           analyzedDrafts.push(failedDraft(file, sourceIndex, cause instanceof Error ? cause.message : "The source could not be analyzed."));
@@ -249,7 +250,7 @@ export default function KnowledgeImportPage() {
       const body = new FormData(); files.forEach(file => body.append("files", file));
       const attachmentFiles: File[] = [];
       const manifestDrafts = drafts.map(({ sourceIndex, title, contentMarkdown, excerpt, contentType,
-        status, tags, keepOriginal, originalIncludeInIndex }) => {
+        status, tags, classifications, keepOriginal, originalIncludeInIndex }) => {
         const sourceAttachments = additionalAttachments[sourceIndex] ?? [];
         const additionalAttachmentIndexes = sourceAttachments.map(pending => {
           const attachmentIndex = attachmentFiles.length;
@@ -257,7 +258,7 @@ export default function KnowledgeImportPage() {
           return attachmentIndex;
         });
         return { sourceIndex, title: title.trim(), contentMarkdown, excerpt: excerpt?.trim() || undefined,
-          contentType, status, tags, keepOriginal, originalIncludeInIndex,
+          contentType, status, tags, classifications, keepOriginal, originalIncludeInIndex,
           additionalAttachmentIndexes,
           additionalAttachmentIncludeInIndex: sourceAttachments.map(pending => pending.includeInIndex) };
       });
@@ -383,6 +384,24 @@ export default function KnowledgeImportPage() {
             <Tag size={14} className="mt-2 shrink-0 text-zinc-400"/>
             <TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/>
           </div>
+          {categories.some(category => category.isActive && category.key !== "content_type") && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {categories.filter(category => category.isActive && category.key !== "content_type").map(category => (
+                <label key={category.id} className="text-xs text-zinc-500">
+                  <span className="mb-1 block font-medium">{category.label}{category.isRequired ? " *" : ""}</span>
+                  <select multiple={category.cardinality === "multiple"} value={current.classifications[category.key] ?? []}
+                    onChange={event => update({ classifications: { ...current.classifications,
+                      [category.key]: Array.from(event.target.selectedOptions, option => option.value).filter(Boolean) } })}
+                    className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    {!category.isRequired && category.cardinality === "single" && <option value="">Seçilmedi</option>}
+                    {lookups.filter(value => value.category === category.key && value.isActive).map(value => (
+                      <option key={value.id} value={value.value}>{value.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 dark:border-zinc-800 dark:bg-zinc-900">

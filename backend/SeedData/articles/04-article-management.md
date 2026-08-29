@@ -36,6 +36,7 @@ Yeni makale oluştururken aşağıdaki alanlar kullanılabilir:
 - **contentMarkdown:** Milkdown tarafından düzenlenen CommonMark/GFM Markdown içerik.
 - **excerpt:** İsteğe bağlı kısa özet.
 - **contentType:** `content_type` kategorisindeki aktif tanım değerlerinden biri. Varsayılan seed değerleri reference, how-to, adr, runbook, faq, policy ve onboarding'dir; pasif veya bilinmeyen değerler REST, bulk ve kaynak içe aktarma akışlarının tümünde reddedilir.
+- **classifications:** Kontrollü ve dinamik sınıflandırma nesnesidir; örneğin `{ "department": ["finance"], "system": ["erp"] }`. Kategoriler yönetim ekranından tekli/çoklu, zorunlu/opsiyonel, varsayılanlı ve AI davranışlı olarak tanımlanır. Yalnız aktif ve canonical değerler kabul edilir. Aynı kategorideki değerler OR, farklı kategoriler AND mantığıyla aranır. `contentType` geriye uyumluluk için korunur ve generic `content_type` atamasıyla otomatik eşlenir.
 - **tags:** Etiket dizisi — ID, isim veya slug kabul eder.
 - **status:** Başlangıç durumu (yetkilere göre kısıtlı).
 - **reviewIntervalDays:** İçerik yönetişiminde kullanılacak gözden geçirme aralığı (1-3650 gün, varsayılan 90). Detay yanıtında okunur ve oluşturma/düzenleme formundan değiştirilebilir.
