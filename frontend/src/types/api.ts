@@ -25,7 +25,7 @@ export interface LookupCategory {
   cardinality: "single" | "multiple";
   isRequired: boolean;
   defaultValueId: string | null;
-  ragBehavior: "none" | "filter" | "boost";
+  ragBehavior: "none" | "filter";
   sortOrder: number;
   isActive: boolean;
 }

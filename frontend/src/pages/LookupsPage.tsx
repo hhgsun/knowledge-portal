@@ -25,7 +25,7 @@ export default function LookupsPage() {
   const [newCategoryKey, setNewCategoryKey] = useState("");
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
   const [newCardinality, setNewCardinality] = useState<"single" | "multiple">("single");
-  const [newRagBehavior, setNewRagBehavior] = useState<"none" | "filter" | "boost">("filter");
+  const [newRagBehavior, setNewRagBehavior] = useState<"none" | "filter">("filter");
 
   const loadLookups = useCallback(async () => {
     try {
@@ -148,8 +148,8 @@ export default function LookupsPage() {
           <select value={newCardinality} onChange={(event) => setNewCardinality(event.target.value as "single" | "multiple")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
             <option value="single">Tek değer</option><option value="multiple">Birden çok değer</option>
           </select>
-          <select value={newRagBehavior} onChange={(event) => setNewRagBehavior(event.target.value as "none" | "filter" | "boost")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-            <option value="filter">AI filtresi</option><option value="boost">AI boost/filtresi</option><option value="none">AI dışında</option>
+          <select value={newRagBehavior} onChange={(event) => setNewRagBehavior(event.target.value as "none" | "filter")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+            <option value="filter">AI filtresi</option><option value="none">AI dışında</option>
           </select>
           <button onClick={handleAddCategory} className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white sm:col-span-2">Kategori Ekle</button>
         </div>
@@ -288,8 +288,8 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
           <select value={category.cardinality} onChange={event => void updateCategory({ cardinality: event.target.value as "single" | "multiple" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
             <option value="single">Tekli</option><option value="multiple">Çoklu</option>
           </select>
-          <select value={category.ragBehavior} onChange={event => void updateCategory({ ragBehavior: event.target.value as "none" | "filter" | "boost" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
-            <option value="filter">AI filter</option><option value="boost">AI boost</option><option value="none">AI none</option>
+          <select value={category.ragBehavior} onChange={event => void updateCategory({ ragBehavior: event.target.value as "none" | "filter" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+            <option value="filter">AI filter</option><option value="none">AI none</option>
           </select>
           <select value={category.defaultValueId ?? ""} onChange={event => { if (event.target.value) void updateCategory({ defaultValueId: event.target.value }); }} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
             <option value="">Varsayılan yok</option>{items.filter(item => item.isActive).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}

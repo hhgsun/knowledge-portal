@@ -367,7 +367,7 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 
 ### LookupCategory
 
-Controlled classification dimensions are stored in `lookup_categories`: `id`, unique stable `key`, `label`, `cardinality` (`single|multiple`), `is_required`, optional `default_value_id`, `rag_behavior` (`none|filter|boost`), `sort_order`, `is_active`, and `created_at`. The protected `content_type` category is required and single-select.
+Controlled classification dimensions are stored in `lookup_categories`: `id`, unique stable `key`, `label`, `cardinality` (`single|multiple`), `is_required`, optional `default_value_id`, `rag_behavior` (`none|filter`, default `filter`), `sort_order`, `is_active`, and `created_at`. The protected `content_type` category is required and single-select.
 
 ### LookupValue
 

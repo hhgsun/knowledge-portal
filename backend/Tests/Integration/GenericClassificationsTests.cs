@@ -17,9 +17,17 @@ public sealed class GenericClassificationsTests : IClassFixture<TestWebApplicati
         await TestHelpers.AuthenticateAsAdminAsync(client);
         var categoryResponse = await client.PostAsJsonAsync("/api/lookups/categories", new
         {
-            key = "department", label = "Department", cardinality = "single", ragBehavior = "filter"
+            key = "department", label = "Department", cardinality = "single"
         });
         Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
+        var category = await categoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("filter", category.GetProperty("ragBehavior").GetString());
+
+        var rejectedBoost = await client.PutAsJsonAsync("/api/lookups/categories", new
+        {
+            id = category.GetProperty("id").GetString(), ragBehavior = "boost"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, rejectedBoost.StatusCode);
 
         var valueResponse = await client.PostAsJsonAsync("/api/lookups", new
         {

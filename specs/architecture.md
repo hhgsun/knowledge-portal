@@ -193,7 +193,7 @@ GFM features include headings, lists and task lists, blockquotes, fenced code, l
 
 `lookup_categories`, `lookup_values`, and `article_lookup_values` implement a controlled metadata taxonomy for bounded facets that users genuinely search by, such as `department`, `product`, `system`, `business_domain`, `owning_team`, `audience`, or `environment`. This improves retrieval and governance; it does not increase the corpus or the model's intrinsic knowledge. Embeddings and article content remain the primary semantic evidence.
 
-Category definitions carry label, single/multiple cardinality, required/default behavior, active state, and RAG use (`none`, `filter`, or `boost`). Values are canonical and article assignments are relational. Existing first-class fields such as status, author, approval state, and free-form tags are not duplicated as lookup facets.
+Category definitions carry label, single/multiple cardinality, required/default behavior, active state, and RAG use (`none` or `filter`, default `filter`). Values are canonical and article assignments are relational. Existing first-class fields such as status, author, approval state, and free-form tags are not duplicated as lookup facets.
 
 The end-to-end integration follows these rules:
 

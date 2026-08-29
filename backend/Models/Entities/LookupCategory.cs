@@ -12,7 +12,7 @@ public class LookupCategory
     public string Cardinality { get; set; } = "single"; // single | multiple
     public bool IsRequired { get; set; }
     public string? DefaultValueId { get; set; }
-    public string RagBehavior { get; set; } = "filter"; // none | filter | boost
+    public string RagBehavior { get; set; } = "filter"; // none | filter
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

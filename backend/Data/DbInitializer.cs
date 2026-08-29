@@ -68,6 +68,12 @@ public static class DbInitializer
             await db.SaveChangesAsync();
         }
 
+        // Normalize categories created by versions that exposed the retired boost behavior.
+        var legacyBoostCategories = await db.LookupCategories
+            .Where(category => category.RagBehavior == "boost").ToListAsync();
+        foreach (var category in legacyBoostCategories) category.RagBehavior = "filter";
+        if (legacyBoostCategories.Count > 0) await db.SaveChangesAsync();
+
         // Default lookup values
         if (!await db.LookupValues.AnyAsync())
         {

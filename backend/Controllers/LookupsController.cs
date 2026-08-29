@@ -15,7 +15,7 @@ namespace KnowledgePortal.Api.Controllers;
 public class LookupsController(AppDbContext db) : ControllerBase
 {
     private static readonly HashSet<string> Cardinalities = ["single", "multiple"];
-    private static readonly HashSet<string> RagBehaviors = ["none", "filter", "boost"];
+    private static readonly HashSet<string> RagBehaviors = ["none", "filter"];
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? category = null)
@@ -48,13 +48,15 @@ public class LookupsController(AppDbContext db) : ControllerBase
         var key = ClassificationService.NormalizeKey(request.Key);
         var label = request.Label.Trim();
         var cardinality = request.Cardinality.Trim().ToLowerInvariant();
-        var ragBehavior = request.RagBehavior.Trim().ToLowerInvariant();
+        var ragBehavior = string.IsNullOrWhiteSpace(request.RagBehavior)
+            ? "filter"
+            : request.RagBehavior.Trim().ToLowerInvariant();
         if (key.Length is < 1 or > 50 || label.Length is < 1 or > 100)
             return BadRequest(new { error = "Category key and label are required (max 50/100 chars)" });
         if (!Cardinalities.Contains(cardinality))
             return BadRequest(new { error = "cardinality must be single or multiple" });
         if (!RagBehaviors.Contains(ragBehavior))
-            return BadRequest(new { error = "ragBehavior must be none, filter, or boost" });
+            return BadRequest(new { error = "ragBehavior must be none or filter" });
         if (request.IsRequired)
             return BadRequest(new { error = "Create the category and a default value before making it required" });
         if (await db.LookupCategories.AnyAsync(category => category.Key == key))
@@ -104,7 +106,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         {
             var behavior = request.RagBehavior.Trim().ToLowerInvariant();
             if (!RagBehaviors.Contains(behavior))
-                return BadRequest(new { error = "ragBehavior must be none, filter, or boost" });
+                return BadRequest(new { error = "ragBehavior must be none or filter" });
             if (category.Key == "content_type" && behavior != "filter")
                 return BadRequest(new { error = "content_type must remain an AI filter" });
             category.RagBehavior = behavior;
