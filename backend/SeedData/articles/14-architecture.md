@@ -43,7 +43,7 @@ Desteklenen production topolojisi tek backend instance'ıdır. TLS şirket rever
 - **Arka plan işleri:** PostgreSQL-backed dayanıklı indeks kuyruğu ve RAG kalite değerlendirme worker'ı.
 - **Gözlemlenebilirlik:** Serilog, OpenTelemetry trace/metric, Prometheus `/metrics`, RAG dashboard ve alarm kuralları.
 
-Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. `ArticleMutationService` yazma kurallarını; `ContentTypeService` aktif içerik türü invariant'ını; `SearchExecutionService` yalnız REST/MCP doküman aramasını; `KnowledgeAnswerService` ise Assistant/MCP kaynaklı RAG yanıtını ortaklaştırır. `KnowledgeQueryScopeService` iki ürünün filtre semantiğini paylaşır. Veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
+Controller'lar routing, auth scope ve response shaping ile sınırlı tutulur. `ArticleMutationService` yazma kurallarını; `ClassificationService` dinamik kategori, değer ve varsayılan çözümünü; `ContentTypeService` legacy alan doğrulamasını; `SearchExecutionService` yalnız REST/MCP doküman aramasını; `KnowledgeAnswerService` ise Assistant/MCP kaynaklı RAG yanıtını ortaklaştırır. `KnowledgeQueryScopeService` iki ürünün filtre semantiğini paylaşır. Veriye EF Core `AppDbContext` üzerinden erişilir. Service hataları standart `{ "error": "..." }` biçimine çevrilir.
 
 ## Middleware Sırası
 
@@ -69,7 +69,7 @@ Tüm authenticated API çağrıları JWT ekleme ve 401'de logout davranışını
 Başlıca entity grupları:
 
 - **Kimlik ve yetki:** User, ApiKey.
-- **İçerik:** Article, ArticleVersion, Tag, ArticleTag, LookupCategory, LookupValue, ArticleLookupValue, FeaturedLink. Generic sınıflandırmalar kategori tanımı → kontrollü değer → makale ataması şeklinde saklanır; `content_type` korumalı uyumluluk kategorisidir.
+- **İçerik:** Article, ArticleVersion, Tag, ArticleTag, LookupCategory, LookupValue, ArticleLookupValue, FeaturedLink. Generic sınıflandırmalar kategori tanımı → kontrollü değer → makale ataması şeklinde saklanır; `content_type` başlangıçta seed edilir fakat diğer kategoriler gibi yönetilebilir ve legacy alanla uyumluluk eşlemesi korunur.
 - **Etkileşim ve analitik:** ArticleVote, ArticleComment, ArticleView, SearchQuery, UsageEvent.
 - **Dosya ve arama:** ArticleAttachment, ArticleEmbedding, IndexJob.
 - **RAG kalite yönetimi:** RagEvaluationDataset, RagEvaluationRun.

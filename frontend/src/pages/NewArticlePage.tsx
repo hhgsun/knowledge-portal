@@ -16,7 +16,7 @@ export default function NewArticlePage() {
   const [title, setTitle] = useState("");
   const [contentMarkdown, setContentMarkdown] = useState("");
   const [excerpt, setExcerpt] = useState("");
-  const [contentType, setContentType] = useState("reference");
+  const [contentType, setContentType] = useState("");
   const [classifications, setClassifications] = useState<Record<string, string[]>>({});
   const [status, setStatus] = useState("draft");
   const [reviewIntervalDays, setReviewIntervalDays] = useState(90);

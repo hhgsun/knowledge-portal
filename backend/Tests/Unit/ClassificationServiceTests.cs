@@ -12,7 +12,7 @@ public sealed class ClassificationServiceTests
     {
         await using var db = CreateDb();
         db.LookupCategories.AddRange(
-            new LookupCategory { Id = "content-category", Key = "content_type", Label = "Content Type", IsRequired = true },
+            new LookupCategory { Id = "content-category", Key = "content_type", Label = "Content Type", IsRequired = true, DefaultValueId = "reference-value" },
             new LookupCategory { Id = "department-category", Key = "department", Label = "Department", Cardinality = "multiple" });
         db.LookupValues.AddRange(
             new LookupValue { Id = "reference-value", Category = "content_type", Value = "reference", Label = "Reference" },

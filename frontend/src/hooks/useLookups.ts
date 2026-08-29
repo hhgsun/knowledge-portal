@@ -30,8 +30,10 @@ export function useLookups() {
 
   // Memoized so consumers can safely use contentTypes as an effect dependency
   const contentTypes = useMemo(
-    () => lookups.filter((lookup) => lookup.category === "content_type" && lookup.isActive),
-    [lookups],
+    () => categories.some((category) => category.key === "content_type" && category.isActive)
+      ? lookups.filter((lookup) => lookup.category === "content_type" && lookup.isActive)
+      : [],
+    [categories, lookups],
   );
 
   const invalidateCache = () => {

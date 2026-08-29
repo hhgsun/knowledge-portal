@@ -16,6 +16,8 @@ public sealed record ClassificationResolution(
 /// </summary>
 public sealed class ClassificationService(AppDbContext db)
 {
+    private const string LegacyContentTypeFallback = "reference";
+
     public async Task<(ClassificationResolution? Resolution, ServiceError? Error)> ResolveAsync(
         string? contentType,
         Dictionary<string, string[]>? classifications,
@@ -33,21 +35,6 @@ public sealed class ClassificationService(AppDbContext db)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
-        if (!string.IsNullOrWhiteSpace(contentType))
-        {
-            var requested = contentType.Trim();
-            if (supplied.TryGetValue("content_type", out var genericTypes)
-                && genericTypes.Count > 0
-                && !genericTypes.Contains(requested, StringComparer.OrdinalIgnoreCase))
-                return (null, new ServiceError(400,
-                    "contentType and classifications.content_type must identify the same value"));
-            supplied["content_type"] = [requested];
-        }
-        else if (isCreate && !supplied.ContainsKey("content_type"))
-        {
-            supplied["content_type"] = [ContentTypeService.DefaultValue];
-        }
-
         var categories = await db.LookupCategories.AsNoTracking()
             .Where(category => category.IsActive)
             .ToListAsync(ct);
@@ -56,16 +43,38 @@ public sealed class ClassificationService(AppDbContext db)
         var allValues = await db.LookupValues.AsNoTracking()
             .Where(value => value.IsActive).ToListAsync(ct);
 
+        // The legacy contentType field maps into the generic category only while that
+        // seeded category is active. Deactivating/removing it must not break old articles.
+        if (!string.IsNullOrWhiteSpace(contentType) && categoryByKey.ContainsKey("content_type"))
+        {
+            var requested = contentType.Trim();
+            if (supplied.TryGetValue("content_type", out var genericTypes)
+                && genericTypes.Count > 0
+                && !genericTypes.Contains(requested, StringComparer.OrdinalIgnoreCase))
+                return (null, new ServiceError(400,
+                    "contentType and classifications.content_type must identify the same value"));
+            if (genericTypes is { Count: > 0 })
+            {
+                genericTypes.RemoveAll(value => value.Equals(requested, StringComparison.OrdinalIgnoreCase));
+                genericTypes.Insert(0, requested);
+            }
+            else supplied["content_type"] = [requested];
+        }
+
         if (isCreate)
         {
-            foreach (var category in categories.Where(category => category.IsRequired))
+            foreach (var category in categories)
             {
                 if (supplied.ContainsKey(category.Key)) continue;
                 var defaultValue = allValues.FirstOrDefault(value => value.Id == category.DefaultValueId);
-                if (defaultValue == null)
+                if (defaultValue != null)
+                {
+                    supplied[category.Key] = [defaultValue.Value];
+                    continue;
+                }
+                if (category.IsRequired)
                     return (null, new ServiceError(400,
                         $"Classification '{category.Key}' is required and has no active default value"));
-                supplied[category.Key] = [defaultValue.Value];
             }
         }
 
@@ -99,7 +108,8 @@ public sealed class ClassificationService(AppDbContext db)
 
         var resolvedContentType = resolved.GetValueOrDefault("content_type")?.FirstOrDefault()?.Value
             ?? contentType?.Trim()
-            ?? ContentTypeService.DefaultValue;
+            ?? allValues.FirstOrDefault(value => value.Category == "content_type")?.Value
+            ?? LegacyContentTypeFallback;
         return (new ClassificationResolution(resolvedContentType, resolved,
             supplied.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)), null);
     }
@@ -177,5 +187,13 @@ public sealed class ClassificationService(AppDbContext db)
 
     public static string NormalizeKey(string value)
         => SlugHelper.GenerateTagSlug(value).Replace('-', '_');
+
+    public static Dictionary<string, string[]> ParseFacetPairs(IEnumerable<string>? raw)
+        => (raw ?? []).Select(value => value.Split(':', 2, StringSplitOptions.TrimEntries))
+            .Where(parts => parts.Length == 2 && parts.All(part => part.Length > 0))
+            .GroupBy(parts => parts[0], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key,
+                group => group.Select(parts => parts[1]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
 
 }

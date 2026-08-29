@@ -18,7 +18,7 @@ export function ContentTypeBadge({ contentType, size = "sm", clickable = false }
     ? (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        navigate(`/articles?contentType=${encodeURIComponent(contentType)}`);
+        navigate(`/articles?facet=${encodeURIComponent(`content_type:${contentType}`)}`);
       }
     : undefined;
   const clickClasses = handleClick ? " cursor-pointer hover:opacity-75 transition-opacity" : "";

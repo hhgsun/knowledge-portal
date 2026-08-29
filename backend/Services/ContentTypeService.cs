@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
-/// <summary>Single source for the active, DB-driven article content-type invariant.</summary>
+/// <summary>Validates the legacy contentType field while the generic classification API is adopted.</summary>
 public sealed class ContentTypeService(AppDbContext db)
 {
     public const string DefaultValue = "reference";
@@ -18,6 +18,7 @@ public sealed class ContentTypeService(AppDbContext db)
     {
         var candidate = string.IsNullOrWhiteSpace(requested) ? DefaultValue : requested.Trim();
         var active = await LoadAsync(ct);
+        if (active.Count == 0) return (candidate, null);
         return active.TryGetValue(candidate, out var canonical)
             ? (canonical, null)
             : (null, new ServiceError(400,

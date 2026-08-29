@@ -28,7 +28,8 @@ public class SearchController(AppDbContext db, IConfiguration config,
     {
         var execution = await searchExecution.ExecuteAsync(
             new PortalSearchRequest(q ?? "", type, limit, page, onlyOwnContent,
-                includeContent, includeAttachments, tag, author, contentType, ParseFacets(facet)),
+                includeContent, includeAttachments, tag, author, contentType,
+                ClassificationService.ParseFacetPairs(facet)),
             User, HttpContext.RequestAborted);
         if (execution.Error != null) return execution.Error.ToActionResult();
 
@@ -43,14 +44,6 @@ public class SearchController(AppDbContext db, IConfiguration config,
             result.IndexCoverage, result.SearchQueryId, result.Warning
         });
     }
-
-    private static Dictionary<string, string[]> ParseFacets(IEnumerable<string>? raw)
-        => (raw ?? []).Select(value => value.Split(':', 2, StringSplitOptions.TrimEntries))
-            .Where(parts => parts.Length == 2 && parts.All(part => part.Length > 0))
-            .GroupBy(parts => parts[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key,
-                group => group.Select(parts => parts[1]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
 
     private IActionResult FailureResult(PortalSearchResult result)
     {

@@ -198,7 +198,7 @@ Category definitions carry label, single/multiple cardinality, required/default 
 The end-to-end integration follows these rules:
 
 - Persist and validate article assignments, including safe deactivation and in-use protections.
-- Expose relevant facets consistently through REST, MCP, imports, exports, article forms, and search UI.
+- Expose relevant facets consistently through REST, MCP, imports, exports, article forms, Articles/Search filters, and bulk-export UI; category/value display follows DB-driven `sort_order`.
 - Query understanding validates canonical category/value pairs for explicit `facet:category=value`, REST `facet=category:value`, JSON `facets`, and MCP `scope.facets[]` inputs. Explicit facets are hard filters. General natural-language inference is not performed, preventing low-confidence classification from reducing recall.
 - Filterable metadata is applied inside PostgreSQL lexical/vector candidate queries through indexed relational assignments. Metadata-only edits do not change embedding text and therefore do not require content re-embedding.
 - Include selected metadata in RAG evidence/context only when it improves disambiguation or governance; metadata must never be treated as a substitute for cited article evidence.

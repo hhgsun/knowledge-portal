@@ -361,9 +361,9 @@ export default function SearchPage() {
             </div>
           )}
         </form>
-        {categories.some(category => category.isActive && category.key !== "content_type") && (
+        {categories.some(category => category.isActive && category.ragBehavior !== "none") && (
           <div className="mt-3 flex flex-wrap gap-3">
-            {categories.filter(category => category.isActive && category.key !== "content_type" && category.ragBehavior !== "none")
+            {categories.filter(category => category.isActive && category.ragBehavior !== "none")
               .map(category => (
                 <label key={category.id} className="text-xs text-zinc-500">
                   <span className="mb-1 block font-medium">{category.label}</span>

@@ -52,9 +52,11 @@ public static class DbInitializer
         }
         await db.SaveChangesAsync();
 
-        // Controlled classification definitions. content_type remains the backwards-compatible
-        // first-class article column while also participating in the generic assignment model.
-        if (!await db.LookupCategories.AnyAsync(category => category.Key == "content_type"))
+        // Initial classification seed. After articles exist, administrators may manage or remove
+        // content_type like any other category without startup recreating it.
+        var isInitialKnowledgeSeed = !await db.Articles.AnyAsync();
+        if (isInitialKnowledgeSeed
+            && !await db.LookupCategories.AnyAsync(category => category.Key == "content_type"))
         {
             db.LookupCategories.Add(new LookupCategory
             {
@@ -75,7 +77,7 @@ public static class DbInitializer
         if (legacyBoostCategories.Count > 0) await db.SaveChangesAsync();
 
         // Default lookup values
-        if (!await db.LookupValues.AnyAsync())
+        if (isInitialKnowledgeSeed && !await db.LookupValues.AnyAsync(value => value.Category == "content_type"))
         {
             var contentTypes = new (string value, string label, int order, string color, string icon)[]
             {
@@ -105,8 +107,8 @@ public static class DbInitializer
         }
 
         var contentTypeCategory = await db.LookupCategories
-            .FirstAsync(category => category.Key == "content_type");
-        if (contentTypeCategory.DefaultValueId == null)
+            .FirstOrDefaultAsync(category => category.Key == "content_type");
+        if (isInitialKnowledgeSeed && contentTypeCategory != null && contentTypeCategory.DefaultValueId == null)
         {
             contentTypeCategory.DefaultValueId = await db.LookupValues
                 .Where(value => value.Category == "content_type" && value.Value == "reference")

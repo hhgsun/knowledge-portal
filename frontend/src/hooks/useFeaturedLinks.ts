@@ -52,7 +52,7 @@ export function useFeaturedLinks() {
 export function resolveFeaturedLinkHref(link: FeaturedLink): { href: string; external: boolean } {
   switch (link.linkType) {
     case "content_type":
-      return { href: `/articles?contentType=${encodeURIComponent(link.target)}`, external: false };
+      return { href: `/articles?facet=${encodeURIComponent(`content_type:${link.target}`)}`, external: false };
     case "tag":
       return { href: `/articles?tag=${encodeURIComponent(link.target)}`, external: false };
     default:

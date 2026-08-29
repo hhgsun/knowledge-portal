@@ -72,12 +72,7 @@ public class ArticlesController(AppDbContext db, IConfiguration config, ArticleS
                 query = query.WhereHasAllTags(tagSlugs);
         }
 
-        var facetFilters = (facet ?? []).Select(value => value.Split(':', 2, StringSplitOptions.TrimEntries))
-            .Where(parts => parts.Length == 2 && parts.All(part => part.Length > 0))
-            .GroupBy(parts => parts[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key,
-                group => group.Select(parts => parts[1]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+        var facetFilters = ClassificationService.ParseFacetPairs(facet);
         if (facetFilters.Count > 0)
             query = ArticleService.ApplyFilter(query, new ArticleFilter(Facets: facetFilters));
 

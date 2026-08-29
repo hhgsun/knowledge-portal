@@ -57,9 +57,9 @@ Birden fazla kaynak seçildiğinde her dosya bağımsız analiz edilir; bir iste
 
 ## İçerik Türü ve Yetki Kuralları
 
-İçerik türü verilmezse aktif `reference` değeri kullanılır. `reference` pasif veya eksikse istek varsayılanı sessizce yazmaz; doğrulama hatası verir. Açıkça gönderilen tüm değerler de yalnızca aktif `lookup_values(category = "content_type")` kayıtlarından seçilebilir.
+İçerik türü verilmezse aktif `content_type` kategorisinin yönetici tarafından belirlenen varsayılanı kullanılır; `reference` yalnız başlangıç seed varsayılanıdır. Açıkça gönderilen değerler kategori aktifken yalnızca aktif `lookup_values(category = "content_type")` kayıtlarından seçilebilir. Kategori devre dışı bırakılır veya kaldırılırsa legacy alan geriye uyumluluk için korunur ve başlangıçta yeniden seed edilmez.
 
-Generic sınıflandırmalar JSONL ve Markdown front matter içinde `classifications` nesnesiyle taşınır. CSV'de aynı nesne JSON metni olarak `classifications` sütununda bulunur. Export kategori/değer atamalarını korur; import canonical değer, aktiflik, tekli/çoklu ve zorunlu/varsayılan kurallarını normal makale yazma akışıyla aynı biçimde doğrular.
+Generic sınıflandırmalar JSONL ve Markdown front matter içinde `classifications` nesnesiyle taşınır. CSV'de aynı nesne JSON metni olarak `classifications` sütununda bulunur. Export kategori/değer atamalarını korur; export ekranı aktif kategorileri `sortOrder` sırasıyla dinamik filtre olarak gösterir ve repeatable `facet=category:value` kullanır. Import canonical değer, aktiflik, tekli/çoklu ve zorunlu/varsayılan kurallarını normal makale yazma akışıyla aynı biçimde doğrular.
 
 Tüm roller makale oluşturabilir ve yayınlayabilir. `archived` durumu yalnızca admin/editor için geçerlidir. Makale silme aktarım akışının parçası değildir ve yalnızca admin JWT oturumuna açıktır.
 

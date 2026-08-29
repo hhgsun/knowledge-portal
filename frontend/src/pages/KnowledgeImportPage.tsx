@@ -2,7 +2,6 @@ import { lazy, Suspense, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Paperclip, Tag, Upload, WandSparkles, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ContentTypeSelect } from "../components/editor/content-type-select";
 import { TagSelector } from "../components/editor/tag-selector";
 import { useApi } from "../hooks/useApi";
 import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
@@ -66,7 +65,7 @@ function failedDraft(file: File, sourceIndex: number, reason: string): Draft {
     originalIncludeInIndex: true,
     processingMode: "failed",
     analysisError: reason,
-    contentType: "reference",
+    contentType: "",
     status: "draft",
     tags: [],
     classifications: {},
@@ -100,7 +99,7 @@ function ImportFeedback({ message, issues }: { message: string; issues: ImportIs
 export default function KnowledgeImportPage() {
   const navigate = useNavigate();
   const { fetchWithAuth } = useApi();
-  const { contentTypes, categories, lookups } = useLookups();
+  const { categories, lookups } = useLookups();
   const [files, setFiles] = useState<File[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selected, setSelected] = useState(0);
@@ -158,7 +157,7 @@ export default function KnowledgeImportPage() {
           }
           const draft = data.drafts?.[0];
           analyzedDrafts.push(draft
-            ? { ...draft, sourceIndex, fileName: file.name, contentType: "reference",
+            ? { ...draft, sourceIndex, fileName: file.name, contentType: "",
                 status: "draft", tags: [], classifications: {}, originalIncludeInIndex: !draft.parsed }
             : failedDraft(file, sourceIndex, "The server returned no analysis result for this file."));
         } catch (cause) {
@@ -370,7 +369,6 @@ export default function KnowledgeImportPage() {
           <textarea ref={excerptRef} rows={1} value={current.excerpt ?? ""} onChange={event => update({ excerpt: event.target.value.replace(/\r?\n/g, " ") })} placeholder="Kısa açıklama (isteğe bağlı)..." aria-label="Kısa açıklama" className="mt-2 block w-full resize-none overflow-hidden bg-transparent text-base leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400 dark:text-zinc-400"/>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
-            <ContentTypeSelect options={contentTypes} value={current.contentType} onChange={contentType => update({ contentType })}/>
             <div className="inline-flex min-w-0 items-center gap-2">
               <label>
                 <span className="sr-only">Yayın durumu</span>
@@ -384,22 +382,28 @@ export default function KnowledgeImportPage() {
             <Tag size={14} className="mt-2 shrink-0 text-zinc-400"/>
             <TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/>
           </div>
-          {categories.some(category => category.isActive && category.key !== "content_type") && (
+          {categories.some(category => category.isActive) && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {categories.filter(category => category.isActive && category.key !== "content_type").map(category => (
-                <label key={category.id} className="text-xs text-zinc-500">
+              {categories.filter(category => category.isActive).map(category => {
+                const options = lookups.filter(value => value.category === category.key && value.isActive);
+                const configuredDefault = options.find(option => option.id === category.defaultValueId)?.value;
+                const selected = current.classifications[category.key]
+                  ?? (category.key === "content_type" && current.contentType ? [current.contentType] : configuredDefault ? [configuredDefault] : []);
+                return <label key={category.id} className="text-xs text-zinc-500">
                   <span className="mb-1 block font-medium">{category.label}{category.isRequired ? " *" : ""}</span>
-                  <select multiple={category.cardinality === "multiple"} value={current.classifications[category.key] ?? []}
-                    onChange={event => update({ classifications: { ...current.classifications,
-                      [category.key]: Array.from(event.target.selectedOptions, option => option.value).filter(Boolean) } })}
+                  <select multiple={category.cardinality === "multiple"}
+                    value={category.cardinality === "multiple" ? selected : (selected[0] ?? "")}
+                    onChange={event => {
+                      const values = Array.from(event.target.selectedOptions, option => option.value).filter(Boolean);
+                      update({ classifications: { ...current.classifications, [category.key]: values },
+                        ...(category.key === "content_type" ? { contentType: values[0] ?? "" } : {}) });
+                    }}
                     className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
                     {!category.isRequired && category.cardinality === "single" && <option value="">Seçilmedi</option>}
-                    {lookups.filter(value => value.category === category.key && value.isActive).map(value => (
-                      <option key={value.id} value={value.value}>{value.label}</option>
-                    ))}
+                    {options.map(value => <option key={value.id} value={value.value}>{value.label}</option>)}
                   </select>
-                </label>
-              ))}
+                </label>;
+              })}
             </div>
           )}
         </div>

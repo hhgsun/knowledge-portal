@@ -8,7 +8,7 @@ public class LookupValue
     public string Label { get; set; } = null!;    // Display label e.g. "How-To Guide"
     public string? Color { get; set; }            // Tailwind color key e.g. "blue", "green", "red"
     public string? Icon { get; set; }             // Lucide icon name e.g. "book-open", "code", "lightbulb"
-    /// <summary>JSON string array of alternate query/import spellings.</summary>
+    /// <summary>Display order within the category.</summary>
     public int SortOrder { get; set; }
     /// <summary>0-100 governance authority configured independently for each dynamic content type.</summary>
     public int AuthorityWeight { get; set; } = 50;

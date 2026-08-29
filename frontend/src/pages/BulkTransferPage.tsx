@@ -7,6 +7,8 @@ interface ImportResult { dryRun: boolean; total: number; created: number; update
 interface ImportSchema {
   maxRecords: number; maxFileSizeMb: number; statuses: string[];
   contentTypes: { value: string; label: string }[]; attachmentsIncluded: boolean;
+  classifications: { key: string; label: string; cardinality: "single" | "multiple";
+    isRequired: boolean; ragBehavior: "none" | "filter"; values: { value: string; label: string }[] }[];
   fields: { name: string; required: boolean; description: string }[];
 }
 interface Author { id: string; name: string }
@@ -22,7 +24,7 @@ export default function BulkTransferPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [contentType, setContentType] = useState("");
+  const [facetFilters, setFacetFilters] = useState<Record<string, string[]>>({});
   const [authorId, setAuthorId] = useState("");
   const [tag, setTag] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -67,7 +69,9 @@ export default function BulkTransferPage() {
 
   const runExport = async () => {
     const params = new URLSearchParams({ format: "markdown" });
-    if (status) params.set("status", status); if (contentType) params.set("contentType", contentType);
+    if (status) params.set("status", status);
+    Object.entries(facetFilters).forEach(([category, values]) =>
+      values.forEach(value => params.append("facet", `${category}:${value}`)));
     if (authorId) params.set("authorId", authorId); if (tag) params.set("tag", tag);
     if (dateFrom) params.set("dateFrom", dateFrom); if (dateTo) params.set("dateTo", dateTo); if (mine) params.set("mine", "true");
     setBusy(true);
@@ -107,7 +111,22 @@ export default function BulkTransferPage() {
       <p className="text-sm text-zinc-500">Create a filtered transfer file that can be validated and imported by another Knowledge Portal.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Select label="Status" value={status} onChange={setStatus}><option value="">All statuses</option>{(schema?.statuses ?? []).map((value) => <option key={value}>{value}</option>)}</Select>
-        <Select label="Content type" value={contentType} onChange={setContentType}><option value="">All content types</option>{(schema?.contentTypes ?? []).map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</Select>
+        {(schema?.classifications ?? []).map(category => (
+          <label key={category.key} className="text-sm">
+            <span className="block text-xs font-medium text-zinc-500 mb-1">{category.label}</span>
+            <select
+              multiple={category.cardinality === "multiple"}
+              value={category.cardinality === "multiple" ? (facetFilters[category.key] ?? []) : (facetFilters[category.key]?.[0] ?? "")}
+              onChange={event => setFacetFilters(previous => ({ ...previous,
+                [category.key]: Array.from(event.target.selectedOptions, option => option.value).filter(Boolean),
+              }))}
+              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700"
+            >
+              {category.cardinality === "single" && <option value="">Tüm {category.label.toLocaleLowerCase("tr-TR")} değerleri</option>}
+              {category.values.map(value => <option key={value.value} value={value.value}>{value.label}</option>)}
+            </select>
+          </label>
+        ))}
         <Select label="Author" value={authorId} onChange={setAuthorId} disabled={mine}><option value="">All authors</option>{authors.map((author) => <option key={author.id} value={author.id}>{author.name}</option>)}</Select>
         <Select label="Tag" value={tag} onChange={setTag}><option value="">All tags</option>{tags.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}</Select>
         <DateInput label="Updated from" value={dateFrom} onChange={setDateFrom} max={dateTo || undefined} />

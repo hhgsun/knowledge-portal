@@ -84,7 +84,7 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
     [HttpGet("export")]
     public async Task<IActionResult> Export([FromQuery] string format = "jsonl", [FromQuery] string? status = null,
         [FromQuery] string? contentType = null, [FromQuery] string? authorId = null,
-        [FromQuery] string? tag = null, [FromQuery] string? dateFrom = null,
+        [FromQuery] string? tag = null, [FromQuery] string[]? facet = null, [FromQuery] string? dateFrom = null,
         [FromQuery] string? dateTo = null, [FromQuery] bool mine = false, CancellationToken ct = default)
     {
         var query = db.Articles.AsQueryable();
@@ -95,6 +95,9 @@ public class BulkTransferController(AppDbContext db, BulkTransferService service
         if (!string.IsNullOrWhiteSpace(contentType)) query = query.Where(a => a.ContentType == contentType);
         if (!string.IsNullOrWhiteSpace(authorId)) query = query.Where(a => a.OwnerId == authorId);
         if (!string.IsNullOrWhiteSpace(tag)) query = query.Where(a => a.ArticleTags.Any(at => at.Tag.Slug == tag));
+        var facetFilters = ClassificationService.ParseFacetPairs(facet);
+        if (facetFilters.Count > 0)
+            query = ArticleService.ApplyFilter(query, new ArticleFilter(Facets: facetFilters));
         if (!string.IsNullOrWhiteSpace(dateFrom))
         {
             if (!DateOnly.TryParse(dateFrom, out var from)) return BadRequest(new { error = "dateFrom must be a valid date" });

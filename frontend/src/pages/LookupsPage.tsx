@@ -22,10 +22,12 @@ export default function LookupsPage() {
   const [newColor, setNewColor] = useState("blue");
   const [newIcon, setNewIcon] = useState("file-text");
   const [newAuthorityWeight, setNewAuthorityWeight] = useState(50);
+  const [newValueSortOrder, setNewValueSortOrder] = useState("");
   const [newCategoryKey, setNewCategoryKey] = useState("");
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
   const [newCardinality, setNewCardinality] = useState<"single" | "multiple">("single");
   const [newRagBehavior, setNewRagBehavior] = useState<"none" | "filter">("filter");
+  const [newCategorySortOrder, setNewCategorySortOrder] = useState("");
 
   const loadLookups = useCallback(async () => {
     try {
@@ -51,6 +53,7 @@ export default function LookupsPage() {
     const res = await fetchWithAuth("/api/lookups", {
       method: "POST",
       body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon,
+        sortOrder: newValueSortOrder === "" ? undefined : Number(newValueSortOrder),
         authorityWeight: newCategory === "content_type" ? newAuthorityWeight : undefined }),
     });
     if (res.ok) {
@@ -60,6 +63,7 @@ export default function LookupsPage() {
       setNewColor("blue");
       setNewIcon("file-text");
       setNewAuthorityWeight(50);
+      setNewValueSortOrder("");
       setShowAdd(false);
       invalidateCache();
       loadLookups();
@@ -77,7 +81,8 @@ export default function LookupsPage() {
     const res = await fetchWithAuth("/api/lookups/categories", {
       method: "POST",
       body: JSON.stringify({ key: newCategoryKey, label: newCategoryLabel,
-        cardinality: newCardinality, ragBehavior: newRagBehavior }),
+        cardinality: newCardinality, ragBehavior: newRagBehavior,
+        sortOrder: newCategorySortOrder === "" ? undefined : Number(newCategorySortOrder) }),
     });
     if (!res.ok) {
       const error = await res.json();
@@ -88,6 +93,7 @@ export default function LookupsPage() {
     setNewCategory(created.key);
     setNewCategoryKey("");
     setNewCategoryLabel("");
+    setNewCategorySortOrder("");
     setShowAddCategory(false);
     invalidateCache();
     await loadLookups();
@@ -151,6 +157,7 @@ export default function LookupsPage() {
           <select value={newRagBehavior} onChange={(event) => setNewRagBehavior(event.target.value as "none" | "filter")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
             <option value="filter">AI filtresi</option><option value="none">AI dışında</option>
           </select>
+          <input type="number" value={newCategorySortOrder} onChange={(event) => setNewCategorySortOrder(event.target.value)} placeholder="Görünüm sırası (otomatik)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700 dark:bg-zinc-800" />
           <button onClick={handleAddCategory} className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white sm:col-span-2">Kategori Ekle</button>
         </div>
       )}
@@ -198,6 +205,10 @@ export default function LookupsPage() {
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
               <IconPicker value={newIcon} onChange={setNewIcon} />
             </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>
+              <input type="number" value={newValueSortOrder} onChange={(event) => setNewValueSortOrder(event.target.value)} placeholder="Otomatik" className="w-28 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
+            </div>
             {newCategory === "content_type" && <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
               <input type="number" min={0} max={100} value={newAuthorityWeight} onChange={(e) => setNewAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
@@ -236,6 +247,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
   const [editColor, setEditColor] = useState("");
   const [editIcon, setEditIcon] = useState("");
   const [editAuthorityWeight, setEditAuthorityWeight] = useState(50);
+  const [editSortOrder, setEditSortOrder] = useState(0);
 
   const updateCategory = async (patch: Partial<LookupCategory>) => {
     const response = await fetchWithAuth("/api/lookups/categories", {
@@ -261,12 +273,14 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
     setEditColor(item.color || "blue");
     setEditIcon(item.icon || "file-text");
     setEditAuthorityWeight(item.authorityWeight);
+    setEditSortOrder(item.sortOrder);
   };
 
   const handleSaveEdit = async (item: LookupValue) => {
     const res = await fetchWithAuth("/api/lookups", {
       method: "PUT",
       body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon,
+        sortOrder: editSortOrder,
         authorityWeight: item.category === "content_type" ? editAuthorityWeight : undefined }),
     });
     if (res.ok) {
@@ -284,7 +298,13 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
     <div>
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <h2 className="mr-auto text-sm font-medium text-zinc-700 dark:text-zinc-300">{category.label} <span className="text-zinc-400">({category.key})</span></h2>
-        {category.key !== "content_type" && <>
+        <>
+          <label className="flex items-center gap-1 text-xs text-zinc-500">Sıra
+            <input type="number" defaultValue={category.sortOrder} onBlur={event => {
+              const sortOrder = Number(event.target.value);
+              if (sortOrder !== category.sortOrder) void updateCategory({ sortOrder });
+            }} className="w-16 rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900" />
+          </label>
           <select value={category.cardinality} onChange={event => void updateCategory({ cardinality: event.target.value as "single" | "multiple" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
             <option value="single">Tekli</option><option value="multiple">Çoklu</option>
           </select>
@@ -297,7 +317,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
           <label className="flex items-center gap-1 text-xs text-zinc-500"><input type="checkbox" checked={category.isRequired} onChange={event => void updateCategory({ isRequired: event.target.checked })}/> Zorunlu</label>
           <button onClick={() => void updateCategory({ isActive: !category.isActive })} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{category.isActive ? "Pasifleştir" : "Aktifleştir"}</button>
           <button onClick={() => void deleteCategory()} className="rounded px-2 py-1 text-xs text-red-600">Kategoriyi sil</button>
-        </>}
+        </>
       </div>
       <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl">
         {items.length === 0 ? (
@@ -359,6 +379,10 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
                         <IconPicker value={editIcon} onChange={setEditIcon} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>
+                        <input type="number" value={editSortOrder} onChange={(event) => setEditSortOrder(Number(event.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
                       </div>
                       {item.category === "content_type" && <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>

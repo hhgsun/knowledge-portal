@@ -90,8 +90,6 @@ public class LookupsController(AppDbContext db) : ControllerBase
             var cardinality = request.Cardinality.Trim().ToLowerInvariant();
             if (!Cardinalities.Contains(cardinality))
                 return BadRequest(new { error = "cardinality must be single or multiple" });
-            if (category.Key == "content_type" && cardinality != "single")
-                return BadRequest(new { error = "content_type must remain single-select" });
             if (cardinality == "single")
             {
                 var hasMultiple = await db.ArticleLookupValues
@@ -107,8 +105,6 @@ public class LookupsController(AppDbContext db) : ControllerBase
             var behavior = request.RagBehavior.Trim().ToLowerInvariant();
             if (!RagBehaviors.Contains(behavior))
                 return BadRequest(new { error = "ragBehavior must be none or filter" });
-            if (category.Key == "content_type" && behavior != "filter")
-                return BadRequest(new { error = "content_type must remain an AI filter" });
             category.RagBehavior = behavior;
         }
         if (request.DefaultValueId != null)
@@ -117,20 +113,14 @@ public class LookupsController(AppDbContext db) : ControllerBase
                 value.Id == request.DefaultValueId && value.Category == category.Key && value.IsActive);
             if (defaultValue == null)
                 return BadRequest(new { error = "Default value must be active and belong to the category" });
-            if (category.Key == "content_type" && defaultValue.Value != ContentTypeService.DefaultValue)
-                return BadRequest(new { error = "content_type default must remain reference" });
             category.DefaultValueId = defaultValue.Id;
         }
         if (request.IsRequired == true && category.DefaultValueId == null)
             return BadRequest(new { error = "A required category must have a default value" });
-        if (category.Key == "content_type" && request.IsRequired == false)
-            return BadRequest(new { error = "content_type must remain required" });
         if (request.IsRequired.HasValue) category.IsRequired = request.IsRequired.Value;
         if (request.SortOrder.HasValue) category.SortOrder = request.SortOrder.Value;
         if (request.IsActive.HasValue)
         {
-            if (category.Key == "content_type" && !request.IsActive.Value)
-                return BadRequest(new { error = "content_type cannot be deactivated" });
             category.IsActive = request.IsActive.Value;
         }
 
@@ -154,8 +144,6 @@ public class LookupsController(AppDbContext db) : ControllerBase
     {
         var category = await db.LookupCategories.FindAsync(id);
         if (category == null) return NotFound(new { error = "Lookup category not found" });
-        if (category.Key == "content_type")
-            return BadRequest(new { error = "content_type is required for backwards compatibility" });
         if (await db.LookupValues.AnyAsync(value => value.Category == category.Key))
             return Conflict(new { error = "Delete all category values first" });
         db.LookupCategories.Remove(category);
@@ -225,8 +213,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
     {
         var lookup = await db.LookupValues.FindAsync(id);
         if (lookup == null) return NotFound(new { error = "Lookup not found" });
-        if (await db.ArticleLookupValues.AnyAsync(value => value.LookupValueId == id)
-            || (lookup.Category == "content_type" && await db.Articles.AnyAsync(article => article.ContentType == lookup.Value)))
+        if (await db.ArticleLookupValues.AnyAsync(value => value.LookupValueId == id))
             return Conflict(new { error = "Cannot delete: this value is in use. Deactivate it instead." });
         if (await db.LookupCategories.AnyAsync(category => category.DefaultValueId == id))
             return Conflict(new { error = "Cannot delete a category default value" });

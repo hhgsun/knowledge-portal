@@ -87,7 +87,7 @@ namespace KnowledgePortal.Api.Migrations
                 unique: true);
 
             // Existing lookup_values rows must have a category principal before the FK is added.
-            // Keep the stable compatibility category and mirror every existing article's
+            // Seed the initial compatibility category and mirror every existing article's
             // content_type into the generic assignment table in the same migration.
             migrationBuilder.Sql(
                 """

@@ -58,7 +58,9 @@ public class ArticleService(AppDbContext db, FullTextSearchService ftsService, T
                 var categoryValue = category;
                 var requestedValues = values;
                 query = query.Where(article => article.ArticleLookupValues.Any(assignment =>
-                    assignment.LookupValue.Category == categoryValue
+                    assignment.LookupValue.IsActive
+                    && assignment.LookupValue.CategoryDefinition.IsActive
+                    && assignment.LookupValue.Category == categoryValue
                     && requestedValues.Contains(assignment.LookupValue.Value)));
             }
         }

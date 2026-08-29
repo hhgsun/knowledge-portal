@@ -12,6 +12,27 @@ import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
 
+function readFacetFilters(params: URLSearchParams): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const raw of params.getAll("facet")) {
+    const separator = raw.indexOf(":");
+    if (separator <= 0 || separator === raw.length - 1) continue;
+    const category = raw.slice(0, separator);
+    const value = raw.slice(separator + 1);
+    result[category] = Array.from(new Set([...(result[category] ?? []), value]));
+  }
+  // Preserve old links while emitting only the generic facet contract going forward.
+  const legacyContentTypes = params.get("contentType")?.split(",").filter(Boolean) ?? [];
+  if (legacyContentTypes.length)
+    result.content_type = Array.from(new Set([...(result.content_type ?? []), ...legacyContentTypes]));
+  return result;
+}
+
+function facetFiltersEqual(left: Record<string, string[]>, right: Record<string, string[]>) {
+  const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]));
+  return keys.every(key => (left[key] ?? []).join("\u0000") === (right[key] ?? []).join("\u0000"));
+}
+
 function MultiSelectDropdown({ label, options, selected, onChange, renderOption }: {
   label: string;
   options: { value: string; label: string }[];
@@ -77,7 +98,7 @@ function MultiSelectDropdown({ label, options, selected, onChange, renderOption 
 export default function ArticlesPage() {
   const { fetchWithAuth } = useApi();
   const { user } = useAuth();
-  const { contentTypes } = useLookups();
+  const { categories, lookups } = useLookups();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
@@ -85,7 +106,7 @@ export default function ArticlesPage() {
   const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string[]>(() => searchParams.get("status")?.split(",").filter(Boolean) || []);
-  const [contentTypeFilter, setContentTypeFilter] = useState<string[]>(() => searchParams.get("contentType")?.split(",").filter(Boolean) || []);
+  const [facetFilters, setFacetFilters] = useState<Record<string, string[]>>(() => readFacetFilters(searchParams));
   const [tagFilter, setTagFilter] = useState<string[]>(() => searchParams.get("tag")?.split(",").filter(Boolean) || []);
   const [mineFilter, setMineFilter] = useState(() => searchParams.get("mine") === "true");
   const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sort") || "updatedAt");
@@ -101,11 +122,12 @@ export default function ArticlesPage() {
       .catch(() => { });
   }, [fetchWithAuth]);
 
-  const syncSearchParams = useCallback((p: number, status: string[], ct: string[], tags: string[], mine: boolean, sort: string, df: string, dt: string) => {
+  const syncSearchParams = useCallback((p: number, status: string[], facets: Record<string, string[]>, tags: string[], mine: boolean, sort: string, df: string, dt: string) => {
     const params = new URLSearchParams();
     if (p > 1) params.set("page", String(p));
     if (status.length) params.set("status", status.join(","));
-    if (ct.length) params.set("contentType", ct.join(","));
+    Object.entries(facets).forEach(([category, values]) =>
+      values.forEach(value => params.append("facet", `${category}:${value}`)));
     if (tags.length) params.set("tag", tags.join(","));
     if (mine) params.set("mine", "true");
     if (sort && sort !== "updatedAt") params.set("sort", sort);
@@ -118,19 +140,19 @@ export default function ArticlesPage() {
   const totalPages = Math.ceil(total / LIMIT);
 
   useEffect(() => {
-    syncSearchParams(page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo);
-  }, [page, statusFilter, contentTypeFilter, tagFilter, mineFilter, sortBy, dateFrom, dateTo, syncSearchParams]);
+    syncSearchParams(page, statusFilter, facetFilters, tagFilter, mineFilter, sortBy, dateFrom, dateTo);
+  }, [page, statusFilter, facetFilters, tagFilter, mineFilter, sortBy, dateFrom, dateTo, syncSearchParams]);
 
   // Re-sync filter state when the URL changes while already on this page
   // (e.g. clicking a tag/content-type badge on a card, or browser back/forward)
   useEffect(() => {
     const eq = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
     const urlStatus = searchParams.get("status")?.split(",").filter(Boolean) || [];
-    const urlContentType = searchParams.get("contentType")?.split(",").filter(Boolean) || [];
+    const urlFacets = readFacetFilters(searchParams);
     const urlTags = searchParams.getAll("tag").flatMap(v => v.split(",")).filter(Boolean);
     setPage(Number(searchParams.get("page")) || 1);
     setStatusFilter(prev => (eq(prev, urlStatus) ? prev : urlStatus));
-    setContentTypeFilter(prev => (eq(prev, urlContentType) ? prev : urlContentType));
+    setFacetFilters(prev => (facetFiltersEqual(prev, urlFacets) ? prev : urlFacets));
     setTagFilter(prev => (eq(prev, urlTags) ? prev : urlTags));
     setMineFilter(searchParams.get("mine") === "true");
     setSortBy(searchParams.get("sort") || "updatedAt");
@@ -144,7 +166,8 @@ export default function ArticlesPage() {
     params.set("page", String(page));
     params.set("limit", String(LIMIT));
     if (statusFilter.length) params.set("status", statusFilter.join(","));
-    if (contentTypeFilter.length) params.set("contentType", contentTypeFilter.join(","));
+    Object.entries(facetFilters).forEach(([category, values]) =>
+      values.forEach(value => params.append("facet", `${category}:${value}`)));
     tagFilter.forEach(t => params.append("tag", t));
     if (mineFilter) params.set("mine", "true");
     if (dateFrom) params.set("dateFrom", dateFrom);
@@ -164,7 +187,7 @@ export default function ArticlesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [fetchWithAuth, statusFilter, contentTypeFilter, tagFilter, mineFilter, page, sortBy, dateFrom, dateTo]);
+  }, [fetchWithAuth, statusFilter, facetFilters, tagFilter, mineFilter, page, sortBy, dateFrom, dateTo]);
 
   const statusColors: Record<string, string> = {
     draft: "bg-zinc-100 text-zinc-600",
@@ -172,12 +195,12 @@ export default function ArticlesPage() {
     archived: "bg-red-100 text-red-700",
   };
 
-  const hasActiveFilters = statusFilter.length > 0 || contentTypeFilter.length > 0 || tagFilter.length > 0 || dateFrom || dateTo || mineFilter;
+  const hasActiveFilters = statusFilter.length > 0 || Object.values(facetFilters).some(values => values.length > 0) || tagFilter.length > 0 || dateFrom || dateTo || mineFilter;
 
   const clearAllFilters = () => {
     setPage(1);
     setStatusFilter([]);
-    setContentTypeFilter([]);
+    setFacetFilters({});
     setTagFilter([]);
     setMineFilter(false);
     setDateFrom("");
@@ -216,12 +239,19 @@ export default function ArticlesPage() {
           />
         )}
 
-        <MultiSelectDropdown
-          label="Content Type"
-          options={contentTypes.map(ct => ({ value: ct.value, label: ct.label }))}
-          selected={contentTypeFilter}
-          onChange={(v) => { setPage(1); setContentTypeFilter(v); }}
-        />
+        {categories.filter(category => category.isActive).map(category => (
+          <MultiSelectDropdown
+            key={category.id}
+            label={category.label}
+            options={lookups.filter(value => value.category === category.key && value.isActive)
+              .map(value => ({ value: value.value, label: value.label }))}
+            selected={facetFilters[category.key] ?? []}
+            onChange={(values) => {
+              setPage(1);
+              setFacetFilters(previous => ({ ...previous, [category.key]: values }));
+            }}
+          />
+        ))}
 
         <div className="flex items-center gap-1">
           <Calendar size={14} className="text-zinc-400" />
@@ -291,12 +321,14 @@ export default function ArticlesPage() {
               <button onClick={() => { setPage(1); setStatusFilter(statusFilter.filter(v => v !== s)); }}><X size={10} /></button>
             </span>
           ))}
-          {contentTypeFilter.map(ct => (
-            <span key={ct} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-              {contentTypes.find(c => c.value === ct)?.label || ct}
-              <button onClick={() => { setPage(1); setContentTypeFilter(contentTypeFilter.filter(v => v !== ct)); }}><X size={10} /></button>
+          {Object.entries(facetFilters).flatMap(([categoryKey, values]) => values.map(value => (
+            <span key={`${categoryKey}:${value}`} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+              {categories.find(category => category.key === categoryKey)?.label ?? categoryKey}: {lookups.find(lookup => lookup.category === categoryKey && lookup.value === value)?.label ?? value}
+              <button onClick={() => { setPage(1); setFacetFilters(previous => ({ ...previous,
+                [categoryKey]: (previous[categoryKey] ?? []).filter(item => item !== value),
+              })); }}><X size={10} /></button>
             </span>
-          ))}
+          )))}
           {tagFilter.map(t => (
             <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
               {allTags.find(tag => tag.slug === t)?.name || t}
@@ -344,6 +376,13 @@ export default function ArticlesPage() {
                   )}
                   <div className="flex items-center gap-2 mt-2">
                     <ContentTypeBadge contentType={article.contentType} clickable />
+                    {Object.entries(article.classifications ?? {})
+                      .filter(([category]) => category !== "content_type")
+                      .flatMap(([categoryKey, values]) => values.map(value => (
+                        <span key={`${categoryKey}:${value}`} className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                          {categories.find(category => category.key === categoryKey)?.label ?? categoryKey}: {lookups.find(lookup => lookup.category === categoryKey && lookup.value === value)?.label ?? value}
+                        </span>
+                      )))}
                     {article.status !== "published" && (
                       <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[article.status] || ""}`}>
                         {article.status}
