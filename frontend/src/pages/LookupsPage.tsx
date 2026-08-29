@@ -54,7 +54,7 @@ export default function LookupsPage() {
       method: "POST",
       body: JSON.stringify({ category: newCategory, value: newValue.trim().toLowerCase(), label: newLabel.trim(), color: newColor, icon: newIcon,
         sortOrder: newValueSortOrder === "" ? undefined : Number(newValueSortOrder),
-        authorityWeight: newCategory === "content_type" ? newAuthorityWeight : undefined }),
+        authorityWeight: newAuthorityWeight }),
     });
     if (res.ok) {
       toast.success("Tanım değeri eklendi");
@@ -209,10 +209,10 @@ export default function LookupsPage() {
               <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>
               <input type="number" value={newValueSortOrder} onChange={(event) => setNewValueSortOrder(event.target.value)} placeholder="Otomatik" className="w-28 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
             </div>
-            {newCategory === "content_type" && <div>
-              <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
+            <div>
+              <label className="text-xs font-medium text-zinc-500 block mb-1">Otorite (0-100)</label>
               <input type="number" min={0} max={100} value={newAuthorityWeight} onChange={(e) => setNewAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
-            </div>}
+            </div>
             <button
               onClick={handleAdd}
               className="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg"
@@ -281,7 +281,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
       method: "PUT",
       body: JSON.stringify({ id: item.id, color: editColor, icon: editIcon,
         sortOrder: editSortOrder,
-        authorityWeight: item.category === "content_type" ? editAuthorityWeight : undefined }),
+        authorityWeight: editAuthorityWeight }),
     });
     if (res.ok) {
       toast.success("Updated");
@@ -341,7 +341,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
                     <div>
                       <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.label}</span>
                       <span className="text-xs text-zinc-400 ml-2">({item.value})</span>
-                      {item.category === "content_type" && <span className="text-xs text-zinc-400 ml-2">Authority: {item.authorityWeight}</span>}
+                      <span className="text-xs text-zinc-400 ml-2">Otorite: {item.authorityWeight}</span>
                       {!item.isActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">Etkin değil</span>}
                     </div>
                   </div>
@@ -384,10 +384,10 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>
                         <input type="number" value={editSortOrder} onChange={(event) => setEditSortOrder(Number(event.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
                       </div>
-                      {item.category === "content_type" && <div>
-                        <label className="text-xs font-medium text-zinc-500 block mb-1">Authority (0-100)</label>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 block mb-1">Otorite (0-100)</label>
                         <input type="number" min={0} max={100} value={editAuthorityWeight} onChange={(e) => setEditAuthorityWeight(Number(e.target.value))} className="w-24 px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800" />
-                      </div>}
+                      </div>
                       <div className="flex gap-2 ml-auto">
                         <button
                           onClick={() => handleSaveEdit(item)}

@@ -386,7 +386,7 @@ Controlled classification dimensions are stored in `lookup_categories`: `id`, un
 
 ### ArticleLookupValue
 
-`article_lookup_values` stores the many-to-many controlled-classification assignments with composite key `(article_id, lookup_value_id)`. Article deletion cascades assignments. A used value cannot be deleted through the application; it is deactivated to preserve historical classification. Values within one category use OR in retrieval, while categories combine with AND. `content_type` assignments mirror the legacy `articles.content_type` column during the compatibility period.
+`article_lookup_values` stores the many-to-many controlled-classification assignments with composite key `(article_id, lookup_value_id)`. Article deletion cascades assignments. A used value cannot be deleted through the application; it is deactivated to preserve historical classification. Values within one category use OR in retrieval, while categories combine with AND. For search/RAG governance, an article uses the highest `authority_weight` among active assignments in active categories. `content_type` assignments mirror the legacy `articles.content_type` column during the compatibility period; rows without generic assignments fall back to that legacy lookup's authority weight.
 
 ## Indexes
 

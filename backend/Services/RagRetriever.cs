@@ -1,5 +1,6 @@
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Helpers;
+using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
@@ -134,10 +135,8 @@ public sealed class HybridRagRetriever(
         var allowed = await ArticleService.ApplyFilter(db.Articles.WherePublished().Where(x => candidateIds.Contains(x.Id)), filter)
             .Select(x => new { x.Id, x.Title, x.Excerpt, x.Content, x.ContentType, x.UpdatedAt, x.ApprovedAt }).ToListAsync(ct);
         var metadata = allowed.ToDictionary(x => x.Id);
-        var contentTypes = allowed.Select(x => x.ContentType).Distinct().ToList();
-        var authorityByType = await db.LookupValues
-            .Where(value => value.Category == "content_type" && contentTypes.Contains(value.Value))
-            .ToDictionaryAsync(value => value.Value, value => value.AuthorityWeight, ct);
+        var authorityByArticle = await ContentGovernanceService.ResolveAuthorityWeightsAsync(db,
+            allowed.Select(item => new Article { Id = item.Id, ContentType = item.ContentType }).ToList(), ct);
 
         var chunks = semantic.Where(x => metadata.ContainsKey(x.ArticleId)).ToList();
         var semanticKeys = chunks.Select(Key).ToHashSet();
@@ -183,7 +182,7 @@ public sealed class HybridRagRetriever(
             var ageDays = Math.Max(0, (DateTime.UtcNow - a.UpdatedAt).TotalDays);
             var halfLife = Math.Max(1, config.GetValue("Ollama:Ranking:FreshnessHalfLifeDays", 365));
             var freshness = Math.Pow(.5, ageDays / halfLife);
-            var authority = authorityByType.GetValueOrDefault(a.ContentType, 50) / 100d
+            var authority = authorityByArticle.GetValueOrDefault(a.Id, 50) / 100d
                 + (a.ApprovedAt == null ? 0 : config.GetValue("Ollama:Ranking:ApprovedBoost", .2));
             var freshnessWeight = config.GetValue("Ollama:Ranking:FreshnessWeight", .05)
                 * (prefersFreshSources ? config.GetValue("Ollama:Ranking:FreshnessIntentMultiplier", 3d) : 1d);

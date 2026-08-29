@@ -174,7 +174,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
             Category = categoryKey, Value = valueKey, Label = label,
             Color = request.Color?.Trim(), Icon = request.Icon?.Trim(),
             SortOrder = request.SortOrder ?? maxOrder + 1,
-            AuthorityWeight = categoryKey == "content_type" ? request.AuthorityWeight ?? 50 : 50
+            AuthorityWeight = request.AuthorityWeight ?? 50
         };
         db.LookupValues.Add(lookup);
         await db.SaveChangesAsync();
@@ -193,7 +193,7 @@ public class LookupsController(AppDbContext db) : ControllerBase
         if (request.SortOrder.HasValue) lookup.SortOrder = request.SortOrder.Value;
         if (request.AuthorityWeight is < 0 or > 100)
             return BadRequest(new { error = "authorityWeight must be between 0 and 100" });
-        if (request.AuthorityWeight.HasValue && lookup.Category == "content_type")
+        if (request.AuthorityWeight.HasValue)
             lookup.AuthorityWeight = request.AuthorityWeight.Value;
         if (request.IsActive.HasValue)
         {

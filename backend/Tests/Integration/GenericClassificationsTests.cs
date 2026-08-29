@@ -32,11 +32,13 @@ public sealed class GenericClassificationsTests : IClassFixture<TestWebApplicati
 
         var valueResponse = await client.PostAsJsonAsync("/api/lookups", new
         {
-            category = "department", value = "human-resources", label = "Human Resources", sortOrder = 20
+            category = "department", value = "human-resources", label = "Human Resources",
+            sortOrder = 20, authorityWeight = 75
         });
         Assert.Equal(HttpStatusCode.Created, valueResponse.StatusCode);
         var lookup = await valueResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(20, lookup.GetProperty("sortOrder").GetInt32());
+        Assert.Equal(75, lookup.GetProperty("authorityWeight").GetInt32());
 
         var createResponse = await client.PostAsJsonAsync("/api/articles", new
         {

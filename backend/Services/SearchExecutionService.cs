@@ -160,14 +160,11 @@ public sealed class SearchExecutionService(
             var found = await ArticleService.ApplyFilter(
                     db.Articles.WherePublished().Where(article => ids.Contains(article.Id)), filter)
                 .ToListAsync(ct);
-            var contentTypes = found.Select(article => article.ContentType).Distinct().ToList();
-            var authorityByType = await db.LookupValues
-                .Where(value => value.Category == "content_type" && contentTypes.Contains(value.Value))
-                .ToDictionaryAsync(value => value.Value, value => value.AuthorityWeight, ct);
+            var authorityByArticle = await ContentGovernanceService.ResolveAuthorityWeightsAsync(db, found, ct);
             var reranked = reranker.Rerank(scope.QueryText, found.Select(article => new RerankCandidate(
                 article.Id, article.Title, article.Excerpt, article.Content, scores[article.Id].Score,
                 article.UpdatedAt, article.ApprovedAt, article.ContentType,
-                authorityByType.GetValueOrDefault(article.ContentType, 50))).ToList()).Take(limit).ToList();
+                authorityByArticle.GetValueOrDefault(article.Id, 50))).ToList()).Take(limit).ToList();
             var byId = found.ToDictionary(article => article.Id);
             var ordered = reranked.Where(hit => byId.ContainsKey(hit.ArticleId))
                 .Select(hit => byId[hit.ArticleId]).ToList();
