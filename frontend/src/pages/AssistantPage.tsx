@@ -147,7 +147,7 @@ export default function AssistantPage() {
   const hasContent = visibleHistory.length > 0 || loading || !!response;
   const historyEnabled = capabilities?.conversationHistoryEnabled ?? false;
 
-  return <div className="mx-auto flex h-[calc(100dvh-7rem)] min-h-[38rem] max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+  return <div className="mx-auto flex h-[calc(100dvh-3rem)] min-h-[38rem] max-w-[1600px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
     <AssistantHeader historyEnabled={historyEnabled} onOpen={() => setMobileHistory(true)} onNew={() => void createConversation()} />
     <div className="grid min-h-0 flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] 2xl:grid-cols-[17rem_minmax(0,1fr)_22rem]">
       {historyEnabled && <ConversationSidebar className="hidden lg:flex" conversations={filtered} activeId={conversationId} query={conversationQuery} onQuery={setConversationQuery} onSelect={selectConversation} onDelete={deleteConversation} onClear={clearConversations} onNew={() => void createConversation()} />}
@@ -179,8 +179,12 @@ function AssistantHeader({ historyEnabled, onOpen, onNew }: { historyEnabled: bo
   return <header className="flex min-h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900 sm:px-5">
     <div className="flex min-w-0 items-center gap-3">
       {historyEnabled && <button type="button" onClick={onOpen} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden dark:hover:bg-zinc-800" aria-label="Konuşmaları aç"><Menu size={19} /></button>}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/20"><Sparkles size={18} /></div>
-      <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50 sm:text-base">Bilgi Asistanı</h1><span className="hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 sm:inline-flex dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Kurumsal bilgiye bağlı</span></div><p className="truncate text-xs text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/20"><Bot size={24} /></div>
+      <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50 sm:text-base">Bilgi Asistanı</h1>
+        {/* <span className="hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 sm:inline-flex dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Kurumsal bilgiye bağlı
+        </span> */}
+      </div><p className="truncate text-xs text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
     </div>
     {historyEnabled && <button type="button" onClick={onNew} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"><Plus size={15} /><span className="hidden sm:inline">Yeni konuşma</span></button>}
   </header>;
@@ -191,7 +195,7 @@ function ConversationSidebar({ className, conversations, activeId, query, onQuer
   return <aside className={cn("min-h-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950", className)}>
     <div className="border-b border-zinc-200 p-3 dark:border-zinc-800">
       <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"><History size={14} />Konuşmalar</h2>{onClose && <button type="button" onClick={onClose} className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800" aria-label="Kapat"><X size={16} /></button>}</div>
-      <button type="button" onClick={onNew} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"><Plus size={16} />Yeni konuşma</button>
+      <button type="button" onClick={onNew} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"><Plus size={16} />Yeni konuşma</button>
       <label className="relative block"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" /><input value={query} onChange={event => onQuery(event.target.value)} placeholder="Konuşmalarda ara" className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-900" /></label>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto p-2">{conversations.length ? <div className="space-y-1">{conversations.map(item => <div key={item.id} className={cn("group relative rounded-lg", activeId === item.id && "bg-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700")}>
