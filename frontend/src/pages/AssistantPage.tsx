@@ -107,8 +107,10 @@ export default function AssistantPage() {
       const streaming = capabilities?.streamingEnabled ?? true;
       const result = await fetchWithAuth(streaming ? "/api/assistant/stream" : "/api/assistant", {
         method: "POST", noRetry: true, signal: controller.signal,
-        body: JSON.stringify({ message: text, conversationId: activeConversation,
-          model: selectedModel || undefined }),
+        body: JSON.stringify({
+          message: text, conversationId: activeConversation,
+          model: selectedModel || undefined
+        }),
       });
       if (!result.ok) throw new Error(await readApiError(result, "Asistan isteği tamamlanamadı."));
       let completedResponse: AssistantResponse | null = null;
@@ -185,21 +187,29 @@ function AssistantHeader({ settings, selectedModel, loading, onChange }: {
       <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Bilgi Asistanı</h1><p className="mt-1 text-sm text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
     </div>
     <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
       <label htmlFor="assistant-model" className="sr-only">Asistan modeli</label>
       <select id="assistant-model" value={selectedModel} disabled={!settings || loading}
         onChange={event => onChange(event.target.value)}
         title={settings?.catalogWarning ?? "Bu seçim yalnızca bu tarayıcıda saklanır."}
         className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 sm:max-w-56">
-        <option value="">Yönetici varsayılanı{settings ? ` — ${settings.defaultModel}` : ""}</option>
+        <option value="">Varsayılan Model{settings ? ` — ${settings.defaultModel}` : ""}</option>
         {settings?.models.map(model => <option key={model.id} value={model.id}>{model.label} ({model.id})</option>)}
       </select>
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
     </div>
   </header>;
 }
 
 function WelcomeState({ onQuestion }: { onQuestion: (question: string) => void }) {
-  return <section className="my-auto py-8 sm:py-14"><div className="mx-auto max-w-2xl text-center"><div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300"><Bot size={26} /></div><p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Kurumsal bilgi, tek bir yerde</p><h2 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-3xl">Nasıl yardımcı olabilirim?</h2><p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-500">Politikaları özetleyin, süreçleri karşılaştırın veya bir kararın dayanağını sorun. Her yanıt erişebildiğiniz portal kaynaklarına bağlanır.</p></div>
+  return <section className="my-auto py-8 sm:py-14">
+    <div className="mx-auto max-w-2xl text-center">
+      {/* <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+        <Bot size={26} />
+      </div> */}
+      {/* <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Kurumsal bilgi, tek bir yerde</p> */}
+      <h2 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-3xl">Nasıl yardımcı olabilirim?</h2>
+      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-500">Politikaları özetleyin, süreçleri karşılaştırın veya bir kararın dayanağını sorun. Her yanıt erişebildiğiniz portal kaynaklarına bağlanır.</p>
+    </div>
     <div className="mx-auto mt-8 grid max-w-3xl gap-3 md:grid-cols-3">{starterQuestions.map(item => <button key={item.label} type="button" onClick={() => onQuestion(item.question)} className="group rounded-xl border border-zinc-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-blue-800"><span className="mb-6 flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 group-hover:bg-blue-50 group-hover:text-blue-600 dark:bg-zinc-800 dark:text-zinc-300"><item.icon size={16} /></span><span className="block text-xs font-semibold text-zinc-900 dark:text-zinc-100">{item.label}</span><span className="mt-1.5 block text-xs leading-5 text-zinc-500">{item.question}</span><span className="mt-3 flex items-center gap-1 text-[11px] font-medium text-blue-600 opacity-0 group-hover:opacity-100">Soruyu kullan <ChevronRight size={12} /></span></button>)}</div>
     <div className="mx-auto mt-7 flex max-w-xl items-start gap-2 rounded-lg bg-zinc-100/70 px-3 py-2 text-[11px] leading-4 text-zinc-500 dark:bg-zinc-800/50"><ShieldCheck size={14} className="mt-0.5 shrink-0 text-emerald-600" />Asistan yalnızca görme yetkiniz olan içerikleri kullanır. Kritik kararları kaynak bağlantılarından doğrulayın.</div>
   </section>;
