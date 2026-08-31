@@ -53,8 +53,17 @@ public sealed class AssistantConversationService(
 
     public async Task<AssistantConversation> CreateAsync(ClaimsPrincipal principal, CancellationToken ct)
     {
-        await PruneExpiredAsync(principal.GetUserId(), ct);
-        var conversation = new AssistantConversation { UserId = principal.GetUserId() };
+        var userId = principal.GetUserId();
+        var existing = db.AssistantConversations.Where(x => x.UserId == userId);
+        if (db.Database.IsRelational())
+            await existing.ExecuteDeleteAsync(ct);
+        else
+        {
+            db.AssistantConversations.RemoveRange(await existing.ToListAsync(ct));
+            await db.SaveChangesAsync(ct);
+        }
+
+        var conversation = new AssistantConversation { UserId = userId };
         db.AssistantConversations.Add(conversation); await db.SaveChangesAsync(ct);
         return conversation;
     }

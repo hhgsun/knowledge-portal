@@ -358,7 +358,7 @@ Privacy-safe grounded-answer audit and feedback stored in `assistant_interaction
 
 ### Assistant conversation and answer-cache entities
 
-- `assistant_conversations` and cascade-owned `assistant_messages` persist session-only multi-turn history. User deletion cascades conversations; conversation deletion sets interaction correlation null.
+- `assistant_conversations` enforces one active row per user; starting a new Assistant page session deletes the previous row and its cascade-owned `assistant_messages`. User deletion cascades the active conversation; conversation deletion sets interaction correlation null.
 - `assistant_answer_cache` stores fully grounded response JSON and query embedding per required user FK plus user/role/auth/API-key scope, corpus/governance fingerprint, runtime fingerprint and TTL/hit metadata. User deletion cascades cache rows.
 
 ### RagEvaluationDataset and RagEvaluationRun

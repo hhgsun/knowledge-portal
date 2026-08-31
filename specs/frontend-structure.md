@@ -51,7 +51,7 @@ frontend/
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
     ├── SearchPage.tsx         # Document discovery via fulltext/semantic/hybrid modes, metadata autocomplete and query handoff to Assistant
-    ├── AssistantPage.tsx      # Canonical grounded-answer UI with bounded auto/manual routing, owned conversations, search and authorized analytics
+    ├── AssistantPage.tsx      # Canonical grounded-answer UI with one page-session conversation and per-answer source links
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
@@ -132,7 +132,7 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | Document-result modes; a populated query can be handed to `/assistant?q=...&mode=answer` |
-| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface; query/mode prefill, runtime capabilities, verified SSE, owned history/new/delete/clear, route retry, citations, feedback and cache/calibration indicators |
+| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface; one conversation for the open page session, no previous-conversation browser, verified SSE, source links directly below every answer, citations, feedback and cache/calibration indicators |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |

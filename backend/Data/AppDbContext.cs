@@ -377,7 +377,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.ToTable("assistant_conversations"); e.HasKey(x => x.Id);
             e.Property(x => x.Title).IsRequired().HasMaxLength(160);
-            e.HasIndex(x => new { x.UserId, x.UpdatedAt });
+            e.HasIndex(x => x.UserId).IsUnique();
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<AssistantMessage>(e =>

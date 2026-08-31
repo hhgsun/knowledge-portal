@@ -837,7 +837,7 @@ Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, 
 
 ### Assistant conversations
 
-`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. Create returns a new conversation; list returns at most 100 recent items; delete-one and clear-all are recoverable only from database backup. Retention is configured by `Assistant:ConversationRetentionDays`.
+`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. A user can have only one conversation. Create permanently deletes that user's previous conversation and messages before returning the new session conversation; list therefore returns zero or one item. The frontend creates this conversation when `/assistant` opens and never exposes a previous-conversation browser.
 
 ---
 

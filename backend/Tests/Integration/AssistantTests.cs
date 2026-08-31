@@ -147,6 +147,27 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task StartingSessionConversationPermanentlyReplacesPreviousConversation()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var first = await client.PostAsync("/api/assistant/conversations", null);
+        first.EnsureSuccessStatusCode();
+        var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        var second = await client.PostAsync("/api/assistant/conversations", null);
+        second.EnsureSuccessStatusCode();
+        var secondId = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        Assert.NotEqual(firstId, secondId);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync($"/api/assistant/conversations/{firstId}/messages")).StatusCode);
+        var listed = await client.GetFromJsonAsync<JsonElement>("/api/assistant/conversations");
+        var conversations = listed.GetProperty("conversations");
+        Assert.Single(conversations.EnumerateArray());
+        Assert.Equal(secondId, conversations[0].GetProperty("id").GetString());
+    }
+
+    [Fact]
     public async Task StreamCompletesWithGroundedKnowledgeAnswer()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
