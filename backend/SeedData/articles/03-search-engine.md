@@ -66,7 +66,7 @@ Inline sözdizimi ve eşdeğer query parametreleri birlikte kullanılabilir:
 - `includeContent=true` — kanonik Markdown string'ini `contentMarkdown` alanında ekler. Türetilmiş düz metin yalnızca detay yanıtındaki `contentText` alanında sunulur.
 - `includeAttachments=true` — ek dosya metadatasını ekler.
 
-Örnek: `@admin #tutorial +content_type:how-to +department:finance react hooks`. Arama kutusunda `+` yazıldığında kategoriler, `+kategori:` yazıldığında o kategorinin aktif değerleri dinamik önerilir.
+Örnek: `@admin #tutorial +content_type:how-to +department:finance react hooks`. Arama kutusunda `+` yazıldığında kategoriler, `+kategori:` yazıldığında o kategorinin aktif değerleri dinamik önerilir. Arama ekranı lookup filtreleri için ayrıca sürekli görünen seçim kutuları göstermez; kullanıcı tarafından seçilen kapsam doğrudan sorguda görünür. Eski veya dış bağlantılardaki repeatable `facet=kategori:değer` parametreleri sayfa açılırken eşdeğer inline ifadelere taşınır. REST API'deki açık `facet` parametresi entegrasyonlar için desteklenmeye devam eder.
 
 ## İndeksleme
 
