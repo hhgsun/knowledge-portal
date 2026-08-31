@@ -16,7 +16,7 @@
 
 MCP (Model Context Protocol), yapay zekâ istemcilerinin harici bilgi kaynaklarını ve araçları standart bir protokol üzerinden keşfedip çağırmasını sağlayan bir entegrasyon protokolüdür. Knowledge Portal, MCP desteği sunar. Cursor, VS Code Copilot ve özel header gönderebilen diğer MCP istemcileri Knowledge Portal'daki makaleleri ve bilgileri doğrudan sorgulayabilir. Claude remote connector için aşağıdaki kimlik doğrulama sınırlamasına bakın.
 
-MCP araçlarına resmî `ModelContextProtocol.AspNetCore` v2 Streamable HTTP sunucusu üzerinden erişim sağlanır. Endpoint: `POST /mcp`. JSON-RPC ayrıştırma, protokol müzakeresi, discovery ve JSON/SSE yanıt çerçevelemesi SDK tarafından yapılır; portal yalnızca araç kataloğunu ve iş mantığını sağlar.
+MCP araçlarına resmî `ModelContextProtocol.AspNetCore` 2.2 Streamable HTTP sunucusu üzerinden erişim sağlanır. Endpoint: `POST /mcp`. JSON-RPC ayrıştırma, protokol müzakeresi, discovery ve JSON/SSE yanıt çerçevelemesi SDK tarafından yapılır; portal yalnızca araç kataloğunu ve iş mantığını sağlar.
 
 Bu makaledeki `{site-url}`, tarayıcıda açtığınız mevcut Knowledge Portal adresini ifade eder (ör. `https://knowledge.example.com`). Değeri protokol (`https://`) dahil ve sonunda `/` olmadan kullanın.
 
@@ -211,7 +211,7 @@ MCP içeriği güvenilmeyen kaynak verisi olarak işler. Sonuçlardaki `security
 
 Her araç çağrısı `X-Trace-Id` döndürür ve yapılandırılmış audit kaydı oluşturur. Audit kaydı araç, sonuç, kimlik kaynağı, süre ve çıktı boyutunu içerir; sorgu, içerik veya credential değerlerini kaydetmez. Argümanlar yalnızca alan adı, tür ve uzunluk/adet olarak özetlenir. Operasyon metrikleri `/metrics` üzerinden tool, outcome ve auth source boyutlarıyla yayınlanır.
 
-Dayanıklılık katmanı araç türüne göre timeout, AI işlemleri için eşzamanlılık sınırı ve Ollama circuit breaker uygular. Büyük istekler 413 ile, büyük tool sonuçları `output_too_large` ile reddedilir. Geçici hatalar `retryable` ve `retryAfterSeconds` alanlarını içerir; istemci yalnızca bu alanlara göre kontrollü retry yapmalıdır. İstemci bağlantıyı kapatırsa çalışma iptal edilir ve audit sonucu `cancelled` olur.
+Dayanıklılık katmanı araç türüne göre timeout, AI işlemleri için eşzamanlılık sınırı ve Ollama circuit breaker uygular. Yalnız sınıflandırılmış geçici model/provider arızaları circuit durumunu etkiler; doğrulama, bulunamadı ve kapasite hataları diğer kullanıcıların AI lane'ini açamaz. `ask_knowledge.question`, REST Assistant ile aynı varsayılan 4.000 karakter sınırını; scope koleksiyonları ve değerleri ortak `KnowledgeInput` sınırlarını kullanır. Büyük istekler 413 ile, büyük tool sonuçları `output_too_large` ile reddedilir. Geçici hatalar `retryable` ve `retryAfterSeconds` alanlarını içerir; istemci yalnızca bu alanlara göre kontrollü retry yapmalıdır. İstemci bağlantıyı kapatırsa çalışma model çağrısına kadar iptal edilir ve audit sonucu `cancelled` olur.
 
 Hata durumunda:
 
@@ -223,9 +223,18 @@ Hata durumunda:
     "content": [
       {
         "type": "text",
-        "text": "Article not found or not published"
+        "text": "{\"error\":{\"code\":\"not_found\",\"message\":\"Article not found or not published\",\"retryable\":false,\"retryAfterSeconds\":null,\"details\":null}}"
       }
     ],
+    "structuredContent": {
+      "error": {
+        "code": "not_found",
+        "message": "Article not found or not published",
+        "retryable": false,
+        "retryAfterSeconds": null,
+        "details": null
+      }
+    },
     "isError": true
   }
 }
@@ -517,4 +526,4 @@ Invoke-McpTool -ToolName 'list_tags'
 - Her istek bağımsızdır — stateless çalışır, session tutulmaz.
 - Araç yanıtları MCP spec'e uygun `content[]` dizisi formatında döner.
 - RBAC uygulanmaz — kimlik doğrulaması yeterlidir, ek izin kontrolü yapılmaz.
-- Transport: Resmî `ModelContextProtocol.AspNetCore` v2 ile stateless Streamable HTTP. Modern ve initialize tabanlı çağrılar aynı `POST /mcp` endpoint'ini kullanır; SDK yanıtı sürüme göre JSON veya SSE olarak çerçeveleyebilir, bağımsız server-initiated GET stream yoktur.
+- Transport: Resmî `ModelContextProtocol.AspNetCore` 2.2 ile stateless Streamable HTTP. Modern ve initialize tabanlı çağrılar aynı `POST /mcp` endpoint'ini kullanır; SDK yanıtı sürüme göre JSON veya SSE olarak çerçeveleyebilir, bağımsız server-initiated GET stream yoktur.

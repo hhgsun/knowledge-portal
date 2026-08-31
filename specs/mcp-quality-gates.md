@@ -6,7 +6,7 @@ The CI test stage runs the complete Docker-free backend suite and then publishes
 | Gate | Purpose |
 |---|---|
 | `McpConformance` | JSON-RPC behavior, modern/legacy negotiation, routing-header validation, invalid parameters, and a real MCP 2.0 C# SDK connect/list/call flow |
-| `McpSchema` | Tool discovery, input schema and output schema structural contract |
+| `McpSchema` | Tool discovery, bounded input schema, output schema and uniform structured error/result contract |
 | `GoldenRetrieval` | Deterministic technical queries: expected source recall@5, forbidden-source exclusion, evidence/governance/security metadata |
 | `DataIsolation` | API-key `only_own_content` isolation across independent keys |
 | `McpSecurity` | Injection/secret corpus detection plus benign-text false-positive checks |
@@ -27,6 +27,12 @@ Turkish snowball stemming, GIN ranking, pgvector HNSW recall, query plans, or pr
 latency. Those require a deployed PostgreSQL/Ollama smoke environment and the existing search
 diagnostics/benchmark tooling. A release must not interpret passing deterministic retrieval tests
 as proof of production vector-ranking quality.
+
+After deployment, `backend/scripts/run-mcp-live-quality-gate.ps1` sends a modern
+`2026-07-28` `ask_knowledge` request through `/mcp` and requires a non-error grounded answer,
+evidence, RAG trace identity and HTTP trace identity from the live Ollama-backed runtime.
+`run-assistant-live-routing-gate.ps1` separately verifies that the REST Assistant still terminates
+only in the grounded-answer path.
 
 ## Extending the golden set
 

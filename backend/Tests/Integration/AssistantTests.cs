@@ -26,6 +26,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
             (await client.PostAsJsonAsync("/api/assistant", new { message = "VPN nedir?" })).StatusCode);
 
     [Fact]
+    [Trait("Gate", "AssistantRouting")]
     public async Task Assistant_AlwaysReturnsGroundedKnowledgeAnswerWithoutSearchPayload()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
@@ -41,6 +42,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    [Trait("Gate", "AssistantRouting")]
     public async Task LegacyRoutePreviewAndSearchRagSurfacesAreRemoved()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
@@ -111,6 +113,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    [Trait("Gate", "AssistantRouting")]
     public async Task AssistantDoesNotFallBackToSearchWhenAiIsDisabled()
     {
         using var disabledFactory = factory.WithWebHostBuilder(builder => builder.UseSetting("Ollama:Enabled", "false"));

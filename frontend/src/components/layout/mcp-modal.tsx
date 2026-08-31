@@ -37,6 +37,7 @@ const LANGS: { id: LangTab; label: string }[] = [
 
 // Config dosyalarındaki server kaydının adı (backend: McpConstants.ServerName)
 const MCP_SERVER_NAME = "knowledge-portal";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
 
 const CLIENTS: { id: ClientTab; label: string; file: string }[] = [
   { id: "vscode", label: "VS Code", file: ".vscode/mcp.json" },
@@ -155,21 +156,30 @@ export function McpModal({ open, onClose }: McpModalProps) {
       })
       .catch(() => {});
 
-    const callMcp = (id: string, method: string, params?: object) => fetchWithAuth("/mcp", {
-      method: "POST",
-      noRetry: true,
-      body: JSON.stringify({ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) }),
-    });
+    const callMcp = (id: string, method: string, params?: object, toolName?: string) => {
+      const meta = {
+        "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientInfo": { name: "knowledge-portal-web", version: "1.0.0" },
+        "io.modelcontextprotocol/clientCapabilities": {},
+      };
+      return fetchWithAuth("/mcp", {
+        method: "POST",
+        noRetry: true,
+        headers: {
+          Accept: "application/json, text/event-stream",
+          "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+          "Mcp-Method": method,
+          ...(toolName ? { "Mcp-Name": toolName } : {}),
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id, method, params: { ...(params ?? {}), _meta: meta } }),
+      });
+    };
 
-    callMcp("modal-initialize", "initialize", {
-      protocolVersion: "2025-11-25",
-      capabilities: {},
-      clientInfo: { name: "knowledge-portal-web", version: "1.0.0" },
-    })
+    callMcp("modal-discover", "server/discover")
       .then(async (res) => {
         if (res.ok) {
-          const info = await res.json();
-          if (!cancelled && info?.result?.protocolVersion) setProtocolVersion(info.result.protocolVersion);
+          await res.json();
+          if (!cancelled) setProtocolVersion(MCP_PROTOCOL_VERSION);
         }
       })
       .catch(() => {});
@@ -243,27 +253,39 @@ export function McpModal({ open, onClose }: McpModalProps) {
 
   const curlCmd = `curl -X POST ${mcpEndpoint} \\
   -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -H "MCP-Protocol-Version: ${MCP_PROTOCOL_VERSION}" \\
+  -H "Mcp-Method: tools/list" \\
   -H "${authHeaderStr}" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"${MCP_PROTOCOL_VERSION}","io.modelcontextprotocol/clientInfo":{"name":"portal-example","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'`;
 
-  const curlFull = `curl -X POST ${mcpEndpoint} -H "Content-Type: application/json" -H "${authHeaderFull}" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
+  const curlFull = `curl -X POST ${mcpEndpoint} -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: ${MCP_PROTOCOL_VERSION}" -H "Mcp-Method: tools/list" -H "${authHeaderFull}" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"${MCP_PROTOCOL_VERSION}","io.modelcontextprotocol/clientInfo":{"name":"portal-example","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'`;
 
   const pythonSnippet = `import requests, json
 
 mcp_url = "${mcpEndpoint}"
 headers = {
     "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+    "MCP-Protocol-Version": "${MCP_PROTOCOL_VERSION}",
     ${authTab === "bearer"
       ? `"Authorization": "Bearer ${token || "YOUR_JWT_TOKEN"}"`
       : `"X-API-Key": "kp_YOUR_API_KEY"`}
 }
 
 def call_tool(name, **args):
+    request_headers = {**headers, "Mcp-Method": "tools/call", "Mcp-Name": name}
     r = requests.post(mcp_url, json={
         "jsonrpc": "2.0", "id": 1,
         "method": "tools/call",
-        "params": {"name": name, "arguments": args}
-    }, headers=headers)
+        "params": {"name": name, "arguments": args, "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "${MCP_PROTOCOL_VERSION}",
+            "io.modelcontextprotocol/clientInfo": {"name": "portal-python", "version": "1.0.0"},
+            "io.modelcontextprotocol/clientCapabilities": {}
+        }}
+    }, headers=request_headers)
+    r.raise_for_status()
+    if r.json().get("error"): raise RuntimeError(r.json()["error"])
     return json.loads(r.json()["result"]["content"][0]["text"])
 
 # Örnekler
@@ -277,18 +299,31 @@ using System.Text.Json;
 
 var mcpUrl = "${mcpEndpoint}";
 var http = new HttpClient();
+http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+http.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
+http.DefaultRequestHeaders.Add("MCP-Protocol-Version", "${MCP_PROTOCOL_VERSION}");
+http.DefaultRequestHeaders.Add("Mcp-Method", "tools/call");
 http.DefaultRequestHeaders.Add(${authTab === "bearer"
       ? `"Authorization", "Bearer ${token || "YOUR_JWT_TOKEN"}"`
       : `"X-API-Key", "kp_YOUR_API_KEY"`});
 
 async Task<JsonElement> CallToolAsync(string name, object args)
 {
-    var res = await http.PostAsJsonAsync(mcpUrl, new
+    using var request = new HttpRequestMessage(HttpMethod.Post, mcpUrl);
+    request.Headers.Add("Mcp-Name", name);
+    request.Content = JsonContent.Create(new
     {
         jsonrpc = "2.0", id = 1,
         method = "tools/call",
-        @params = new { name, arguments = args }
+        @params = new { name, arguments = args, _meta = new Dictionary<string, object>
+        {
+            ["io.modelcontextprotocol/protocolVersion"] = "${MCP_PROTOCOL_VERSION}",
+            ["io.modelcontextprotocol/clientInfo"] = new { name = "portal-dotnet", version = "1.0.0" },
+            ["io.modelcontextprotocol/clientCapabilities"] = new { }
+        }}
     });
+    var res = await http.SendAsync(request);
+    res.EnsureSuccessStatusCode();
     var json = await res.Content.ReadFromJsonAsync<JsonElement>();
     var text = json.GetProperty("result").GetProperty("content")[0]
                    .GetProperty("text").GetString()!;
@@ -312,10 +347,17 @@ String mcpUrl = "${mcpEndpoint}";
 String callTool(String name, String argsJson) throws Exception {
     String body = """
         {"jsonrpc":"2.0","id":1,"method":"tools/call",
-         "params":{"name":"%s","arguments":%s}}""".formatted(name, argsJson);
+         "params":{"name":"%s","arguments":%s,"_meta":{
+           "io.modelcontextprotocol/protocolVersion":"${MCP_PROTOCOL_VERSION}",
+           "io.modelcontextprotocol/clientInfo":{"name":"portal-java","version":"1.0.0"},
+           "io.modelcontextprotocol/clientCapabilities":{}}}}""".formatted(name, argsJson);
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(mcpUrl))
         .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "${MCP_PROTOCOL_VERSION}")
+        .header("Mcp-Method", "tools/call")
+        .header("Mcp-Name", name)
         .header(${authTab === "bearer"
       ? `"Authorization", "Bearer ${token || "YOUR_JWT_TOKEN"}"`
       : `"X-API-Key", "kp_YOUR_API_KEY"`})

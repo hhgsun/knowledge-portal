@@ -247,6 +247,7 @@ builder.Services.AddScoped<ArticleMutationService>();
 builder.Services.AddScoped<ContentTypeService>();
 builder.Services.AddScoped<ClassificationService>();
 builder.Services.AddScoped<KnowledgeQueryScopeService>();
+builder.Services.AddSingleton<KnowledgeInputValidationService>();
 builder.Services.AddScoped<SearchExecutionService>();
 builder.Services.AddScoped<KnowledgeAnswerService>();
 builder.Services.AddScoped<AssistantOrchestratorService>();

@@ -74,6 +74,37 @@ public class McpResilienceServiceTests
         Assert.True(next.StructuredContent!["error"]!["retryAfterSeconds"]!.GetValue<int>() > 0);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ClientError_DoesNotOpenCircuit()
+    {
+        var service = Build(("Mcp:CircuitBreakerFailureThreshold", "1"));
+        var args = JsonSerializer.SerializeToElement(new { type = "semantic" });
+        var invalid = McpResilienceService.ResilienceError(
+            "invalid_arguments", "Query is required", false, null);
+
+        await service.ExecuteAsync("search_articles", args,
+            _ => Task.FromResult(invalid), CancellationToken.None);
+        var next = await service.ExecuteAsync("search_articles", args,
+            _ => Task.FromResult(Success()), CancellationToken.None);
+
+        Assert.False(next.IsError);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CapacityError_DoesNotOpenCircuit()
+    {
+        var service = Build(("Mcp:CircuitBreakerFailureThreshold", "1"));
+        var capacity = McpResilienceService.ResilienceError(
+            "capacity_full", "Capacity is full", true, 5);
+
+        await service.ExecuteAsync("ask_knowledge", null,
+            _ => Task.FromResult(capacity), CancellationToken.None);
+        var next = await service.ExecuteAsync("ask_knowledge", null,
+            _ => Task.FromResult(Success()), CancellationToken.None);
+
+        Assert.False(next.IsError);
+    }
+
     private static McpResilienceService Build(params (string Key, string Value)[] values) => new(
         new ConfigurationBuilder().AddInMemoryCollection(values.ToDictionary(x => x.Key, x => (string?)x.Value)).Build());
 

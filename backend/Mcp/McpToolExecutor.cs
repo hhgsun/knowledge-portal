@@ -25,9 +25,17 @@ public class McpToolExecutor
     private readonly SearchExecutionService _searchExecution;
     private readonly KnowledgeAnswerService _knowledgeAnswers;
     private readonly ContentGovernanceService _governance;
+    private readonly KnowledgeInputValidationService _inputValidation;
     private readonly ILogger<McpToolExecutor> _logger;
+    private readonly McpToolsListResult _definitions;
 
     private static readonly string[] AllowedSorts = ["newest", "oldest", "most_viewed"];
+    private static readonly HashSet<string> KnownToolNames =
+    [
+        "search_articles", "ask_knowledge", "get_article", "list_articles", "list_tags",
+        "get_portal_info", "get_project_context", "get_integration_guidance",
+        "find_authoritative_content", "compare_sources", "get_recent_changes"
+    ];
 
     private sealed record McpScope(List<string> Tags, List<string> ContentTypes,
         Dictionary<string, string[]> Facets)
@@ -43,6 +51,7 @@ public class McpToolExecutor
     public McpToolExecutor(AppDbContext db, ArticleService articleService, TagService tagService,
         SearchExecutionService searchExecution, KnowledgeAnswerService knowledgeAnswers,
         ContentGovernanceService governance,
+        KnowledgeInputValidationService inputValidation,
         ILogger<McpToolExecutor> logger)
     {
         _db = db;
@@ -51,12 +60,18 @@ public class McpToolExecutor
         _searchExecution = searchExecution;
         _knowledgeAnswers = knowledgeAnswers;
         _governance = governance;
+        _inputValidation = inputValidation;
         _logger = logger;
+        _definitions = GetToolDefinitions(inputValidation.MaxQuestionCharacters,
+            inputValidation.MaxScopeItems, inputValidation.MaxScopeValueCharacters);
     }
 
     // ─── Tool Registry ─────────────────────────────────────────────────
 
-    public static McpToolsListResult GetToolDefinitions()
+    public static McpToolsListResult GetToolDefinitions(
+        int maxQuestionCharacters = 4000,
+        int maxScopeItems = 50,
+        int maxScopeValueCharacters = 200)
     {
         return new McpToolsListResult
         {
@@ -70,14 +85,14 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["query"] = new() { Type = "string", Description = "Search query text" },
+                            ["query"] = new() { Type = "string", Description = "Search query text", MinLength = 1, MaxLength = maxQuestionCharacters },
                             ["type"] = new() { Type = "string", Description = "Search mode", Enum = new List<string> { "fulltext", "semantic", "hybrid" }, Default = "fulltext" },
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum number of results per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
-                            ["scope"] = ScopePropertySchema(),
-                            ["tags"] = new() { Type = "string", Description = "Legacy scope field: tag slugs, comma-separated (AND logic)" },
-                            ["authors"] = new() { Type = "string", Description = "Filter by author slugs, comma-separated (OR logic)" },
-                            ["content_type"] = new() { Type = "string", Description = "Legacy scope field: content types, comma-separated (OR logic)" },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["tags"] = CsvScopeProperty("Legacy scope field: tag slugs, comma-separated (AND logic)", maxScopeItems, maxScopeValueCharacters),
+                            ["authors"] = CsvScopeProperty("Filter by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
+                            ["content_type"] = CsvScopeProperty("Legacy scope field: content types, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
                             ["include_content"] = new() { Type = "boolean", Description = "Include full article content as plain text in results", Default = false },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata in results", Default = false },
                             ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict results to articles created by that key", Default = false }
@@ -94,9 +109,9 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["question"] = new() { Type = "string", Description = "Question to answer from portal knowledge" },
-                            ["scope"] = ScopePropertySchema(),
-                            ["authors"] = new() { Type = "string", Description = "Filter evidence by author slugs, comma-separated (OR logic)" },
+                            ["question"] = new() { Type = "string", Description = "Question to answer from portal knowledge", MinLength = 1, MaxLength = maxQuestionCharacters },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["authors"] = CsvScopeProperty("Filter evidence by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
                             ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict evidence to articles created by that key", Default = false }
                         },
                         Required = ["question"]
@@ -111,7 +126,7 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["id_or_slug"] = new() { Type = "string", Description = "Article ID or URL slug" }
+                            ["id_or_slug"] = new() { Type = "string", Description = "Article ID or URL slug", MinLength = 1, MaxLength = 300 }
                         },
                         Required = new List<string> { "id_or_slug" }
                     },
@@ -127,9 +142,9 @@ public class McpToolExecutor
                         {
                             ["page"] = new() { Type = "integer", Description = "Page number (1-based)", Default = 1, Minimum = 1 },
                             ["limit"] = new() { Type = "integer", Description = "Items per page (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
-                            ["scope"] = ScopePropertySchema(),
-                            ["content_type"] = new() { Type = "string", Description = "Legacy scope field: content types, comma-separated (OR logic)" },
-                            ["tags"] = new() { Type = "string", Description = "Legacy scope field: tag slugs, comma-separated (AND logic)" },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["content_type"] = CsvScopeProperty("Legacy scope field: content types, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
+                            ["tags"] = CsvScopeProperty("Legacy scope field: tag slugs, comma-separated (AND logic)", maxScopeItems, maxScopeValueCharacters),
                             ["sort"] = new() { Type = "string", Description = "Sort order", Enum = new List<string> { "newest", "oldest", "most_viewed" }, Default = "newest" }
                         }
                     },
@@ -163,8 +178,8 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["scope"] = ScopePropertySchema(),
-                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one project tag slug" },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["project_tag"] = ScopeStringProperty("Legacy scope field: one project tag slug", maxScopeValueCharacters),
                             ["limit"] = new() { Type = "integer", Description = "Maximum context articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 },
                             ["include_content"] = new() { Type = "boolean", Description = "Include canonical article content", Default = true },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
@@ -180,9 +195,9 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["integration_query"] = new() { Type = "string", Description = "Integration goal or question" },
-                            ["scope"] = ScopePropertySchema(),
-                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
+                            ["integration_query"] = new() { Type = "string", Description = "Integration goal or question", MinLength = 1, MaxLength = maxQuestionCharacters },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["project_tag"] = ScopeStringProperty("Legacy scope field: one optional project tag slug", maxScopeValueCharacters),
                             ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 },
                             ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata", Default = true }
                         },
@@ -198,9 +213,9 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["query"] = new() { Type = "string", Description = "Decision topic" },
-                            ["scope"] = ScopePropertySchema(),
-                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
+                            ["query"] = new() { Type = "string", Description = "Decision topic", MinLength = 1, MaxLength = maxQuestionCharacters },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["project_tag"] = ScopeStringProperty("Legacy scope field: one optional project tag slug", maxScopeValueCharacters),
                             ["limit"] = new() { Type = "integer", Description = "Maximum sources (1-50)", Default = 10, Minimum = 1, Maximum = 50 }
                         },
                         Required = ["query"]
@@ -215,8 +230,8 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["article_ids"] = new() { Type = "string", Description = "Comma-separated article IDs or slugs (2-10)" },
-                            ["scope"] = ScopePropertySchema()
+                            ["article_ids"] = new() { Type = "string", Description = "Comma-separated article IDs or slugs (2-10)", MinLength = 3, MaxLength = 3010 },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters)
                         },
                         Required = ["article_ids"]
                     },
@@ -230,8 +245,8 @@ public class McpToolExecutor
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
-                            ["scope"] = ScopePropertySchema(),
-                            ["project_tag"] = new() { Type = "string", Description = "Legacy scope field: one optional project tag slug" },
+                            ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
+                            ["project_tag"] = ScopeStringProperty("Legacy scope field: one optional project tag slug", maxScopeValueCharacters),
                             ["days"] = new() { Type = "integer", Description = "Lookback window (1-3650 days)", Default = 30, Minimum = 1, Maximum = 3650 },
                             ["limit"] = new() { Type = "integer", Description = "Maximum articles (1-50)", Default = 20, Minimum = 1, Maximum = 50 }
                         }
@@ -242,12 +257,13 @@ public class McpToolExecutor
         };
     }
 
-    public static bool IsKnownTool(string toolName) =>
-        GetToolDefinitions().Tools.Any(tool => tool.Name == toolName);
+    public static bool IsKnownTool(string toolName) => KnownToolNames.Contains(toolName);
 
-    private static string? ValidateArguments(string toolName, JsonElement? arguments)
+    public McpToolsListResult GetDefinitions() => _definitions;
+
+    private string? ValidateArguments(string toolName, JsonElement? arguments)
     {
-        var tool = GetToolDefinitions().Tools.FirstOrDefault(item => item.Name == toolName);
+        var tool = _definitions.Tools.FirstOrDefault(item => item.Name == toolName);
         if (tool == null) return $"Unknown tool: {toolName}";
 
         if (arguments is { ValueKind: not JsonValueKind.Object and not JsonValueKind.Null })
@@ -303,6 +319,15 @@ public class McpToolExecutor
                 return $"{path} must be at most {maximum}";
         }
 
+        if (schema.Type == "string")
+        {
+            var length = value.GetString()?.Length ?? 0;
+            if (schema.MinLength is { } minLength && length < minLength)
+                return $"{path} must contain at least {minLength} characters";
+            if (schema.MaxLength is { } maxLength && length > maxLength)
+                return $"{path} must contain at most {maxLength} characters";
+        }
+
         if (schema.Type == "object" && schema.Properties != null)
         {
             foreach (var property in value.EnumerateObject())
@@ -321,6 +346,11 @@ public class McpToolExecutor
 
         if (schema.Type == "array" && schema.Items != null)
         {
+            var itemCount = value.GetArrayLength();
+            if (schema.MinItems is { } minItems && itemCount < minItems)
+                return $"{path} must contain at least {minItems} items";
+            if (schema.MaxItems is { } maxItems && itemCount > maxItems)
+                return $"{path} must contain at most {maxItems} items";
             var index = 0;
             foreach (var item in value.EnumerateArray())
             {
@@ -368,7 +398,7 @@ public class McpToolExecutor
         {
             // Full detail server-side only — exception messages can leak internals
             _logger.LogError(ex, "MCP tool {ToolName} execution failed", toolName);
-            return ErrorResult("Tool execution failed");
+            return ErrorResult("Tool execution failed", "tool_execution_failed", retryable: true);
         }
     }
 
@@ -396,7 +426,7 @@ public class McpToolExecutor
             SplitCsv(GetString(args, "authors")),
             scope.ContentTypes,
             scope.Facets), principalValue, ct);
-        if (execution.Error != null) return ErrorResult(execution.Error.Message);
+        if (execution.Error != null) return ServiceErrorResult(execution.Error);
 
         var result = execution.Result!;
         if (result.Failure != SearchFailureKind.None)
@@ -439,7 +469,7 @@ public class McpToolExecutor
             SplitCsv(GetString(args, "authors")),
             scope.ContentTypes,
             scope.Facets), principal ?? new ClaimsPrincipal(), ct);
-        if (execution.Error != null) return ErrorResult(execution.Error.Message);
+        if (execution.Error != null) return ServiceErrorResult(execution.Error);
 
         var result = execution.Result!;
         if (result.Failure != KnowledgeAnswerFailureKind.None || result.Rag == null)
@@ -502,7 +532,7 @@ public class McpToolExecutor
         // Same loader + detail builder as GET /api/articles/{idOrSlug}
         var article = await _articleService.GetByIdOrSlugAsync(idOrSlug);
         if (article == null || article.Status != "published")
-            return ErrorResult("Article not found or not published");
+            return ErrorResult("Article not found or not published", "not_found");
 
         var detail = await _articleService.BuildDetailAsync(article);
         var node = JsonSerializer.SerializeToNode(detail, _jsonOptions)!.AsObject();
@@ -711,7 +741,7 @@ public class McpToolExecutor
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
-    private static McpPropertySchema ScopePropertySchema() => new()
+    private static McpPropertySchema ScopePropertySchema(int maxItems, int maxValueCharacters) => new()
     {
         Type = "object",
         Description = "Optional knowledge scope. All tags must match (AND); any listed content type may match (OR). Values are semantic tag slugs and active content-type values.",
@@ -722,24 +752,38 @@ public class McpToolExecutor
             {
                 Type = "array",
                 Description = "Tag slugs; every tag must be present on the article (AND logic)",
-                Items = new McpPropertySchema { Type = "string" }
+                MaxItems = maxItems,
+                Items = new McpPropertySchema { Type = "string", MinLength = 1, MaxLength = maxValueCharacters }
             },
             ["contentTypes"] = new()
             {
                 Type = "array",
                 Description = "Content-type values; an article may match any supplied value (OR logic)",
-                Items = new McpPropertySchema { Type = "string" }
+                MaxItems = maxItems,
+                Items = new McpPropertySchema { Type = "string", MinLength = 1, MaxLength = maxValueCharacters }
             },
             ["facets"] = new()
             {
                 Type = "array",
                 Description = "Generic classifications as category:value pairs; categories combine with AND and values within a category with OR",
-                Items = new McpPropertySchema { Type = "string" }
+                MaxItems = maxItems,
+                Items = new McpPropertySchema { Type = "string", MinLength = 3, MaxLength = maxValueCharacters * 2 + 1 }
             }
         }
     };
 
-    private static (McpScope Scope, string? Error) ParseScope(
+    private static McpPropertySchema ScopeStringProperty(string description, int maxValueCharacters) =>
+        new() { Type = "string", Description = description, MinLength = 1, MaxLength = maxValueCharacters };
+
+    private static McpPropertySchema CsvScopeProperty(
+        string description, int maxItems, int maxValueCharacters) =>
+        new()
+        {
+            Type = "string", Description = description, MinLength = 1,
+            MaxLength = maxItems * (maxValueCharacters + 1)
+        };
+
+    private (McpScope Scope, string? Error) ParseScope(
         JsonElement? args,
         string? legacyTagsProperty = null,
         string? legacyContentTypeProperty = null,
@@ -797,12 +841,14 @@ public class McpToolExecutor
             && GetString(args, legacyProjectTagProperty)?.Trim() is { Length: > 0 } projectTag)
             tags.Add(projectTag);
 
-        return (new McpScope(
+        var scope = new McpScope(
             tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             contentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             facets.ToDictionary(entry => entry.Key,
                 entry => entry.Value.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                StringComparer.OrdinalIgnoreCase)), null);
+                StringComparer.OrdinalIgnoreCase));
+        var validation = _inputValidation.ValidateScope(scope.Tags, null, scope.ContentTypes, scope.Facets);
+        return (scope, validation?.Message);
     }
 
     private static JsonObject ScopeNode(McpScope scope) => new()
@@ -1166,17 +1212,20 @@ public class McpToolExecutor
         ["oneOf"] = SuccessOrError("question", "answer", "sources", "evidence")
     };
 
-    private static McpToolCallResult ErrorResult(string message)
+    private static McpToolCallResult ServiceErrorResult(ServiceError error) => error.StatusCode switch
     {
-        return new McpToolCallResult
-        {
-            IsError = true,
-            Content = new List<McpContent>
-            {
-                new() { Type = "text", Text = message }
-            }
-        };
-    }
+        404 => ErrorResult(error.Message, "not_found"),
+        429 => ErrorResult(error.Message, "capacity_full", retryable: true, retryAfterSeconds: 5),
+        >= 500 => ErrorResult(error.Message, "service_unavailable", retryable: true, retryAfterSeconds: 10),
+        _ => ErrorResult(error.Message)
+    };
+
+    private static McpToolCallResult ErrorResult(
+        string message,
+        string code = "invalid_arguments",
+        bool retryable = false,
+        int? retryAfterSeconds = null) =>
+        McpResilienceService.ResilienceError(code, message, retryable, retryAfterSeconds);
 
     private static string? GetString(JsonElement? args, string property)
     {

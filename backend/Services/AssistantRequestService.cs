@@ -7,14 +7,15 @@ public sealed class AssistantRequestService(
     AssistantOrchestratorService orchestrator,
     AssistantInteractionService interactions,
     AssistantConversationService conversations,
-    IConfiguration config)
+    KnowledgeInputValidationService inputValidation)
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Message)) return (null, new(400, "Message is required."));
-        var max = Math.Clamp(config.GetValue("Assistant:MaxMessageCharacters", 4000), 100, 20_000);
-        if (request.Message.Length > max) return (null, new(400, $"Message cannot exceed {max} characters."));
+        var validationError = inputValidation.ValidateQuestion(request.Message, "Message")
+                              ?? inputValidation.ValidateScope(request.Tags, request.Authors,
+                                  request.ContentTypes, request.Facets);
+        if (validationError != null) return (null, validationError);
         var conversation = await conversations.ResolveAsync(request, principal, ct);
         if (conversation.Error != null) return (null, conversation.Error);
         var effective = request with { Message = conversation.Context!.EffectiveMessage };

@@ -119,7 +119,7 @@ dotnet ef database update
 dotnet ef migrations add MigrationName
 ```
 
-Gerçek PostgreSQL/pgvector davranışını doğrulayan fidelity testleri için `RAG_FIDELITY_CONNECTION_STRING` tanımlanır ve `backend/Tests.Postgres` projesi çalıştırılır.
+Gerçek PostgreSQL/pgvector davranışını doğrulayan fidelity testleri için `RAG_FIDELITY_CONNECTION_STRING` tanımlanır ve `backend/Tests.Postgres` projesi çalıştırılır. Deployment sonrasında canlı RAG dataset kapısına ek olarak `run-assistant-live-routing-gate.ps1` ve `run-mcp-live-quality-gate.ps1` çalıştırılır; MCP kapısı modern protokol header/meta sözleşmesiyle `ask_knowledge` çağırarak canlı Ollama yanıtını, evidence ve trace kimliklerini doğrular.
 
 ## Sağlık ve Gözlemlenebilirlik
 

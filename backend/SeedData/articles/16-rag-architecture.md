@@ -165,7 +165,7 @@ RAG istekleri privacy-safe query fingerprint ile loglanır; ham kullanıcı soru
 - Grafana dashboard: `ops/grafana/rag-overview.json`
 - Ölçülebilir hedefler: `specs/rag-slo.md`
 
-Yönetici arayüzündeki RAG evaluation alanı dinamik golden dataset'ler ve eşikler tanımlar. Çalıştırmalar dataset, config, model ve prompt snapshot'larını saklar; Recall, MRR, NDCG, fact/citation/grounding/refusal/safety/latency metrikleri üretir. CI, gerçek PostgreSQL/pgvector fidelity kapısına ek olarak canlı Ollama golden-dataset kalite kapısını zorunlu çalıştırır.
+Yönetici arayüzündeki RAG evaluation alanı dinamik golden dataset'ler ve eşikler tanımlar. Çalıştırmalar dataset, config, model ve prompt snapshot'larını saklar; Recall, MRR, NDCG, fact/citation/grounding/refusal/safety/latency metrikleri üretir. CI, gerçek PostgreSQL/pgvector fidelity kapısına ve canlı Ollama golden-dataset kalite kapısına ek olarak REST Assistant routing kontrolünü ve modern `/mcp` `ask_knowledge` çağrısının canlı model, kanıt ve trace sözleşmesini zorunlu çalıştırır.
 
 ## Önemli Yapılandırmalar
 

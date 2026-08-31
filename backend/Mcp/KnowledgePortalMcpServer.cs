@@ -23,17 +23,18 @@ public static class KnowledgePortalMcpServer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static readonly IReadOnlyList<Tool> Tools = McpToolExecutor.GetToolDefinitions().Tools
-        .Select(ToProtocolTool)
-        .ToArray();
-
     public static ValueTask<ListToolsResult> ListToolsAsync(
         RequestContext<ListToolsRequestParams> request,
         CancellationToken cancellationToken)
     {
+        var services = request.Services
+            ?? throw new InvalidOperationException("MCP tool discovery has no request service scope.");
+        var tools = services.GetRequiredService<McpToolExecutor>().GetDefinitions().Tools
+            .Select(ToProtocolTool)
+            .ToList();
         return ValueTask.FromResult(new ListToolsResult
         {
-            Tools = [.. Tools],
+            Tools = tools,
             TimeToLive = TimeSpan.FromSeconds(30),
             CacheScope = CacheScope.Private
         });

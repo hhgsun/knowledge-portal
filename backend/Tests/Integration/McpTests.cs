@@ -2,6 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ModelContextProtocol.Client;
 
 namespace KnowledgePortal.Api.Tests.Integration;
@@ -454,6 +458,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.True(result.GetProperty("isError").GetBoolean());
         Assert.Contains("must be of type integer", ToolText(result));
+        Assert.Equal("invalid_arguments",
+            result.GetProperty("structuredContent").GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -463,6 +469,22 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         var result = await RpcResultAsync(ToolCall("search_articles", new { }));
         Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Equal("invalid_arguments",
+            result.GetProperty("structuredContent").GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Mcp_AskKnowledge_EnforcesSharedQuestionLimit()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+
+        var result = await RpcResultAsync(ToolCall("ask_knowledge",
+            new { question = new string('x', 4001) }));
+
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        var error = result.GetProperty("structuredContent").GetProperty("error");
+        Assert.Equal("invalid_arguments", error.GetProperty("code").GetString());
+        Assert.Contains("at most 4000 characters", error.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -750,6 +772,31 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Mcp_SearchArticles_HybridReportsWhenSemanticSearchIsDisabled()
+    {
+        using var disabledFactory = _factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Ollama:Enabled", "false"));
+        using var client = disabledFactory.CreateClient();
+        McpTestClient.AddAcceptHeaders(client);
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Disabled Hybrid Qdhy",
+            contentMarkdown = "Disabled hybrid fallback qdhy",
+            status = "published"
+        });
+
+        var response = await McpTestClient.SendAsync(client, ToolCall("search_articles",
+            new { query = "qdhy", type = "hybrid" }));
+        var envelope = await McpTestClient.ReadEnvelopeAsync(response);
+        var payload = envelope.GetProperty("result").GetProperty("structuredContent");
+
+        Assert.Contains("disabled", payload.GetProperty("warning").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(payload.GetProperty("results").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Mcp_AskKnowledge_ReturnsAnswerAndSources()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
@@ -767,6 +814,45 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("answer").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("groundingStatus").GetString()));
         Assert.Equal(JsonValueKind.Array, payload.GetProperty("sources").ValueKind);
+    }
+
+    [Fact]
+    public async Task Mcp_AskKnowledge_ClientCancellation_IsPropagatedAndAudited()
+    {
+        var chat = new CancellationObservingChatClient();
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IChatClient>();
+            services.AddSingleton<IChatClient>(chat);
+        }));
+        using var client = factory.CreateClient();
+        McpTestClient.AddAcceptHeaders(client);
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            title = "MCP Cancellation Cncl",
+            contentMarkdown = "MCP cancellation propagation cncl evidence.",
+            status = "published"
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = JsonContent.Create(ToolCall("ask_knowledge",
+                new { question = "cncl cancellation propagation nedir?" }))
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var call = client.SendAsync(request, cancellation.Token);
+        await chat.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
+        await chat.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        var metrics = await client.GetStringAsync("/metrics");
+        Assert.Contains("mcp_outcome=\"cancelled\"", metrics);
+        Assert.Contains("mcp_tool=\"ask_knowledge\"", metrics);
     }
 
     [Fact]
@@ -993,7 +1079,8 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         }));
 
         Assert.True(result.GetProperty("isError").GetBoolean());
-        Assert.Contains("Unknown property 'teams'", ToolText(result));
+        Assert.Contains("Unknown property 'teams'", result.GetProperty("structuredContent")
+            .GetProperty("error").GetProperty("message").GetString());
     }
 
     [Fact]
@@ -1168,5 +1255,42 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("MCP Yakın Değişiklik Rchg", titles);
         Assert.DoesNotContain("MCP Başka Proje Rchg", titles);
         Assert.Equal("recent_changes", structured.GetProperty("taskContext").GetProperty("task").GetString());
+    }
+
+    private sealed class CancellationObservingChatClient : IChatClient
+    {
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Cancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("Unreachable");
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            yield break;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            serviceType.IsInstanceOfType(this) ? this : null;
+
+        public void Dispose() { }
     }
 }

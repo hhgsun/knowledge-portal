@@ -42,6 +42,7 @@ public sealed class KnowledgeAnswerService(
     IConfiguration config,
     ArticleService articles,
     KnowledgeQueryScopeService scopeResolver,
+    KnowledgeInputValidationService inputValidation,
     IServiceProvider services,
     ILogger<KnowledgeAnswerService> logger)
 {
@@ -50,8 +51,10 @@ public sealed class KnowledgeAnswerService(
         ClaimsPrincipal principal,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Question))
-            return (null, new ServiceError(400, "Question is required"));
+        var validationError = inputValidation.ValidateQuestion(request.Question)
+                              ?? inputValidation.ValidateScope(request.Tags, request.Authors,
+                                  request.ContentTypes, request.Facets);
+        if (validationError != null) return (null, validationError);
 
         var stopwatch = Stopwatch.StartNew();
         var scope = await scopeResolver.ResolveAsync(new KnowledgeQueryScopeRequest(
@@ -106,6 +109,10 @@ public sealed class KnowledgeAnswerService(
             return (new KnowledgeAnswerResult(request.Question, null, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString(),
                 KnowledgeAnswerFailureKind.Timeout), null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {

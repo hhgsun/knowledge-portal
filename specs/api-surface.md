@@ -69,7 +69,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 
 **Available Tools**:
 - `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and generic `+category:value` inline syntax. It never generates an AI answer.
-- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*`, `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline as REST Assistant.
+- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*` (shared configurable 1-4,000 character default), `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline and transport-independent input guard as REST Assistant.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
@@ -82,7 +82,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 
 The shared scope shape is `{ "tags": ["a", "x", "y"], "contentTypes": ["how-to", "adr"] }`. Tags are free semantic tag slugs; prefixes such as `project-` or `team-` are not required. Every supplied tag must match (AND), while any supplied content type may match (OR); the two dimensions combine with AND. Omitting scope performs general retrieval. Unknown tags or content types produce no matches and never broaden the result set. `search_articles`, `list_articles`, `get_project_context`, `get_integration_guidance`, `find_authoritative_content`, `compare_sources`, and `get_recent_changes` use this contract. Legacy `tags`, `content_type`, and `project_tag` values are merged and deduplicated into the same effective scope.
 
-**Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true`.
+**Tool result format**: Every tool advertises an `outputSchema` and returns the machine-readable payload in `structuredContent`. For backwards compatibility, the same serialized JSON is also returned as `{ "content": [{ "type": "text", "text": "..." }] }`. Tool failures use `isError: true` and the uniform `{ "error": { "code", "message", "retryable", "retryAfterSeconds", "details" } }` structured shape.
 
 Search results include `evidenceAvailable` and an `evidence[]` provenance array. Evidence contains the article ID/slug, canonical API URL, source type, matched passage when available, update timestamp, match type, and score. Title-only matches explicitly set `evidenceAvailable: false` rather than fabricating a passage. `ask_knowledge` returns cited/consulted sources, claims and evidence separately.
 
@@ -92,7 +92,7 @@ MCP article/search/compare outputs include `securityAssessment` (`riskLevel`, ex
 
 Every `tools/call` response includes `X-Trace-Id`. A structured audit event records trace ID, tool, outcome, auth source, user/API-key identifiers, bounded client user-agent, protocol version, duration, serialized output size, and a privacy-preserving argument shape. Raw argument values, queries, article content, credentials, and reversible hashes are never written to the MCP audit event. Prometheus exports `kp_mcp_tool_calls`, `kp_mcp_tool_errors`, `kp_mcp_tool_duration_ms`, and `kp_mcp_tool_output_bytes`, tagged by bounded tool/outcome/auth dimensions.
 
-MCP uses a fixed 256 KiB request-body ceiling. Configurable resilience limits under `Mcp` include the output default of 1 MiB, tool-specific budgets, a semantic-search lane and a separate grounded-answer lane with independent concurrency/circuit state. Resilience failures use structured tool errors with stable retry metadata. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local for the supported single-backend topology.
+MCP uses a fixed 256 KiB request-body ceiling. Knowledge questions share `Assistant:MaxMessageCharacters`; scope collections and values use `KnowledgeInput:MaxScopeItems`/`MaxScopeValueCharacters`. Configurable resilience limits under `Mcp` include the output default of 1 MiB, tool-specific budgets, a semantic-search lane and a separate grounded-answer lane with independent concurrency/circuit state. Only classified transient AI/provider failures affect circuit state; validation, not-found and capacity results do not. Client disconnects propagate cancellation and are audited as `cancelled`. These controls are intentionally instance-local for the supported single-backend topology.
 
 **Client configuration example (VS Code)**:
 ```json

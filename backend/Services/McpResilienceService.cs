@@ -101,7 +101,10 @@ public sealed class McpResilienceService(IConfiguration config)
 
     private static bool IsTransientAiFailure(McpToolCallResult result)
     {
-        if (result.IsError) return true;
+        if (result.StructuredContent?["error"]?["code"]?.GetValue<string>() is { } code)
+        {
+            return code is "ai_search_failed" or "answer_failed" or "deadline_exceeded";
+        }
         var json = result.StructuredContent?.ToJsonString() ?? "";
         return json.Contains("Semantic search failed", StringComparison.OrdinalIgnoreCase)
                || json.Contains("answer generation failed", StringComparison.OrdinalIgnoreCase)

@@ -95,6 +95,52 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         var limit = search.GetProperty("inputSchema").GetProperty("properties").GetProperty("limit");
         Assert.Equal(1, limit.GetProperty("minimum").GetInt32());
         Assert.Equal(50, limit.GetProperty("maximum").GetInt32());
+        Assert.Equal(4000, search.GetProperty("inputSchema").GetProperty("properties")
+            .GetProperty("query").GetProperty("maxLength").GetInt32());
+
+        var ask = body.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .First(tool => tool.GetProperty("name").GetString() == "ask_knowledge");
+        Assert.Equal(4000, ask.GetProperty("inputSchema").GetProperty("properties")
+            .GetProperty("question").GetProperty("maxLength").GetInt32());
+        Assert.Equal(50, ask.GetProperty("inputSchema").GetProperty("properties")
+            .GetProperty("scope").GetProperty("properties").GetProperty("tags")
+            .GetProperty("maxItems").GetInt32());
+    }
+
+    [Fact]
+    [Trait("Gate", "McpSchema")]
+    public async Task EveryToolValidationError_UsesAdvertisedStructuredErrorContract()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(_client);
+        var invalidCalls = new Dictionary<string, object>
+        {
+            ["search_articles"] = new { },
+            ["ask_knowledge"] = new { },
+            ["get_article"] = new { },
+            ["list_articles"] = new { limit = "invalid" },
+            ["list_tags"] = new { unexpected = true },
+            ["get_portal_info"] = new { unexpected = true },
+            ["get_project_context"] = new { },
+            ["get_integration_guidance"] = new { },
+            ["find_authoritative_content"] = new { },
+            ["compare_sources"] = new { },
+            ["get_recent_changes"] = new { unexpected = true }
+        };
+
+        foreach (var (tool, arguments) in invalidCalls)
+        {
+            var result = await CallAsync(tool, arguments);
+            Assert.True(result.GetProperty("isError").GetBoolean(), tool);
+            var structured = result.GetProperty("structuredContent");
+            var error = structured.GetProperty("error");
+            Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("code").GetString()), tool);
+            Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("message").GetString()), tool);
+            Assert.Contains(error.GetProperty("retryable").ValueKind,
+                new[] { JsonValueKind.True, JsonValueKind.False });
+            using var compatibility = JsonDocument.Parse(
+                result.GetProperty("content")[0].GetProperty("text").GetString()!);
+            Assert.Equal(structured.GetRawText(), compatibility.RootElement.GetRawText());
+        }
     }
 
     [Fact]

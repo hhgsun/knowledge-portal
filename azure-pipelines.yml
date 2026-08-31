@@ -185,3 +185,11 @@ stages:
             env:
               ASSISTANT_LIVE_BASE_URL: $(RAG_LIVE_BASE_URL)
               ASSISTANT_LIVE_TOKEN: $(RAG_LIVE_TOKEN)
+              ASSISTANT_LIVE_QUESTION: $(ASSISTANT_LIVE_QUESTION)
+          - pwsh: backend/scripts/run-mcp-live-quality-gate.ps1
+            displayName: 'Require live MCP to Ollama quality'
+            env:
+              MCP_LIVE_BASE_URL: $(RAG_LIVE_BASE_URL)
+              MCP_LIVE_TOKEN: $(RAG_LIVE_TOKEN)
+              MCP_LIVE_QUESTION: $(MCP_LIVE_QUESTION)
+              MCP_LIVE_EXPECTED_SOURCE_SLUG: $(MCP_LIVE_EXPECTED_SOURCE_SLUG)

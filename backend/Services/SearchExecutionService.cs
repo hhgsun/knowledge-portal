@@ -135,6 +135,10 @@ public sealed class SearchExecutionService(
                 return (await CompleteAsync(request.Query, type, results, results.Count, 1, 1,
                     stopwatch, principal, ct, coverage), null);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Semantic search failed");
@@ -152,6 +156,7 @@ public sealed class SearchExecutionService(
             if (ollamaEnabled && vectors != null)
             {
                 try { semanticHits = await vectors.SearchAsync(scope.QueryText, candidateLimit, ct, filter: filter); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
                 catch (Exception exception) { logger.LogWarning(exception, "Hybrid semantic leg failed"); }
             }
 
@@ -172,8 +177,10 @@ public sealed class SearchExecutionService(
                 request.IncludeAttachments, snippetTokens,
                 reranked.ToDictionary(hit => hit.ArticleId, hit => Math.Round(hit.Score, 4)),
                 scores.ToDictionary(score => score.Key, score => score.Value.MatchType), ct);
-            var warning = semanticHits == null && ollamaEnabled
-                ? "Semantic search unavailable — using fulltext only"
+            var warning = semanticHits == null
+                ? ollamaEnabled
+                    ? "Semantic search unavailable — using fulltext only"
+                    : "Semantic search disabled — using fulltext only"
                 : null;
             return (await CompleteAsync(request.Query, type, results, results.Count, 1, 1,
                 stopwatch, principal, ct, coverage, warning: warning), null);
