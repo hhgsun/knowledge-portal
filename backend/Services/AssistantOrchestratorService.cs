@@ -11,6 +11,7 @@ namespace KnowledgePortal.Api.Services;
 public sealed class AssistantOrchestratorService(
     AssistantAnswerCacheService answerCache,
     KnowledgeAnswerService knowledgeAnswers,
+    LlmModelSelectionService modelSelection,
     IConfiguration config,
     PortalMetrics metrics,
     ILogger<AssistantOrchestratorService> logger)
@@ -35,7 +36,8 @@ public sealed class AssistantOrchestratorService(
         try
         {
             var normalizedQuestion = request.Message.Trim();
-            var cacheQuestion = BuildCacheQuestion(request);
+            var effectiveModel = (await modelSelection.GetSettingsAsync(principal, budget.Token)).EffectiveModel;
+            var cacheQuestion = BuildCacheQuestion(request, effectiveModel);
             CachedAssistantAnswer? cached = null;
             try
             {
@@ -60,6 +62,7 @@ public sealed class AssistantOrchestratorService(
                     Rag = cached.Rag,
                     ToolCalls = ToolCalls("semantic_answer_cache", contextualizationStrategy),
                     CacheHit = true,
+                    Model = effectiveModel,
                     TokenUsage = new AssistantTokenUsageDto(0, 0, 0, false)
                 }, null);
             }
@@ -111,6 +114,7 @@ public sealed class AssistantOrchestratorService(
                 Rag = ragDto,
                 ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
                 Warnings = warnings.Distinct().ToArray(),
+                Model = effectiveModel,
                 TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,
                     result.Rag.TokenUsage.OutputTokens, result.Rag.TokenUsage.TotalTokens,
                     result.Rag.TokenUsage.Estimated)
@@ -152,7 +156,7 @@ public sealed class AssistantOrchestratorService(
         ConversationId: null, CacheHit: false,
         TokenUsage: new AssistantTokenUsageDto(0, 0, 0, false));
 
-    private static string BuildCacheQuestion(AssistantRequest request)
+    private static string BuildCacheQuestion(AssistantRequest request, string model)
     {
         static string Join(IEnumerable<string>? values) => string.Join(',',
             (values ?? []).Select(value => value.Trim().ToLowerInvariant())
@@ -160,7 +164,7 @@ public sealed class AssistantOrchestratorService(
         var facets = string.Join(';', (request.Facets ?? [])
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
-        return $"{request.Message.Trim()}\n[scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
+        return $"{request.Message.Trim()}\n[model:{model};scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 

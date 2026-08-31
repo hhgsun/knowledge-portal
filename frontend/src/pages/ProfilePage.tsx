@@ -4,14 +4,16 @@ import { useAuth } from "../contexts/AuthContext";
 import { useApi } from "../hooks/useApi";
 
 import { toast } from "sonner";
-import { Lock, User, Key, LogOut } from "lucide-react";
+import { Lock, User, Key, LogOut, Bot } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ApiKeysSection } from "../components/profile/api-keys-section";
+import { LlmModelSection } from "../components/profile/llm-model-section";
 
-type ProfileTab = "personal" | "password" | "api-keys";
+type ProfileTab = "personal" | "ai-model" | "password" | "api-keys";
 
 const tabs: { id: ProfileTab; label: string; icon: React.ReactNode }[] = [
   { id: "personal", label: "Personal Info", icon: <User size={16} /> },
+  { id: "ai-model", label: "AI Modeli", icon: <Bot size={16} /> },
   { id: "password", label: "Password", icon: <Lock size={16} /> },
   { id: "api-keys", label: "API Keys", icon: <Key size={16} /> },
 ];
@@ -23,7 +25,7 @@ export default function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get("tab");
-  const activeTab: ProfileTab = tabParam === "password" || tabParam === "api-keys" ? tabParam : "personal";
+  const activeTab: ProfileTab = tabParam === "password" || tabParam === "api-keys" || tabParam === "ai-model" ? tabParam : "personal";
   const setActiveTab = (tab: ProfileTab) => {
     setSearchParams(tab === "personal" ? {} : { tab }, { replace: true });
   };
@@ -191,6 +193,8 @@ export default function ProfilePage() {
       )}
 
       {/* Change Password */}
+      {activeTab === "ai-model" && <LlmModelSection />}
+
       {activeTab === "password" && (
         <form onSubmit={handlePasswordChange}>
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-6">

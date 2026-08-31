@@ -9,6 +9,7 @@ public class User
     public string PasswordHash { get; set; } = null!;
     public string Role { get; set; } = "viewer";
     public string? AzureObjectId { get; set; }
+    public string? PreferredLlmModel { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

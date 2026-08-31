@@ -169,6 +169,18 @@ builder.Services.AddHttpClient<AttachmentProcessingService>((services, client) =
     client.Timeout = TimeSpan.FromSeconds(Math.Max(5,
         services.GetRequiredService<IConfiguration>().GetValue("DocumentParsing:External:TimeoutSeconds", 180))));
 
+builder.Services.AddSingleton(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
+    if (!baseUrl.EndsWith('/')) baseUrl += "/";
+    var timeout = TimeSpan.FromSeconds(Math.Clamp(
+        config.GetValue("Ollama:ModelCatalogTimeoutSeconds", 5), 1, 30));
+    return new OllamaModelCatalogService(
+        new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = timeout },
+        config, sp.GetRequiredService<ILogger<OllamaModelCatalogService>>());
+});
+
 // ─── Ollama AI Services ──────────────────────────────────────
 if (builder.Configuration.GetValue("Ollama:Enabled", false))
 {
@@ -180,7 +192,6 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     // Defaults must match the vector(1024) column — bge-m3 produces 1024-dim embeddings.
     // A different-dimension model requires migrating the column (see Ollama:EmbeddingDimensions guard).
     var embeddingModel = builder.Configuration["Ollama:EmbeddingModel"] ?? "bge-m3";
-    var chatModel = builder.Configuration["Ollama:ChatModel"] ?? "qwen2.5vl:7b";
     // Local LLM cold starts (model load + generation) routinely exceed HttpClient's
     // default 100s timeout — make it configurable
     var ollamaTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("Ollama:TimeoutSeconds", 300));
@@ -189,9 +200,8 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
         new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, embeddingModel);
     builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(embeddingClient);
 
-    var chatClientInstance = new OllamaApiClient(
-        new HttpClient { BaseAddress = new Uri(ollamaBaseUrl), Timeout = ollamaTimeout }, chatModel);
-    builder.Services.AddSingleton<IChatClient>(chatClientInstance);
+    builder.Services.AddSingleton<OllamaChatClientFactory>();
+    builder.Services.AddScoped<IChatClient, DynamicOllamaChatClient>();
 
     builder.Services.AddScoped<EmbeddingService>();
     builder.Services.AddSingleton<IVectorSearchService, VectorSearchService>();
@@ -200,7 +210,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IRagTokenCounter, RagTokenCounter>();
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
     builder.Services.AddSingleton<RagQueryUnderstandingService>();
-    builder.Services.AddSingleton<AssistantQueryContextualizer>();
+    builder.Services.AddScoped<AssistantQueryContextualizer>();
     builder.Services.AddSingleton<RagContextExpansionService>();
     builder.Services.AddSingleton<LocalRagChunkReranker>();
     builder.Services.AddSingleton<ExternalRerankerState>();
@@ -259,6 +269,7 @@ builder.Services.AddScoped<AnalyticsReportService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<LlmModelSelectionService>();
 builder.Services.AddScoped<StatsService>();
 builder.Services.AddScoped<UsageAnalyticsService>();
 builder.Services.AddScoped<IndexJobQueue>();

@@ -748,6 +748,8 @@ still below the target, query-relevant verified evidence sentences complete the 
 
 The Assistant has one purpose: produce a grounded answer from authorized portal evidence. It does not return document-search result lists, route to analytics/general chat, execute mutations, or run free-form SQL. `KnowledgeAnswerService` is the canonical RAG entry point shared with MCP `ask_knowledge`; `GET /api/search` remains a separate document-retrieval API.
 
+Chat model selection is dynamic and provider-discovered. The backend reads installed models from `Ollama:BaseUrl` via `GET /api/tags`, filters the configured/recognizable embedding-only models, and uses `POST /api/show` completion capabilities when available. The last successful catalog is cached; temporary provider failure returns stale cache or the configured chat fallback with `catalogSource` and `catalogWarning`. `GET /api/llm-models` returns `models`, `defaultModel`, `preferredModel`, `effectiveModel`, and those catalog health fields. A user persists a currently discovered `preferredLlmModel` through `PUT /api/auth/profile`, or sends `clearPreferredLlmModel: true` to inherit the admin default again. Session admins read/update the database-backed default through `GET/PUT /api/admin/llm-settings`; the update body is `{ "model": "<discovered-model-id>" }`. Effective precedence is an available user preference, available admin default, then `Ollama:ChatModel` or the first discovered model. Assistant responses expose the effective `model`, and semantic answer-cache identity includes it. These settings never change the embedding model or attachment extraction profile.
+
 **Request**:
 
 ```json

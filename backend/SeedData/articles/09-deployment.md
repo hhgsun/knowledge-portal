@@ -82,6 +82,10 @@ JWT issuer, audience ve süre ayarları `Jwt` bölümündedir. Rate limit varsay
     "Enabled": true,
     "EmbeddingModel": "bge-m3",
     "ChatModel": "qwen2.5vl:7b",
+    "ModelCatalogCacheSeconds": 60,
+    "ModelCatalogFailureCacheSeconds": 15,
+    "ModelCatalogTimeoutSeconds": 5,
+    "ModelCatalogCapabilityConcurrency": 4,
     "EmbeddingDimensions": 1024,
     "MinSimilarityScore": 0.5,
     "RagMinSimilarityScore": 0.3

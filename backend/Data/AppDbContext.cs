@@ -31,6 +31,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AssistantAnswerCacheEntry> AssistantAnswerCacheEntries => Set<AssistantAnswerCacheEntry>();
     public DbSet<RagEvaluationDataset> RagEvaluationDatasets => Set<RagEvaluationDataset>();
     public DbSet<RagEvaluationRun> RagEvaluationRuns => Set<RagEvaluationRun>();
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,10 +48,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(u => u.Email).IsRequired();
             e.Property(u => u.PasswordHash).IsRequired();
             e.Property(u => u.Role).IsRequired().HasDefaultValue("viewer");
+            e.Property(u => u.PreferredLlmModel).HasMaxLength(200);
             e.Property(u => u.CreatedAt).IsRequired();
             e.Property(u => u.UpdatedAt).IsRequired();
             e.HasIndex(u => u.Email).IsUnique();
             e.HasIndex(u => u.Slug).IsUnique();
+        });
+
+        modelBuilder.Entity<SystemSetting>(e =>
+        {
+            e.ToTable("system_settings");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(100);
+            e.Property(x => x.Value).IsRequired().HasMaxLength(500);
+            e.Property(x => x.UpdatedById).HasMaxLength(21);
+            e.HasOne(x => x.UpdatedBy).WithMany().HasForeignKey(x => x.UpdatedById)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── ApiKeys ──────────────────────────────────────

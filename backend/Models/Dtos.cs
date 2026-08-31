@@ -28,7 +28,9 @@ public record UpdateArticleRequest(
 public record LoginRequest(string Email, string Password);
 public record RegisterRequest(string Name, string Email, string Password);
 public record AzureLoginRequest(string AccessToken);
-public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword);
+public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword,
+    string? PreferredLlmModel = null, bool ClearPreferredLlmModel = false);
+public record UpdateDefaultLlmModelRequest(string Model);
 
 // Admin Users
 public record CreateUserRequest(string Name, string Email, string Password, string? Role = null);
@@ -89,7 +91,8 @@ public record AssistantResponseDto(
     string TraceId,
     string? ConversationId,
     bool CacheHit,
-    AssistantTokenUsageDto TokenUsage);
+    AssistantTokenUsageDto TokenUsage,
+    string? Model = null);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

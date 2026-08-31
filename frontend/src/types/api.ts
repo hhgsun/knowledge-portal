@@ -48,6 +48,7 @@ export interface User {
   email: string;
   role: UserRole;
   isAzureUser?: boolean;
+  preferredLlmModel?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,6 +88,15 @@ export interface Tag {
 
 export interface TagWithCount extends Tag {
   articleCount: number;
+}
+
+export interface LlmModelSettings {
+  models: { id: string; label: string }[];
+  defaultModel: string;
+  preferredModel: string | null;
+  effectiveModel: string;
+  catalogSource: "ollama" | "stale_cache" | "configured_fallback";
+  catalogWarning: string | null;
 }
 
 export type ArticleIndexState = "indexed" | "indexing" | "pending" | "stale" | "failed" | "not_applicable";
@@ -285,6 +295,7 @@ export interface AssistantResponse {
   traceId: string;
   conversationId?: string | null;
   cacheHit: boolean;
+  model?: string | null;
   tokenUsage: {
     inputTokens: number;
     outputTokens: number;

@@ -75,6 +75,7 @@ const adminNavigation: NavItem[] = [
   { label: "Logs", href: "/settings/logs", icon: <ScrollText size={18} /> },
   { label: "Search Health", href: "/settings/search", icon: <Stethoscope size={18} /> },
   { label: "RAG Quality", href: "/settings/rag-evaluations", icon: <FlaskConical size={18} /> },
+  { label: "LLM Settings", href: "/settings/llm", icon: <Bot size={18} /> },
 ];
 
 function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: boolean }) {
