@@ -36,7 +36,8 @@ public sealed class AssistantOrchestratorService(
         try
         {
             var normalizedQuestion = request.Message.Trim();
-            var effectiveModel = (await modelSelection.GetSettingsAsync(principal, budget.Token)).EffectiveModel;
+            var effectiveModel = request.Model
+                ?? await modelSelection.GetDefaultModelAsync(budget.Token);
             var cacheQuestion = BuildCacheQuestion(request, effectiveModel);
             CachedAssistantAnswer? cached = null;
             try

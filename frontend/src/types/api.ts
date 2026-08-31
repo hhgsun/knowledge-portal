@@ -48,7 +48,6 @@ export interface User {
   email: string;
   role: UserRole;
   isAzureUser?: boolean;
-  preferredLlmModel?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,8 +92,6 @@ export interface TagWithCount extends Tag {
 export interface LlmModelSettings {
   models: { id: string; label: string }[];
   defaultModel: string;
-  preferredModel: string | null;
-  effectiveModel: string;
   catalogSource: "ollama" | "stale_cache" | "configured_fallback";
   catalogWarning: string | null;
 }

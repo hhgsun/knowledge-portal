@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using KnowledgePortal.Api.Auth;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -10,8 +8,6 @@ public sealed record LlmModelOption(string Id, string Label);
 public sealed record LlmModelSettings(
     IReadOnlyList<LlmModelOption> Models,
     string DefaultModel,
-    string? PreferredModel,
-    string EffectiveModel,
     string CatalogSource,
     string? CatalogWarning);
 
@@ -37,20 +33,14 @@ public sealed class LlmModelSelectionService(
         return Resolve(models, stored) ?? Resolve(models, ConfiguredDefault()) ?? models[0].Id;
     }
 
-    public async Task<LlmModelSettings> GetSettingsAsync(ClaimsPrincipal principal,
-        CancellationToken ct = default)
+    public async Task<LlmModelSettings> GetSettingsAsync(CancellationToken ct = default)
     {
         var discovered = await catalog.GetAsync(ct);
         var models = discovered.Models;
         var storedDefault = await db.SystemSettings.AsNoTracking()
             .Where(x => x.Key == DefaultModelSettingKey).Select(x => x.Value).SingleOrDefaultAsync(ct);
         var defaultModel = Resolve(models, storedDefault) ?? Resolve(models, ConfiguredDefault()) ?? models[0].Id;
-        var userId = principal.GetUserId();
-        var preferred = string.IsNullOrWhiteSpace(userId) ? null : await db.Users.AsNoTracking()
-            .Where(x => x.Id == userId).Select(x => x.PreferredLlmModel).SingleOrDefaultAsync(ct);
-        preferred = Resolve(models, preferred);
-        return new(models, defaultModel, preferred, preferred ?? defaultModel,
-            discovered.Source, discovered.Warning);
+        return new(models, defaultModel, discovered.Source, discovered.Warning);
     }
 
     public async Task SetDefaultModelAsync(string model, string updatedById, CancellationToken ct)

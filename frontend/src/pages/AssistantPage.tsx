@@ -8,7 +8,9 @@ import { useCapabilities } from "../contexts/CapabilitiesContext";
 import { useApi } from "../hooks/useApi";
 import { readApiError, readApiJson } from "../lib/api-response";
 import { cn } from "../lib/utils";
-import type { AssistantResponse, RagSource } from "../types/api";
+import type { AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
+
+const assistantModelStorageKey = "knowledge-portal.assistant.model";
 
 const starterQuestions = [
   { icon: ShieldCheck, label: "Politika ve kontroller", question: "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?" },
@@ -32,6 +34,8 @@ export default function AssistantPage() {
   const [streamedText, setStreamedText] = useState("");
   const [streamStage, setStreamStage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [modelSettings, setModelSettings] = useState<LlmModelSettings>();
+  const [selectedModel, setSelectedModel] = useState("");
   const conversationIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -39,6 +43,36 @@ export default function AssistantPage() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: loading ? "smooth" : "auto", block: "end" }); }, [exchanges, loading, streamedText]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetchWithAuth("/api/llm-models");
+        if (!response.ok) return;
+        const settings = await readApiJson<LlmModelSettings>(response);
+        if (!active) return;
+        setModelSettings(settings);
+        const stored = localStorage.getItem(assistantModelStorageKey);
+        const canonical = settings.models.find(model =>
+          model.id.toLowerCase() === stored?.toLowerCase())?.id;
+        if (canonical) setSelectedModel(canonical);
+        else {
+          if (stored && settings.catalogSource === "ollama")
+            localStorage.removeItem(assistantModelStorageKey);
+          setSelectedModel("");
+        }
+      } catch {
+        // Assistant requests still use the server-side admin default if the catalog cannot load.
+      }
+    })();
+    return () => { active = false; };
+  }, [fetchWithAuth]);
+
+  const changeModel = (model: string) => {
+    setSelectedModel(model);
+    if (model) localStorage.setItem(assistantModelStorageKey, model);
+    else localStorage.removeItem(assistantModelStorageKey);
+  };
 
   const ensureSessionConversation = useCallback(async () => {
     if (!capabilities?.conversationHistoryEnabled) return null;
@@ -73,7 +107,8 @@ export default function AssistantPage() {
       const streaming = capabilities?.streamingEnabled ?? true;
       const result = await fetchWithAuth(streaming ? "/api/assistant/stream" : "/api/assistant", {
         method: "POST", noRetry: true, signal: controller.signal,
-        body: JSON.stringify({ message: text, conversationId: activeConversation }),
+        body: JSON.stringify({ message: text, conversationId: activeConversation,
+          model: selectedModel || undefined }),
       });
       if (!result.ok) throw new Error(await readApiError(result, "Asistan isteği tamamlanamadı."));
       let completedResponse: AssistantResponse | null = null;
@@ -115,7 +150,7 @@ export default function AssistantPage() {
   const hasContent = exchanges.length > 0 || loading;
 
   return <div className="mx-auto flex h-[calc(100dvh-5rem)] min-h-[38rem] max-w-5xl flex-col lg:h-[calc(100dvh-3rem)]">
-    <AssistantHeader />
+    <AssistantHeader settings={modelSettings} selectedModel={selectedModel} loading={loading} onChange={changeModel} />
     <div className="min-h-0 flex-1">
       <main className="flex h-full min-h-0 min-w-0 flex-col">
         <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2" aria-busy={loading}>
@@ -138,13 +173,28 @@ export default function AssistantPage() {
   </div>;
 }
 
-function AssistantHeader() {
-  return <header className="flex items-start justify-between gap-4 pb-4">
+function AssistantHeader({ settings, selectedModel, loading, onChange }: {
+  settings?: LlmModelSettings;
+  selectedModel: string;
+  loading: boolean;
+  onChange: (model: string) => void;
+}) {
+  return <header className="flex flex-col items-start justify-between gap-4 pb-4 sm:flex-row">
     <div className="flex min-w-0 items-center gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><Bot size={22} /></div>
       <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Bilgi Asistanı</h1><p className="mt-1 text-sm text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
     </div>
-    <span className="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
+    <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+      <label htmlFor="assistant-model" className="sr-only">Asistan modeli</label>
+      <select id="assistant-model" value={selectedModel} disabled={!settings || loading}
+        onChange={event => onChange(event.target.value)}
+        title={settings?.catalogWarning ?? "Bu seçim yalnızca bu tarayıcıda saklanır."}
+        className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 sm:max-w-56">
+        <option value="">Yönetici varsayılanı{settings ? ` — ${settings.defaultModel}` : ""}</option>
+        {settings?.models.map(model => <option key={model.id} value={model.id}>{model.label} ({model.id})</option>)}
+      </select>
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
+    </div>
   </header>;
 }
 

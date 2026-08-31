@@ -7,7 +7,9 @@ public sealed class AssistantRequestService(
     AssistantOrchestratorService orchestrator,
     AssistantInteractionService interactions,
     AssistantConversationService conversations,
-    KnowledgeInputValidationService inputValidation)
+    KnowledgeInputValidationService inputValidation,
+    LlmModelSelectionService modelSelection,
+    ChatModelContext modelContext)
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
@@ -16,9 +18,19 @@ public sealed class AssistantRequestService(
                               ?? inputValidation.ValidateScope(request.Tags, request.Authors,
                                   request.ContentTypes, request.Facets);
         if (validationError != null) return (null, validationError);
+        var effectiveModel = string.IsNullOrWhiteSpace(request.Model)
+            ? await modelSelection.GetDefaultModelAsync(ct)
+            : await modelSelection.ResolveAsync(request.Model, ct);
+        if (effectiveModel == null)
+            return (null, new ServiceError(400, "Model is not available from the Ollama server."));
+        modelContext.Model = effectiveModel;
         var conversation = await conversations.ResolveAsync(request, principal, ct);
         if (conversation.Error != null) return (null, conversation.Error);
-        var effective = request with { Message = conversation.Context!.EffectiveMessage };
+        var effective = request with
+        {
+            Message = conversation.Context!.EffectiveMessage,
+            Model = effectiveModel
+        };
         var execution = await orchestrator.ExecuteAsync(effective, principal, ct,
             conversation.Context.HypotheticalDocument,
             conversation.Context.ContextualizationStrategy);

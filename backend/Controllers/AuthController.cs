@@ -14,8 +14,7 @@ namespace KnowledgePortal.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtService jwt, IConfiguration config, UserService userService,
-    LlmModelSelectionService llmModels) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwt, IConfiguration config, UserService userService) : ControllerBase
 {
     [HttpPost("login")]
     [EnableRateLimiting("auth")]
@@ -61,7 +60,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
         if (user == null) return Unauthorized(new { error = "User not found" });
 
         return Ok(new { user.Id, user.Name, user.Email, user.Role,
-            isAzureUser = user.AzureObjectId != null, user.PreferredLlmModel });
+            isAzureUser = user.AzureObjectId != null });
     }
 
     [HttpPut("profile")]
@@ -125,21 +124,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IConfiguration conf
             user.PasswordHash = UserService.HashPassword(req.NewPassword);
         }
 
-        if (req.ClearPreferredLlmModel)
-            user.PreferredLlmModel = null;
-        else if (!string.IsNullOrWhiteSpace(req.PreferredLlmModel))
-        {
-            var resolvedModel = await llmModels.ResolveAsync(req.PreferredLlmModel,
-                HttpContext.RequestAborted);
-            if (resolvedModel == null)
-                return BadRequest(new { error = "Model is not available from the Ollama server" });
-            user.PreferredLlmModel = resolvedModel;
-        }
-
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return Ok(new { user.Id, user.Name, user.Email, user.Role, user.PreferredLlmModel });
+        return Ok(new { user.Id, user.Name, user.Email, user.Role });
     }
 
     [HttpPost("azure-login")]

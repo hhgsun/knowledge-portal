@@ -38,6 +38,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.False(json.TryGetProperty("results", out _));
         Assert.False(json.TryGetProperty("analytics", out _));
         Assert.False(json.TryGetProperty("searchQueryId", out _));
+        Assert.Equal("qwen2.5vl:7b", json.GetProperty("model").GetString());
         Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("interactionId").GetString()));
         var tokenUsage = json.GetProperty("tokenUsage");
         Assert.Equal(tokenUsage.GetProperty("inputTokens").GetInt64()
@@ -135,6 +136,17 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         await TestHelpers.AuthenticateAsAdminAsync(client);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.PostAsJsonAsync("/api/assistant", new { message = new string('x', 4001) })).StatusCode);
+    }
+
+    [Fact]
+    public async Task AssistantRejectsModelOutsideDiscoveredCatalog()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var response = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "VPN nedir?", model = "not-installed:latest" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("not available", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]

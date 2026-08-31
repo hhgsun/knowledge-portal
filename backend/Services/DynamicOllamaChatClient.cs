@@ -5,10 +5,10 @@ using OllamaSharp;
 
 namespace KnowledgePortal.Api.Services;
 
-/// <summary>Routes each scoped chat call to the user's effective, Ollama-discovered model.</summary>
+/// <summary>Routes each scoped chat call to the request-selected or admin-default model.</summary>
 public sealed class DynamicOllamaChatClient(
     LlmModelSelectionService selection,
-    IHttpContextAccessor httpContextAccessor,
+    ChatModelContext modelContext,
     OllamaChatClientFactory factory) : IChatClient
 {
     private string? effectiveModel;
@@ -40,14 +40,15 @@ public sealed class DynamicOllamaChatClient(
     private async Task<OllamaApiClient> GetClientAsync(CancellationToken ct)
     {
         if (effectiveModel == null)
-        {
-            var principal = httpContextAccessor.HttpContext?.User;
-            effectiveModel = principal?.Identity?.IsAuthenticated == true
-                ? (await selection.GetSettingsAsync(principal, ct)).EffectiveModel
-                : await selection.GetDefaultModelAsync(ct);
-        }
+            effectiveModel = modelContext.Model ?? await selection.GetDefaultModelAsync(ct);
         return factory.Get(effectiveModel);
     }
+}
+
+/// <summary>Holds the validated chat model for the current dependency-injection scope.</summary>
+public sealed class ChatModelContext
+{
+    public string? Model { get; set; }
 }
 
 public sealed class OllamaChatClientFactory(IConfiguration config) : IDisposable

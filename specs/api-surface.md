@@ -748,7 +748,7 @@ still below the target, query-relevant verified evidence sentences complete the 
 
 The Assistant has one purpose: produce a grounded answer from authorized portal evidence. It does not return document-search result lists, route to analytics/general chat, execute mutations, or run free-form SQL. `KnowledgeAnswerService` is the canonical RAG entry point shared with MCP `ask_knowledge`; `GET /api/search` remains a separate document-retrieval API.
 
-Chat model selection is dynamic and provider-discovered. The backend reads installed models from `Ollama:BaseUrl` via `GET /api/tags`, filters the configured/recognizable embedding-only models, and uses `POST /api/show` completion capabilities when available. The last successful catalog is cached; temporary provider failure returns stale cache or the configured chat fallback with `catalogSource` and `catalogWarning`. `GET /api/llm-models` returns `models`, `defaultModel`, `preferredModel`, `effectiveModel`, and those catalog health fields. A user persists a currently discovered `preferredLlmModel` through `PUT /api/auth/profile`, or sends `clearPreferredLlmModel: true` to inherit the admin default again. Session admins read/update the database-backed default through `GET/PUT /api/admin/llm-settings`; the update body is `{ "model": "<discovered-model-id>" }`. Effective precedence is an available user preference, available admin default, then `Ollama:ChatModel` or the first discovered model. Assistant responses expose the effective `model`, and semantic answer-cache identity includes it. These settings never change the embedding model or attachment extraction profile.
+Chat model selection is dynamic and provider-discovered. The backend reads installed models from `Ollama:BaseUrl` via `GET /api/tags`, filters the configured/recognizable embedding-only models, and uses `POST /api/show` completion capabilities when available. The last successful catalog is cached; temporary provider failure returns stale cache or the configured chat fallback with `catalogSource` and `catalogWarning`. `GET /api/llm-models` returns `models`, `defaultModel`, and those catalog health fields. Session admins read/update the database-backed default through `GET/PUT /api/admin/llm-settings`; the update body is `{ "model": "<discovered-model-id>" }`. The Assistant screen stores its optional selection only in browser storage and sends it as `model` with every Assistant request. The backend rejects unavailable requested models; a missing selection uses the admin default, then `Ollama:ChatModel` or the first discovered model. MCP and system jobs use the admin default. Assistant responses expose the effective `model`, and semantic answer-cache identity includes it. No per-user model preference is persisted in the database. These settings never change the embedding model or attachment extraction profile.
 
 **Request**:
 
@@ -756,6 +756,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 {
   "message": "VPN politikasının istisnaları nelerdir?",
   "conversationId": null,
+  "model": "qwen2.5vl:7b",
   "onlyOwnContent": false,
   "tags": ["security"],
   "authors": [],
@@ -767,6 +768,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 |-------|------|:--------:|-------|
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
 | `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user/assistant turns rewrite follow-ups into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
+| `model` | string | No | Ollama-discovered chat model selected on the Assistant screen. It is validated for every request; omission uses the admin default. |
 | `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |

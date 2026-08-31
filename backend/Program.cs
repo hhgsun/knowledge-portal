@@ -263,6 +263,7 @@ builder.Services.AddScoped<KnowledgeAnswerService>();
 builder.Services.AddScoped<AssistantOrchestratorService>();
 builder.Services.AddScoped<AssistantInteractionService>();
 builder.Services.AddScoped<AssistantConversationService>();
+builder.Services.AddScoped<ChatModelContext>();
 builder.Services.AddScoped<AssistantRequestService>();
 builder.Services.AddScoped<AssistantAnswerCacheService>();
 builder.Services.AddScoped<AnalyticsReportService>();

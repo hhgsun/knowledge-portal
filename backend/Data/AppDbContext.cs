@@ -48,7 +48,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(u => u.Email).IsRequired();
             e.Property(u => u.PasswordHash).IsRequired();
             e.Property(u => u.Role).IsRequired().HasDefaultValue("viewer");
-            e.Property(u => u.PreferredLlmModel).HasMaxLength(200);
             e.Property(u => u.CreatedAt).IsRequired();
             e.Property(u => u.UpdatedAt).IsRequired();
             e.HasIndex(u => u.Email).IsUnique();

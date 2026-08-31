@@ -28,8 +28,7 @@ public record UpdateArticleRequest(
 public record LoginRequest(string Email, string Password);
 public record RegisterRequest(string Name, string Email, string Password);
 public record AzureLoginRequest(string AccessToken);
-public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword,
-    string? PreferredLlmModel = null, bool ClearPreferredLlmModel = false);
+public record UpdateProfileRequest(string? Name, string? Email, string? CurrentPassword, string? NewPassword);
 public record UpdateDefaultLlmModelRequest(string Model);
 
 // Admin Users
@@ -56,7 +55,7 @@ public record RecordClickRequest(string SearchQueryId, string ArticleId);
 public record AssistantRequest(string Message, string? ConversationId = null,
     bool OnlyOwnContent = false, IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null,
-    Dictionary<string, string[]>? Facets = null);
+    Dictionary<string, string[]>? Facets = null, string? Model = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
 public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
 public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,

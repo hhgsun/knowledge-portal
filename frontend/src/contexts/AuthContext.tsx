@@ -9,7 +9,6 @@ interface User {
   email: string;
   role: string;
   isAzureUser?: boolean;
-  preferredLlmModel?: string | null;
 }
 
 interface AuthContextType {

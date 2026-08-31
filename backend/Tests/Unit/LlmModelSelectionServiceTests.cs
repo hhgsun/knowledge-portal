@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
@@ -13,14 +12,9 @@ namespace KnowledgePortal.Api.Tests.Unit;
 public sealed class LlmModelSelectionServiceTests
 {
     [Fact]
-    public async Task Effective_model_prefers_user_choice_then_admin_default()
+    public async Task Settings_use_database_backed_admin_default()
     {
         await using var db = CreateDb();
-        db.Users.Add(new User
-        {
-            Id = "user-1", Name = "User", Slug = "user", Email = "user@example.test",
-            PasswordHash = "hash", PreferredLlmModel = "model-b"
-        });
         db.SystemSettings.Add(new SystemSetting
         {
             Key = LlmModelSelectionService.DefaultModelSettingKey, Value = "model-a"
@@ -29,22 +23,16 @@ public sealed class LlmModelSelectionServiceTests
         var config = Config();
         var service = new LlmModelSelectionService(db, config, Catalog(config));
 
-        var settings = await service.GetSettingsAsync(Principal("user-1"));
+        var settings = await service.GetSettingsAsync();
 
         Assert.Equal("model-a", settings.DefaultModel);
-        Assert.Equal("model-b", settings.PreferredModel);
-        Assert.Equal("model-b", settings.EffectiveModel);
+        Assert.Equal(["model-a", "model-b"], settings.Models.Select(x => x.Id));
     }
 
     [Fact]
     public async Task Invalid_stored_values_fall_back_to_configured_default()
     {
         await using var db = CreateDb();
-        db.Users.Add(new User
-        {
-            Id = "user-1", Name = "User", Slug = "user", Email = "user@example.test",
-            PasswordHash = "hash", PreferredLlmModel = "removed-model"
-        });
         db.SystemSettings.Add(new SystemSetting
         {
             Key = LlmModelSelectionService.DefaultModelSettingKey, Value = "removed-model"
@@ -53,11 +41,9 @@ public sealed class LlmModelSelectionServiceTests
         var config = Config();
         var service = new LlmModelSelectionService(db, config, Catalog(config));
 
-        var settings = await service.GetSettingsAsync(Principal("user-1"));
+        var settings = await service.GetSettingsAsync();
 
         Assert.Equal("model-a", settings.DefaultModel);
-        Assert.Null(settings.PreferredModel);
-        Assert.Equal("model-a", settings.EffectiveModel);
     }
 
     [Fact]
@@ -126,7 +112,4 @@ public sealed class LlmModelSelectionServiceTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken) => Task.FromResult(response(request));
     }
-
-    private static ClaimsPrincipal Principal(string id) => new(new ClaimsIdentity(
-        [new Claim("id", id)], "test"));
 }
