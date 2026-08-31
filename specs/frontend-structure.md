@@ -132,7 +132,7 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | Document-result modes; a populated query can be handed to `/assistant?q=...&mode=answer` |
-| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface; one conversation for the open page session, no previous-conversation browser, verified SSE, source links directly below every answer, citations, feedback and cache/calibration indicators |
+| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface integrated directly into the standard page layout (no standalone framed shell); one conversation for the open page session, no previous-conversation browser, verified SSE, source links directly below every answer, citations, feedback and cache/calibration indicators |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |

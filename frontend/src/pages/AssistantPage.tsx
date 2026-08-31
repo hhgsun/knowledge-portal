@@ -114,12 +114,12 @@ export default function AssistantPage() {
 
   const hasContent = exchanges.length > 0 || loading;
 
-  return <div className="mx-auto flex h-[calc(100dvh-3rem)] min-h-[38rem] max-w-6xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+  return <div className="mx-auto flex h-[calc(100dvh-5rem)] min-h-[38rem] max-w-5xl flex-col lg:h-[calc(100dvh-3rem)]">
     <AssistantHeader />
     <div className="min-h-0 flex-1">
-      <main className="flex h-full min-h-0 min-w-0 flex-col bg-white dark:bg-zinc-900">
-        <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={loading}>
-          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-6 sm:px-8 lg:px-10">
+      <main className="flex h-full min-h-0 min-w-0 flex-col">
+        <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2" aria-busy={loading}>
+          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col py-4">
             {!hasContent ? <WelcomeState onQuestion={question => void execute(question)} /> :
               <div className="space-y-7" aria-live="polite">
                 {exchanges.map(exchange => <Fragment key={exchange.id}>
@@ -139,16 +139,12 @@ export default function AssistantPage() {
 }
 
 function AssistantHeader() {
-  return <header className="flex min-h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900 sm:px-5">
+  return <header className="flex items-start justify-between gap-4 pb-4">
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/20"><Bot size={24} /></div>
-      <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50 sm:text-base">Bilgi Asistanı</h1>
-        {/* <span className="hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 sm:inline-flex dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Kurumsal bilgiye bağlı
-        </span> */}
-      </div><p className="truncate text-xs text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><Bot size={22} /></div>
+      <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Bilgi Asistanı</h1><p className="mt-1 text-sm text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
     </div>
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
+    <span className="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
   </header>;
 }
 
@@ -167,7 +163,7 @@ function StreamingAnswer({ text, stage }: { text: string; stage: string }) {
 
 type ComposerProps = { inputRef: React.RefObject<HTMLTextAreaElement | null>; message: string; loading: boolean; maxLength: number; onChange: (value: string) => void; onSubmit: () => void; onCancel: () => void };
 function Composer({ inputRef, message, loading, maxLength, onChange, onSubmit, onCancel }: ComposerProps) {
-  return <div className="border-t border-zinc-200 bg-white px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900 sm:px-8 lg:px-10"><form onSubmit={event => { event.preventDefault(); onSubmit(); }} className="mx-auto max-w-4xl"><div className="rounded-xl border border-zinc-300 bg-white p-2 shadow-sm transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-950"><textarea ref={inputRef} value={message} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={maxLength} rows={2} placeholder="Kurumsal bilginiz hakkında bir soru sorun…" className="max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-zinc-400" aria-label="Bilgi Asistanına sorun" /><div className="flex items-center justify-between gap-3 px-1"><div className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-400 sm:text-[11px]"><ShieldCheck size={13} className="shrink-0 text-emerald-500" /><span className="truncate">Yetki kapsamınız korunur</span>{message.length > maxLength * .8 && <span className="shrink-0 tabular-nums">{message.length}/{maxLength}</span>}</div>{loading ? <button type="button" onClick={onCancel} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900"><Square size={12} />Durdur</button> : <button type="submit" disabled={!message.trim()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={14} />Gönder</button>}</div></div><p className="mt-2 text-center text-[10px] text-zinc-400">Enter ile gönderin · Shift + Enter ile yeni satır ekleyin · Önemli bilgileri bağlı kaynaklardan doğrulayın</p></form></div>;
+  return <div className="pt-4"><form onSubmit={event => { event.preventDefault(); onSubmit(); }} className="mx-auto max-w-4xl"><div className="rounded-xl border border-zinc-300 bg-white p-2 shadow-sm transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-900"><textarea ref={inputRef} value={message} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={maxLength} rows={2} placeholder="Kurumsal bilginiz hakkında bir soru sorun…" className="max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-zinc-400" aria-label="Bilgi Asistanına sorun" /><div className="flex items-center justify-between gap-3 px-1"><div className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-400 sm:text-[11px]"><ShieldCheck size={13} className="shrink-0 text-emerald-500" /><span className="truncate">Yetki kapsamınız korunur</span>{message.length > maxLength * .8 && <span className="shrink-0 tabular-nums">{message.length}/{maxLength}</span>}</div>{loading ? <button type="button" onClick={onCancel} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900"><Square size={12} />Durdur</button> : <button type="submit" disabled={!message.trim()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={14} />Gönder</button>}</div></div><p className="mt-2 text-center text-[10px] text-zinc-400">Enter ile gönderin · Shift + Enter ile yeni satır ekleyin · Önemli bilgileri bağlı kaynaklardan doğrulayın</p></form></div>;
 }
 
 function AssistantResult({ response, feedbackEnabled }: { response: AssistantResponse; feedbackEnabled: boolean }) {
