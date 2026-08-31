@@ -5,7 +5,9 @@ using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Controllers;
@@ -15,25 +17,6 @@ namespace KnowledgePortal.Api.Controllers;
 public class AttachmentsController(AppDbContext db, IConfiguration config, ArticleService articleService,
     ILogger<AttachmentsController> logger) : ControllerBase
 {
-    private static readonly Dictionary<string, string[]> MimeMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".png"] = ["image/png"],
-        [".jpg"] = ["image/jpeg"],
-        [".jpeg"] = ["image/jpeg"],
-        [".gif"] = ["image/gif"],
-        [".webp"] = ["image/webp"],
-        [".svg"] = ["image/svg+xml"],
-        [".pdf"] = ["application/pdf"],
-        [".md"] = ["text/markdown", "text/plain", "application/octet-stream"],
-        [".txt"] = ["text/plain"],
-        [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
-        [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"],
-        [".pptx"] = ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/octet-stream"],
-        [".yaml"] = ["text/yaml", "application/x-yaml", "text/plain", "application/octet-stream"],
-        [".json"] = ["application/json", "text/plain"],
-        [".csv"] = ["text/csv", "text/plain", "application/octet-stream"],
-    };
-
     [HttpGet("api/articles/{articleId}/attachments")]
     public async Task<IActionResult> List(string articleId)
     {
@@ -61,7 +44,7 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
     }
 
     [HttpPost("api/articles/{articleId}/attachments")]
-    [RequestSizeLimit(20_971_520)]
+    [TypeFilter(typeof(ConfiguredFileUploadRequestSizeFilter))]
     public async Task<IActionResult> Upload(string articleId, IFormFile file,
         [FromForm] bool includeInIndex = true)
     {
@@ -83,18 +66,20 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
 
         // Extension whitelist check
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var allowedExtensions = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>()
-            ?? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".pptx", ".yaml", ".json", ".csv", ".svg"];
+        var allowedExtensions = config.GetSection("FileStorage:AllowedExtensions").Get<string[]>() ?? [];
 
-        if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+        if (string.IsNullOrEmpty(extension)
+            || !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             return BadRequest(new { error = $"File type '{extension}' is not allowed" });
 
         // MIME type validation
-        if (MimeMap.TryGetValue(extension, out var allowedMimes))
-        {
-            if (!allowedMimes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
-                return BadRequest(new { error = $"Content type '{file.ContentType}' does not match file extension '{extension}'" });
-        }
+        var allowedMimes = config
+            .GetSection($"FileStorage:AllowedContentTypes:{extension.TrimStart('.')}")
+            .Get<string[]>();
+        if (allowedMimes is not { Length: > 0 })
+            return BadRequest(new { error = $"File type '{extension}' has no configured content-type policy" });
+        if (!allowedMimes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+            return BadRequest(new { error = $"Content type '{file.ContentType}' does not match file extension '{extension}'" });
 
         // Max attachments per article check
         var maxAttachments = config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20);
@@ -201,5 +186,18 @@ public class AttachmentsController(AppDbContext db, IConfiguration config, Artic
             return NotFound(new { error = "File not found on disk" });
 
         return PhysicalFile(filePath, attachment.ContentType, attachment.FileName);
+    }
+}
+
+public sealed class ConfiguredFileUploadRequestSizeFilter(IConfiguration config) : IAsyncResourceFilter
+{
+    public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
+    {
+        var maxFileBytes = checked(Math.Max(1, config.GetValue("FileStorage:MaxFileSizeMB", 20))
+            * 1024L * 1024L);
+        var requestSizeFeature = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (requestSizeFeature is { IsReadOnly: false })
+            requestSizeFeature.MaxRequestBodySize = checked(maxFileBytes + 1024L * 1024L);
+        await next();
     }
 }

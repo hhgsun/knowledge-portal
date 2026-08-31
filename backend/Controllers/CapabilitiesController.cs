@@ -17,5 +17,8 @@ public sealed class CapabilitiesController(IConfiguration config) : ControllerBa
         Math.Clamp(config.GetValue("Assistant:MaxMessageCharacters", 4000), 100, 20_000),
         true,
         config.GetValue("Assistant:ConversationHistoryEnabled", true),
-        config.GetValue("Assistant:SemanticCache:Enabled", true)));
+        config.GetValue("Assistant:SemanticCache:Enabled", true),
+        config.GetSection("FileStorage:AllowedExtensions").Get<string[]>() ?? [],
+        Math.Max(1, config.GetValue("FileStorage:MaxFileSizeMB", 20)),
+        Math.Max(1, config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20))));
 }

@@ -60,7 +60,9 @@ public record AssistantFeedbackRequest(string InteractionId, bool Helpful, strin
 public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
 public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,
     bool FeedbackEnabled, int MaxMessageCharacters, bool StreamingEnabled,
-    bool ConversationHistoryEnabled, bool SemanticCacheEnabled);
+    bool ConversationHistoryEnabled, bool SemanticCacheEnabled,
+    string[] AllowedAttachmentExtensions, int MaxAttachmentSizeMb,
+    int MaxAttachmentsPerArticle);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);

@@ -269,6 +269,9 @@ export interface AssistantCapabilities {
   streamingEnabled: boolean;
   conversationHistoryEnabled: boolean;
   semanticCacheEnabled: boolean;
+  allowedAttachmentExtensions: string[];
+  maxAttachmentSizeMb: number;
+  maxAttachmentsPerArticle: number;
 }
 
 export interface AssistantResponse {

@@ -106,12 +106,30 @@ Embedding boyutu veritabanındaki `vector(1024)` kolonuyla eşleşmelidir. Ollam
   "FileStorage": {
     "BasePath": "../data/uploads",
     "MaxFileSizeMB": 20,
+    "AllowedExtensions": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md", ".txt", ".docx", ".xlsx", ".pptx", ".yaml", ".json", ".csv", ".svg"],
+    "AllowedContentTypes": {
+      "png": ["image/png"],
+      "jpg": ["image/jpeg"],
+      "jpeg": ["image/jpeg"],
+      "gif": ["image/gif"],
+      "webp": ["image/webp"],
+      "svg": ["image/svg+xml"],
+      "pdf": ["application/pdf"],
+      "md": ["text/markdown", "text/plain", "application/octet-stream"],
+      "txt": ["text/plain"],
+      "docx": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
+      "xlsx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"],
+      "pptx": ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/octet-stream"],
+      "yaml": ["text/yaml", "application/x-yaml", "text/plain", "application/octet-stream"],
+      "json": ["application/json", "text/plain"],
+      "csv": ["text/csv", "text/plain", "application/octet-stream"]
+    },
     "MaxAttachmentsPerArticle": 20
   }
 }
 ```
 
-Uploads ve log dizinleri kalıcı diskte tutulmalıdır. Dosya yazımı aynı volume üzerinde geçici dosya, flush, SHA-256 ve atomik rename akışıyla yapılır; silmeler kurtarılabilir `.trash` alanına taşınır.
+Uploads ve log dizinleri kalıcı diskte tutulmalıdır. Her `AllowedExtensions` girdisinin `AllowedContentTypes` altında MIME politikası bulunmalıdır. `AllowedExtensions`, `MaxFileSizeMB` ve `MaxAttachmentsPerArticle` authenticated frontend'e `/api/capabilities` ile iletilir; frontend aynı değerleri ayrıca sabit tutmaz. Dosya yazımı aynı volume üzerinde geçici dosya, flush, SHA-256 ve atomik rename akışıyla yapılır; silmeler kurtarılabilir `.trash` alanına taşınır.
 
 ## Veritabanı
 

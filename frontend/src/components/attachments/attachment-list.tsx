@@ -13,6 +13,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useCapabilities } from "../../contexts/CapabilitiesContext";
 import type { ArticleAttachment, AttachmentListResponse } from "../../types/api";
 import type { PendingAttachment } from "./file-upload-zone";
 
@@ -39,8 +40,6 @@ interface AttachmentListProps {
   onTogglePendingFileIndexing?: (index: number, includeInIndex: boolean) => void;
 }
 
-const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.yaml,.json,.csv,.svg";
-
 function getFileIcon(contentType: string) {
   if (contentType.startsWith("image/")) return <Image size={16} className="text-blue-500" />;
   if (contentType === "application/pdf") return <FileText size={16} className="text-red-500" />;
@@ -66,6 +65,8 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
   onUndoDelete, hideUpload, deletedIds, pendingFiles, onAddFiles, onRemovePendingFile,
   onTogglePendingFileIndexing }: AttachmentListProps) {
   const { fetchWithAuth } = useApi();
+  const { capabilities } = useCapabilities();
+  const acceptedExtensions = capabilities?.allowedAttachmentExtensions.join(",") || undefined;
   const [attachments, setAttachments] = useState<ArticleAttachment[]>(initialAttachments ?? []);
   const [loading, setLoading] = useState(!initialAttachments);
   const [uploading, setUploading] = useState(false);
@@ -252,7 +253,7 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
             <input
               ref={fileInputRef}
               type="file"
-              accept={ALLOWED_EXTENSIONS}
+              accept={acceptedExtensions}
               multiple
               onChange={handleUpload}
               className="hidden"
@@ -272,7 +273,7 @@ export default function AttachmentList({ articleId, canEdit, initialAttachments,
             <input
               ref={fileInputRef}
               type="file"
-              accept={ALLOWED_EXTENSIONS}
+              accept={acceptedExtensions}
               multiple
               onChange={(e) => { onAddFiles(Array.from(e.target.files || [])); e.target.value = ""; }}
               className="hidden"

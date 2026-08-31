@@ -81,6 +81,10 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         var json = await client.GetFromJsonAsync<JsonElement>("/api/capabilities");
         Assert.True(json.GetProperty("enabled").GetBoolean());
         Assert.True(json.GetProperty("groundedRagEnabled").GetBoolean());
+        Assert.Contains(".pdf", json.GetProperty("allowedAttachmentExtensions")
+            .EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(20, json.GetProperty("maxAttachmentSizeMb").GetInt32());
+        Assert.Equal(20, json.GetProperty("maxAttachmentsPerArticle").GetInt32());
         Assert.False(json.TryGetProperty("supportedModes", out _));
         Assert.False(json.TryGetProperty("classifierEnabled", out _));
     }

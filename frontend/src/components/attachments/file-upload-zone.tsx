@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
 import { Upload, File as FileIcon, FileText, Image, Trash2, Clock } from "lucide-react";
 import { cn } from "../../lib/utils";
-
-const ALLOWED_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.md,.txt,.docx,.xlsx,.pptx,.yaml,.json,.csv,.svg";
+import { useCapabilities } from "../../contexts/CapabilitiesContext";
 
 function getFileIconForType(type: string) {
   if (type.startsWith("image/")) return <Image size={16} className="text-blue-500" />;
@@ -34,6 +33,8 @@ export function PendingFileList({ files, onAdd, onRemove, onToggleIndexing,
   title = "Attachments" }: PendingFileListProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { capabilities } = useCapabilities();
+  const acceptedExtensions = capabilities?.allowedAttachmentExtensions.join(",") || undefined;
 
   return (
     <div
@@ -62,7 +63,7 @@ export function PendingFileList({ files, onAdd, onRemove, onToggleIndexing,
           <input
             ref={fileInputRef}
             type="file"
-            accept={ALLOWED_EXTENSIONS}
+            accept={acceptedExtensions}
             multiple
             onChange={(e) => { onAdd(Array.from(e.target.files || [])); e.target.value = ""; }}
             className="hidden"

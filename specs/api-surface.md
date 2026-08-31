@@ -844,7 +844,7 @@ Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_a
 ### `GET /api/capabilities`
 **Auth**: Bearer (JWT or API Key).
 
-Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, and semantic-cache capabilities. The frontend combines this response with `VITE_ASSISTANT_ENABLED`.
+Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, and semantic-cache capabilities. It also returns `allowedAttachmentExtensions`, `maxAttachmentSizeMb`, and `maxAttachmentsPerArticle`, allowing authenticated frontend upload controls to follow the backend `FileStorage` configuration without a duplicated hard-coded list. The frontend combines Assistant enablement with `VITE_ASSISTANT_ENABLED`; it fetches the endpoint independently of that compile-time Assistant flag because upload capabilities are portal-wide.
 
 ### `POST /api/assistant/stream`
 **Auth/policy/rate limit**: Same as `POST /api/assistant`.

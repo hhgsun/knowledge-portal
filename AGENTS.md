@@ -311,6 +311,7 @@ When the backend starts (`dotnet run`), it automatically seeds the database:
 | `profile.newPassword` | 8 | 128 | Optional; local users require currentPassword, Azure-linked users do not |
 | `attachment.file` | 1 byte | 20MB | Required, extension whitelist enforced |
 | `attachment.extensions` | — | — | Allowed: .png, .jpg, .jpeg, .gif, .webp, .pdf, .md, .txt, .docx, .xlsx, .pptx, .yaml, .json, .csv, .svg |
+| `attachment.contentTypes` | — | — | Each allowed extension requires an explicit `FileStorage:AllowedContentTypes` MIME allowlist; missing policies fail closed |
 | `attachment.includeInIndex` | — | — | Optional boolean, default true; false keeps the file downloadable but excludes it from FTS, semantic search and RAG sources |
 | `attachment.maxPerArticle` | — | 20 | Configurable via appsettings.json |
 | `attachment.maxExtractedCharacters` | 1000 | 5000000 | Default 50000; persisted per extraction so limit changes trigger re-extraction |

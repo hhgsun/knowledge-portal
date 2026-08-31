@@ -74,7 +74,7 @@ Semantic answer cache yalnız yeterli citation coverage sağlayan, partial/insuf
 
 ## Operasyon ve Yapılandırma
 
-`Assistant:Enabled=false` olduğunda Assistant endpoint'leri 404 döner; Search çalışmaya devam eder. `GET /api/capabilities` runtime enablement, grounded RAG, streaming, conversation, feedback ve semantic-cache durumunu bildirir. Frontend `VITE_ASSISTANT_ENABLED=false` ile route ve menüyü build sırasında kaldırabilir.
+`Assistant:Enabled=false` olduğunda Assistant endpoint'leri 404 döner; Search çalışmaya devam eder. `GET /api/capabilities` runtime enablement, grounded RAG, streaming, conversation, feedback ve semantic-cache durumunun yanında `FileStorage` kaynaklı attachment uzantı/boyut/adet sınırlarını bildirir. Frontend upload kontrolleri için endpoint'i Assistant build flag'inden bağımsız yükler; `VITE_ASSISTANT_ENABLED=false` yalnız Assistant route ve menüsünü build sırasında kaldırır.
 
 Search ve Assistant ayrı rate-limit politikaları kullanır. Assistant toplam süresi `Assistant:TotalTimeoutSeconds`, mesaj boyutu `Assistant:MaxMessageCharacters` ile sınırlıdır. RAG çalışma görünümü ve modelsiz debug endpoint'leri session-admin için sırasıyla `GET /api/admin/rag/observability` ve `GET /api/admin/rag/debug?q=...` adreslerindedir.
 

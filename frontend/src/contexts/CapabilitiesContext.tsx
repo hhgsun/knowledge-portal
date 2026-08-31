@@ -23,7 +23,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!compiledAssistantEnabled || !user) {
+    if (!user) {
       setCapabilities(null);
       setLoading(false);
       return;

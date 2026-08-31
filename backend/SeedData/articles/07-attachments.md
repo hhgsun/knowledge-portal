@@ -25,10 +25,12 @@ Aşağıdaki uzantılara sahip dosyalar yüklenebilir:
 
 ## Sınırlamalar
 
-- **Maksimum dosya boyutu:** 20 MB
-- **Makale başına maksimum dosya:** 20 adet
+- **Maksimum dosya boyutu:** `FileStorage:MaxFileSizeMB` ile yapılandırılır (varsayılan 20 MB).
+- **Makale başına maksimum dosya:** `FileStorage:MaxAttachmentsPerArticle` ile yapılandırılır (varsayılan 20 adet).
 - **Çıkarılan metin sınırı:** Varsayılan 50.000 karakter; `FileStorage:MaxExtractedCharacters` ile 1.000–5.000.000 arasında yapılandırılır.
 - Uzantı whitelist dışındaki dosyalar reddedilir.
+
+İzin verilen uzantıların tek çalışma zamanı kaynağı `FileStorage:AllowedExtensions` ayarıdır. Her izinli uzantı için kabul edilen MIME değerleri `FileStorage:AllowedContentTypes` altında yapılandırılır; MIME politikası bulunmayan uzantı güvenli biçimde reddedilir. Authenticated frontend uzantı listesini ve boyut/adet sınırlarını `GET /api/capabilities` üzerinden alır; böylece backend ayarı değiştiğinde dosya seçicilerinde ayrıca hard-coded liste güncellemek gerekmez. Normal attachment endpoint'inin request-body sınırı da `MaxFileSizeMB` değerinden türetilir; asıl dosya boyutu denetimi backend'de aynı ayarla yapılır.
 
 ## Frontend'de Dosya Ekleme
 
