@@ -39,6 +39,12 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.False(json.TryGetProperty("analytics", out _));
         Assert.False(json.TryGetProperty("searchQueryId", out _));
         Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("interactionId").GetString()));
+        var tokenUsage = json.GetProperty("tokenUsage");
+        Assert.Equal(tokenUsage.GetProperty("inputTokens").GetInt64()
+                     + tokenUsage.GetProperty("outputTokens").GetInt64(),
+            tokenUsage.GetProperty("totalTokens").GetInt64());
+        Assert.Contains(tokenUsage.GetProperty("estimated").ValueKind,
+            new[] { JsonValueKind.True, JsonValueKind.False });
     }
 
     [Fact]
@@ -182,6 +188,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.Contains("event: status", body);
         Assert.Contains("event: complete", body);
         Assert.Contains("knowledge_rag", body);
+        Assert.Contains("tokenUsage", body);
     }
 
     private static async Task<string> RegisterAndGetToken(string email, HttpClient targetClient)

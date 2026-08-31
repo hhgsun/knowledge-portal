@@ -76,6 +76,8 @@ public record AssistantRagDto(
     string GroundingStatus,
     bool InsufficientContext,
     bool PartialResult);
+public record AssistantTokenUsageDto(long InputTokens, long OutputTokens, long TotalTokens,
+    bool Estimated);
 public record AssistantResponseDto(
     string NormalizedQuery,
     string? Answer,
@@ -86,7 +88,8 @@ public record AssistantResponseDto(
     long ResponseTimeMs,
     string TraceId,
     string? ConversationId,
-    bool CacheHit);
+    bool CacheHit,
+    AssistantTokenUsageDto TokenUsage);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

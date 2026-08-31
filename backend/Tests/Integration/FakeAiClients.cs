@@ -148,6 +148,7 @@ public sealed class FakeChatClient : IChatClient
     private string? _lastGroundedResponse;
     public string? ResponseOverride { get; set; }
     public Queue<string> ResponseOverrides { get; } = new();
+    public UsageDetails? UsageOverride { get; set; }
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -160,7 +161,8 @@ public sealed class FakeChatClient : IChatClient
         var response = ResponseOverrides.Count > 0
             ? ResponseOverrides.Dequeue()
             : ResponseOverride ?? BuildResponse(LastMessages);
-        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, response)));
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, response))
+            { Usage = UsageOverride });
     }
 
     public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

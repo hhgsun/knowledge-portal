@@ -285,6 +285,12 @@ export interface AssistantResponse {
   traceId: string;
   conversationId?: string | null;
   cacheHit: boolean;
+  tokenUsage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimated: boolean;
+  };
 }
 
 export interface AssistantConversation {

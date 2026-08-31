@@ -795,9 +795,21 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
   "responseTimeMs": 640,
   "traceId": "...",
   "conversationId": null,
-  "cacheHit": false
+  "cacheHit": false,
+  "tokenUsage": {
+    "inputTokens": 1840,
+    "outputTokens": 260,
+    "totalTokens": 2100,
+    "estimated": false
+  }
 }
 ```
+
+`tokenUsage`, cevabı üretmek için yapılan tüm RAG model çağrılarının toplamını içerir; geniş
+map-reduce ve grounding-repair çağrıları da toplama dahildir. Sağlayıcı input/output kullanımını
+döndürmezse eksik değerler Unicode-duyarlı sayaçla hesaplanır ve `estimated: true` olur. Semantik
+önbellekten sunulan bir cevap yeni chat üretimi yapmadığı için dört alan sırasıyla `0, 0, 0, false`
+olarak döner. Frontend toplamı yanıt başlığında, input/output kırılımını açıklama metninde gösterir.
 
 Operational controls:
 

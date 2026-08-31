@@ -59,7 +59,8 @@ public sealed class AssistantOrchestratorService(
                     Answer = cached.Answer,
                     Rag = cached.Rag,
                     ToolCalls = ToolCalls("semantic_answer_cache", contextualizationStrategy),
-                    CacheHit = true
+                    CacheHit = true,
+                    TokenUsage = new AssistantTokenUsageDto(0, 0, 0, false)
                 }, null);
             }
 
@@ -109,7 +110,10 @@ public sealed class AssistantOrchestratorService(
                 Answer = result.Rag.Answer,
                 Rag = ragDto,
                 ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
-                Warnings = warnings.Distinct().ToArray()
+                Warnings = warnings.Distinct().ToArray(),
+                TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,
+                    result.Rag.TokenUsage.OutputTokens, result.Rag.TokenUsage.TotalTokens,
+                    result.Rag.TokenUsage.Estimated)
             }, null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -145,7 +149,8 @@ public sealed class AssistantOrchestratorService(
     private static AssistantResponseDto Base(string question, string traceId, long responseTimeMs) => new(
         NormalizedQuery: question, Answer: null, Rag: null, ToolCalls: [], Warnings: [],
         InteractionId: null, ResponseTimeMs: responseTimeMs, TraceId: traceId,
-        ConversationId: null, CacheHit: false);
+        ConversationId: null, CacheHit: false,
+        TokenUsage: new AssistantTokenUsageDto(0, 0, 0, false));
 
     private static string BuildCacheQuestion(AssistantRequest request)
     {

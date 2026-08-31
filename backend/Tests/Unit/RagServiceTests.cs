@@ -114,6 +114,8 @@ public class RagServiceTests
             [new VectorSearchResult("a1", Score: 0.9, ChunkIndex: 0)],
             db => { db.Articles.Add(Article("a1", "Vpn Kurulum Rehberi",
                 bodyText: "Vpn Kurulum Rehberi, kurumsal VPN bağlantısının nasıl kurulacağını açıklar.")); db.SaveChanges(); });
+        h.Chat.UsageOverride = new UsageDetails { InputTokenCount = 120, OutputTokenCount = 30,
+            TotalTokenCount = 150 };
 
         var result = await h.Rag.AskAsync("vpn kurulum");
 
@@ -125,6 +127,10 @@ public class RagServiceTests
         Assert.Equal("embedding-a1-0", evidence.ChunkId);
         Assert.Equal("/api/articles/vpn-kurulum-rehberi-a1", evidence.CanonicalUrl);
         Assert.Null(evidence.PageNumber);
+        Assert.Equal(120, result.TokenUsage.InputTokens);
+        Assert.Equal(30, result.TokenUsage.OutputTokens);
+        Assert.Equal(150, result.TokenUsage.TotalTokens);
+        Assert.False(result.TokenUsage.Estimated);
     }
 
     [Theory]
@@ -143,6 +149,7 @@ public class RagServiceTests
 
         Assert.NotEqual("FAKE-ANSWER", result.Answer);
         Assert.Empty(result.Sources);
+        Assert.Equal(RagService.RagTokenUsage.None, result.TokenUsage);
     }
 
     [Fact]
@@ -302,6 +309,8 @@ public class RagServiceTests
             });
         h.Chat.ResponseOverrides.Enqueue("""{"answer":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1].","claims":[{"text":"Reranking:External, kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]}],"insufficientContext":false}""");
         h.Chat.ResponseOverrides.Enqueue("""{"answer":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları [S1]. Reranking:External, aday pasajları harici bir cross-encoder servisiyle yeniden sıralayan isteğe bağlı bir katmandır [S1]. Varsayılan olarak kapalıdır [S1]. Harici servis hata verdiğinde yerel sıralama sonucu kullanılır [S1].","claims":[{"text":"Reranking:External: kapalı varsayılan external cross-encoder, timeout ve veri sınırları.","sourceIds":["S1"]},{"text":"Reranking:External, aday pasajları harici bir cross-encoder servisiyle yeniden sıralayan isteğe bağlı bir katmandır.","sourceIds":["S1"]},{"text":"Varsayılan olarak kapalıdır.","sourceIds":["S1"]},{"text":"Harici servis hata verdiğinde yerel sıralama sonucu kullanılır.","sourceIds":["S1"]}],"insufficientContext":false}""");
+        h.Chat.UsageOverride = new UsageDetails { InputTokenCount = 120, OutputTokenCount = 30,
+            TotalTokenCount = 150 };
 
         var result = await h.Rag.AskAsync("Reranking:External nedir?");
 
@@ -313,6 +322,9 @@ public class RagServiceTests
         Assert.Contains("Varsayılan olarak kapalıdır", result.Answer);
         Assert.Contains("yerel sıralama sonucu kullanılır", result.Answer);
         Assert.Equal(2, h.Chat.CallCount);
+        Assert.Equal(240, result.TokenUsage.InputTokens);
+        Assert.Equal(60, result.TokenUsage.OutputTokens);
+        Assert.Equal(300, result.TokenUsage.TotalTokens);
     }
 
     [Fact]

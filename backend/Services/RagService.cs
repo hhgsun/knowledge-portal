@@ -216,7 +216,11 @@ public partial class RagService(
         List<RagClaim> Claims,
         List<RagEvidence> Evidence, double CitationCoverage, string GroundingStatus,
         double ClaimSupportCoverage, bool InsufficientContext, bool PartialResult,
-        RagConflictAssessment ConflictAssessment, List<string> Warnings);
+        RagConflictAssessment ConflictAssessment, List<string> Warnings, RagTokenUsage TokenUsage);
+    public record RagTokenUsage(long InputTokens, long OutputTokens, long TotalTokens, bool Estimated)
+    {
+        public static readonly RagTokenUsage None = new(0, 0, 0, false);
+    }
     public record RagSource(string ArticleId, string Title, string Slug, double Score,
         int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
     private record ArticleMeta(string Id, string Title, string Slug, RagSourceGovernance Governance);
@@ -331,12 +335,13 @@ public partial class RagService(
         if (usableChunks.Count == 0)
             return EmptyResult("Sorunuzla yeterince ilgili bir makale bulunamadı. Soruyu farklı kelimelerle sormayı deneyin.");
 
+        var tokenUsage = new TokenUsageAccumulator();
         var result = broad
-            ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, ct)
-            : await AnswerNarrowAsync(question, prepared.Plan, usableChunks, prepared.Articles, ct);
+            ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, tokenUsage, ct)
+            : await AnswerNarrowAsync(question, prepared.Plan, usableChunks, prepared.Articles, tokenUsage, ct);
         logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
             QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
-        return result;
+        return result with { TokenUsage = tokenUsage.Snapshot() };
     }
 
     private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
@@ -378,7 +383,8 @@ public partial class RagService(
     /// one LLM call up to the context budget.</summary>
     private async Task<RagResult> AnswerNarrowAsync(string question, RagQueryPlan plan,
         List<VectorChunkResult> chunks,
-        Dictionary<string, ArticleMeta> articles, CancellationToken ct)
+        Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
+        CancellationToken ct)
     {
         var evidenceIds = EvidenceIds(chunks);
         var adaptiveSourceLimit = AdaptiveSourceLimit(question, plan, chunks);
@@ -395,15 +401,16 @@ public partial class RagService(
         metrics.RagContextTokens.Record(selection.TotalTokens, Tags("mode", "narrow"));
 
         var raw = await CompleteAsync("generation", resilience.GenerationTimeoutSeconds,
-            SystemPrompt, BuildContextMessage(question, selection.SourceBlocks), ct);
+            SystemPrompt, BuildContextMessage(question, selection.SourceBlocks), tokenUsage, ct);
         return await BuildValidatedResultAsync(question, raw, selected, sourceScores, articles, evidenceIds,
-            BuildContextMessage(question, selection.SourceBlocks), ct);
+            BuildContextMessage(question, selection.SourceBlocks), tokenUsage, ct);
     }
 
     /// <summary>Comprehensive path: summarize every batch of candidate chunks (map), then merge the
     /// partial notes into one answer (reduce), so the response considers all relevant documents.</summary>
     private async Task<RagResult> AnswerBroadAsync(string question, List<VectorChunkResult> chunks,
-        Dictionary<string, ArticleMeta> articles, CancellationToken ct)
+        Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
+        CancellationToken ct)
     {
         var sourceScores = new Dictionary<string, double>();
         var evidenceIds = EvidenceIds(chunks);
@@ -430,7 +437,7 @@ public partial class RagService(
                 var usedChunks = selection.Chunks;
                 if (selection.Items.Count == 0) return (batch.index, Partial: (string?)null, Chunks: usedChunks, Error: (Exception?)null);
                 var partial = await CompleteAsync($"map-{batch.index + 1}", resilience.GenerationTimeoutSeconds,
-                    MapSystemPrompt, BuildContextMessage(question, selection.SourceBlocks), ct);
+                    MapSystemPrompt, BuildContextMessage(question, selection.SourceBlocks), tokenUsage, ct);
                 return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (Exception?)null);
             }
             catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
@@ -461,7 +468,7 @@ public partial class RagService(
         var reduceFailed = false;
         if (partials.Count > 1 && !ct.IsCancellationRequested)
         {
-            try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds, ReduceSystemPrompt, BuildReduceMessage(question, partials), ct); }
+            try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds, ReduceSystemPrompt, BuildReduceMessage(question, partials), tokenUsage, ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { logger.LogWarning(ex, "RAG reduce failed; returning first successful partial"); reduceFailed = true; }
         }
@@ -473,7 +480,7 @@ public partial class RagService(
             articles.ToDictionary(x => x.Key, x => x.Value.Title), evidenceIds,
             _maxContextTokens, int.MaxValue, Governance(articles));
         return await BuildValidatedResultAsync(question, finalAnswer, successfulChunks, sourceScores, articles,
-            evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks), ct,
+            evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks), tokenUsage, ct,
             failures.Count > 0 || reduceFailed || budgetTruncated, extraWarnings,
             requireComprehensiveAnswer: true);
     }
@@ -512,7 +519,8 @@ public partial class RagService(
             Math.Min(_sourceLimit, rankedArticles.Count));
     }
 
-    private Task<string> CompleteAsync(string stage, int timeoutSeconds, string systemPrompt, string userMessage, CancellationToken ct)
+    private Task<string> CompleteAsync(string stage, int timeoutSeconds, string systemPrompt,
+        string userMessage, TokenUsageAccumulator tokenUsage, CancellationToken ct)
     {
         var messages = new List<ChatMessage>
         {
@@ -532,7 +540,9 @@ public partial class RagService(
             if (response.Usage?.InputTokenCount is { } actualInputTokens)
                 tokenCounter.ObserveActualCount(estimatedInputTokens,
                     (int)Math.Min(int.MaxValue, actualInputTokens));
-            return response.Text ?? "Yanıt oluşturulamadı.";
+            var text = response.Text ?? "Yanıt oluşturulamadı.";
+            tokenUsage.Add(response.Usage, estimatedInputTokens, tokenCounter.CountTokens(text));
+            return text;
         }, ct);
     }
 
@@ -616,7 +626,8 @@ public partial class RagService(
     private async Task<RagResult> BuildValidatedResultAsync(string question, string raw,
         List<VectorChunkResult> chunks, Dictionary<string, double> scores,
         Dictionary<string, ArticleMeta> articles, Dictionary<string, string> evidenceIds,
-        string repairContext, CancellationToken ct, bool partialResult = false,
+        string repairContext, TokenUsageAccumulator tokenUsage, CancellationToken ct,
+        bool partialResult = false,
         List<string>? extraWarnings = null, bool requireComprehensiveAnswer = false)
     {
         var evidence = BuildEvidence(chunks, articles, evidenceIds);
@@ -637,7 +648,7 @@ public partial class RagService(
                 var repairedRaw = await CompleteAsync("grounding-repair", resilience.GenerationTimeoutSeconds,
                     GroundingRepairSystemPrompt,
                     BuildGroundingRepairMessage(question, repairContext, raw, initial,
-                        requireComprehensiveAnswer ? comprehensiveTarget : null), ct);
+                        requireComprehensiveAnswer ? comprehensiveTarget : null), tokenUsage, ct);
                 var repaired = RagCitationValidator.Validate(repairedRaw, evidence, question);
                 if (requireComprehensiveAnswer)
                 {
@@ -739,7 +750,8 @@ public partial class RagService(
         return new RagResult(answer, BuildSources(scores, articles, citedArticleIds),
             BuildSources(scores, articles), validated.Claims, evidence,
             validated.CitationCoverage, validated.GroundingStatus, validated.ClaimSupportCoverage,
-            validated.InsufficientContext, partialResult, conflictAssessment, warnings);
+            validated.InsufficientContext, partialResult, conflictAssessment, warnings,
+            RagTokenUsage.None);
     }
 
     private static bool IsComprehensiveAnswerIncomplete(ValidatedRagAnswer answer, int targetClaims) =>
@@ -776,7 +788,36 @@ public partial class RagService(
 
     private static RagResult EmptyResult(string answer, bool partial = false, List<string>? warnings = null) =>
         new(answer, [], [], [], [], 1, "insufficient_context", 1, true, partial,
-            RagConflictAssessment.None, warnings ?? []);
+            RagConflictAssessment.None, warnings ?? [], RagTokenUsage.None);
+
+    private sealed class TokenUsageAccumulator
+    {
+        private readonly Lock _lock = new();
+        private long _inputTokens;
+        private long _outputTokens;
+        private long _totalTokens;
+        private bool _estimated;
+
+        public void Add(UsageDetails? usage, int estimatedInputTokens, int estimatedOutputTokens)
+        {
+            var input = usage?.InputTokenCount ?? estimatedInputTokens;
+            var output = usage?.OutputTokenCount ?? estimatedOutputTokens;
+            var total = usage?.TotalTokenCount ?? input + output;
+            lock (_lock)
+            {
+                _inputTokens += Math.Max(0, input);
+                _outputTokens += Math.Max(0, output);
+                _totalTokens += Math.Max(0, total);
+                _estimated |= usage?.InputTokenCount == null || usage.OutputTokenCount == null;
+            }
+        }
+
+        public RagTokenUsage Snapshot()
+        {
+            lock (_lock)
+                return new(_inputTokens, _outputTokens, _totalTokens, _estimated);
+        }
+    }
 
     private static Dictionary<string, RagSourceGovernance> Governance(
         IReadOnlyDictionary<string, ArticleMeta> articles) =>

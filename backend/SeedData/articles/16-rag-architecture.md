@@ -97,6 +97,8 @@ Dar yol kaynak sayısını sabit tutmaz. Kısa ve doğrudan sorgu varsayılan ol
 
 Context kelime sayısıyla değil token bütçesiyle yönetilir. Varsayılan 12.000 context token'ı; 32.768 model penceresinden çıktı ve sistem prompt rezervleri çıkarılarak ayrıca sınırlandırılır. Ollama gerçek token sayısını yalnız yanıt sonrasında verdiği için `RagTokenCounter` Qwen/Unicode için muhafazakâr preflight tahmini yapar ve sonraki istekleri `ChatResponse.Usage.InputTokenCount` ile kalibre eder. Builder ilk turda her farklı makaleye eşit token payı ayırır; lexical fallback'ten gelen çok uzun tek bir pasaj bütün bağlamı ele geçiremez. Farklı kaynakların ilk pasajları yerleştirildikten sonra kalan bütçe aynı makalelerin ek pasajlarında kullanılabilir. `IRagContextBuilder` ayrıca tam kopyaları bastırır, source delimiter/prompt-injection sınırlarını güçlendirir ve evidence kimliğini korur. Grounding'e verilen pasaj, LLM'e gerçekten gönderilen kırpılmış pasajla aynıdır.
 
+Her Asistan cevabı `tokenUsage` içinde input, output ve toplam üretim token'larını döndürür; frontend toplamı cevap başlığında gösterir ve input/output kırılımını erişilebilir açıklamada sunar. Dar cevapta generation, geniş cevapta tüm map/reduce ve varsa grounding-repair çağrıları birlikte sayılır. Sağlayıcı kesin kullanım vermezse eksik sayılar aynı Unicode-duyarlı sayaçla tahmin edilir ve `estimated=true` işaretlenir. Semantik cevap önbelleği yeni chat üretimi yapmadığından önbellek isabetinde kullanım sıfırdır.
+
 ### Geniş Soru
 
 Geniş yol daha büyük aday havuzunu batch'lere böler:
