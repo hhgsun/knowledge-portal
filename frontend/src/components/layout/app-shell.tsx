@@ -6,6 +6,7 @@ const AUTH_ROUTES = ["/login", "/register"];
 export function AppShell() {
   const { pathname } = useLocation();
   const isAuthPage = AUTH_ROUTES.includes(pathname);
+  const isAssistantPage = pathname === "/assistant";
 
   if (isAuthPage) {
     return (
@@ -24,7 +25,14 @@ export function AppShell() {
         Skip to main content
       </a>
       <Sidebar />
-      <main id="main-content" role="main" aria-label="Page content" className="flex-1 p-6 pt-14 lg:pt-6 min-h-screen overflow-y-auto">
+      <main
+        id="main-content"
+        role="main"
+        aria-label="Page content"
+        className={isAssistantPage
+          ? "h-screen min-w-0 flex-1 overflow-hidden pt-14 lg:pt-0"
+          : "min-h-screen flex-1 overflow-y-auto p-6 pt-14 lg:pt-6"}
+      >
         <Outlet />
       </main>
     </div>
