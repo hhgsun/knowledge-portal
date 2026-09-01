@@ -569,6 +569,36 @@ public class RagServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_MissingSecurityPolicy_RefusesUnrelatedPortalSecurityEvidence()
+    {
+        const string unrelated = """{"claims":[{"text":"Editor rolü makale yayınlama ve etiket yönetimi yetkisine sahiptir.","sourceIds":["S1"]}],"insufficientContext":false}""";
+        var results = new List<VectorSearchResult>
+        {
+            new("rbac", .92, 0),
+            new("rag", .88, 0),
+            new("api", .84, 0)
+        };
+        var h = BuildRag(results, db =>
+        {
+            db.Articles.Add(Article("rbac", "RBAC ve Yetkilendirme Sistemi",
+                bodyText: "Editor rolü makale yayınlama ve etiket yönetimi yetkisine sahiptir."));
+            db.Articles.Add(Article("rag", "RAG Mimarisi",
+                bodyText: "Portal bilgi güvenliği için kaynak içeriklerini güvenilmeyen veri olarak işler."));
+            db.Articles.Add(Article("api", "API Key Entegrasyon Rehberi",
+                bodyText: "API key istekleri erişim kontrolünden geçer."));
+            db.SaveChanges();
+        }, responseOverride: unrelated);
+
+        var result = await h.Rag.AskAsync(
+            "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?",
+            answerProfile: "comprehensive");
+
+        Assert.True(result.InsufficientContext);
+        Assert.Empty(result.Claims);
+        Assert.DoesNotContain("Editor rolü", result.Answer);
+    }
+
+    [Fact]
     public async Task AskAsync_ShortNarrowQuestion_UsesMinimumRelevantSourceSet()
     {
         var results = Enumerable.Range(1, 12)

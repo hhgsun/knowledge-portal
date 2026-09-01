@@ -86,6 +86,58 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_RejectsGroundedClaimFromAnUnrelatedTopic()
+    {
+        var evidence = Evidence with
+        {
+            Title = "RBAC ve Yetkilendirme Sistemi",
+            Passage = "Editor rolü makale yayınlama ve etiket yönetimi yetkisine sahiptir."
+        };
+        const string raw = """{"claims":[{"text":"Editor rolü makale yayınlama ve etiket yönetimi yetkisine sahiptir.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence],
+            "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?");
+
+        Assert.Equal("rejected_unsupported", result.GroundingStatus);
+        Assert.True(result.InsufficientContext);
+        Assert.Empty(result.Claims);
+        Assert.Contains(result.Warnings, warning => warning.Contains("requested topic"));
+    }
+
+    [Fact]
+    public void Validate_AcceptsPolicyClaimWhenEvidenceTitleCarriesTheRequestedTopic()
+    {
+        var evidence = Evidence with
+        {
+            Title = "Bilgi Güvenliği Politikası",
+            Passage = "Çalışanlar erişim bilgilerini korumakla sorumludur."
+        };
+        const string raw = """{"claims":[{"text":"Çalışanlar erişim bilgilerini korumakla sorumludur.","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [evidence],
+            "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?");
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.False(result.InsufficientContext);
+        Assert.Single(result.Claims);
+    }
+
+    [Fact]
+    public void TryBuildExtractiveFallback_DoesNotUseUnrelatedSecurityHeading()
+    {
+        var evidence = Evidence with
+        {
+            Title = "Knowledge Portal Başlangıç Rehberi",
+            Passage = "Güvenlik ve Erişim Kontrolü\nPortal bilgi güvenliği için erişim kontrolü uygular.\nEditor rolü makale yayınlama yetkisine sahiptir."
+        };
+
+        var result = RagCitationValidator.TryBuildExtractiveFallback(
+            "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?", [evidence]);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void Validate_RemovesInventedCitationAndDoesNotTrustUnknownSourceId()
     {
         const string raw = """{"answer":"Uydurma bilgi [S99].","claims":[{"text":"Uydurma bilgi","sourceIds":["S99"]}],"insufficientContext":false}""";

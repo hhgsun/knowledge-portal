@@ -53,6 +53,7 @@ public static partial class RagCitationValidator
         var twoPartTopicQuery = IsBareTopicQuery(question) || IsConfigurationDefinitionQuery(question);
         var requiresTopicExplanation = twoPartTopicQuery && HasMultipleRelevantEvidenceSentences(question!, evidence);
         var configurationDefinitionSourceIds = new HashSet<string>(StringComparer.Ordinal);
+        var topicAlignedSourceIds = new HashSet<string>(StringComparer.Ordinal);
         var claims = new List<RagClaim>();
         var valid = 0;
         var supported = 0;
@@ -78,12 +79,16 @@ public static partial class RagCitationValidator
             if (ids.Count == 0) continue;
 
             var directlyResponsive = IsResponsiveToQuestion(question, claim.Text);
+            var topicallyAligned = ids.Any(topicAlignedSourceIds.Contains) ||
+                IsTopicallyAligned(question, claim.Text, ids.Select(id => evidenceById[id]));
             var responsiveConfigurationExplanation = IsConfigurationDefinitionQuery(question) &&
                 configurationDefinitionSourceIds.Count > 0 &&
                 IsRelevantConfigurationExplanation(question!, claim.Text, ids, configurationDefinitionSourceIds);
-            if (!directlyResponsive && !responsiveConfigurationExplanation)
+            if ((!directlyResponsive || !topicallyAligned) && !responsiveConfigurationExplanation)
             {
-                warnings.Add($"Claim was supported by source metadata but did not directly answer the definition question: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
+                warnings.Add(!directlyResponsive
+                    ? $"Claim was supported by source metadata but did not directly answer the definition question: {claim.Text[..Math.Min(80, claim.Text.Length)]}"
+                    : $"Claim was grounded but did not match the requested topic: {claim.Text[..Math.Min(80, claim.Text.Length)]}");
                 continue;
             }
 
@@ -103,6 +108,7 @@ public static partial class RagCitationValidator
 
             supported++;
             claims.Add(new RagClaim(claim.Text.Trim(), supportingIds, NormalizeRole(claim.Role)));
+            if (topicallyAligned) topicAlignedSourceIds.UnionWith(supportingIds);
             if (directlyResponsive && IsConfigurationDefinitionQuery(question))
                 configurationDefinitionSourceIds.UnionWith(supportingIds);
         }
@@ -191,7 +197,7 @@ public static partial class RagCitationValidator
     /// already query-ranked and ACL-filtered evidence. This lets the comprehensive profile target
     /// useful breadth without using source-block count as a proxy for information density.
     /// </summary>
-    public static int EstimateRelevantFactCapacity(
+    public static int EstimateRelevantFactCapacity(string question,
         IReadOnlyCollection<RagEvidence> evidence, int maximum)
     {
         maximum = Math.Max(1, maximum);
@@ -202,6 +208,7 @@ public static partial class RagCitationValidator
                 .Where(sentence => sentence.Length is >= 8 and <= 700)
                 .Where(sentence => !SameNormalizedText(sentence, item.Title))
                 .Where(IsDeclarativeExplanation)
+                .Where(sentence => IsTopicallyAligned(question, sentence, [item]))
                 .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical")))
             .Select(NormalizeComparableText)
             .Where(sentence => sentence.Length > 0)
@@ -223,6 +230,7 @@ public static partial class RagCitationValidator
                     .Where(sentence => sentence.Length is >= 20 and <= 500)
                     .Where(sentence => !SameNormalizedText(sentence, item.Title))
                     .Where(sentence => IsResponsiveToQuestion(question, sentence))
+                    .Where(sentence => IsTopicallyAligned(question, sentence, [item]))
                     .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical"))
                     .Select(sentence => new
                     {
@@ -270,6 +278,7 @@ public static partial class RagCitationValidator
                     .Where(sentence => !SameNormalizedText(sentence, item.Title))
                     .Where(sentence => !summaryTexts.Contains(NormalizeComparableText(sentence)))
                     .Where(IsDeclarativeExplanation)
+                    .Where(sentence => IsTopicallyAligned(question, sentence, [item]))
                     .Where(sentence => SignificantTokens(sentence).Any(queryTokens.Contains) ||
                                        summarySourceIds.Contains(item.SourceId))
                     .Where(sentence => !supportedSummary.Any(summary =>
@@ -484,8 +493,47 @@ public static partial class RagCitationValidator
     {
         var text = sentence.Trim();
         if (text.Length == 0 || text.EndsWith('?')) return false;
+        var wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        if (wordCount <= 12 && text.IndexOfAny(['.', '!', ';', ':']) < 0) return false;
         return !TurkishDefinitionQuestionRegex().IsMatch(text) &&
                !EnglishDefinitionQuestionRegex().IsMatch(text);
+    }
+
+    private static bool IsTopicallyAligned(string? question, string claim,
+        IEnumerable<RagEvidence> citedEvidence)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return true;
+        var topicTokens = TopicTokens(question);
+        if (topicTokens.Count == 0) return true;
+
+        var candidateText = claim + " " + string.Join(' ', citedEvidence.Select(item =>
+            $"{item.Title} {item.SourceName}"));
+        var candidateTokens = SignificantTokens(candidateText);
+        var policyTokens = topicTokens.Where(token =>
+            token.StartsWith("politika", StringComparison.Ordinal) ||
+            token.StartsWith("policy", StringComparison.Ordinal)).ToList();
+        if (policyTokens.Count > 0 && !policyTokens.Any(policy => candidateTokens.Any(candidate =>
+                InflectionAwareTokenMatch(policy, candidate))))
+            return false;
+        var matches = topicTokens.Count(topic => candidateTokens.Any(candidate =>
+            InflectionAwareTokenMatch(topic, candidate)));
+        var required = topicTokens.Count >= 3 ? 2 : 1;
+        return matches >= required;
+    }
+
+    private static HashSet<string> TopicTokens(string question)
+    {
+        var intent = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "acikla", "adim", "adimlar", "all", "anlat", "ayrintili", "butun", "calisir", "does",
+            "compare", "comprehensive", "detailed", "detayli", "edilir", "entegre", "everything", "exception", "exceptions",
+            "hangi", "hakkinda", "hepsi", "how", "istisna", "istisnalar", "kapsamli", "karsilastir",
+            "kullanilir", "kurulur", "listele", "nasil", "neden", "nedir", "nelerdir", "overview", "ozet", "ozetle", "responsibilities",
+            "responsibility", "sorumluluk", "sorumluluklar", "summarize", "summary", "temel", "tum", "tumu",
+            "uygulanir", "what", "why", "work", "works"
+        };
+        return SignificantTokens(question).Where(token => !intent.Contains(token))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static string? ConfigurationSubject(string? question)

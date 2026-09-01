@@ -740,6 +740,14 @@ Supported, distinct claims from the reduce and repair passes are merged. If the 
 still below the target, query-relevant verified evidence sentences complete the response as an
 `extractive_enrichment` partial result; unrelated retrieval hits are not added merely to reach a count.
 
+Grounding validation also enforces topical alignment. A supported claim must match the question's
+distinctive topic through its own text or the cited article/attachment title. Once a claim establishes
+that topic, supported continuation facts from the same evidence item may omit the repeated subject.
+Explicit policy questions require a `policy`/`politika` anchor, preventing generic RBAC, API-key, or
+portal-security documentation from being presented as the requested policy. Short punctuation-free
+Markdown headings and catalogue labels are excluded from extractive fallback/enrichment. If no aligned
+evidence remains, the Assistant returns insufficient context instead of filling a comprehensive target.
+
 ---
 
 ## Bilgi Asistanı
@@ -864,7 +872,7 @@ Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, 
 
 ### Assistant conversations
 
-`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. A user can have only one conversation. Create permanently deletes that user's previous conversation and messages before returning the new session conversation; list therefore returns zero or one item. The frontend creates this conversation when `/assistant` opens and never exposes a previous-conversation browser.
+`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. A user can have only one conversation. Create permanently deletes that user's previous conversation and messages before returning the new session conversation; list therefore returns zero or one item. The frontend creates this conversation when `/assistant` opens and never exposes a previous-conversation browser. Subjectless elliptical follow-ups such as `nasıl kullanılır?`, `nasıl çalışır?`, and `örnek ver` are contextualized with the previous user topic. If the model rewrite omits that topic, a deterministic topic-retention guard replaces it with a standalone query derived from the prior user question and discards the potentially unrelated HyDE passage.
 
 ---
 

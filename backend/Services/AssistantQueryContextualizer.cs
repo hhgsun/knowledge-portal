@@ -22,7 +22,7 @@ public sealed partial class AssistantQueryContextualizer(
     PortalMetrics metrics,
     ILogger<AssistantQueryContextualizer> logger)
 {
-    public const string Version = "2026-08-28.conversation-rewrite-hyde-v1";
+    public const string Version = "2026-09-01.conversation-topic-guard-v2";
     private static readonly JsonElement ResponseSchema = JsonDocument.Parse("""
         {
           "type": "object",
@@ -104,15 +104,26 @@ public sealed partial class AssistantQueryContextualizer(
 
             var standalone = PreserveScopeTokens(trimmed, parsed.Value.StandaloneQuery);
             var hypothetical = _hydeEnabled ? CleanHypotheticalDocument(parsed.Value.HypotheticalDocument) : null;
+            var topicGuarded = !RetainsPriorUserTopic(history, standalone);
+            if (topicGuarded)
+            {
+                // A fluent but subjectless rewrite is worse than the deterministic query because
+                // it can retrieve a completely different part of the corpus. Keep the previous
+                // user topic and discard a potentially unrelated HyDE passage.
+                standalone = fallback;
+                hypothetical = null;
+            }
+            var strategy = topicGuarded
+                ? "deterministic_topic_guard"
+                : hypothetical == null ? "llm_rewrite" : "llm_hyde";
             watch.Stop();
             metrics.AssistantQueryContextualization.Add(1,
-                new("outcome", "success"), new("strategy", hypothetical == null ? "rewrite" : "hyde"));
+                new("outcome", "success"), new("strategy", strategy));
             metrics.AssistantQueryContextualizationDuration.Record(watch.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("outcome", "success"));
-            activity?.SetTag("assistant.contextualization_strategy",
-                hypothetical == null ? "rewrite" : "hyde");
+            activity?.SetTag("assistant.contextualization_strategy", strategy);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            return new(standalone, hypothetical, hypothetical == null ? "llm_rewrite" : "llm_hyde");
+            return new(standalone, hypothetical, strategy);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -149,6 +160,7 @@ public sealed partial class AssistantQueryContextualizer(
                || text.StartsWith("ayrica ", StringComparison.Ordinal)
                || text.Contains("o zaman", StringComparison.Ordinal)
                || text.Contains("what about", StringComparison.Ordinal)
+               || EllipticalFollowUpPattern().IsMatch(text)
                || exact.Any(tokens.Contains)
                || tokens.Any(token => token.StartsWith("istisna", StringComparison.Ordinal)
                                       || token.StartsWith("detay", StringComparison.Ordinal)
@@ -213,6 +225,32 @@ public sealed partial class AssistantQueryContextualizer(
         return $"{previousUser} hakkında: {message}";
     }
 
+    private static bool RetainsPriorUserTopic(IReadOnlyList<AssistantConversationTurn> history,
+        string rewritten)
+    {
+        var previousUser = history.LastOrDefault(turn => turn.Role == "user")?.Content;
+        if (string.IsNullOrWhiteSpace(previousUser)) return true;
+        var topicTokens = TopicTokens(previousUser);
+        if (topicTokens.Count == 0) return true;
+        var rewrittenTokens = TopicTokens(rewritten);
+        return topicTokens.Any(rewrittenTokens.Contains);
+    }
+
+    private static HashSet<string> TopicTokens(string value)
+    {
+        var ignored = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "acikla", "anlat", "avantajlari", "bunun", "calisir", "detaylari", "dezavantajlari",
+            "hakkinda", "istisnalari", "kullanilir", "nasil", "neden", "nedir", "nelerdir", "nerede",
+            "ornek", "ornekler", "peki", "uygulanir", "ver", "what", "when", "where", "which", "why",
+            "works", "use", "used", "using"
+        };
+        var normalized = Helpers.SlugHelper.Transliterate(value).ToLowerInvariant();
+        return WordPattern().Matches(normalized).Select(match => match.Value)
+            .Where(token => token.Length >= 3 && !ignored.Contains(token))
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     private static string PreserveScopeTokens(string original, string rewritten)
     {
         var existing = ScopeTokenPattern().Matches(rewritten).Select(match => match.Value)
@@ -235,4 +273,8 @@ public sealed partial class AssistantQueryContextualizer(
 
     [GeneratedRegex(@"[a-z0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 100)]
     private static partial Regex WordPattern();
+
+    [GeneratedRegex(@"^(?:peki\s+)?(?:nasil\s+(?:kullan[a-z]*|calis[a-z]*|uygulan[a-z]*|kurul[a-z]*|yap[a-z]*|entegre\s+edil[a-z]*)|nerede\s+kullan[a-z]*|ne\s+ise\s+yarar|ornek(?:ler)?\s+ver|avantajlari(?:\s+nelerdir)?|dezavantajlari(?:\s+nelerdir)?|detaylari(?:\s+nelerdir)?)\s*[?.!]*$",
+        RegexOptions.None, matchTimeoutMilliseconds: 100)]
+    private static partial Regex EllipticalFollowUpPattern();
 }

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Bot, BookOpen, Check, ChevronRight, Copy, Database, ExternalLink, FileText, Loader2, Send, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp } from "lucide-react";
+import { AlertTriangle, Bot, BookOpen, Check, ChevronDown, ChevronRight, Copy, Database, ExternalLink, FileText, Loader2, Send, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -14,7 +14,7 @@ const assistantModelStorageKey = "knowledge-portal.assistant.model";
 const assistantProfileStorageKey = "knowledge-portal.assistant.answer-profile";
 
 const starterQuestions = [
-  { icon: ShieldCheck, label: "Politika ve kontroller", question: "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?" },
+  { icon: ShieldCheck, label: "Yetki ve kontroller", question: "Knowledge Portal'daki rollerin temel yetkileri ve API key erişim kısıtlamaları nelerdir?" },
   { icon: BookOpen, label: "Süreç özeti", question: "Yeni bir çalışan için ilk hafta tamamlanması gereken adımları özetle." },
   { icon: Database, label: "Karşılaştırmalı yanıt", question: "İlgili dokümanlardaki kuralları karşılaştır ve varsa çelişkileri belirt." },
 ];
@@ -276,7 +276,7 @@ function AssistantResult({ response, feedbackEnabled }: { response: AssistantRes
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı</span>{response.rag && <GroundingBadge status={response.rag.groundingStatus} insufficient={response.rag.insufficientContext} />}<span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">{answerProfileLabel(response.answerProfile)}</span><span className="text-[10px] text-zinc-400">{formatResponseTime(response.responseTimeMs)}</span><span className="text-[10px] tabular-nums text-zinc-400" title={`${response.tokenUsage.estimated ? "Tahmini · " : ""}Girdi: ${response.tokenUsage.inputTokens.toLocaleString("tr-TR")} · Çıktı: ${response.tokenUsage.outputTokens.toLocaleString("tr-TR")}`} aria-label={`${response.tokenUsage.estimated ? "Tahmini " : ""}token kullanımı: ${response.tokenUsage.totalTokens}; girdi ${response.tokenUsage.inputTokens}, çıktı ${response.tokenUsage.outputTokens}`}>{response.tokenUsage.estimated && "~"}{response.tokenUsage.totalTokens.toLocaleString("tr-TR")} token</span>{response.cacheHit && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] uppercase text-zinc-500 dark:bg-zinc-800">önbellek</span>}</div>{response.answer && <button type="button" onClick={() => void copyAnswer()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">{copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}{copied ? "Kopyalandı" : "Kopyala"}</button>}</div>
     {response.answer ? <div className="prose prose-sm max-w-none text-zinc-700 prose-a:font-semibold prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline dark:prose-invert dark:text-zinc-300 dark:prose-a:text-blue-400"><ReactMarkdown remarkPlugins={[remarkGfm]}>{answerMarkdown}</ReactMarkdown></div> : <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40">Bu soru için yeterli ve güvenilir bir yanıt üretilemedi.</div>}
     <AnswerSources response={response} />
-    {response.warnings.length > 0 && <div className="mt-4 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">{response.warnings.map(warning => <p key={warning} className="flex items-start gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{warning}</p>)}</div>}
+    <AnswerWarnings warnings={response.warnings} />
     {feedbackEnabled && response.interactionId && <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-4 text-xs dark:border-zinc-800"><span className="mr-1 text-zinc-500">Bu yanıt yararlı mıydı?</span><FeedbackButton active={feedback === "helpful"} positive disabled={submitting} onClick={() => void sendFeedback(true)} /><FeedbackButton active={feedback === "not_helpful"} disabled={submitting} onClick={() => void sendFeedback(false)} /><select value={feedbackReason} onChange={event => setFeedbackReason(event.target.value)} className="h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] text-zinc-600 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300" aria-label="Geri bildirim nedeni"><option value="">Neden? (isteğe bağlı)</option><option value="incorrect">Yanlış bilgi</option><option value="incomplete">Eksik yanıt</option><option value="wrong_source">Yanlış kaynak</option><option value="outdated">Güncel değil</option><option value="no_answer">Yanıt yok</option><option value="other">Diğer</option></select></div>}
   </section></div>;
 }
@@ -310,5 +310,20 @@ function AnswerSourceLink({ source, sourceIds, onClick }: { source: RagSource; s
   </Link>;
 }
 function GroundingBadge({ status, insufficient }: { status: string; insufficient: boolean }) { return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold capitalize", insufficient ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50")}><ShieldCheck size={10} />{insufficient ? "Sınırlı kaynak" : status.replaceAll("_", " ")}</span>; }
+function AnswerWarnings({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return <details className="group mt-4 rounded-lg border border-amber-200 bg-amber-50/70 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 font-medium outline-none hover:bg-amber-100/70 focus-visible:ring-2 focus-visible:ring-amber-500 dark:hover:bg-amber-950/40">
+      <AlertTriangle size={14} className="shrink-0" />
+      <span>{warnings.length} doğrulama uyarısı</span>
+      <span className="ml-auto text-[10px] font-normal opacity-75 group-open:hidden">Ayrıntıları göster</span>
+      <span className="ml-auto hidden text-[10px] font-normal opacity-75 group-open:inline">Ayrıntıları gizle</span>
+      <ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" />
+    </summary>
+    <div className="max-h-56 space-y-2 overflow-y-auto border-t border-amber-200 px-3 py-3 leading-5 dark:border-amber-900">
+      {warnings.map((warning, index) => <p key={`${index}-${warning}`} className="flex items-start gap-2"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{warning}</span></p>)}
+    </div>
+  </details>;
+}
 function answerProfileLabel(profile: AssistantAnswerProfile) { return profile === "compact" ? "Kısa" : profile === "comprehensive" ? "Kapsamlı" : "Dengeli"; }
 function formatResponseTime(milliseconds: number) { return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(1)} sn` : `${milliseconds} ms`; }

@@ -192,6 +192,26 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ConversationHistoryCarriesTopicIntoSubjectlessHowToFollowUp()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        (await client.PostAsJsonAsync("/api/assistant", new { message = "MCP nedir?", conversationId }))
+            .EnsureSuccessStatusCode();
+        var followUp = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "nasıl kullanılır?", conversationId });
+        followUp.EnsureSuccessStatusCode();
+        var body = await followUp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Contains("MCP hakkında", body.GetProperty("normalizedQuery").GetString());
+        Assert.Contains(body.GetProperty("toolCalls").EnumerateArray(), item =>
+            item.GetString() == "query_contextualization:deterministic_fallback"
+            || item.GetString() == "query_contextualization:deterministic_topic_guard");
+    }
+
+    [Fact]
     public async Task StartingSessionConversationPermanentlyReplacesPreviousConversation()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);

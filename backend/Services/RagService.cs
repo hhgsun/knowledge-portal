@@ -23,7 +23,7 @@ public partial class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-09-01.profiled-claim-only-synthesis-v16";
+    public const string PromptVersion = "2026-09-01.topic-aligned-claim-synthesis-v17";
     public const string RetrievalVersion = "2026-09-01.profile-aware-coverage-routing-v6";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
@@ -685,7 +685,7 @@ public partial class RagService(
         // extractive padding. Comprehensive mode has an explicit, evidence-capacity-bounded gate.
         var configuredTarget = profile == RagAnswerProfile.Comprehensive ? _broadMinimumClaims : 0;
         var coverageTarget = configuredTarget == 0 ? 0 : Math.Min(configuredTarget,
-            RagCitationValidator.EstimateRelevantFactCapacity(evidence, configuredTarget));
+            RagCitationValidator.EstimateRelevantFactCapacity(question, evidence, configuredTarget));
         var needsCoverageRepair = IsAnswerCoverageIncomplete(validated, coverageTarget);
         if (_groundingRepairEnabled &&
             (validated.GroundingStatus is "rejected_unstructured" or "rejected_unsupported" ||

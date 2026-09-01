@@ -60,6 +60,41 @@ public class AssistantQueryContextualizerTests
         Assert.Equal(0, chat.CallCount);
     }
 
+    [Fact]
+    public async Task ContextualizeAsync_RecognizesSubjectlessHowToAndPreservesPreviousTopic()
+    {
+        var chat = new FakeChatClient
+        {
+            ResponseOverride = """
+                {"standaloneQuery":"Arama nasıl kullanılır?","hypotheticalDocument":"Arama özelliğini kullanma adımları açıklanır."}
+                """
+        };
+        var service = Create(chat);
+
+        var result = await service.ContextualizeAsync("nasıl kullanılır?",
+        [
+            new("user", "MCP nedir?"),
+            new("assistant", "MCP, istemcilerin araç çağırmasını sağlayan bir protokoldür.")
+        ]);
+
+        Assert.Equal("deterministic_topic_guard", result.Strategy);
+        Assert.Equal("MCP hakkında: nasıl kullanılır?", result.StandaloneQuery);
+        Assert.Null(result.HypotheticalDocument);
+        Assert.Equal(1, chat.CallCount);
+    }
+
+    [Theory]
+    [InlineData("nasıl kullanılır?")]
+    [InlineData("nasıl çalışır?")]
+    [InlineData("örnek ver")]
+    [InlineData("avantajları nelerdir?")]
+    public void LooksLikeFollowUp_RecognizesEllipticalQuestions(string message)
+        => Assert.True(AssistantQueryContextualizer.LooksLikeFollowUp(message));
+
+    [Fact]
+    public void LooksLikeFollowUp_DoesNotTreatExplicitHowToAsElliptical()
+        => Assert.False(AssistantQueryContextualizer.LooksLikeFollowUp("MCP nasıl kullanılır?"));
+
     private static AssistantQueryContextualizer Create(FakeChatClient chat)
     {
         var config = new ConfigurationBuilder().Build();
