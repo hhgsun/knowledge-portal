@@ -170,7 +170,7 @@ export default function AssistantPage() {
       defaultProfile={capabilities?.defaultAnswerProfile ?? "balanced"}
       onProfileChange={changeProfile} />
     <main className="subtle-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto" aria-busy={loading}>
-      <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-6 py-4">
+      <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-6 py-10">
         {!hasContent ? <WelcomeState onQuestion={question => void execute(question)} /> :
           <div className="space-y-7" aria-live="polite">
             {exchanges.map(exchange => <Fragment key={exchange.id}>
@@ -197,7 +197,7 @@ function AssistantHeader({ settings, selectedModel, selectedProfile, profiles, d
   onModelChange: (model: string) => void;
   onProfileChange: (profile: AssistantAnswerProfile | "") => void;
 }) {
-  return <header className="mx-auto flex w-full max-w-5xl shrink-0 flex-col items-start justify-between gap-4 border-b border-zinc-200/70 bg-white px-6 pb-4 pt-6 dark:border-zinc-800/70 dark:bg-zinc-950 sm:flex-row">
+  return <header className="relative z-10 mx-auto flex w-full max-w-5xl shrink-0 flex-col items-start justify-between gap-4 bg-white px-6 pb-2 pt-6 dark:bg-zinc-950 sm:flex-row">
     <div className="flex min-w-0 items-center gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><Bot size={22} /></div>
       <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Bilgi Asistanı</h1><p className="mt-1 text-sm text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
@@ -221,6 +221,7 @@ function AssistantHeader({ settings, selectedModel, selectedProfile, profiles, d
         {profiles.map(profile => <option key={profile} value={profile}>{answerProfileLabel(profile)}</option>)}
       </select>
     </div>
+    <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-full h-10 bg-gradient-to-b from-white to-transparent dark:from-zinc-950" />
   </header>;
 }
 
@@ -247,7 +248,10 @@ function StreamingAnswer({ text, stage }: { text: string; stage: string }) {
 
 type ComposerProps = { inputRef: React.RefObject<HTMLTextAreaElement | null>; message: string; loading: boolean; maxLength: number; onChange: (value: string) => void; onSubmit: () => void; onCancel: () => void };
 function Composer({ inputRef, message, loading, maxLength, onChange, onSubmit, onCancel }: ComposerProps) {
-  return <div className="shrink-0 border-t border-zinc-200/70 bg-white px-6 pb-6 pt-4 dark:border-zinc-800/70 dark:bg-zinc-950"><form onSubmit={event => { event.preventDefault(); onSubmit(); }} className="mx-auto max-w-4xl"><div className="rounded-xl border border-zinc-300 bg-white p-2 shadow-sm transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-900"><textarea ref={inputRef} value={message} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={maxLength} rows={2} placeholder="Kurumsal bilginiz hakkında bir soru sorun…" className="subtle-scrollbar max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-zinc-400" aria-label="Bilgi Asistanına sorun" /><div className="flex items-center justify-between gap-3 px-1"><div className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-400 sm:text-[11px]"><ShieldCheck size={13} className="shrink-0 text-emerald-500" /><span className="truncate">Yetki kapsamınız korunur</span>{message.length > maxLength * .8 && <span className="shrink-0 tabular-nums">{message.length}/{maxLength}</span>}</div>{loading ? <button type="button" onClick={onCancel} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900"><Square size={12} />Durdur</button> : <button type="submit" disabled={!message.trim()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={14} />Gönder</button>}</div></div><p className="mt-2 text-center text-[10px] text-zinc-400">Enter ile gönderin · Shift + Enter ile yeni satır ekleyin · Önemli bilgileri bağlı kaynaklardan doğrulayın</p></form></div>;
+  return <div className="relative z-10 shrink-0 bg-white px-6 pb-6 pt-0 dark:bg-zinc-950"><div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-white to-transparent dark:from-zinc-950" />
+    <form onSubmit={event => { event.preventDefault(); onSubmit(); }} className="mx-auto max-w-4xl relative z-1"><div className="rounded-xl border border-zinc-300 bg-white p-2 shadow-sm transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-900"><textarea ref={inputRef} value={message} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={maxLength} rows={2} placeholder="Kurumsal bilginiz hakkında bir soru sorun…" className="subtle-scrollbar max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-zinc-400" aria-label="Bilgi Asistanına sorun" /><div className="flex items-center justify-between gap-3 px-1"><div className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-400 sm:text-[11px]"><ShieldCheck size={13} className="shrink-0 text-emerald-500" /><span className="truncate">Yetki kapsamınız korunur</span>{message.length > maxLength * .8 && <span className="shrink-0 tabular-nums">{message.length}/{maxLength}</span>}</div>{loading ? <button type="button" onClick={onCancel} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900"><Square size={12} />Durdur</button> : <button type="submit" disabled={!message.trim()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={14} />Gönder</button>}</div></div><p className="mt-2 text-center text-[10px] text-zinc-400">Enter ile gönderin · Shift + Enter ile yeni satır ekleyin · Önemli bilgileri bağlı kaynaklardan doğrulayın</p>
+    </form>
+  </div>;
 }
 
 function AssistantResult({ response, feedbackEnabled }: { response: AssistantResponse; feedbackEnabled: boolean }) {
