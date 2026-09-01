@@ -102,6 +102,11 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
             .First(tool => tool.GetProperty("name").GetString() == "ask_knowledge");
         Assert.Equal(4000, ask.GetProperty("inputSchema").GetProperty("properties")
             .GetProperty("question").GetProperty("maxLength").GetInt32());
+        var answerProfile = ask.GetProperty("inputSchema").GetProperty("properties")
+            .GetProperty("answer_profile");
+        Assert.Equal("balanced", answerProfile.GetProperty("default").GetString());
+        Assert.Equal(["compact", "balanced", "comprehensive"], answerProfile.GetProperty("enum")
+            .EnumerateArray().Select(value => value.GetString()!).ToArray());
         Assert.Equal(50, ask.GetProperty("inputSchema").GetProperty("properties")
             .GetProperty("scope").GetProperty("properties").GetProperty("tags")
             .GetProperty("maxItems").GetInt32());

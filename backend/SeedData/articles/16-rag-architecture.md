@@ -89,9 +89,11 @@ Varsayılan RAG semantic eşiği 0.3'tür. Bu değer liste tipi semantic aramada
 
 ## 3. Dar ve Geniş Soru Yolları
 
-Soru; özetleme, karşılaştırma, listeleme veya tüm corpus'u kapsama niyeti taşıyorsa geniş yol seçilir. Anahtar kelime listesi yapılandırmayla genişletilebilir.
+Kullanıcı `compact`, `balanced` veya `comprehensive` cevap profili seçebilir; seçim tarayıcıda tutulur ve her istekte backend'e gönderilir. `compact` yalnız dar yolu, `comprehensive` geniş/map-reduce yolunu seçer. Profil gönderilmezse varsayılan `balanced` kullanılır; özetleme, karşılaştırma, listeleme, “kapsamlı/detaylı” anlatım veya tüm corpus'u kapsama niyeti otomatik olarak `comprehensive` profile yükseltilir. Anahtar kelime listesi yapılandırmayla genişletilebilir. Etkin profil cevapta ve MCP sonucunda görünür, semantic answer cache kimliğine dahildir.
 
 ### Dar Soru
+
+Uygulamanın token preflight hesabındaki 32.768 `RagModelContextTokens` değeri her Ollama chat çağrısına açıkça `num_ctx` olarak gönderilir; provider penceresi ile yerel bütçe böylece ayrışmaz. Çıktı rezervi varsayılan olarak 4.096 token'dır.
 
 Dar yol kaynak sayısını sabit tutmaz. Kısa ve doğrudan sorgu varsayılan olarak en az üç güçlü makaleyle çalışır; query token karmaşıklığı, decomposition ve açıklama niyeti arttıkça sınır en fazla ona yükselir. En iyi makalenin skorunun varsayılan %55'inin altında kalan marjinal kaynaklar minimum güvenlik tabanı dışında bağlama alınmaz. Retriever ve `IRagContextBuilder` sonuçları makaleler arasında yeniden interleave eder.
 
@@ -114,6 +116,8 @@ Tekil map batch'leri veya reduce aşaması başarısız olursa başarılı parç
 Asistan ekranındaki yardımcı oldu/olmadı düğmeleri ve isteğe bağlı negatif neden yalnız kullanıcının kendi `interactionId` kaydına bağlanır. `assistant_interactions`; trace, prompt/retrieval sürümü, reranker kimliği, semantic index profile ve grounding durumunu taşır. Üretilen yanıt yeniden saklanmaz; yalnız SHA-256 fingerprint tutulur. Evaluation ekranı son 30 günün helpful oranını, nedenlerini, grounding ve configuration cohort'larını golden dataset metriklerinin yanında gösterir.
 
 ## 4. Yapılandırılmış Üretim ve Fail-Closed Doğrulama
+
+Provider yalnız tek canonical claim nesnesi (`claims` ve `insufficientContext`) üretir; ayrı bir serbest metin `answer` alanı ürettirilmez. Backend doğrulanmış atomik claim'lerden kullanıcıya görünen Markdown yanıtı kurar. Bu, aynı cevabın iki kez üretilmesini kaldırır ve çıktı bütçesini gerçek kapsama ayırır. Legacy/fake çıktılardaki `answer` alanı yalnız geriye uyumluluk için okunabilir; doğruluk kaynağı değildir.
 
 Chat modeli dinamik seçilir. `OllamaModelCatalogService`, `Ollama:BaseUrl` altındaki `GET /api/tags` yanıtından kurulu modelleri otomatik keşfeder ve destekleniyorsa `POST /api/show` içindeki `completion` capability'sini doğrular. Yapılandırılmış embedding modeli ile embedding-only model adları kullanıcı listesinden çıkarılır. Başarılı katalog kısa süreli cache'lenir; sağlayıcı geçici olarak erişilemezse son başarılı katalog, ilk açılışta ise `Ollama:ChatModel` fallback'i kullanılır ve arayüz uyarı gösterir. Admin `/settings/llm` üzerinden veritabanındaki varsayılanı değiştirir. Kullanıcı Bilgi Asistanı ekranından model seçer; bu seçim yalnız tarayıcı storage'ında tutulur, her Assistant isteğinde gönderilir ve veritabanına yazılmaz. Backend seçimi mevcut katalogla doğrular. Seçim yoksa admin varsayılanı, sonra `Ollama:ChatModel`/ilk keşfedilen model kullanılır; MCP ve sistem işleri admin varsayılanını kullanır. Embedding modeli ve attachment vision extraction profili etkilenmez. Semantic answer cache anahtarı etkin modeli içerdiği için farklı modellerin yanıtları paylaşılmaz.
 
@@ -179,7 +183,8 @@ Başlıca ayarlar `backend/appsettings.json` içindedir:
 - `Ollama:RagMinimumSourceLimit` / `RagSourceLimit` / `RagSourceRelativeScoreFloor` adaptif kaynak genişliği; varsayılan 3 / 10 / 0,55
 - `Ollama:RagMaxChunksPerArticle`
 - `Ollama:RagMaxContextTokens` / `RagModelContextTokens` / `RagPromptReserveTokens` ve `RagTokenizer:LatinCharactersPerToken`
-- `Ollama:RagMapReduceBatchChunks` / `RagMaxOutputTokens` / `RagBroadMinimumClaims`
+- `Ollama:RagMapReduceBatchChunks` / `RagMaxOutputTokens` (varsayılan 4.096) / `RagBroadMinimumClaims` (varsayılan 8; kapsam hedefi mevcut ilgili gerçek kapasitesiyle sınırlanır)
+- `Assistant:DefaultAnswerProfile` varsayılan `balanced` profilini bildirir; REST `answerProfile` ve MCP `answer_profile`, `compact|balanced|comprehensive` değerlerini kabul eder
 - `Ollama:RagGroundingRepairEnabled` reddedilen üretim için tek seferlik, aynı kanıta bağlı düzeltme çağrısı
 - `Ollama:RagRrfK` / `RagLexicalWeight` / `RagSemanticWeight`
 - `Ollama:RagDuplicateThreshold` / `RagMinSimilarityScore`

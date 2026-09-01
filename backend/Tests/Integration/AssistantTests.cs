@@ -39,6 +39,7 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.False(json.TryGetProperty("analytics", out _));
         Assert.False(json.TryGetProperty("searchQueryId", out _));
         Assert.Equal("qwen2.5vl:7b", json.GetProperty("model").GetString());
+        Assert.Equal("balanced", json.GetProperty("answerProfile").GetString());
         Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("interactionId").GetString()));
         var tokenUsage = json.GetProperty("tokenUsage");
         Assert.Equal(tokenUsage.GetProperty("inputTokens").GetInt64()
@@ -85,6 +86,9 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
             .EnumerateArray().Select(value => value.GetString()));
         Assert.Equal(20, json.GetProperty("maxAttachmentSizeMb").GetInt32());
         Assert.Equal(20, json.GetProperty("maxAttachmentsPerArticle").GetInt32());
+        Assert.Equal("balanced", json.GetProperty("defaultAnswerProfile").GetString());
+        Assert.Equal(["compact", "balanced", "comprehensive"], json.GetProperty("answerProfiles")
+            .EnumerateArray().Select(value => value.GetString()!).ToArray());
         Assert.False(json.TryGetProperty("supportedModes", out _));
         Assert.False(json.TryGetProperty("classifierEnabled", out _));
     }
@@ -151,6 +155,22 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("not available", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AssistantValidatesAndReturnsRequestedAnswerProfile()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+
+        var invalid = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "VPN nedir?", answerProfile = "verbose" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var response = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "VPN nedir?", answerProfile = "comprehensive" });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("comprehensive", json.GetProperty("answerProfile").GetString());
     }
 
     [Fact]

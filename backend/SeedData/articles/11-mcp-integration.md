@@ -150,10 +150,11 @@ Parametreler:
 
 - `question` (string, zorunlu) — Yanıtlanacak soru
 - `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
+- `answer_profile` (string) — İsteğe bağlı `compact`, `balanced` veya `comprehensive`; varsayılan `balanced`
 - `authors` (string) — Virgülle ayrılmış yazar slug'ları (OR)
 - `only_own_content` (boolean) — API key ile yalnız o anahtarın oluşturduğu içerikler
 
-Yanıt; `answer`, atıf yapılan `sources`, `consultedSources`, typed `claims`, provenance-bearing `evidence`, citation/claim coverage, `groundingStatus`, `insufficientContext`, `partialResult`, çatışma değerlendirmesi ve uyarıları döndürür.
+Yanıt; `answer`, etkin `answerProfile`, atıf yapılan `sources`, `consultedSources`, typed `claims`, provenance-bearing `evidence`, citation/claim coverage, `groundingStatus`, `insufficientContext`, `partialResult`, çatışma değerlendirmesi ve uyarıları döndürür. Profil Assistant ile aynı claim-only üretim ve doğrulama hattını kullanır.
 
 ### get_article
 

@@ -74,6 +74,18 @@ public class RagCitationValidatorTests
     }
 
     [Fact]
+    public void Validate_AcceptsClaimOnlyStructuredOutput()
+    {
+        const string raw = """{"claims":[{"text":"VPN talebi portal üzerinden açılır.","role":"summary","sourceIds":["S1"]}],"insufficientContext":false}""";
+
+        var result = RagCitationValidator.Validate(raw, [Evidence]);
+
+        Assert.Equal("lexically_grounded", result.GroundingStatus);
+        Assert.Equal("summary", result.Claims.Single().Role);
+        Assert.Equal("VPN talebi portal üzerinden açılır. [S1]", result.Answer);
+    }
+
+    [Fact]
     public void Validate_RemovesInventedCitationAndDoesNotTrustUnknownSourceId()
     {
         const string raw = """{"answer":"Uydurma bilgi [S99].","claims":[{"text":"Uydurma bilgi","sourceIds":["S99"]}],"insufficientContext":false}""";

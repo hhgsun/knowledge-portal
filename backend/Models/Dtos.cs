@@ -55,14 +55,15 @@ public record RecordClickRequest(string SearchQueryId, string ArticleId);
 public record AssistantRequest(string Message, string? ConversationId = null,
     bool OnlyOwnContent = false, IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null,
-    Dictionary<string, string[]>? Facets = null, string? Model = null);
+    Dictionary<string, string[]>? Facets = null, string? Model = null,
+    string? AnswerProfile = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
 public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
 public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,
     bool FeedbackEnabled, int MaxMessageCharacters, bool StreamingEnabled,
     bool ConversationHistoryEnabled, bool SemanticCacheEnabled,
     string[] AllowedAttachmentExtensions, int MaxAttachmentSizeMb,
-    int MaxAttachmentsPerArticle);
+    int MaxAttachmentsPerArticle, string[] AnswerProfiles, string DefaultAnswerProfile);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
@@ -93,7 +94,8 @@ public record AssistantResponseDto(
     string? ConversationId,
     bool CacheHit,
     AssistantTokenUsageDto TokenUsage,
-    string? Model = null);
+    string? Model = null,
+    string AnswerProfile = "balanced");
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

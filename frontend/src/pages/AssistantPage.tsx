@@ -8,9 +8,10 @@ import { useCapabilities } from "../contexts/CapabilitiesContext";
 import { useApi } from "../hooks/useApi";
 import { readApiError, readApiJson } from "../lib/api-response";
 import { cn } from "../lib/utils";
-import type { AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
+import type { AssistantAnswerProfile, AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
 
 const assistantModelStorageKey = "knowledge-portal.assistant.model";
+const assistantProfileStorageKey = "knowledge-portal.assistant.answer-profile";
 
 const starterQuestions = [
   { icon: ShieldCheck, label: "Politika ve kontroller", question: "Bilgi güvenliği politikamızdaki temel sorumluluklar ve istisnalar nelerdir?" },
@@ -36,6 +37,10 @@ export default function AssistantPage() {
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [modelSettings, setModelSettings] = useState<LlmModelSettings>();
   const [selectedModel, setSelectedModel] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<AssistantAnswerProfile | "">(() => {
+    const stored = localStorage.getItem(assistantProfileStorageKey);
+    return stored === "compact" || stored === "balanced" || stored === "comprehensive" ? stored : "";
+  });
   const conversationIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -74,6 +79,12 @@ export default function AssistantPage() {
     else localStorage.removeItem(assistantModelStorageKey);
   };
 
+  const changeProfile = (profile: AssistantAnswerProfile | "") => {
+    setSelectedProfile(profile);
+    if (profile) localStorage.setItem(assistantProfileStorageKey, profile);
+    else localStorage.removeItem(assistantProfileStorageKey);
+  };
+
   const ensureSessionConversation = useCallback(async () => {
     if (!capabilities?.conversationHistoryEnabled) return null;
     if (conversationIdRef.current) return conversationIdRef.current;
@@ -109,7 +120,8 @@ export default function AssistantPage() {
         method: "POST", noRetry: true, signal: controller.signal,
         body: JSON.stringify({
           message: text, conversationId: activeConversation,
-          model: selectedModel || undefined
+          model: selectedModel || undefined,
+          answerProfile: selectedProfile || undefined
         }),
       });
       if (!result.ok) throw new Error(await readApiError(result, "Asistan isteği tamamlanamadı."));
@@ -152,7 +164,11 @@ export default function AssistantPage() {
   const hasContent = exchanges.length > 0 || loading;
 
   return <div className="mx-auto flex h-[calc(100dvh-5rem)] min-h-[38rem] max-w-5xl flex-col lg:h-[calc(100dvh-3rem)]">
-    <AssistantHeader settings={modelSettings} selectedModel={selectedModel} loading={loading} onChange={changeModel} />
+    <AssistantHeader settings={modelSettings} selectedModel={selectedModel}
+      selectedProfile={selectedProfile} loading={loading} onModelChange={changeModel}
+      profiles={capabilities?.answerProfiles ?? ["compact", "balanced", "comprehensive"]}
+      defaultProfile={capabilities?.defaultAnswerProfile ?? "balanced"}
+      onProfileChange={changeProfile} />
     <div className="min-h-0 flex-1">
       <main className="flex h-full min-h-0 min-w-0 flex-col">
         <div className="subtle-scrollbar -mx-2 min-h-0 flex-1 overflow-y-auto px-2" aria-busy={loading}>
@@ -175,11 +191,15 @@ export default function AssistantPage() {
   </div>;
 }
 
-function AssistantHeader({ settings, selectedModel, loading, onChange }: {
+function AssistantHeader({ settings, selectedModel, selectedProfile, profiles, defaultProfile, loading, onModelChange, onProfileChange }: {
   settings?: LlmModelSettings;
   selectedModel: string;
+  selectedProfile: AssistantAnswerProfile | "";
+  profiles: AssistantAnswerProfile[];
+  defaultProfile: AssistantAnswerProfile;
   loading: boolean;
-  onChange: (model: string) => void;
+  onModelChange: (model: string) => void;
+  onProfileChange: (profile: AssistantAnswerProfile | "") => void;
 }) {
   return <header className="flex flex-col items-start justify-between gap-4 pb-4 sm:flex-row">
     <div className="flex min-w-0 items-center gap-3">
@@ -187,14 +207,22 @@ function AssistantHeader({ settings, selectedModel, loading, onChange }: {
       <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Bilgi Asistanı</h1><p className="mt-1 text-sm text-zinc-500">Yetkiniz kapsamındaki kaynaklardan izlenebilir yanıtlar</p></div>
     </div>
     <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Tek oturum</span>
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">Tek oturum</span>
       <label htmlFor="assistant-model" className="sr-only">Asistan modeli</label>
       <select id="assistant-model" value={selectedModel} disabled={!settings || loading}
-        onChange={event => onChange(event.target.value)}
+        onChange={event => onModelChange(event.target.value)}
         title={settings?.catalogWarning ?? "Bu seçim yalnızca bu tarayıcıda saklanır."}
         className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 sm:max-w-56">
         <option value="">Varsayılan Model{settings ? ` — ${settings.defaultModel}` : ""}</option>
         {settings?.models.map(model => <option key={model.id} value={model.id}>{model.label} ({model.id})</option>)}
+      </select>
+      <label htmlFor="assistant-answer-profile" className="sr-only">Yanıt kapsamı</label>
+      <select id="assistant-answer-profile" value={selectedProfile} disabled={loading}
+        onChange={event => onProfileChange(event.target.value as AssistantAnswerProfile | "")}
+        title="Otomatik seçim, detaylı ve kapsamlı soruları geniş yanıta yükseltir."
+        className="h-9 min-w-32 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+        <option value="">Otomatik — {answerProfileLabel(defaultProfile)}</option>
+        {profiles.map(profile => <option key={profile} value={profile}>{answerProfileLabel(profile)}</option>)}
       </select>
     </div>
   </header>;
@@ -245,7 +273,7 @@ function AssistantResult({ response, feedbackEnabled }: { response: AssistantRes
   };
   const copyAnswer = async () => { if (!response.answer) return; try { await navigator.clipboard.writeText(response.answer); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { toast.error("Yanıt kopyalanamadı."); } };
   return <div className="flex items-start gap-3"><AssistantAvatar /><section className="min-w-0 flex-1 pt-1" aria-label="Asistan yanıtı">
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı</span>{response.rag && <GroundingBadge status={response.rag.groundingStatus} insufficient={response.rag.insufficientContext} />}<span className="text-[10px] text-zinc-400">{formatResponseTime(response.responseTimeMs)}</span><span className="text-[10px] tabular-nums text-zinc-400" title={`${response.tokenUsage.estimated ? "Tahmini · " : ""}Girdi: ${response.tokenUsage.inputTokens.toLocaleString("tr-TR")} · Çıktı: ${response.tokenUsage.outputTokens.toLocaleString("tr-TR")}`} aria-label={`${response.tokenUsage.estimated ? "Tahmini " : ""}token kullanımı: ${response.tokenUsage.totalTokens}; girdi ${response.tokenUsage.inputTokens}, çıktı ${response.tokenUsage.outputTokens}`}>{response.tokenUsage.estimated && "~"}{response.tokenUsage.totalTokens.toLocaleString("tr-TR")} token</span>{response.cacheHit && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] uppercase text-zinc-500 dark:bg-zinc-800">önbellek</span>}</div>{response.answer && <button type="button" onClick={() => void copyAnswer()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">{copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}{copied ? "Kopyalandı" : "Kopyala"}</button>}</div>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı</span>{response.rag && <GroundingBadge status={response.rag.groundingStatus} insufficient={response.rag.insufficientContext} />}<span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">{answerProfileLabel(response.answerProfile)}</span><span className="text-[10px] text-zinc-400">{formatResponseTime(response.responseTimeMs)}</span><span className="text-[10px] tabular-nums text-zinc-400" title={`${response.tokenUsage.estimated ? "Tahmini · " : ""}Girdi: ${response.tokenUsage.inputTokens.toLocaleString("tr-TR")} · Çıktı: ${response.tokenUsage.outputTokens.toLocaleString("tr-TR")}`} aria-label={`${response.tokenUsage.estimated ? "Tahmini " : ""}token kullanımı: ${response.tokenUsage.totalTokens}; girdi ${response.tokenUsage.inputTokens}, çıktı ${response.tokenUsage.outputTokens}`}>{response.tokenUsage.estimated && "~"}{response.tokenUsage.totalTokens.toLocaleString("tr-TR")} token</span>{response.cacheHit && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] uppercase text-zinc-500 dark:bg-zinc-800">önbellek</span>}</div>{response.answer && <button type="button" onClick={() => void copyAnswer()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">{copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}{copied ? "Kopyalandı" : "Kopyala"}</button>}</div>
     {response.answer ? <div className="prose prose-sm max-w-none text-zinc-700 prose-a:font-semibold prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline dark:prose-invert dark:text-zinc-300 dark:prose-a:text-blue-400"><ReactMarkdown remarkPlugins={[remarkGfm]}>{answerMarkdown}</ReactMarkdown></div> : <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40">Bu soru için yeterli ve güvenilir bir yanıt üretilemedi.</div>}
     <AnswerSources response={response} />
     {response.warnings.length > 0 && <div className="mt-4 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">{response.warnings.map(warning => <p key={warning} className="flex items-start gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{warning}</p>)}</div>}
@@ -282,4 +310,5 @@ function AnswerSourceLink({ source, sourceIds, onClick }: { source: RagSource; s
   </Link>;
 }
 function GroundingBadge({ status, insufficient }: { status: string; insufficient: boolean }) { return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold capitalize", insufficient ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50")}><ShieldCheck size={10} />{insufficient ? "Sınırlı kaynak" : status.replaceAll("_", " ")}</span>; }
+function answerProfileLabel(profile: AssistantAnswerProfile) { return profile === "compact" ? "Kısa" : profile === "comprehensive" ? "Kapsamlı" : "Dengeli"; }
 function formatResponseTime(milliseconds: number) { return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(1)} sn` : `${milliseconds} ms`; }

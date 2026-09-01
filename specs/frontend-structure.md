@@ -51,7 +51,7 @@ frontend/
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
     ├── SearchPage.tsx         # Document discovery via fulltext/semantic/hybrid modes, metadata autocomplete and query handoff to Assistant
-    ├── AssistantPage.tsx      # Canonical grounded-answer UI with one page-session conversation and per-answer source links
+    ├── AssistantPage.tsx      # Canonical grounded-answer UI with model/compact-balanced-comprehensive profile selectors, one page-session conversation and per-answer source links
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)

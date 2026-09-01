@@ -15,6 +15,7 @@ public sealed class AssistantRequestService(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
     {
         var validationError = inputValidation.ValidateQuestion(request.Message, "Message")
+                              ?? inputValidation.ValidateAnswerProfile(request.AnswerProfile)
                               ?? inputValidation.ValidateScope(request.Tags, request.Authors,
                                   request.ContentTypes, request.Facets);
         if (validationError != null) return (null, validationError);

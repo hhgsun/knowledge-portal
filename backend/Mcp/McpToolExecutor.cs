@@ -110,6 +110,7 @@ public class McpToolExecutor
                         Properties = new Dictionary<string, McpPropertySchema>
                         {
                             ["question"] = new() { Type = "string", Description = "Question to answer from portal knowledge", MinLength = 1, MaxLength = maxQuestionCharacters },
+                            ["answer_profile"] = new() { Type = "string", Description = "Answer breadth: compact, balanced, or comprehensive. Omit for automatic balanced/comprehensive routing.", Enum = ["compact", "balanced", "comprehensive"], Default = "balanced" },
                             ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
                             ["authors"] = CsvScopeProperty("Filter evidence by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
                             ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict evidence to articles created by that key", Default = false }
@@ -468,7 +469,8 @@ public class McpToolExecutor
             scope.Tags,
             SplitCsv(GetString(args, "authors")),
             scope.ContentTypes,
-            scope.Facets), principal ?? new ClaimsPrincipal(), ct);
+            scope.Facets,
+            AnswerProfile: GetString(args, "answer_profile")), principal ?? new ClaimsPrincipal(), ct);
         if (execution.Error != null) return ServiceErrorResult(execution.Error);
 
         var result = execution.Result!;
@@ -517,6 +519,7 @@ public class McpToolExecutor
             }),
             rag.CitationCoverage, rag.GroundingStatus, rag.ClaimSupportCoverage,
             rag.InsufficientContext, rag.PartialResult, rag.ConflictAssessment, rag.Warnings,
+            answerProfile = rag.AnswerProfile,
             scope = ScopeNode(scope), question = result.Question, result.ResponseTimeMs,
             result.IndexingPending, result.IndexCoverage, result.TraceId
         };
@@ -1204,12 +1207,13 @@ public class McpToolExecutor
             ["groundingStatus"] = new JsonObject { ["type"] = "string" },
             ["insufficientContext"] = new JsonObject { ["type"] = "boolean" },
             ["partialResult"] = new JsonObject { ["type"] = "boolean" },
+            ["answerProfile"] = new JsonObject { ["type"] = "string" },
             ["warnings"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
             ["question"] = new JsonObject { ["type"] = "string" },
             ["traceId"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
             ["error"] = ErrorPropertySchema()
         },
-        ["oneOf"] = SuccessOrError("question", "answer", "sources", "evidence")
+        ["oneOf"] = SuccessOrError("question", "answer", "answerProfile", "sources", "evidence")
     };
 
     private static McpToolCallResult ServiceErrorResult(ServiceError error) => error.StatusCode switch

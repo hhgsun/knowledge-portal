@@ -261,6 +261,8 @@ export interface AssistantEvidence {
 }
 
 // ─── Grounded Knowledge Assistant ───────────────────────────
+export type AssistantAnswerProfile = "compact" | "balanced" | "comprehensive";
+
 export interface AssistantCapabilities {
   enabled: boolean;
   groundedRagEnabled: boolean;
@@ -272,6 +274,8 @@ export interface AssistantCapabilities {
   allowedAttachmentExtensions: string[];
   maxAttachmentSizeMb: number;
   maxAttachmentsPerArticle: number;
+  answerProfiles: AssistantAnswerProfile[];
+  defaultAnswerProfile: AssistantAnswerProfile;
 }
 
 export interface AssistantResponse {
@@ -296,6 +300,7 @@ export interface AssistantResponse {
   conversationId?: string | null;
   cacheHit: boolean;
   model?: string | null;
+  answerProfile: AssistantAnswerProfile;
   tokenUsage: {
     inputTokens: number;
     outputTokens: number;

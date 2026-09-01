@@ -10,7 +10,8 @@ public sealed record KnowledgeAnswerRequest(
     IEnumerable<string>? Authors = null,
     IEnumerable<string>? ContentTypes = null,
     IReadOnlyDictionary<string, string[]>? Facets = null,
-    string? HypotheticalDocument = null);
+    string? HypotheticalDocument = null,
+    string? AnswerProfile = null);
 
 public enum KnowledgeAnswerFailureKind
 {
@@ -52,6 +53,7 @@ public sealed class KnowledgeAnswerService(
         CancellationToken cancellationToken = default)
     {
         var validationError = inputValidation.ValidateQuestion(request.Question)
+                              ?? inputValidation.ValidateAnswerProfile(request.AnswerProfile)
                               ?? inputValidation.ValidateScope(request.Tags, request.Authors,
                                   request.ContentTypes, request.Facets);
         if (validationError != null) return (null, validationError);
@@ -84,7 +86,7 @@ public sealed class KnowledgeAnswerService(
         try
         {
             var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken,
-                request.HypotheticalDocument);
+                request.HypotheticalDocument, request.AnswerProfile);
             stopwatch.Stop();
             return (new KnowledgeAnswerResult(request.Question, rag, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString()), null);

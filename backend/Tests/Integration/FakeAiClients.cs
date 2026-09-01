@@ -191,7 +191,7 @@ public sealed class FakeChatClient : IChatClient
             RegexOptions.Singleline | RegexOptions.IgnoreCase);
         if (matches.Count == 0)
             return Volatile.Read(ref _lastGroundedResponse) ??
-                "{\"answer\":\"Bilgi yok.\",\"claims\":[],\"insufficientContext\":true}";
+                "{\"claims\":[],\"insufficientContext\":true}";
 
         var claims = matches.Cast<Match>().Select(match => new
         {
@@ -200,7 +200,6 @@ public sealed class FakeChatClient : IChatClient
         }).Where(x => x.text.Length > 0).ToList();
         var response = JsonSerializer.Serialize(new
         {
-            answer = string.Join(' ', claims.Select(x => x.text)),
             claims,
             insufficientContext = claims.Count == 0
         });

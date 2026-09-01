@@ -185,6 +185,32 @@ public static partial class RagCitationValidator
     public static List<RagClaim> NormalizeRoles(IReadOnlyCollection<RagClaim> claims) =>
         NormalizeClaimOrder(claims);
 
+    /// <summary>
+    /// Estimates how many distinct answer facts the supplied evidence can support. The estimate is
+    /// intentionally conservative: it counts only distinct, safe declarative sentences from the
+    /// already query-ranked and ACL-filtered evidence. This lets the comprehensive profile target
+    /// useful breadth without using source-block count as a proxy for information density.
+    /// </summary>
+    public static int EstimateRelevantFactCapacity(
+        IReadOnlyCollection<RagEvidence> evidence, int maximum)
+    {
+        maximum = Math.Max(1, maximum);
+        if (evidence.Count == 0) return 0;
+
+        var candidates = evidence.SelectMany(item => EvidenceSentences(item.Passage)
+                .Select(sentence => MarkdownPrefixRegex().Replace(sentence.Trim(), "").Trim())
+                .Where(sentence => sentence.Length is >= 8 and <= 700)
+                .Where(sentence => !SameNormalizedText(sentence, item.Title))
+                .Where(IsDeclarativeExplanation)
+                .Where(sentence => ContentSecurityService.Assess(sentence).RiskLevel is not ("high" or "critical")))
+            .Select(NormalizeComparableText)
+            .Where(sentence => sentence.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Take(maximum)
+            .Count();
+        return Math.Max(1, candidates);
+    }
+
     public static ValidatedRagAnswer? TryBuildExtractiveFallback(string question,
         IReadOnlyCollection<RagEvidence> evidence, int maxClaims = 4, string? reason = null)
     {
@@ -359,7 +385,9 @@ public static partial class RagCitationValidator
         try
         {
             parsed = JsonSerializer.Deserialize<ModelOutput>(text, Json);
-            return parsed is { Answer: not null, Claims: not null, InsufficientContext: not null }
+            // `answer` is a legacy compatibility field. New generation contracts return claims
+            // only; user-visible prose is always rebuilt from independently grounded claims.
+            return parsed is { Claims: not null, InsufficientContext: not null }
                 && parsed.Claims.All(x => x is { Text: not null, SourceIds: not null });
         }
         catch (JsonException)

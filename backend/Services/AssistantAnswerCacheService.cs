@@ -11,7 +11,8 @@ using Microsoft.Extensions.AI;
 
 namespace KnowledgePortal.Api.Services;
 
-public sealed record CachedAssistantAnswer(string Answer, AssistantRagDto Rag);
+public sealed record CachedAssistantAnswer(string Answer, AssistantRagDto Rag,
+    string AnswerProfile = "balanced");
 
 public sealed class AssistantAnswerCacheService(AppDbContext db, IServiceProvider services,
     IConfiguration config, PortalMetrics metrics)
@@ -106,7 +107,10 @@ public sealed class AssistantAnswerCacheService(AppDbContext db, IServiceProvide
         config["Ollama:ChatModel"], config["Ollama:EmbeddingModel"],
         config["Ollama:ChunkingVersion"], config["Reranking:External:Enabled"],
         config["Reranking:External:Model"], config["Reranking:External:ScoreWeight"],
-        config["Assistant:QueryContextualization:HydeWeight"]));
+        config["Assistant:QueryContextualization:HydeWeight"],
+        config["Assistant:DefaultAnswerProfile"], config["Ollama:RagMaxOutputTokens"],
+        config["Ollama:RagModelContextTokens"], config["Ollama:RagMaxContextTokens"],
+        config["Ollama:RagBroadMinimumClaims"]));
     private static string UserScope(ClaimsPrincipal p) =>
         $"{p.GetUserId()}|{p.GetRole()}|{p.GetSource()}|{p.GetApiKeyId() ?? "session"}";
     private static string Fingerprint(string value) => Convert.ToHexString(

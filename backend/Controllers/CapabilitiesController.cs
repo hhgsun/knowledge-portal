@@ -1,4 +1,5 @@
 using KnowledgePortal.Api.Models;
+using KnowledgePortal.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,5 +21,9 @@ public sealed class CapabilitiesController(IConfiguration config) : ControllerBa
         config.GetValue("Assistant:SemanticCache:Enabled", true),
         config.GetSection("FileStorage:AllowedExtensions").Get<string[]>() ?? [],
         Math.Max(1, config.GetValue("FileStorage:MaxFileSizeMB", 20)),
-        Math.Max(1, config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20))));
+        Math.Max(1, config.GetValue("FileStorage:MaxAttachmentsPerArticle", 20)),
+        RagAnswerProfiles.Allowed,
+        RagAnswerProfiles.TryParse(config["Assistant:DefaultAnswerProfile"], out var defaultProfile)
+            ? defaultProfile.ToWireValue()
+            : "balanced"));
 }

@@ -26,6 +26,13 @@ public sealed class KnowledgeInputValidationService(IConfiguration config)
         return null;
     }
 
+    public ServiceError? ValidateAnswerProfile(string? answerProfile)
+    {
+        if (RagAnswerProfiles.TryParse(answerProfile, out _)) return null;
+        return new ServiceError(400,
+            $"Answer profile must be one of: {string.Join(", ", RagAnswerProfiles.Allowed)}.");
+    }
+
     public ServiceError? ValidateScope(
         IEnumerable<string>? tags,
         IEnumerable<string>? authors,

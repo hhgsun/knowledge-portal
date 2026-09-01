@@ -808,11 +808,12 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         });
 
         var result = await RpcResultAsync(ToolCall("ask_knowledge",
-            new { question = "vpn kurulum yqnx nedir?" }));
+            new { question = "vpn kurulum yqnx nedir?", answer_profile = "comprehensive" }));
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(result));
 
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("answer").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("groundingStatus").GetString()));
+        Assert.Equal("comprehensive", payload.GetProperty("answerProfile").GetString());
         Assert.Equal(JsonValueKind.Array, payload.GetProperty("sources").ValueKind);
     }
 

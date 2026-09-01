@@ -64,6 +64,7 @@ public sealed class AssistantOrchestratorService(
                     ToolCalls = ToolCalls("semantic_answer_cache", contextualizationStrategy),
                     CacheHit = true,
                     Model = effectiveModel,
+                    AnswerProfile = cached.AnswerProfile,
                     TokenUsage = new AssistantTokenUsageDto(0, 0, 0, false)
                 }, null);
             }
@@ -75,7 +76,8 @@ public sealed class AssistantOrchestratorService(
                 request.Authors,
                 request.ContentTypes,
                 request.Facets,
-                hypotheticalDocument), principal, budget.Token);
+                hypotheticalDocument,
+                request.AnswerProfile), principal, budget.Token);
             if (execution.Error != null) return (null, execution.Error);
 
             var result = execution.Result!;
@@ -92,7 +94,8 @@ public sealed class AssistantOrchestratorService(
             try
             {
                 await answerCache.StoreAsync(cacheQuestion, principal,
-                    new CachedAssistantAnswer(result.Rag.Answer, ragDto), budget.Token);
+                    new CachedAssistantAnswer(result.Rag.Answer, ragDto,
+                        result.Rag.AnswerProfile), budget.Token);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception exception)
@@ -116,6 +119,7 @@ public sealed class AssistantOrchestratorService(
                 ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
                 Warnings = warnings.Distinct().ToArray(),
                 Model = effectiveModel,
+                AnswerProfile = result.Rag.AnswerProfile,
                 TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,
                     result.Rag.TokenUsage.OutputTokens, result.Rag.TokenUsage.TotalTokens,
                     result.Rag.TokenUsage.Estimated)
@@ -165,7 +169,7 @@ public sealed class AssistantOrchestratorService(
         var facets = string.Join(';', (request.Facets ?? [])
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
-        return $"{request.Message.Trim()}\n[model:{model};scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
+        return $"{request.Message.Trim()}\n[model:{model};profile:{request.AnswerProfile ?? "auto"};scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 

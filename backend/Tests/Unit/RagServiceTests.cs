@@ -285,7 +285,7 @@ public class RagServiceTests
         Assert.True(responseFormat.Schema.HasValue);
         var required = responseFormat.Schema.Value.GetProperty("required")
             .EnumerateArray().Select(x => x.GetString()).ToList();
-        Assert.Contains("answer", required);
+        Assert.DoesNotContain("answer", required);
         Assert.Contains("claims", required);
         Assert.Contains("insufficientContext", required);
         var claimRequired = responseFormat.Schema.Value.GetProperty("properties").GetProperty("claims")
@@ -293,7 +293,9 @@ public class RagServiceTests
             .Select(item => item.GetString()).ToList();
         Assert.Contains("role", claimRequired);
         Assert.Equal(0, h.Chat.LastOptions?.Temperature);
-        Assert.Equal(2048, h.Chat.LastOptions?.MaxOutputTokens);
+        Assert.Equal(4096, h.Chat.LastOptions?.MaxOutputTokens);
+        Assert.Contains(h.Chat.LastOptions?.AdditionalProperties ?? [], property =>
+            Convert.ToInt32(property.Value) == 32768);
     }
 
     [Fact]
@@ -607,10 +609,10 @@ public class RagServiceTests
         var result = await h.Rag.AskAsync(question);
         var prompt = UserMessage(h.Chat);
 
-        Assert.Equal(10, result.ConsultedSources.Count);
-        for (var i = 1; i <= 10; i++) Assert.Contains($"VPN Politikası {i}", prompt);
-        Assert.DoesNotContain("VPN Politikası 11", prompt);
-        Assert.Equal(1, h.Chat.CallCount);
+        Assert.Equal("comprehensive", result.AnswerProfile);
+        Assert.Equal(12, result.ConsultedSources.Count);
+        for (var i = 1; i <= 12; i++) Assert.Contains($"VPN Politikası {i}", prompt);
+        Assert.Equal(4, h.Chat.CallCount); // 2 map + reduce + comprehensive coverage repair
     }
 
     [Fact]
@@ -678,6 +680,7 @@ public class RagServiceTests
         Assert.Contains("Synthesize the evidence", systemPrompt);
         Assert.Contains("first claim a decisive, concise answer", systemPrompt);
         Assert.Contains("Explanation is not permission to speculate", systemPrompt);
-        Assert.Contains("compact synthesis over a source-by-source recap", systemPrompt);
+        Assert.Contains("coherent synthesis over a source-by-source recap", systemPrompt);
+        Assert.Contains("Answer profile: BALANCED", systemPrompt);
     }
 }

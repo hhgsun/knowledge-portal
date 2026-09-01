@@ -69,7 +69,7 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 
 **Available Tools**:
 - `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and generic `+category:value` inline syntax. It never generates an AI answer.
-- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*` (shared configurable 1-4,000 character default), `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline and transport-independent input guard as REST Assistant.
+- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*` (shared configurable 1-4,000 character default), optional `answer_profile` (`compact|balanced|comprehensive`), `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline and transport-independent input guard as REST Assistant and returns the effective `answerProfile`.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
@@ -731,8 +731,10 @@ the first paragraph and explanatory passages as the second; this remains an
 `extractive_fallback`/partial result and never treats the mere existence of unrelated retrieval hits as
 sufficient evidence.
 
-Broad summary queries use a configurable completeness gate (`Ollama:RagBroadMinimumClaims`, default
-6). When map-reduce leaves fewer supported claims than the available-evidence target, or fewer than
+Comprehensive broad-summary queries use a configurable completeness gate (`Ollama:RagBroadMinimumClaims`, default
+8). The effective target is capped by the number of distinct, query-relevant facts in the already
+authorized and ranked evidence, so a thin corpus is not padded with unrelated text. When map-reduce
+leaves fewer supported claims than this available-evidence target, or fewer than
 75% of attempted claims survive grounding, the server performs one bounded evidence-bound repair.
 Supported, distinct claims from the reduce and repair passes are merged. If the merged answer is
 still below the target, query-relevant verified evidence sentences complete the response as an
@@ -757,6 +759,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
   "message": "VPN politikasının istisnaları nelerdir?",
   "conversationId": null,
   "model": "qwen2.5vl:7b",
+  "answerProfile": "comprehensive",
   "onlyOwnContent": false,
   "tags": ["security"],
   "authors": [],
@@ -769,6 +772,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
 | `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user/assistant turns rewrite follow-ups into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
 | `model` | string | No | Ollama-discovered chat model selected on the Assistant screen. It is validated for every request; omission uses the admin default. |
+| `answerProfile` | string | No | `compact`, `balanced`, or `comprehensive`. Omission uses `balanced`, while an explicitly broad/detailed question may be promoted to `comprehensive`. The browser keeps the selector in local storage. |
 | `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |
@@ -799,6 +803,7 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
   "responseTimeMs": 640,
   "traceId": "...",
   "conversationId": null,
+  "answerProfile": "comprehensive",
   "cacheHit": false,
   "tokenUsage": {
     "inputTokens": 1840,
@@ -808,6 +813,12 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
   }
 }
 ```
+
+The model returns a single canonical claim-only structured object (`claims` plus
+`insufficientContext`). The server validates those atomic claims and renders the visible Markdown
+answer; it does not ask the provider to generate a duplicate free-text `answer` field. Every Ollama
+generation explicitly receives `num_ctx=Ollama:RagModelContextTokens` (default 32,768), and
+`RagMaxOutputTokens` defaults to 4,096. The answer profile is part of semantic-cache identity.
 
 `tokenUsage`, cevabı üretmek için yapılan tüm RAG model çağrılarının toplamını içerir; geniş
 map-reduce ve grounding-repair çağrıları da toplama dahildir. Sağlayıcı input/output kullanımını
@@ -844,7 +855,7 @@ Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_a
 ### `GET /api/capabilities`
 **Auth**: Bearer (JWT or API Key).
 
-Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, and semantic-cache capabilities. It also returns `allowedAttachmentExtensions`, `maxAttachmentSizeMb`, and `maxAttachmentsPerArticle`, allowing authenticated frontend upload controls to follow the backend `FileStorage` configuration without a duplicated hard-coded list. The frontend combines Assistant enablement with `VITE_ASSISTANT_ENABLED`; it fetches the endpoint independently of that compile-time Assistant flag because upload capabilities are portal-wide.
+Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, semantic-cache, `answerProfiles`, and `defaultAnswerProfile` capabilities. It also returns `allowedAttachmentExtensions`, `maxAttachmentSizeMb`, and `maxAttachmentsPerArticle`, allowing authenticated frontend upload controls to follow the backend `FileStorage` configuration without a duplicated hard-coded list. The frontend combines Assistant enablement with `VITE_ASSISTANT_ENABLED`; it fetches the endpoint independently of that compile-time Assistant flag because upload capabilities are portal-wide.
 
 ### `POST /api/assistant/stream`
 **Auth/policy/rate limit**: Same as `POST /api/assistant`.
