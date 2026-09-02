@@ -53,9 +53,10 @@ function MultiSelectDropdown({ label, icon, options, selected, onChange, renderO
   const ref = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
+  const showSearch = searchable && options.length > 10;
 
   useEffect(() => {
-    if (open && searchable) searchInputRef.current?.focus();
+    if (open && showSearch) searchInputRef.current?.focus();
     const handlePointerDown = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) {
         setOpen(false);
@@ -74,7 +75,7 @@ function MultiSelectDropdown({ label, icon, options, selected, onChange, renderO
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, searchable]);
+  }, [open, showSearch]);
 
   const toggle = (value: string) => {
     onChange(selected.includes(value) ? selected.filter(v => v !== value) : [...selected, value]);
@@ -102,7 +103,7 @@ function MultiSelectDropdown({ label, icon, options, selected, onChange, renderO
       </button>
       {open && (
         <div className="absolute z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10 dark:border-zinc-700 dark:bg-zinc-900">
-          {searchable && (
+          {showSearch && (
             <div className="relative border-b border-zinc-200 p-2 dark:border-zinc-700">
               <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input
