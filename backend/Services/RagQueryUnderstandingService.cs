@@ -21,12 +21,15 @@ public sealed class RagQueryUnderstandingService(IConfiguration config)
 {
     private static readonly Regex FilterPattern = new(
         @"(?:^|\s)(?<kind>#|@|tag:|etiket:|author:|yazar:)(?<value>[\p{L}\p{N}_-]+)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
+        TimeSpan.FromMilliseconds(100));
     private static readonly Regex CompoundSeparator = new(
         @"\s+(?:ve\s+ayrıca|ayrıca|bununla\s+birlikte|ve|ile|and|also|versus|vs\.?)\s+|[;]",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
+        TimeSpan.FromMilliseconds(100));
     private static readonly string[] ComplexSignals =
-        ["karsilastir", "compare", "fark", "ozetle", "tum", "hepsi", "nedenleri", "adimlari", "iliskisi"];
+        ["karsilastir", "compare", "fark", "ozetle", "tum", "hepsi", "nedenleri", "adimlari", "iliskisi",
+            "sirala", "listele", "maddele", "numaralandir", "analiz", "tablo", "sema"];
     private static readonly string[] FreshnessSignals =
         ["guncel", "en yeni", "son surum", "latest", "newest", "current", "last year", "bu yil"];
 

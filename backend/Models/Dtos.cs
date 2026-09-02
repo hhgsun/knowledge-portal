@@ -82,6 +82,13 @@ public record AssistantRagDto(
     bool PartialResult);
 public record AssistantTokenUsageDto(long InputTokens, long OutputTokens, long TotalTokens,
     bool Estimated);
+public record AssistantContentBlockDto(
+    string Type,
+    string? Text = null,
+    string? Title = null,
+    string[]? Items = null,
+    string[]? Headers = null,
+    string[][]? Rows = null);
 public record AssistantResponseDto(
     string NormalizedQuery,
     string? Answer,
@@ -95,7 +102,10 @@ public record AssistantResponseDto(
     bool CacheHit,
     AssistantTokenUsageDto TokenUsage,
     string? Model = null,
-    string AnswerProfile = "balanced");
+    string AnswerProfile = "balanced",
+    string Intent = "answer",
+    string Presentation = "auto",
+    AssistantContentBlockDto[]? ContentBlocks = null);
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

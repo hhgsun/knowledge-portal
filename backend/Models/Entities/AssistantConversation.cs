@@ -17,6 +17,12 @@ public class AssistantMessage
     public string ConversationId { get; set; } = null!;
     public string Role { get; set; } = null!;
     public string Content { get; set; } = null!;
+    /// <summary>
+    /// Versioned, application-owned state for grounded assistant turns. It keeps the resolved
+    /// subject, intent, presentation mode and verified RAG payload so a later turn can transform
+    /// the prior answer without treating a word such as "sırala" as a new retrieval query.
+    /// </summary>
+    public string? TurnStateJson { get; set; }
     public string? InteractionId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public AssistantConversation Conversation { get; set; } = null!;

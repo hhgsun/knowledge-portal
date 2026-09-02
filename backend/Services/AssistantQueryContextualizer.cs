@@ -5,7 +5,7 @@ using Microsoft.Extensions.AI;
 
 namespace KnowledgePortal.Api.Services;
 
-public sealed record AssistantConversationTurn(string Role, string Content);
+public sealed record AssistantConversationTurn(string Role, string Content, string? TurnStateJson = null);
 public sealed record AssistantQueryContext(
     string StandaloneQuery,
     string? HypotheticalDocument,
@@ -152,7 +152,8 @@ public sealed partial class AssistantQueryContextualizer(
         string[] exact =
         [
             "peki", "bunun", "bunu", "bunda", "bunlar", "ona", "onun",
-            "that", "this", "those", "it"
+            "that", "this", "those", "it", "sirala", "listele", "maddele",
+            "numaralandir", "ozetle", "kisalt", "semalastir"
         ];
         return text.StartsWith("bu ", StringComparison.Ordinal)
                || text.StartsWith("and ", StringComparison.Ordinal)
@@ -274,7 +275,7 @@ public sealed partial class AssistantQueryContextualizer(
     [GeneratedRegex(@"[a-z0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 100)]
     private static partial Regex WordPattern();
 
-    [GeneratedRegex(@"^(?:peki\s+)?(?:nasil\s+(?:kullan[a-z]*|calis[a-z]*|uygulan[a-z]*|kurul[a-z]*|yap[a-z]*|entegre\s+edil[a-z]*)|nerede\s+kullan[a-z]*|ne\s+ise\s+yarar|ornek(?:ler)?\s+ver|avantajlari(?:\s+nelerdir)?|dezavantajlari(?:\s+nelerdir)?|detaylari(?:\s+nelerdir)?)\s*[?.!]*$",
+    [GeneratedRegex(@"^(?:peki\s+)?(?:nasil\s+(?:kullan[a-z]*|calis[a-z]*|uygulan[a-z]*|kurul[a-z]*|yap[a-z]*|entegre\s+edil[a-z]*)|nerede\s+kullan[a-z]*|ne\s+ise\s+yarar|ornek(?:ler)?\s+ver|avantajlari(?:\s+nelerdir)?|dezavantajlari(?:\s+nelerdir)?|detaylari(?:\s+nelerdir)?|sirala|listele|maddele|numaralandir|ozetle|kisalt|tablo\s+(?:yap|halinde)|akis\s+semasi\s+yap)\s*[?.!]*$",
         RegexOptions.None, matchTimeoutMilliseconds: 100)]
     private static partial Regex EllipticalFollowUpPattern();
 }

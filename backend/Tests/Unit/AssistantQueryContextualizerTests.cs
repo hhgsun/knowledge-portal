@@ -88,6 +88,9 @@ public class AssistantQueryContextualizerTests
     [InlineData("nasıl çalışır?")]
     [InlineData("örnek ver")]
     [InlineData("avantajları nelerdir?")]
+    [InlineData("sırala")]
+    [InlineData("tablo yap")]
+    [InlineData("özetle")]
     public void LooksLikeFollowUp_RecognizesEllipticalQuestions(string message)
         => Assert.True(AssistantQueryContextualizer.LooksLikeFollowUp(message));
 

@@ -12,6 +12,8 @@ These objectives apply to authenticated `POST /api/assistant`, Assistant streami
 | Citation coverage | >= 98% average | each release dataset and rolling 7 days | evaluation runs + `kp_rag_citation_coverage` |
 | Claim support/grounding | >= 95% average | each release dataset | evaluation run `groundingCoverage` |
 | Refusal accuracy | >= 90% | each release dataset | evaluation run `refusalAccuracy` |
+| Conversation task accuracy | >= 90% | each release multi-turn dataset | evaluation run `conversationTaskAccuracy` |
+| Retrieval-decision accuracy | >= 90% | each release multi-turn dataset | evaluation run `retrievalDecisionAccuracy` |
 | Published-content indexing freshness | 99% indexed within 5 minutes | rolling 7 days | `kp_pending_embeddings` + indexing diagnostics |
 
 The monthly availability error budget is 0.5%. Exhausting 50% of the budget before the middle of

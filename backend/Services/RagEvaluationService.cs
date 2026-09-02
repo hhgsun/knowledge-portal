@@ -3,24 +3,33 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using KnowledgePortal.Api.Data;
+using KnowledgePortal.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace KnowledgePortal.Api.Services;
 
 public record RagEvaluationFilters(List<string>? Tag = null, List<string>? AuthorIds = null, List<string>? ContentType = null);
+public record RagEvaluationTurn(string Message, string? ExpectedIntent = null,
+    string? ExpectedPresentation = null, bool? ExpectedRetrieval = null);
 public record RagEvaluationCase(string Id, string Category, string Question, List<string> ExpectedSourceSlugs,
-    List<string> ExpectedFacts, List<string> ForbiddenFacts, bool ExpectedRefusal, RagEvaluationFilters? Filters = null);
+    List<string> ExpectedFacts, List<string> ForbiddenFacts, bool ExpectedRefusal,
+    RagEvaluationFilters? Filters = null, List<RagEvaluationTurn>? Turns = null);
 public record RagEvaluationThresholds(double RecallAtK = .8, double Mrr = .75, double NdcgAtK = .75,
     double FactCoverage = .7, double CitationCoverage = .8, double RefusalAccuracy = .9,
-    double ForbiddenFactPassRate = 1, long P95LatencyMs = 30000, double GroundingCoverage = .8);
+    double ForbiddenFactPassRate = 1, long P95LatencyMs = 30000, double GroundingCoverage = .8,
+    double ConversationTaskAccuracy = .9, double RetrievalDecisionAccuracy = .9);
 public record RagEvaluationCaseResult(string Id, string Category, double RecallAtK, double Mrr, double NdcgAtK,
     double FactCoverage, double CitationCoverage, double GroundingCoverage, bool RefusalCorrect, bool NoForbiddenFacts, long LatencyMs,
-    List<string> RetrievedSlugs, List<string> ForbiddenFactHits, string Answer);
+    List<string> RetrievedSlugs, List<string> ForbiddenFactHits, string Answer,
+    double ConversationTaskAccuracy = 1, double RetrievalDecisionAccuracy = 1);
 public record RagEvaluationMetrics(double RecallAtK, double Mrr, double NdcgAtK, double FactCoverage,
     double CitationCoverage, double GroundingCoverage, double RefusalAccuracy, double ForbiddenFactPassRate, long P50LatencyMs,
-    long P95LatencyMs, bool Passed, List<string> FailedGates);
+    long P95LatencyMs, bool Passed, List<string> FailedGates,
+    double ConversationTaskAccuracy = 1, double RetrievalDecisionAccuracy = 1);
 
-public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguration config)
+public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguration config,
+    AssistantTurnPlanningService? turnPlanner = null,
+    AssistantPresentationService? presentationService = null)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly string[] Refusals = ["yeterli bilgi bulamadım", "yeterince ilgili bir makale bulunamadı", "henüz indexlenmiş makale bulunamadı", "ai arama şu anda kullanılamıyor"];
@@ -32,6 +41,7 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
 
     public async Task<RagEvaluationCaseResult> ExecuteCaseAsync(RagEvaluationCase item, CancellationToken ct)
     {
+        if (item.Turns is { Count: > 0 }) return await ExecuteConversationCaseAsync(item, ct);
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var f = item.Filters;
         var filter = new ArticleFilter(f?.AuthorIds, f?.ContentType, TagSlugs: f?.Tag);
@@ -59,16 +69,119 @@ public class RagEvaluationService(AppDbContext db, RagService rag, IConfiguratio
     {
         double Avg(Func<RagEvaluationCaseResult, double> p) => cases.Count == 0 ? 0 : cases.Average(p);
         long P(double q) { if (cases.Count == 0) return 0; var a = cases.Select(x => x.LatencyMs).Order().ToArray(); return a[(int)Math.Ceiling(q * a.Length) - 1]; }
-        var values = new { Recall = Avg(x => x.RecallAtK), Mrr = Avg(x => x.Mrr), Ndcg = Avg(x => x.NdcgAtK), Facts = Avg(x => x.FactCoverage), Citations = Avg(x => x.CitationCoverage), Grounding = Avg(x => x.GroundingCoverage), Refusal = Avg(x => x.RefusalCorrect ? 1 : 0), Safe = Avg(x => x.NoForbiddenFacts ? 1 : 0), P50 = P(.5), P95 = P(.95) };
+        var values = new { Recall = Avg(x => x.RecallAtK), Mrr = Avg(x => x.Mrr), Ndcg = Avg(x => x.NdcgAtK), Facts = Avg(x => x.FactCoverage), Citations = Avg(x => x.CitationCoverage), Grounding = Avg(x => x.GroundingCoverage), Refusal = Avg(x => x.RefusalCorrect ? 1 : 0), Safe = Avg(x => x.NoForbiddenFacts ? 1 : 0), ConversationTask = Avg(x => x.ConversationTaskAccuracy), RetrievalDecision = Avg(x => x.RetrievalDecisionAccuracy), P50 = P(.5), P95 = P(.95) };
         var failed = new List<string>();
         Gate(values.Recall, t.RecallAtK, "Recall@K"); Gate(values.Mrr, t.Mrr, "MRR"); Gate(values.Ndcg, t.NdcgAtK, "NDCG@K");
         Gate(values.Facts, t.FactCoverage, "Fact coverage"); Gate(values.Citations, t.CitationCoverage, "Citation coverage");
         Gate(values.Grounding, t.GroundingCoverage, "Grounding coverage");
         Gate(values.Refusal, t.RefusalAccuracy, "Refusal accuracy"); Gate(values.Safe, t.ForbiddenFactPassRate, "Forbidden-fact pass rate");
+        Gate(values.ConversationTask, t.ConversationTaskAccuracy, "Conversation task accuracy");
+        Gate(values.RetrievalDecision, t.RetrievalDecisionAccuracy, "Retrieval decision accuracy");
         if (values.P95 > t.P95LatencyMs) failed.Add($"p95 latency: {values.P95} > {t.P95LatencyMs} ms");
-        return new(values.Recall, values.Mrr, values.Ndcg, values.Facts, values.Citations, values.Grounding, values.Refusal, values.Safe, values.P50, values.P95, failed.Count == 0, failed);
+        return new(values.Recall, values.Mrr, values.Ndcg, values.Facts, values.Citations, values.Grounding, values.Refusal, values.Safe, values.P50, values.P95, failed.Count == 0, failed, values.ConversationTask, values.RetrievalDecision);
         void Gate(double actual, double threshold, string name) { if (actual < threshold) failed.Add($"{name}: {actual:P1} < {threshold:P1}"); }
     }
+
+    private async Task<RagEvaluationCaseResult> ExecuteConversationCaseAsync(
+        RagEvaluationCase item, CancellationToken ct)
+    {
+        if (turnPlanner == null || presentationService == null)
+            throw new InvalidOperationException("Conversation evaluation requires Assistant turn planning services.");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var history = new List<AssistantConversationTurn>();
+        RagService.RagResult? finalRag = null;
+        AssistantStoredTurnState? previous = null;
+        var answer = "";
+        var taskChecks = 0; var taskHits = 0; var retrievalChecks = 0; var retrievalHits = 0;
+        var f = item.Filters;
+        var filter = new ArticleFilter(f?.AuthorIds, f?.ContentType, TagSlugs: f?.Tag);
+
+        foreach (var turn in item.Turns!)
+        {
+            var plan = await turnPlanner.PlanAsync(turn.Message, history, ct);
+            if (turn.ExpectedIntent != null)
+            {
+                taskChecks++;
+                if (string.Equals(turn.ExpectedIntent, plan.Intent, StringComparison.OrdinalIgnoreCase)) taskHits++;
+            }
+            if (turn.ExpectedPresentation != null)
+            {
+                taskChecks++;
+                if (string.Equals(turn.ExpectedPresentation, plan.Presentation, StringComparison.OrdinalIgnoreCase)) taskHits++;
+            }
+            if (turn.ExpectedRetrieval.HasValue)
+            {
+                retrievalChecks++;
+                if (turn.ExpectedRetrieval.Value == (plan.Action == AssistantTurnActions.Retrieve)) retrievalHits++;
+            }
+
+            if (plan.Action == AssistantTurnActions.TransformPrevious && plan.PreviousState is { } state)
+            {
+                var presented = presentationService.Present(state.Answer, state.Rag, plan.Presentation);
+                answer = presented.Answer;
+                finalRag = null;
+                previous = state with { OriginalRequest = turn.Message, Intent = plan.Intent,
+                    Presentation = plan.Presentation, Answer = answer };
+            }
+            else if (plan.Action == AssistantTurnActions.Clarify)
+            {
+                answer = plan.ClarificationQuestion ?? "İsteğinizi netleştirin.";
+                finalRag = null;
+                previous = new(turn.Message, plan.StandaloneQuery, plan.Intent, plan.Presentation,
+                    answer, null, "balanced");
+            }
+            else
+            {
+                finalRag = await rag.AskAsync(plan.StandaloneQuery, filter, ct,
+                    plan.HypotheticalDocument, originalRequest: plan.OriginalMessage,
+                    answerIntent: plan.Intent, presentation: plan.Presentation);
+                var ragDto = ToAssistantRag(finalRag);
+                var presented = presentationService.Present(finalRag.Answer, ragDto, plan.Presentation);
+                answer = presented.Answer;
+                previous = new(turn.Message, plan.StandaloneQuery, plan.Intent, plan.Presentation,
+                    answer, ragDto, finalRag.AnswerProfile);
+            }
+
+            var stateJson = JsonSerializer.Serialize(previous, Json);
+            history.Add(new("user", turn.Message));
+            history.Add(new("assistant", answer, stateJson));
+        }
+
+        watch.Stop();
+        var ranked = previous?.Rag?.Sources.Select(x => x.Slug).ToList() ??
+                     finalRag?.Sources.Select(x => x.Slug).ToList() ?? [];
+        var expected = item.ExpectedSourceSlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hits = ranked.Count(expected.Contains);
+        var recall = expected.Count == 0 ? 1 : hits / (double)expected.Count;
+        var first = ranked.FindIndex(expected.Contains);
+        var mrr = expected.Count == 0 ? 1 : first < 0 ? 0 : 1d / (first + 1);
+        var dcg = ranked.Select((slug, i) => expected.Contains(slug) ? 1 / Math.Log2(i + 2) : 0).Sum();
+        var ideal = Enumerable.Range(0, Math.Min(expected.Count, ranked.Count)).Sum(i => 1 / Math.Log2(i + 2));
+        var foldedAnswer = Fold(answer);
+        var forbidden = item.ForbiddenFacts.Where(x => IsFactCovered(x, foldedAnswer)).ToList();
+        var ragDtoFinal = previous?.Rag;
+        return new(item.Id, item.Category, recall, mrr,
+            expected.Count == 0 ? 1 : ideal == 0 ? 0 : dcg / ideal,
+            item.ExpectedFacts.Count == 0 ? 1 : item.ExpectedFacts.Count(x => IsFactCovered(x, foldedAnswer)) / (double)item.ExpectedFacts.Count,
+            ragDtoFinal?.Sources.Length > 0 ? ragDtoFinal.CitationCoverage : item.ExpectedRefusal ? 1 : 0,
+            ragDtoFinal?.ClaimSupportCoverage ?? (item.ExpectedRefusal ? 1 : 0),
+            Refusals.Any(x => foldedAnswer.Contains(Fold(x), StringComparison.Ordinal)) == item.ExpectedRefusal,
+            forbidden.Count == 0, watch.ElapsedMilliseconds, ranked, forbidden, answer,
+            taskChecks == 0 ? 1 : taskHits / (double)taskChecks,
+            retrievalChecks == 0 ? 1 : retrievalHits / (double)retrievalChecks);
+    }
+
+    private static AssistantRagDto ToAssistantRag(RagService.RagResult value) => new(
+        value.Sources.Select(x => new AssistantSourceDto(x.ArticleId, x.Title, x.Slug, x.Score,
+            x.AuthorityWeight, x.Approved, x.ReviewState, x.ReliabilityScore, x.UpdatedAt)).ToArray(),
+        value.ConsultedSources.Select(x => new AssistantSourceDto(x.ArticleId, x.Title, x.Slug, x.Score,
+            x.AuthorityWeight, x.Approved, x.ReviewState, x.ReliabilityScore, x.UpdatedAt)).ToArray(),
+        value.Claims.Select(x => new AssistantClaimDto(x.Text, x.Role, x.SourceIds.ToArray())).ToArray(),
+        value.Evidence.Select(x => new AssistantEvidenceDto(x.SourceId, x.ArticleId, x.Title, x.Slug,
+            x.SourceType, x.AttachmentId, x.SourceName, x.SourceLocation, x.Passage, x.Score,
+            x.ChunkId, x.CanonicalUrl, x.PageNumber)).ToArray(), value.CitationCoverage,
+        value.ClaimSupportCoverage, value.GroundingStatus, value.InsufficientContext,
+        value.PartialResult);
 
     public async Task<string?> ClaimNextAsync(string workerId, TimeSpan lease, CancellationToken ct)
     {

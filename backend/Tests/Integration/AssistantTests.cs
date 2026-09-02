@@ -274,6 +274,54 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ConversationPresentationFollowUpReusesGroundedMcpAnswerWithoutNewRetrieval()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString()!;
+
+        var initial = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "MCP nedir?", conversationId });
+        initial.EnsureSuccessStatusCode();
+        var initialBody = await initial.Content.ReadFromJsonAsync<JsonElement>();
+
+        var followUp = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "sırala", conversationId });
+        followUp.EnsureSuccessStatusCode();
+        var body = await followUp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("list", body.GetProperty("intent").GetString());
+        Assert.Equal("ordered_list", body.GetProperty("presentation").GetString());
+        Assert.Equal(initialBody.GetProperty("normalizedQuery").GetString(),
+            body.GetProperty("normalizedQuery").GetString());
+        Assert.Contains(body.GetProperty("toolCalls").EnumerateArray(), item =>
+            item.GetString() == "conversation_transform");
+        Assert.Equal("ordered_list",
+            body.GetProperty("contentBlocks")[0].GetProperty("type").GetString());
+        Assert.DoesNotContain("rank'e göre", body.GetProperty("answer").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PresentationCommandWithoutPriorAnswerAsksForClarification()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString()!;
+
+        var response = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "tablo yap", conversationId });
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("turn_clarification", body.GetProperty("toolCalls")[1].GetString());
+        Assert.Contains("Hangi bilgileri", body.GetProperty("answer").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("rag").ValueKind);
+    }
+
+    [Fact]
     public async Task StartingSessionConversationPermanentlyReplacesPreviousConversation()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);

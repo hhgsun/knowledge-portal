@@ -528,7 +528,7 @@ public static partial class RagCitationValidator
             "acikla", "adim", "adimlar", "all", "anlat", "ayrintili", "butun", "calisir", "does",
             "compare", "comprehensive", "detailed", "detayli", "edilir", "entegre", "everything", "exception", "exceptions",
             "hangi", "hakkinda", "hepsi", "how", "istisna", "istisnalar", "kapsamli", "karsilastir",
-            "kullanilir", "kurulur", "listele", "nasil", "neden", "nedir", "nelerdir", "overview", "ozet", "ozetle", "responsibilities",
+            "kullanilir", "kurulur", "listele", "maddele", "numaralandir", "nasil", "neden", "nedir", "nelerdir", "overview", "ozet", "ozetle", "kisalt", "sirala", "tablo", "sema", "responsibilities",
             "responsibility", "sorumluluk", "sorumluluklar", "summarize", "summary", "temel", "tum", "tumu",
             "uygulanir", "what", "why", "work", "works"
         };

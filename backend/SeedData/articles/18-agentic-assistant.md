@@ -10,19 +10,26 @@
 
 ## Amaç ve Kesin Sınır
 
-Bilgi Asistanı yalnız portal bilgisinden kaynaklı yanıt üretir. Doküman sonuç listesi, portal analitiği, genel sohbet, intent routing, serbest SQL veya yazma aracı sunmaz. Doküman bulmak için `/search` ve `GET /api/search`; kanıtlara dayanarak yanıt almak için `/assistant`, `POST /api/assistant` veya MCP `ask_knowledge` kullanılır.
+Bilgi Asistanı yalnız portal bilgisinden kaynaklı yanıt üretir. Doküman sonuç listesi, portal analitiği, genel sohbet, serbest SQL veya yazma aracı sunmaz. Asistanın bounded turn planner'ı bir turu yalnız `retrieve`, `transform_previous` veya `clarify` olarak ele alır; bu, başka ürün yüzeylerine giden serbest bir router değildir. Doküman bulmak için `/search` ve `GET /api/search`; kanıtlara dayanarak yanıt almak için `/assistant`, `POST /api/assistant` veya MCP `ask_knowledge` kullanılır.
 
 ```text
 POST /api/assistant
         │
         ▼
-conversation context + shared query scope
+owned conversation + versioned grounded turn state
         │
         ▼
-KnowledgeAnswerService
+AssistantTurnPlanningService
+        │
+        ├── presentation-only → verified-claim transform
+        ├── ambiguous/no state → clarification
+        └── knowledge question → contextualized retrieval query
         │
         ▼
-RagService → authorized evidence → grounded answer
+KnowledgeAnswerService → authorized evidence → grounded claims
+        │
+        ▼
+AssistantPresentationService → safe typed content blocks
         │
         ├── Assistant interaction audit / feedback
         └── optional semantic answer cache
@@ -43,7 +50,9 @@ POST /api/assistant
 }
 ```
 
-Yanıt `normalizedQuery`, doğrulanmış `answer`, `rag`, `toolCalls`, `warnings`, `interactionId`, `responseTimeMs`, `traceId`, `conversationId` ve `cacheHit` alanlarını taşır. `rag` içinde atıf yapılan `sources`, yalnız incelenen `consultedSources`, typed `claims`, provenance-bearing `evidence`, coverage değerleri, grounding durumu ve çatışma değerlendirmesi bulunur. Arama sonucu listesi veya routing metadatası dönmez.
+Yanıt `normalizedQuery`, doğrulanmış `answer`, `intent`, `presentation`, allowlist edilmiş `contentBlocks`, `rag`, `toolCalls`, `warnings`, `interactionId`, `responseTimeMs`, `traceId`, `conversationId` ve `cacheHit` alanlarını taşır. `rag` içinde atıf yapılan `sources`, yalnız incelenen `consultedSources`, typed `claims`, provenance-bearing `evidence`, coverage değerleri, grounding durumu ve çatışma değerlendirmesi bulunur. Arama sonucu listesi dönmez; `intent` ve `presentation` yalnız cevap görevini ve görünümünü açıklar.
+
+Model serbest bir tablo, HTML, SVG veya görselleştirme programı üretmez. Provider'dan yalnız kaynak kimliklerine bağlı atomik claim'ler alınır. Backend aynı doğrulanmış claim kümesinden geriye uyumlu Markdown `answer` ile `markdown`, `paragraph`, `bullet_list`, `ordered_list`, `table`, `process_flow` veya fact-card `infographic` typed bloklarını oluşturur. Frontend yalnız bu blok sözlüğünü render eder. Böylece tablo, infografik ve süreç şeması gibi zengin anlatımlar kullanılabilir, fakat sunum katmanı yeni olgu icat edemez veya çalıştırılabilir içerik taşıyamaz.
 
 `POST /api/assistant/stream` gerçek SSE kullanır. Doğrulanmamış model tokenları istemciye açılmaz; retrieval ve grounding durum olaylarından sonra yalnız doğrulanmış sonuç `token` ve `complete` olaylarıyla gönderilir.
 
@@ -51,7 +60,11 @@ Arama ekranındaki “Bilgi Asistanına sor” eylemi sorguyu metni korunarak `/
 
 ## Çok Turlu Konuşma
 
-Konuşma bağlamı yalnız interaktif oturumda kullanılabilir ve kullanıcı sahipliğiyle korunur; API key geçmiş okuyamaz. Kullanıcı başına veritabanında en fazla bir konuşma bulunur. `/assistant` açıldığında oluşturulan yeni oturum konuşması aynı kullanıcıya ait önceki konuşmayı ve mesajlarını kalıcı olarak silip yerine geçer; frontend eski konuşmaları listelemez veya yeniden açmaz. Sayfa açık kaldığı sürece bütün takip soruları aynı kimliği kullanır. Asistan görünümü AppShell'in standart sayfa başlığı ve boşluk düzenine doğrudan yerleşir; ayrı border, gölge, radius ve arka planla çevrelenmiş bir uygulama kutusu oluşturmaz. Her tamamlanmış yanıtın yalnız atıf yapılan kaynakları doğrudan yanıtın altında bağlantı olarak gösterilir; ayrı kaynak inceleme, consulted-source veya kanıt pasajı paneli yoktur. `AssistantQueryContextualizer`, bounded son kullanıcı ve asistan turlarını untrusted veri olarak işleyip “peki bunun istisnası var mı?” gibi anaforik takip sorularını önceki konu, kesin teknik adlar ve explicit scope token'ları korunmuş bağımsız bir arama sorusuna dönüştürür. Model timeout, hata veya şema dışı çıktı verirse istek bozulmaz; son kullanıcı konusuyla deterministik rewrite uygulanır. Backend'in sahiplik kontrollü konuşma endpoint'leri yalnız bu aktif oturumun bağlamını sağlar.
+Konuşma bağlamı yalnız interaktif oturumda kullanılabilir ve kullanıcı sahipliğiyle korunur; API key geçmiş okuyamaz. Kullanıcı başına veritabanında en fazla bir konuşma bulunur. `/assistant` açıldığında oluşturulan yeni oturum konuşması aynı kullanıcıya ait önceki konuşmayı ve mesajlarını kalıcı olarak silip yerine geçer; frontend eski konuşmaları listelemez veya yeniden açmaz. Sayfa açık kaldığı sürece bütün takip soruları aynı kimliği kullanır. Asistan görünümü AppShell'in standart sayfa başlığı ve boşluk düzenine doğrudan yerleşir; ayrı border, gölge, radius ve arka planla çevrelenmiş bir uygulama kutusu oluşturmaz. Her tamamlanmış yanıtın yalnız atıf yapılan kaynakları doğrudan yanıtın altında bağlantı olarak gösterilir; ayrı kaynak inceleme, consulted-source veya kanıt pasajı paneli yoktur.
+
+Her assistant mesajı isteğe bağlı versioned `turn_state_json` taşır: özgün istek, normalize retrieval query, bounded intent/sunum, görünen cevap, doğrulanmış RAG claim/atıfları ve cevap profili. `AssistantTurnPlanningService`, “sırala”, “maddele”, “tablo yap”, “özetle”, “akış şeması yap” veya “infografik yap” gibi yalnız sunum isteyen bir takip turunda yeni arama ya da model çağrısı yapmaz; önceki doğrulanmış claim'leri istenen biçimde yeniden sunar. Önceki grounded state yoksa literal “sıralama” sorgusu aramak yerine kullanıcıdan hangi bilginin dönüştürüleceğini sorar. Bu dönüşümler sıfır generation token'ı raporlar ve önceki kaynak/provenance bağını korur.
+
+Yeni bilgi isteyen takiplerde `AssistantQueryContextualizer`, bounded son kullanıcı ve asistan turlarını untrusted veri olarak işleyip “peki bunun istisnası var mı?” gibi anaforik soruları önceki konu, kesin teknik adlar ve explicit scope token'ları korunmuş bağımsız bir arama sorusuna dönüştürür. Model timeout, hata veya şema dışı çıktı verirse istek bozulmaz; son kullanıcı konusuyla deterministik rewrite uygulanır. Konuşma metni hiçbir zaman kanıt sayılmaz; generation'a yalnız yeniden yetkilendirilmiş portal evidence girer. Backend'in sahiplik kontrollü konuşma endpoint'leri yalnız bu aktif oturumun bağlamını sağlar.
 
 `Assistant:QueryContextualization:HydeEnabled=true` olduğunda aynı bounded çağrı kısa bir hypothetical knowledge passage da üretebilir. Bu metin gerçek bilgi veya kanıt sayılmaz: yalnız standalone query embedding'ine ek ikinci dense lookup çalıştırır; FTS'e, context builder'a, citation validator'a veya yanıt üretim promptuna girmez. Original-query ve HyDE dense adayları kimlik bazında `HydeWeight` (varsayılan 0,3) ile ağırlıklı birleştirilir; iki sinyalin aynı child'a isabeti yalnız küçük bir tie-break bonusu verir. Böylece üretilmiş metin original kullanıcı sorgusunu domine edemez.
 
@@ -77,4 +90,4 @@ Semantic answer cache yalnız yeterli citation coverage sağlayan, partial/insuf
 
 Search ve Assistant ayrı rate-limit politikaları kullanır. Assistant toplam süresi `Assistant:TotalTimeoutSeconds`, mesaj boyutu `Assistant:MaxMessageCharacters` ile sınırlıdır. RAG çalışma görünümü ve modelsiz debug endpoint'leri session-admin için sırasıyla `GET /api/admin/rag/observability` ve `GET /api/admin/rag/debug?q=...` adreslerindedir.
 
-Prometheus'ta `kp_rag_*` pipeline metriklerine ek olarak Assistant süre, tool-call, feedback, audit hatası ve answer-cache sonuçları izlenir. Usage operasyonları `assistant.answer` ve `assistant.stream.answer` olarak kaydedilir.
+Prometheus'ta `kp_rag_*` pipeline metriklerine ek olarak Assistant süre, tool-call, feedback, audit hatası ve answer-cache sonuçları izlenir. Usage operasyonları `assistant.answer` ve `assistant.stream.answer` olarak kaydedilir. Yönetici RAG evaluation dataset'i tek turlu vakaların yanında `turns` dizili konuşma vakalarını da kabul eder. Her tur için beklenen `expectedIntent`, `expectedPresentation` ve `expectedRetrieval` tanımlanabilir; `conversationTaskAccuracy` ile `retrievalDecisionAccuracy` eşikleri “MCP nedir?” → “sırala” gibi görev bağlamı regresyonlarını canlı kalite kapısında durdurur.

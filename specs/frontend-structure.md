@@ -52,7 +52,7 @@ frontend/
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback
     ├── VersionsPage.tsx       # Version history + line-based diff comparison
     ├── SearchPage.tsx         # Document discovery via fulltext/semantic/hybrid modes, metadata autocomplete and query handoff to Assistant
-    ├── AssistantPage.tsx      # Canonical grounded-answer UI with model/compact-balanced-comprehensive profile selectors, one page-session conversation and per-answer source links
+    ├── AssistantPage.tsx      # Task-aware grounded-answer UI with safe typed paragraph/list/table/process/infographic blocks, one page-session conversation and per-answer source links
     ├── AnalyticsPage.tsx      # Analytics dashboard: stats, top searches, content gaps
     ├── AdminUsersPage.tsx     # User CRUD with pagination, search, role badges
     ├── AdminApiKeysPage.tsx   # All-user API key CRUD: list, search, add, edit, delete (admin only)
@@ -133,7 +133,7 @@ graph TD
 | `/articles/:slug/edit` | EditArticlePage | Protected | AppShell | — |
 | `/articles/:slug/versions` | VersionsPage | Protected | AppShell | — |
 | `/search` | SearchPage | Protected | AppShell | Document-result modes; a populated query can be handed to `/assistant?q=...&mode=answer` |
-| `/assistant` | AssistantPage | Protected | AppShell | Canonical grounded-answer surface integrated directly into the standard page layout (no standalone framed shell); one conversation for the open page session, no previous-conversation browser, verified SSE, source links directly below every answer, citations, feedback and cache/calibration indicators; validation warnings use a collapsed count disclosure with a bounded scrollable detail list |
+| `/assistant` | AssistantPage | Protected | AppShell | Task-aware grounded-answer surface integrated directly into the standard page layout (no standalone framed shell); one conversation for the open page session, no previous-conversation browser, verified SSE, allowlisted typed paragraph/bullet/ordered-list/table/process-flow/infographic blocks, source links directly below every answer, citations, feedback and cache/calibration indicators; validation warnings use a collapsed count disclosure with a bounded scrollable detail list |
 | `/profile` | ProfilePage | Protected | AppShell | — |
 | `/analytics` | AnalyticsPage | Protected | AppShell | admin, editor (RoleRoute) |
 | `/tags` | TagsPage | Protected | AppShell | admin, editor (RoleRoute) |

@@ -23,8 +23,8 @@ public partial class RagService(
     PortalMetrics metrics,
     ILogger<RagService> logger)
 {
-    public const string PromptVersion = "2026-09-01.topic-aligned-claim-synthesis-v17";
-    public const string RetrievalVersion = "2026-09-01.profile-aware-coverage-routing-v6";
+    public const string PromptVersion = "2026-09-02.task-aware-claim-synthesis-v18";
+    public const string RetrievalVersion = "2026-09-02.conversation-aware-routing-v7";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
     private readonly int _minimumSourceLimit = Math.Clamp(config.GetValue("Ollama:RagMinimumSourceLimit", 3), 1, 10);
@@ -61,7 +61,8 @@ public partial class RagService(
     private static readonly string[] DefaultBroadKeywords =
     [
         "özetle", "özet", "hepsi", "tüm", "tümü", "tamamı", "bütün", "karşılaştır", "karşılaştırma",
-        "genel bakış", "listele", "hangileri", "summary", "summarize", "compare", "overview", "list", "all", "everything"
+        "genel bakış", "listele", "sırala", "maddele", "numaralandır", "tablo halinde", "hangileri",
+        "summary", "summarize", "compare", "overview", "list", "all", "everything"
     ];
 
     private const string RefuseInsufficient = "Bu konuda yeterli bilgi bulamadım.";
@@ -145,6 +146,10 @@ public partial class RagService(
           that the sources do not support.
         - A document title or section heading alone is not an answer or a factual claim.
         - Respond in the same language as the question
+        - The user message includes separate original-request, resolved-question, response-task and
+          presentation fields. Answer the resolved knowledge question while following the original
+          user's task. Presentation is rendered by trusted application code; return grounded claims,
+          not Markdown tables, diagrams, HTML, SVG, or executable content.
         - Prefer a coherent synthesis over a source-by-source recap. Be clear, complete for the requested answer profile, and factual.
         - Do not make up information
         """;
@@ -245,7 +250,8 @@ public partial class RagService(
 
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null,
         CancellationToken ct = default, string? hypotheticalDocument = null,
-        string? answerProfile = null)
+        string? answerProfile = null, string? originalRequest = null,
+        string? answerIntent = null, string? presentation = null)
     {
         var profile = RagAnswerProfiles.Resolve(question, answerProfile, _defaultAnswerProfile);
         if (string.IsNullOrWhiteSpace(answerProfile) && IsBroadQuery(question))
@@ -267,7 +273,7 @@ public partial class RagService(
             try
             {
                 result = await AskCoreAsync(question, filter, broad, profile, budget.Token,
-                    hypotheticalDocument);
+                    hypotheticalDocument, originalRequest, answerIntent, presentation);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested && budget.IsCancellationRequested)
             {
@@ -333,7 +339,8 @@ public partial class RagService(
     }
 
     private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad,
-        RagAnswerProfile profile, CancellationToken ct, string? hypotheticalDocument)
+        RagAnswerProfile profile, CancellationToken ct, string? hypotheticalDocument,
+        string? originalRequest, string? answerIntent, string? presentation)
     {
         var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument);
         if (prepared.Retrieved.Count == 0)
@@ -352,9 +359,10 @@ public partial class RagService(
 
         var tokenUsage = new TokenUsageAccumulator();
         var result = broad
-            ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, tokenUsage, profile, ct)
+            ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, tokenUsage, profile, ct,
+                originalRequest, answerIntent, presentation)
             : await AnswerNarrowAsync(question, prepared.Plan, usableChunks, prepared.Articles,
-                tokenUsage, profile, ct);
+                tokenUsage, profile, ct, originalRequest, answerIntent, presentation);
         logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
             QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
         return result with
@@ -420,7 +428,8 @@ public partial class RagService(
     private async Task<RagResult> AnswerNarrowAsync(string question, RagQueryPlan plan,
         List<VectorChunkResult> chunks,
         Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
-        RagAnswerProfile profile, CancellationToken ct)
+        RagAnswerProfile profile, CancellationToken ct, string? originalRequest,
+        string? answerIntent, string? presentation)
     {
         var evidenceIds = EvidenceIds(chunks);
         var adaptiveSourceLimit = AdaptiveSourceLimit(question, plan, chunks);
@@ -438,16 +447,19 @@ public partial class RagService(
 
         var raw = await CompleteAsync("generation", resilience.GenerationTimeoutSeconds,
             WithAnswerProfile(SystemPrompt, profile),
-            BuildContextMessage(question, selection.SourceBlocks), tokenUsage, ct);
+            BuildContextMessage(question, selection.SourceBlocks, originalRequest, answerIntent,
+                presentation), tokenUsage, ct);
         return await BuildValidatedResultAsync(question, raw, selected, sourceScores, articles, evidenceIds,
-            BuildContextMessage(question, selection.SourceBlocks), tokenUsage, profile, ct);
+            BuildContextMessage(question, selection.SourceBlocks, originalRequest, answerIntent,
+                presentation), tokenUsage, profile, ct);
     }
 
     /// <summary>Comprehensive path: summarize every batch of candidate chunks (map), then merge the
     /// partial notes into one answer (reduce), so the response considers all relevant documents.</summary>
     private async Task<RagResult> AnswerBroadAsync(string question, List<VectorChunkResult> chunks,
         Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
-        RagAnswerProfile profile, CancellationToken ct)
+        RagAnswerProfile profile, CancellationToken ct, string? originalRequest,
+        string? answerIntent, string? presentation)
     {
         var sourceScores = new Dictionary<string, double>();
         var evidenceIds = EvidenceIds(chunks);
@@ -475,7 +487,8 @@ public partial class RagService(
                 if (selection.Items.Count == 0) return (batch.index, Partial: (string?)null, Chunks: usedChunks, Error: (Exception?)null);
                 var partial = await CompleteAsync($"map-{batch.index + 1}", resilience.GenerationTimeoutSeconds,
                     WithAnswerProfile(MapSystemPrompt, profile),
-                    BuildContextMessage(question, selection.SourceBlocks), tokenUsage, ct);
+                    BuildContextMessage(question, selection.SourceBlocks, originalRequest,
+                        answerIntent, presentation), tokenUsage, ct);
                 return (batch.index, Partial: (string?)partial, Chunks: usedChunks, Error: (Exception?)null);
             }
             catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
@@ -508,7 +521,8 @@ public partial class RagService(
         {
             try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds,
                 WithAnswerProfile(ReduceSystemPrompt, profile),
-                BuildReduceMessage(question, partials), tokenUsage, ct); }
+                BuildReduceMessage(question, partials, originalRequest, answerIntent, presentation),
+                tokenUsage, ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { logger.LogWarning(ex, "RAG reduce failed; returning first successful partial"); reduceFailed = true; }
         }
@@ -520,7 +534,8 @@ public partial class RagService(
             articles.ToDictionary(x => x.Key, x => x.Value.Title), evidenceIds,
             _maxContextTokens, int.MaxValue, Governance(articles));
         return await BuildValidatedResultAsync(question, finalAnswer, successfulChunks, sourceScores, articles,
-            evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks), tokenUsage,
+            evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks, originalRequest,
+                answerIntent, presentation), tokenUsage,
             profile, ct, failures.Count > 0 || reduceFailed || budgetTruncated, extraWarnings);
     }
 
@@ -593,18 +608,26 @@ public partial class RagService(
     private static string WithAnswerProfile(string systemPrompt, RagAnswerProfile profile) =>
         $"{systemPrompt.TrimEnd()}\n- {profile.PromptInstruction()}";
 
-    private static string BuildContextMessage(string question, IReadOnlyList<string> contextParts) => $"""
-        Question: {question}
+    private static string BuildContextMessage(string question, IReadOnlyList<string> contextParts,
+        string? originalRequest = null, string? answerIntent = null, string? presentation = null) => $"""
+        Original user request: {originalRequest ?? question}
+        Resolved knowledge question: {question}
+        Response task: {answerIntent ?? "answer"}
+        Requested presentation: {presentation ?? "auto"}
 
         Context:
         {string.Join("\n\n", contextParts)}
         """;
 
-    private static string BuildReduceMessage(string question, List<string> partials)
+    private static string BuildReduceMessage(string question, List<string> partials,
+        string? originalRequest = null, string? answerIntent = null, string? presentation = null)
     {
         var notes = string.Join("\n\n", partials.Select((p, i) => $"[Not {i + 1}]\n{p}"));
         return $"""
-            Question: {question}
+            Original user request: {originalRequest ?? question}
+            Resolved knowledge question: {question}
+            Response task: {answerIntent ?? "answer"}
+            Requested presentation: {presentation ?? "auto"}
 
             Notes:
             {notes}

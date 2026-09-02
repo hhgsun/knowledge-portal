@@ -211,6 +211,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
     builder.Services.AddSingleton<RagQueryUnderstandingService>();
     builder.Services.AddScoped<AssistantQueryContextualizer>();
+    builder.Services.AddScoped<AssistantTurnPlanningService>();
     builder.Services.AddSingleton<RagContextExpansionService>();
     builder.Services.AddSingleton<LocalRagChunkReranker>();
     builder.Services.AddSingleton<ExternalRerankerState>();
@@ -266,6 +267,7 @@ builder.Services.AddScoped<AssistantConversationService>();
 builder.Services.AddScoped<ChatModelContext>();
 builder.Services.AddScoped<AssistantRequestService>();
 builder.Services.AddScoped<AssistantAnswerCacheService>();
+builder.Services.AddSingleton<AssistantPresentationService>();
 builder.Services.AddScoped<AnalyticsReportService>();
 builder.Services.AddScoped<TagService>();
 builder.Services.AddScoped<ApiKeyService>();

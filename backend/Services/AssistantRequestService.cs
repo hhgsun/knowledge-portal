@@ -34,7 +34,8 @@ public sealed class AssistantRequestService(
         };
         var execution = await orchestrator.ExecuteAsync(effective, principal, ct,
             conversation.Context.HypotheticalDocument,
-            conversation.Context.ContextualizationStrategy);
+            conversation.Context.ContextualizationStrategy,
+            conversation.Context.TurnPlan);
         if (execution.Error != null) return execution;
         var response = execution.Response! with { ConversationId = conversation.Context.ConversationId };
         var interactionId = await interactions.RecordAsync(effective.Message, response, principal, ct);

@@ -777,7 +777,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 | Field | Type | Required | Notes |
 |-------|------|:--------:|-------|
 | `message` | string | Yes | Trimmed, 1–4,000 characters by default (`Assistant:MaxMessageCharacters`) |
-| `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user/assistant turns rewrite follow-ups into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
+| `conversationId` | string | No | Owned session conversation; API keys cannot use history. The bounded turn planner separates original request, retrieval query, task intent and presentation. Presentation-only follow-ups reuse prior validated claims without retrieval; knowledge follow-ups are rewritten into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
 | `model` | string | No | Ollama-discovered chat model selected on the Assistant screen. It is validated for every request; omission uses the admin default. |
 | `answerProfile` | string | No | `compact`, `balanced`, or `comprehensive`. Omission uses `balanced`, while an explicitly broad/detailed question may be promoted to `comprehensive`. The browser keeps the selector in local storage. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
@@ -810,6 +810,11 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
   "traceId": "...",
   "conversationId": null,
   "answerProfile": "comprehensive",
+  "intent": "explain",
+  "presentation": "auto",
+  "contentBlocks": [
+    { "type": "markdown", "text": "Portal kaynaklarına dayalı doğrulanmış yanıt [S1]" }
+  ],
   "cacheHit": false,
   "tokenUsage": {
     "inputTokens": 1840,
@@ -821,10 +826,15 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
 ```
 
 The model returns a single canonical claim-only structured object (`claims` plus
-`insufficientContext`). The server validates those atomic claims and renders the visible Markdown
-answer; it does not ask the provider to generate a duplicate free-text `answer` field. Every Ollama
-generation explicitly receives `num_ctx=Ollama:RagModelContextTokens` (default 32,768), and
-`RagMaxOutputTokens` defaults to 4,096. The answer profile is part of semantic-cache identity.
+`insufficientContext`). The generation prompt receives the original user request, resolved retrieval
+question, bounded response task, and requested presentation as separate fields. The server validates
+the atomic claims and `AssistantPresentationService` renders both the compatibility Markdown
+`answer` and allowlisted `contentBlocks`; it does not ask the provider to generate a duplicate
+free-text answer, arbitrary HTML/SVG, or executable visualization code. Supported block types are
+`markdown`, `paragraph`, `bullet_list`, `ordered_list`, `table`, `process_flow`, and `infographic`. Tables, fact-card infographics, and process
+flows remain source-bound projections of validated claims rather than new factual synthesis. Every
+Ollama generation explicitly receives `num_ctx=Ollama:RagModelContextTokens` (default 32,768), and
+`RagMaxOutputTokens` defaults to 4,096. Intent and presentation are part of semantic-cache identity.
 
 `tokenUsage`, cevabı üretmek için yapılan tüm RAG model çağrılarının toplamını içerir; geniş
 map-reduce ve grounding-repair çağrıları da toplama dahildir. Sağlayıcı input/output kullanımını
@@ -870,7 +880,18 @@ Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, 
 
 ### Assistant conversations
 
-`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. A user can have only one conversation. Create permanently deletes that user's previous conversation and messages before returning the new session conversation; list therefore returns zero or one item. The frontend creates this conversation when `/assistant` opens and never exposes a previous-conversation browser. Subjectless elliptical follow-ups such as `nasıl kullanılır?`, `nasıl çalışır?`, and `örnek ver` are contextualized with the previous user topic. If the model rewrite omits that topic, a deterministic topic-retention guard replaces it with a standalone query derived from the prior user question and discards the potentially unrelated HyDE passage.
+`GET/POST/DELETE /api/assistant/conversations`, `GET /api/assistant/conversations/{id}/messages`, and `DELETE /api/assistant/conversations/{id}` require an interactive session and enforce user ownership. A user can have only one conversation. Create permanently deletes that user's previous conversation and messages before returning the new session conversation; list therefore returns zero or one item. The frontend creates this conversation when `/assistant` opens and never exposes a previous-conversation browser.
+
+Each assistant message can persist a versioned grounded turn-state snapshot. The bounded planner has
+only three actions: `retrieve`, `transform_previous`, and `clarify`. Commands such as `sırala`,
+`maddele`, `tablo yap`, `özetle`, `akış şeması yap`, and `infografik yap` transform the previous validated claims and
+citations without invoking retrieval or chat generation. If no prior grounded answer exists, the
+Assistant asks what should be transformed instead of searching for the literal command. Subjectless
+knowledge follow-ups such as `nasıl kullanılır?`, `nasıl çalışır?`, and `örnek ver` continue through
+standalone-query contextualization. If the model rewrite omits the previous topic, a deterministic
+topic-retention guard replaces it with a query derived from the prior user question and discards the
+potentially unrelated HyDE passage. Stored conversation prose never becomes evidence; only the
+previous validated RAG state is eligible for deterministic presentation transforms.
 
 ---
 

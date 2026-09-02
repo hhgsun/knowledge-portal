@@ -10,7 +10,10 @@ public sealed record KnowledgeAnswerRequest(
     IEnumerable<string>? ContentTypes = null,
     IReadOnlyDictionary<string, string[]>? Facets = null,
     string? HypotheticalDocument = null,
-    string? AnswerProfile = null);
+    string? AnswerProfile = null,
+    string? OriginalRequest = null,
+    string? Intent = null,
+    string? Presentation = null);
 
 public enum KnowledgeAnswerFailureKind
 {
@@ -86,7 +89,8 @@ public sealed class KnowledgeAnswerService(
         try
         {
             var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken,
-                request.HypotheticalDocument, request.AnswerProfile);
+                request.HypotheticalDocument, request.AnswerProfile, request.OriginalRequest,
+                request.Intent, request.Presentation);
             stopwatch.Stop();
             return (new KnowledgeAnswerResult(request.Question, rag, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString()), null);

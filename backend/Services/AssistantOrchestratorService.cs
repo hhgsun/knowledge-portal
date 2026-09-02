@@ -11,6 +11,7 @@ namespace KnowledgePortal.Api.Services;
 public sealed class AssistantOrchestratorService(
     AssistantAnswerCacheService answerCache,
     KnowledgeAnswerService knowledgeAnswers,
+    AssistantPresentationService presentationService,
     LlmModelSelectionService modelSelection,
     IConfiguration config,
     PortalMetrics metrics,
@@ -18,7 +19,8 @@ public sealed class AssistantOrchestratorService(
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken cancellationToken = default,
-        string? hypotheticalDocument = null, string contextualizationStrategy = "none")
+        string? hypotheticalDocument = null, string contextualizationStrategy = "none",
+        AssistantTurnPlan? turnPlan = null)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
             return (null, new ServiceError(400, "Message is required."));
@@ -36,9 +38,51 @@ public sealed class AssistantOrchestratorService(
         try
         {
             var normalizedQuestion = request.Message.Trim();
+            turnPlan ??= new AssistantTurnPlan(normalizedQuestion, normalizedQuestion,
+                AssistantTurnActions.Retrieve, "answer", AssistantPresentationModes.Auto,
+                contextualizationStrategy);
             var effectiveModel = request.Model
                 ?? await modelSelection.GetDefaultModelAsync(budget.Token);
-            var cacheQuestion = BuildCacheQuestion(request, effectiveModel);
+
+            if (turnPlan.Action == AssistantTurnActions.Clarify)
+            {
+                watch.Stop();
+                var clarification = turnPlan.ClarificationQuestion ??
+                                    "İsteğinizi hangi konu için uygulamamı istersiniz?";
+                return (Base(normalizedQuestion, traceId, watch.ElapsedMilliseconds) with
+                {
+                    Answer = clarification,
+                    ToolCalls = ToolCalls("turn_clarification", turnPlan.Strategy),
+                    Model = effectiveModel,
+                    Intent = turnPlan.Intent,
+                    Presentation = turnPlan.Presentation,
+                    ContentBlocks = [new AssistantContentBlockDto("paragraph", Text: clarification)]
+                }, null);
+            }
+
+            if (turnPlan.Action == AssistantTurnActions.TransformPrevious && turnPlan.PreviousState is { } previous)
+            {
+                var transformed = presentationService.Present(previous.Answer, previous.Rag,
+                    turnPlan.Presentation);
+                watch.Stop();
+                metrics.AssistantToolCalls.Add(1,
+                    new("tool", "conversation_transform"), new("outcome", "success"));
+                metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
+                    new("route", "conversation_transform"), new("outcome", "success"));
+                return (Base(normalizedQuestion, traceId, watch.ElapsedMilliseconds) with
+                {
+                    Answer = transformed.Answer,
+                    Rag = previous.Rag,
+                    ToolCalls = ToolCalls("conversation_transform", turnPlan.Strategy),
+                    Model = effectiveModel,
+                    AnswerProfile = previous.AnswerProfile,
+                    Intent = turnPlan.Intent,
+                    Presentation = turnPlan.Presentation,
+                    ContentBlocks = transformed.Blocks
+                }, null);
+            }
+
+            var cacheQuestion = BuildCacheQuestion(request, effectiveModel, turnPlan);
             CachedAssistantAnswer? cached = null;
             try
             {
@@ -54,17 +98,22 @@ public sealed class AssistantOrchestratorService(
 
             if (cached != null)
             {
+                var presented = presentationService.Present(cached.Answer, cached.Rag,
+                    turnPlan.Presentation);
                 watch.Stop();
                 metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
                     new("route", "knowledge_answer"), new("outcome", "success"));
                 return (Base(normalizedQuestion, traceId, watch.ElapsedMilliseconds) with
                 {
-                    Answer = cached.Answer,
+                    Answer = presented.Answer,
                     Rag = cached.Rag,
                     ToolCalls = ToolCalls("semantic_answer_cache", contextualizationStrategy),
                     CacheHit = true,
                     Model = effectiveModel,
                     AnswerProfile = cached.AnswerProfile,
+                    Intent = turnPlan.Intent,
+                    Presentation = turnPlan.Presentation,
+                    ContentBlocks = presented.Blocks,
                     TokenUsage = new AssistantTokenUsageDto(0, 0, 0, false)
                 }, null);
             }
@@ -76,7 +125,10 @@ public sealed class AssistantOrchestratorService(
                 request.ContentTypes,
                 request.Facets,
                 hypotheticalDocument,
-                request.AnswerProfile), principal, budget.Token);
+                request.AnswerProfile,
+                turnPlan.OriginalMessage,
+                turnPlan.Intent,
+                turnPlan.Presentation), principal, budget.Token);
             if (execution.Error != null) return (null, execution.Error);
 
             var result = execution.Result!;
@@ -90,10 +142,12 @@ public sealed class AssistantOrchestratorService(
             }
 
             var ragDto = ToDto(result.Rag);
+            var presentedResult = presentationService.Present(result.Rag.Answer, ragDto,
+                turnPlan.Presentation);
             try
             {
                 await answerCache.StoreAsync(cacheQuestion, principal,
-                    new CachedAssistantAnswer(result.Rag.Answer, ragDto,
+                    new CachedAssistantAnswer(presentedResult.Answer, ragDto,
                         result.Rag.AnswerProfile), budget.Token);
             }
             catch (OperationCanceledException) { throw; }
@@ -113,12 +167,15 @@ public sealed class AssistantOrchestratorService(
                 warnings.Add("Some authorized sources are still being indexed and may not be represented yet.");
             return (Base(normalizedQuestion, traceId, watch.ElapsedMilliseconds) with
             {
-                Answer = result.Rag.Answer,
+                Answer = presentedResult.Answer,
                 Rag = ragDto,
                 ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
                 Warnings = warnings.Distinct().ToArray(),
                 Model = effectiveModel,
                 AnswerProfile = result.Rag.AnswerProfile,
+                Intent = turnPlan.Intent,
+                Presentation = turnPlan.Presentation,
+                ContentBlocks = presentedResult.Blocks,
                 TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,
                     result.Rag.TokenUsage.OutputTokens, result.Rag.TokenUsage.TotalTokens,
                     result.Rag.TokenUsage.Estimated)
@@ -160,7 +217,8 @@ public sealed class AssistantOrchestratorService(
         ConversationId: null, CacheHit: false,
         TokenUsage: new AssistantTokenUsageDto(0, 0, 0, false));
 
-    private static string BuildCacheQuestion(AssistantRequest request, string model)
+    private static string BuildCacheQuestion(AssistantRequest request, string model,
+        AssistantTurnPlan turnPlan)
     {
         static string Join(IEnumerable<string>? values) => string.Join(',',
             (values ?? []).Select(value => value.Trim().ToLowerInvariant())
@@ -168,14 +226,18 @@ public sealed class AssistantOrchestratorService(
         var facets = string.Join(';', (request.Facets ?? [])
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
-        return $"{request.Message.Trim()}\n[model:{model};profile:{request.AnswerProfile ?? "auto"};scope:tags={Join(request.Tags)};" +
+        return $"{request.Message.Trim()}\n[intent:{turnPlan.Intent};presentation:{turnPlan.Presentation};" +
+               $"model:{model};profile:{request.AnswerProfile ?? "auto"};scope:tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 
     private static string[] ToolCalls(string terminalTool, string contextualizationStrategy) =>
         contextualizationStrategy == "none"
             ? [terminalTool]
-            : [$"query_contextualization:{contextualizationStrategy}", terminalTool];
+            : [contextualizationStrategy.StartsWith("deterministic_transform", StringComparison.Ordinal)
+                || contextualizationStrategy.StartsWith("deterministic_clarification", StringComparison.Ordinal)
+                    ? $"turn_planning:{contextualizationStrategy}"
+                    : $"query_contextualization:{contextualizationStrategy}", terminalTool];
 
     private static AssistantRagDto ToDto(RagService.RagResult rag) => new(
         rag.Sources.Select(ToSource).ToArray(), rag.ConsultedSources.Select(ToSource).ToArray(),

@@ -397,6 +397,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.ToTable("assistant_messages"); e.HasKey(x => x.Id);
             e.Property(x => x.Role).IsRequired().HasMaxLength(20);
             e.Property(x => x.Content).IsRequired().HasMaxLength(20000);
+            e.Property(x => x.TurnStateJson).HasColumnType("jsonb");
             e.Property(x => x.InteractionId).HasMaxLength(21);
             e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
             e.HasOne(x => x.Conversation).WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId)

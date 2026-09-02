@@ -301,12 +301,24 @@ export interface AssistantResponse {
   cacheHit: boolean;
   model?: string | null;
   answerProfile: AssistantAnswerProfile;
+  intent: "answer" | "summarize" | "list" | "compare" | "explain" | "explain_process" | "procedure" | "analyze" | string;
+  presentation: "auto" | "summary" | "bullet_list" | "ordered_list" | "comparison_table" | "process_flow" | "infographic" | string;
+  contentBlocks?: AssistantContentBlock[] | null;
   tokenUsage: {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
     estimated: boolean;
   };
+}
+
+export interface AssistantContentBlock {
+  type: "markdown" | "paragraph" | "bullet_list" | "ordered_list" | "table" | "process_flow" | "infographic" | string;
+  text?: string | null;
+  title?: string | null;
+  items?: string[] | null;
+  headers?: string[] | null;
+  rows?: string[][] | null;
 }
 
 export interface AssistantConversation {

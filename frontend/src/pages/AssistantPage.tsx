@@ -9,7 +9,7 @@ import { useApi } from "../hooks/useApi";
 import { readApiError, readApiJson } from "../lib/api-response";
 import { cn } from "../lib/utils";
 import { DropdownSelector } from "../components/ui/dropdown-selector";
-import type { AssistantAnswerProfile, AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
+import type { AssistantAnswerProfile, AssistantContentBlock, AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
 
 const assistantModelStorageKey = "knowledge-portal.assistant.model";
 const assistantProfileStorageKey = "knowledge-portal.assistant.answer-profile";
@@ -265,10 +265,7 @@ function AssistantResult({ response, feedbackEnabled }: { response: AssistantRes
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const sourceLinks = new Map(response.rag?.evidence.map(item => [item.sourceId, `/articles/${item.slug}`]) ?? []);
-  const answerMarkdown = (response.answer ?? "").replace(/\[(S\d+)\](?!\()/g, (citation, sourceId: string) => {
-    const href = sourceLinks.get(sourceId);
-    return href ? `[${sourceId}](${href})` : citation;
-  });
+  const answerMarkdown = linkCitations(response.answer ?? "", sourceLinks);
   const sendFeedback = async (helpful: boolean) => {
     if (!response.interactionId || submitting) return;
     setSubmitting(true);
@@ -278,11 +275,32 @@ function AssistantResult({ response, feedbackEnabled }: { response: AssistantRes
   const copyAnswer = async () => { if (!response.answer) return; try { await navigator.clipboard.writeText(response.answer); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { toast.error("Yanıt kopyalanamadı."); } };
   return <div className="flex items-start gap-3"><AssistantAvatar /><section className="min-w-0 flex-1 pt-1" aria-label="Asistan yanıtı">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı</span>{response.rag && <GroundingBadge status={response.rag.groundingStatus} insufficient={response.rag.insufficientContext} />}<span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">{answerProfileLabel(response.answerProfile)}</span><span className="text-[10px] text-zinc-400">{formatResponseTime(response.responseTimeMs)}</span><span className="text-[10px] tabular-nums text-zinc-400" title={`${response.tokenUsage.estimated ? "Tahmini · " : ""}Girdi: ${response.tokenUsage.inputTokens.toLocaleString("tr-TR")} · Çıktı: ${response.tokenUsage.outputTokens.toLocaleString("tr-TR")}`} aria-label={`${response.tokenUsage.estimated ? "Tahmini " : ""}token kullanımı: ${response.tokenUsage.totalTokens}; girdi ${response.tokenUsage.inputTokens}, çıktı ${response.tokenUsage.outputTokens}`}>{response.tokenUsage.estimated && "~"}{response.tokenUsage.totalTokens.toLocaleString("tr-TR")} token</span>{response.cacheHit && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] uppercase text-zinc-500 dark:bg-zinc-800">önbellek</span>}</div>{response.answer && <button type="button" onClick={() => void copyAnswer()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">{copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}{copied ? "Kopyalandı" : "Kopyala"}</button>}</div>
-    {response.answer ? <div className="prose prose-sm max-w-none text-zinc-700 prose-a:font-semibold prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline dark:prose-invert dark:text-zinc-300 dark:prose-a:text-blue-400"><ReactMarkdown remarkPlugins={[remarkGfm]}>{answerMarkdown}</ReactMarkdown></div> : <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40">Bu soru için yeterli ve güvenilir bir yanıt üretilemedi.</div>}
+    {response.answer ? <div className="prose prose-sm max-w-none text-zinc-700 prose-a:font-semibold prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline dark:prose-invert dark:text-zinc-300 dark:prose-a:text-blue-400">{response.contentBlocks?.length ? <AssistantContentBlocks blocks={response.contentBlocks} sourceLinks={sourceLinks} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{answerMarkdown}</ReactMarkdown>}</div> : <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40">Bu soru için yeterli ve güvenilir bir yanıt üretilemedi.</div>}
     <AnswerSources response={response} />
     <AnswerWarnings warnings={response.warnings} />
     {feedbackEnabled && response.interactionId && <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-4 text-xs dark:border-zinc-800"><span className="mr-1 text-zinc-500">Bu yanıt yararlı mıydı?</span><FeedbackButton active={feedback === "helpful"} positive disabled={submitting} onClick={() => void sendFeedback(true)} /><FeedbackButton active={feedback === "not_helpful"} disabled={submitting} onClick={() => void sendFeedback(false)} /><DropdownSelector label="Neden? (isteğe bağlı)" options={[{ value: "incorrect", label: "Yanlış bilgi" }, { value: "incomplete", label: "Eksik yanıt" }, { value: "wrong_source", label: "Yanlış kaynak" }, { value: "outdated", label: "Güncel değil" }, { value: "no_answer", label: "Yanıt yok" }, { value: "other", label: "Diğer" }]} selected={feedbackReason ? [feedbackReason] : []} onChange={values => setFeedbackReason(values[0] ?? "")} clearable compact /></div>}
   </section></div>;
+}
+
+function linkCitations(text: string, sourceLinks: Map<string, string>) {
+  return text.replace(/\[(S\d+)\](?!\()/g, (citation, sourceId: string) => {
+    const href = sourceLinks.get(sourceId);
+    return href ? `[${sourceId}](${href})` : citation;
+  });
+}
+
+function AssistantContentBlocks({ blocks, sourceLinks }: { blocks: AssistantContentBlock[]; sourceLinks: Map<string, string> }) {
+  const markdown = (value: string) => <ReactMarkdown remarkPlugins={[remarkGfm]}>{linkCitations(value, sourceLinks)}</ReactMarkdown>;
+  return <div className="space-y-4">{blocks.map((block, blockIndex) => {
+    if (block.type === "ordered_list" || block.type === "bullet_list") {
+      const List = block.type === "ordered_list" ? "ol" : "ul";
+      return <List key={blockIndex} className={block.type === "ordered_list" ? "list-decimal" : "list-disc"}>{(block.items ?? []).map((item, index) => <li key={index}>{markdown(item)}</li>)}</List>;
+    }
+    if (block.type === "table") return <div key={blockIndex} className="not-prose overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700">{block.title && <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800/50">{block.title}</div>}<table className="w-full text-left text-xs"><thead><tr>{(block.headers ?? []).map((header, index) => <th key={index} className="border-b border-zinc-200 px-3 py-2 font-semibold dark:border-zinc-700">{header}</th>)}</tr></thead><tbody>{(block.rows ?? []).map((row, rowIndex) => <tr key={rowIndex} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">{row.map((cell, cellIndex) => <td key={cellIndex} className="px-3 py-2 align-top">{markdown(cell)}</td>)}</tr>)}</tbody></table></div>;
+    if (block.type === "infographic") return <div key={blockIndex} className="not-prose"><div className="mb-2 text-xs font-semibold text-zinc-500">{block.title}</div><div className="grid gap-3 sm:grid-cols-2">{(block.items ?? []).map((item, index) => <div key={index} className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 dark:border-blue-900/60 dark:from-blue-950/40 dark:to-zinc-900"><div className="mb-2 text-2xl font-bold text-blue-600 dark:text-blue-400">{String(index + 1).padStart(2, "0")}</div><div className="text-sm text-zinc-700 dark:text-zinc-200">{markdown(item)}</div></div>)}</div></div>;
+    if (block.type === "process_flow") return <div key={blockIndex} className="not-prose"><div className="space-y-2">{(block.items ?? []).map((item, index) => <div key={index} className="flex items-stretch gap-2"><div className="flex w-7 shrink-0 items-center justify-center rounded-md bg-blue-600 text-xs font-bold text-white">{index + 1}</div><div className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800/40">{markdown(item)}</div>{index < (block.items?.length ?? 0) - 1 && <ChevronRight size={14} className="hidden self-center text-zinc-400 sm:block" />}</div>)}</div></div>;
+    return <div key={blockIndex}>{markdown(block.text ?? "")}</div>;
+  })}</div>;
 }
 
 function FeedbackButton({ active, positive = false, disabled, onClick }: { active: boolean; positive?: boolean; disabled: boolean; onClick: () => void }) {

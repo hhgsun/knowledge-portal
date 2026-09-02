@@ -4,6 +4,7 @@ using KnowledgePortal.Api.Data;
 using KnowledgePortal.Api.Models;
 using KnowledgePortal.Api.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace KnowledgePortal.Api.Services;
 
@@ -11,7 +12,8 @@ public sealed record AssistantConversationContext(
     string? ConversationId,
     string EffectiveMessage,
     string? HypotheticalDocument,
-    string ContextualizationStrategy);
+    string ContextualizationStrategy,
+    AssistantTurnPlan TurnPlan);
 
 public sealed class AssistantConversationService(
     AppDbContext db,
@@ -22,7 +24,14 @@ public sealed class AssistantConversationService(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.ConversationId))
-            return (new(null, request.Message.Trim(), null, "none"), null);
+        {
+            var standalone = request.Message.Trim();
+            var initialPlan = services.GetService<AssistantTurnPlanningService>() is { } noHistoryPlanner
+                ? await noHistoryPlanner.PlanAsync(standalone, [], ct)
+                : new AssistantTurnPlan(standalone, standalone, AssistantTurnActions.Retrieve,
+                    "answer", AssistantPresentationModes.Auto, "none");
+            return (new(null, initialPlan.StandaloneQuery, null, initialPlan.Strategy, initialPlan), null);
+        }
         if (!config.GetValue("Assistant:ConversationHistoryEnabled", true))
             return (null, new(400, "Assistant conversation history is disabled."));
         if (principal.GetSource() == "api-key")
@@ -42,13 +51,18 @@ public sealed class AssistantConversationService(
             .Where(x => x.ConversationId == conversation.Id)
             .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
             .Take(maxMessages).OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
-            .Select(x => new AssistantConversationTurn(x.Role, x.Content)).ToListAsync(ct);
+            .Select(x => new AssistantConversationTurn(x.Role, x.Content, x.TurnStateJson)).ToListAsync(ct);
         var bounded = BoundHistory(recent, maxCharacters, maxCharactersPerMessage);
-        if (services.GetService<AssistantQueryContextualizer>() is not { } contextualizer)
-            return (new(conversation.Id, request.Message.Trim(), null, "none"), null);
-        var contextualized = await contextualizer.ContextualizeAsync(request.Message, bounded, ct);
-        return (new(conversation.Id, contextualized.StandaloneQuery,
-            contextualized.HypotheticalDocument, contextualized.Strategy), null);
+        if (services.GetService<AssistantTurnPlanningService>() is not { } planner)
+        {
+            var fallback = request.Message.Trim();
+            var fallbackPlan = new AssistantTurnPlan(fallback, fallback, AssistantTurnActions.Retrieve,
+                "answer", AssistantPresentationModes.Auto, "none");
+            return (new(conversation.Id, fallback, null, "none", fallbackPlan), null);
+        }
+        var plan = await planner.PlanAsync(request.Message, bounded, ct);
+        return (new(conversation.Id, plan.StandaloneQuery,
+            plan.HypotheticalDocument, plan.Strategy, plan), null);
     }
 
     public async Task<AssistantConversation> CreateAsync(ClaimsPrincipal principal, CancellationToken ct)
@@ -80,7 +94,8 @@ public sealed class AssistantConversationService(
         db.AssistantMessages.AddRange(
             new AssistantMessage { ConversationId = conversationId, Role = "user", Content = userText.Trim() },
             new AssistantMessage { ConversationId = conversationId, Role = "assistant",
-                Content = response.Answer ?? "", InteractionId = interactionId });
+                Content = response.Answer ?? "", InteractionId = interactionId,
+                TurnStateJson = SerializeState(userText, response) });
         await db.SaveChangesAsync(ct);
     }
 
@@ -111,4 +126,17 @@ public sealed class AssistantConversationService(
         selected.Reverse();
         return selected;
     }
+
+    internal static string SerializeState(string originalRequest, AssistantResponseDto response) =>
+        JsonSerializer.Serialize(new AssistantStoredTurnState(
+            originalRequest.Trim(), response.NormalizedQuery, response.Intent, response.Presentation,
+            response.Answer ?? "", CompactTurnStateRag(response.Rag), response.AnswerProfile),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static AssistantRagDto? CompactTurnStateRag(AssistantRagDto? rag) => rag == null ? null : rag with
+    {
+        // Persist citation/provenance identity, not duplicated source passages. The current corpus
+        // remains the authority and presentation-only turns never re-run grounding from this JSON.
+        Evidence = rag.Evidence.Select(item => item with { Passage = "" }).ToArray()
+    };
 }
