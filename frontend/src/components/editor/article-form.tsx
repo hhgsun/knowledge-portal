@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Save, ArrowLeft, Tag, X } from "lucide-react";
 import { TagSelector } from "./tag-selector";
+import { LookupValueSelector } from "../lookup-value-selector";
 import { useLookups } from "../../hooks/useLookups";
 import { useAutoResizeTextArea } from "../../hooks/useAutoResizeTextArea";
 
@@ -192,34 +193,20 @@ export function ArticleForm({
                   if (category.key === "content_type") onContentTypeChange(values[0] ?? "");
                 };
                 return (
-                  <label key={category.id} className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <div key={category.id} className="text-xs text-zinc-500 dark:text-zinc-400">
                     <span className="mb-1 block font-medium">
                       {category.label}{category.isRequired ? " *" : ""}
                     </span>
-                    {category.cardinality === "single" ? (
-                      <select
-                        value={selected[0] ?? ""}
-                        onChange={(event) => updateSelection(event.target.value ? [event.target.value] : [])}
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-                      >
-                        {!category.isRequired && <option value="">Seçilmedi</option>}
-                        {options.map((option) => (
-                          <option key={option.id} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <select
-                        multiple
-                        value={selected}
-                        onChange={(event) => updateSelection(Array.from(event.target.selectedOptions, option => option.value))}
-                        className="min-h-20 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-                      >
-                        {options.map((option) => (
-                          <option key={option.id} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    )}
-                  </label>
+                    <LookupValueSelector
+                      label={category.label}
+                      options={options}
+                      selected={selected}
+                      onChange={updateSelection}
+                      multiple={category.cardinality === "multiple"}
+                      required={category.isRequired}
+                      showSelectedChips={category.cardinality === "multiple"}
+                    />
+                  </div>
                 );
               })}
           </div>

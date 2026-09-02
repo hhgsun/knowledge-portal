@@ -29,6 +29,7 @@ frontend/
 │   ├── error-boundary.tsx     # React error boundary with reload button
 │   ├── toast-provider.tsx     # Sonner Toaster wrapper component
 │   ├── ContentTypeBadge.tsx   # Colored badge with icon for content types (uses LookupValue color/icon)
+│   ├── lookup-value-selector.tsx # Shared single/multi lookup selector for article forms and list filters; icon/color aware, searchable above 10 values
 │   ├── lookup-pickers.tsx     # ColorPicker (palette + full-spectrum/HEX input) + IconPicker (full catalog/custom name, persistent name and color-combined live preview)
 │   ├── layout/
 │   │   ├── app-shell.tsx      # Sidebar + Outlet wrapper (sidebar skipped on auth pages)
