@@ -29,23 +29,31 @@ export const COLOR_KEYS = Object.keys(COLOR_MAP);
 
 // ─── Dynamic Icon Access ──────────────────────────────────────
 // Convert PascalCase icon name to kebab-case key for storage
-function toKebab(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+export function normalizeIconName(name: string): string {
+  return name
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/-+/g, "-")
+    .toLowerCase();
 }
 
 // Build a map of kebab-case key → { component, displayName }
-const iconEntries = Object.entries(icons)
+const iconEntriesByKey = new Map(Object.entries(icons)
   .filter(([name]) => name !== "createLucideIcon" && name !== "default")
-  .map(([name, component]) => ({
-    key: toKebab(name),
+  .map(([name, component]) => [normalizeIconName(name), {
+    key: normalizeIconName(name),
     name,
     component: component as LucideIcon,
-  }));
+  }] as const));
+
+const iconEntries = [...iconEntriesByKey.values()];
 
 // Sorted once for consistent ordering
 iconEntries.sort((a, b) => a.key.localeCompare(b.key));
 
 export const ALL_ICONS = iconEntries;
+const ICONS_BY_KEY = new Map(ALL_ICONS.map((icon) => [icon.key, icon.component]));
 
 // ─── Utility Functions ────────────────────────────────────────
 export function getColorClasses(color?: string) {
@@ -55,6 +63,9 @@ export function getColorClasses(color?: string) {
 
 export function getIconComponent(iconKey?: string): LucideIcon {
   if (!iconKey) return icons.FileText;
-  const entry = ALL_ICONS.find((i) => i.key === iconKey);
-  return entry?.component || icons.FileText;
+  return ICONS_BY_KEY.get(normalizeIconName(iconKey)) || icons.FileText;
+}
+
+export function hasIcon(iconKey?: string): boolean {
+  return Boolean(iconKey && ICONS_BY_KEY.has(normalizeIconName(iconKey)));
 }

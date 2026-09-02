@@ -27,7 +27,7 @@
 - **label (zorunlu):** Kenar çubuğunda gösterilecek metin.
 - **linkType (zorunlu):** tag, content_type veya custom.
 - **target (zorunlu):** Türe göre etiket slug'ı, içerik türü değeri veya URL/yol.
-- **icon:** İsteğe bağlı ikon adı (Lucide ikon seti).
+- **icon:** İsteğe bağlı Lucide ikon adı. Yönetim ekranındaki seçici tüm katalogda arama yapar; tarayıcıyı binlerce SVG ile yormamak için yalnız ilk eşleşme grubunu çizer. Resmî Lucide kataloğu bağlantısından bir ikon seçip adını (ör. `alarm-clock`) özel ikon alanına da girebilirsiniz. Geçerli ad yazılırken canlı önizleme gösterilir; seçimden sonra ikon ve canonical adı seçicide birlikte görünür. Set içinde bulunmayan adlar kabul edilmez.
 - **color:** İsteğe bağlı renk — bağlantının kenar çubuğundaki vurgu rengini belirler.
 - **sortOrder:** Sıralama değeri. Belirtilmezse listenin sonuna eklenir.
 - **isActive:** Pasif bağlantılar kenar çubuğunda gösterilmez ama silinmez — geçici olarak gizlemek için kullanın.
