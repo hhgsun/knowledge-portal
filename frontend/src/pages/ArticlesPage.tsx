@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown, ArrowUpDown, RotateCcw, FilePenLine, CircleCheck, Archive } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
@@ -8,9 +8,15 @@ import { ContentTypeBadge } from "../components/ContentTypeBadge";
 import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
 import { ArticleListSkeleton } from "../components/ui/skeleton";
 import { TagSelector } from "../components/editor/tag-selector";
+import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
+const STATUS_OPTIONS = [
+  { value: "draft", label: "Taslak", icon: FilePenLine, color: "text-zinc-600 dark:text-zinc-300", bg: "bg-zinc-100 dark:bg-zinc-800" },
+  { value: "published", label: "Yayında", icon: CircleCheck, color: "text-emerald-700 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-950/50" },
+  { value: "archived", label: "Arşivlenmiş", icon: Archive, color: "text-rose-700 dark:text-rose-300", bg: "bg-rose-50 dark:bg-rose-950/50" },
+];
 
 function readFacetFilters(params: URLSearchParams): Record<string, string[]> {
   const result: Record<string, string[]> = {};
@@ -33,8 +39,9 @@ function facetFiltersEqual(left: Record<string, string[]>, right: Record<string,
   return keys.every(key => (left[key] ?? []).join("\u0000") === (right[key] ?? []).join("\u0000"));
 }
 
-function MultiSelectDropdown({ label, options, selected, onChange, renderOption }: {
+function MultiSelectDropdown({ label, icon, options, selected, onChange, renderOption }: {
   label: string;
+  icon?: React.ReactNode;
   options: { value: string; label: string }[];
   selected: string[];
   onChange: (values: string[]) => void;
@@ -58,12 +65,14 @@ function MultiSelectDropdown({ label, options, selected, onChange, renderOption 
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors border ${selected.length > 0
+        className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${selected.length > 0
           ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
           : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
           }`}
       >
+        {icon}
         {label}
         {selected.length > 0 && (
           <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-200 dark:bg-blue-800 rounded-full">{selected.length}</span>
@@ -71,11 +80,11 @@ function MultiSelectDropdown({ label, options, selected, onChange, renderOption 
         <ChevronDown size={14} />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-56 max-h-60 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg">
+        <div className="absolute z-50 mt-1 w-60 max-h-64 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-1 shadow-xl shadow-zinc-950/10">
           {options.map((opt) => (
             <label
               key={opt.value}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-sm"
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800"
             >
               <input
                 type="checkbox"
@@ -88,6 +97,58 @@ function MultiSelectDropdown({ label, options, selected, onChange, renderOption 
           ))}
           {options.length === 0 && (
             <div className="px-3 py-2 text-sm text-zinc-400">No options</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DateRangeDropdown({ from, to, onFromChange, onToChange }: {
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selectedCount = Number(Boolean(from)) + Number(Boolean(to));
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(current => !current)}
+        className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${selectedCount
+          ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300"
+          : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"}`}
+      >
+        <Calendar size={13} /> Tarih
+        {selectedCount > 0 && <span className="rounded-full bg-blue-200 px-1.5 py-0.5 text-[10px] dark:bg-blue-800">{selectedCount}</span>}
+        <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 z-50 mt-1 w-64 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-zinc-950/10 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[11px] font-medium text-zinc-500">Başlangıç
+              <input type="date" value={from} onChange={event => onFromChange(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200" />
+            </label>
+            <label className="text-[11px] font-medium text-zinc-500">Bitiş
+              <input type="date" value={to} onChange={event => onToChange(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200" />
+            </label>
+          </div>
+          {selectedCount > 0 && (
+            <button type="button" onClick={() => { onFromChange(""); onToChange(""); }} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 hover:underline">
+              <RotateCcw size={11} /> Tarihi temizle
+            </button>
           )}
         </div>
       )}
@@ -113,6 +174,7 @@ export default function ArticlesPage() {
   const [dateFrom, setDateFrom] = useState<string>(() => searchParams.get("dateFrom") || "");
   const [dateTo, setDateTo] = useState<string>(() => searchParams.get("dateTo") || "");
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Load tags
   useEffect(() => {
@@ -196,6 +258,12 @@ export default function ArticlesPage() {
   };
 
   const hasActiveFilters = statusFilter.length > 0 || Object.values(facetFilters).some(values => values.length > 0) || tagFilter.length > 0 || dateFrom || dateTo || mineFilter;
+  const activeFilterCount = statusFilter.length
+    + Object.values(facetFilters).reduce((sum, values) => sum + values.length, 0)
+    + tagFilter.length
+    + Number(Boolean(dateFrom))
+    + Number(Boolean(dateTo))
+    + Number(mineFilter);
 
   const clearAllFilters = () => {
     setPage(1);
@@ -223,132 +291,158 @@ export default function ArticlesPage() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Filter size={16} className="text-zinc-400" />
-
-        {isApprover && (
-          <MultiSelectDropdown
-            label="Status"
-            options={[
-              { value: "draft", label: "Draft" },
-              { value: "published", label: "Published" },
-              { value: "archived", label: "Archived" },
-            ]}
-            selected={statusFilter}
-            onChange={(v) => { setPage(1); setStatusFilter(v); }}
-          />
-        )}
-
-        {categories.filter(category => category.isActive).map(category => (
-          <MultiSelectDropdown
-            key={category.id}
-            label={category.label}
-            options={lookups.filter(value => value.category === category.key && value.isActive)
-              .map(value => ({ value: value.value, label: value.label }))}
-            selected={facetFilters[category.key] ?? []}
-            onChange={(values) => {
-              setPage(1);
-              setFacetFilters(previous => ({ ...previous, [category.key]: values }));
-            }}
-          />
-        ))}
-
-        <div className="flex items-center gap-1">
-          <Calendar size={14} className="text-zinc-400" />
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => { setPage(1); setDateFrom(e.target.value); }}
-            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 w-[130px]"
-            placeholder="From"
-          />
-          <span className="text-zinc-400 text-xs">–</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => { setPage(1); setDateTo(e.target.value); }}
-            className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 w-[130px]"
-            placeholder="To"
-          />
-        </div>
-
-        <TagSelector
-          selectedTags={tagFilter}
-          onChange={(v) => { setPage(1); setTagFilter(v); }}
-          valueField="slug"
-          allowCreate={false}
-          hideSelectedTags={true}
-        />
-
-        <button
-          onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
-          className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors border ${mineFilter
-            ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
-            : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-            }`}
-        >
-          <UserLockIcon size={14} />
-          My Articles
-        </button>
-
-        <select
-          value={sortBy}
-          onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
-          className="text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300"
-        >
-          <option value="updatedAt">Son Güncellenen</option>
-          <option value="wilsonScore">En Faydalı</option>
-          <option value="viewCount">En Çok Görüntülenen</option>
-        </select>
-
-        {hasActiveFilters && (
+      <section className="mb-4 rounded-xl border border-zinc-200 bg-white shadow-sm shadow-zinc-950/[0.02] dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2">
           <button
-            onClick={clearAllFilters}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors"
+            type="button"
+            onClick={() => setFiltersOpen(current => !current)}
+            aria-expanded={filtersOpen}
+            className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-xs font-semibold transition-colors ${filtersOpen || hasActiveFilters
+              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
           >
-            <X size={12} />
-            Temizle
+            <Filter size={14} /> Filtreler
+            {activeFilterCount > 0 && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] leading-none text-white">{activeFilterCount}</span>}
+            <ChevronDown size={13} className={`transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
           </button>
-        )}
-      </div>
-
-      {/* Active filter badges */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-4">
-          {statusFilter.map(s => (
-            <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              {s}
-              <button onClick={() => { setPage(1); setStatusFilter(statusFilter.filter(v => v !== s)); }}><X size={10} /></button>
-            </span>
-          ))}
-          {Object.entries(facetFilters).flatMap(([categoryKey, values]) => values.map(value => (
-            <span key={`${categoryKey}:${value}`} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-              {categories.find(category => category.key === categoryKey)?.label ?? categoryKey}: {lookups.find(lookup => lookup.category === categoryKey && lookup.value === value)?.label ?? value}
-              <button onClick={() => { setPage(1); setFacetFilters(previous => ({ ...previous,
-                [categoryKey]: (previous[categoryKey] ?? []).filter(item => item !== value),
-              })); }}><X size={10} /></button>
-            </span>
-          )))}
-          {tagFilter.map(t => (
-            <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-              {allTags.find(tag => tag.slug === t)?.name || t}
-              <button onClick={() => { setPage(1); setTagFilter(tagFilter.filter(v => v !== t)); }}><X size={10} /></button>
-            </span>
-          ))}
-          {dateFrom && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
-              From: {dateFrom}
-              <button onClick={() => { setPage(1); setDateFrom(""); }}><X size={10} /></button>
-            </span>
-          )}
-          {dateTo && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
-              To: {dateTo}
-              <button onClick={() => { setPage(1); setDateTo(""); }}><X size={10} /></button>
-            </span>
-          )}
+          <span className="text-xs text-zinc-400">{loading ? "Yükleniyor…" : `${total} makale`}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {hasActiveFilters && (
+              <button type="button" onClick={clearAllFilters} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40">
+                <RotateCcw size={12} /> <span className="hidden sm:inline">Temizle</span>
+              </button>
+            )}
+            <div className="relative flex items-center">
+              <ArrowUpDown size={13} className="pointer-events-none absolute left-2.5 text-zinc-400" />
+              <select
+                value={sortBy}
+                onChange={(event) => { setPage(1); setSortBy(event.target.value); }}
+                aria-label="Makaleleri sırala"
+                className="h-8 rounded-lg border border-zinc-300 bg-white pl-7 pr-7 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                <option value="updatedAt">Son güncellenen</option>
+                <option value="wilsonScore">En faydalı</option>
+                <option value="viewCount">En çok görüntülenen</option>
+              </select>
+            </div>
+          </div>
         </div>
-      )}
+
+        {filtersOpen && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/30">
+
+            {isApprover && (
+              <MultiSelectDropdown
+                label="Durum"
+                icon={<CircleCheck size={13} />}
+                options={STATUS_OPTIONS.map(({ value, label }) => ({ value, label }))}
+                selected={statusFilter}
+                onChange={(values) => { setPage(1); setStatusFilter(values); }}
+                renderOption={(option) => {
+                  const status = STATUS_OPTIONS.find(item => item.value === option.value)!;
+                  const StatusIcon = status.icon;
+                  return <span className={`flex items-center gap-2 ${status.color}`}><span className={`flex h-6 w-6 items-center justify-center rounded-md ${status.bg}`}><StatusIcon size={13} /></span>{status.label}</span>;
+                }}
+              />
+            )}
+
+            {categories.filter(category => category.isActive).map(category => (
+              <MultiSelectDropdown
+                key={category.id}
+                label={category.label}
+                options={lookups.filter(value => value.category === category.key && value.isActive)
+                  .map(value => ({ value: value.value, label: value.label }))}
+                selected={facetFilters[category.key] ?? []}
+                onChange={(values) => {
+                  setPage(1);
+                  setFacetFilters(previous => ({ ...previous, [category.key]: values }));
+                }}
+                renderOption={(option) => {
+                  const lookup = lookups.find(item => item.category === category.key && item.value === option.value);
+                  const colors = getColorClasses(lookup?.color);
+                  const OptionIcon = getIconComponent(lookup?.icon);
+                  return <span style={colors.textStyle} className={`flex items-center gap-2 ${colors.text}`}><span style={{ ...colors.bgStyle, ...colors.textStyle }} className={`flex h-6 w-6 items-center justify-center rounded-md ${colors.bg} ${colors.text}`}><OptionIcon size={13} /></span>{option.label}</span>;
+                }}
+              />
+            ))}
+
+            <TagSelector
+              selectedTags={tagFilter}
+              onChange={(v) => { setPage(1); setTagFilter(v); }}
+              valueField="slug"
+              allowCreate={false}
+              hideSelectedTags={true}
+            />
+
+            <DateRangeDropdown
+              from={dateFrom}
+              to={dateTo}
+              onFromChange={(value) => { setPage(1); setDateFrom(value); }}
+              onToChange={(value) => { setPage(1); setDateTo(value); }}
+            />
+
+            <button
+              type="button"
+              onClick={() => { setPage(1); setMineFilter(!mineFilter); }}
+              className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${mineFilter
+                ? "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950/50 dark:text-violet-300"
+                : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+            >
+              <UserLockIcon size={13} />
+              Makalelerim
+            </button>
+
+          </div>
+        )}
+
+        {/* Active filter badges */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-zinc-100 px-3 py-2 dark:border-zinc-800">
+            {statusFilter.map(statusValue => {
+              const status = STATUS_OPTIONS.find(item => item.value === statusValue);
+              const StatusIcon = status?.icon ?? CircleCheck;
+              return (
+                <span key={statusValue} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${status?.bg ?? "bg-zinc-100"} ${status?.color ?? "text-zinc-600"}`}>
+                  <StatusIcon size={11} /> {status?.label ?? statusValue}
+                  <button type="button" onClick={() => { setPage(1); setStatusFilter(current => current.filter(value => value !== statusValue)); }} aria-label={`${status?.label ?? statusValue} filtresini kaldır`} className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
+                </span>
+              );
+            })}
+            {Object.entries(facetFilters).flatMap(([categoryKey, values]) => values.map(value => {
+              const lookup = lookups.find(item => item.category === categoryKey && item.value === value);
+              const colors = getColorClasses(lookup?.color);
+              const LookupIcon = getIconComponent(lookup?.icon);
+              const categoryLabel = categories.find(category => category.key === categoryKey)?.label ?? categoryKey;
+              const label = `${lookup?.label ?? value}`;
+              return (
+                <span key={`${categoryKey}:${value}`} style={{ ...colors.bgStyle, ...colors.textStyle }} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${colors.bg} ${colors.text}`} title={categoryLabel + ': ' + label}>
+                  <LookupIcon size={11} /> {label}
+                  <button type="button" onClick={() => { setPage(1); setFacetFilters(previous => ({ ...previous, [categoryKey]: (previous[categoryKey] ?? []).filter(item => item !== value) })); }} aria-label={`${label} filtresini kaldır`} className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
+                </span>
+              );
+            }))}
+            {tagFilter.map(t => (
+              <span key={t} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                <TagIcon size={11} /> {allTags.find(tag => tag.slug === t)?.name || t}
+                <button type="button" onClick={() => { setPage(1); setTagFilter(tagFilter.filter(v => v !== t)); }} aria-label={`${t} etiket filtresini kaldır`} className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
+              </span>
+            ))}
+            {(dateFrom || dateTo) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <Calendar size={11} /> {dateFrom || "…"} — {dateTo || "…"}
+                <button type="button" onClick={() => { setPage(1); setDateFrom(""); setDateTo(""); }} aria-label="Tarih filtresini kaldır" className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
+              </span>
+            )}
+            {mineFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                <UserLockIcon size={11} /> Makalelerim
+                <button type="button" onClick={() => { setPage(1); setMineFilter(false); }} aria-label="Makalelerim filtresini kaldır" className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
+              </span>
+            )}
+          </div>
+        )}
+      </section>
 
       {loading ? (
         <ArticleListSkeleton />
