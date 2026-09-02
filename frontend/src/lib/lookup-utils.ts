@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { icons, type LucideIcon } from "lucide-react";
 
 // ─── Dynamic Color Definitions ────────────────────────────────
@@ -56,9 +57,45 @@ export const ALL_ICONS = iconEntries;
 const ICONS_BY_KEY = new Map(ALL_ICONS.map((icon) => [icon.key, icon.component]));
 
 // ─── Utility Functions ────────────────────────────────────────
-export function getColorClasses(color?: string) {
+export function normalizeHexColor(color: string): string {
+  const value = color.trim();
+  const withHash = value.startsWith("#") ? value : `#${value}`;
+  if (/^#[0-9a-fA-F]{3}$/.test(withHash)) {
+    return `#${withHash.slice(1).split("").map((character) => character.repeat(2)).join("")}`.toLowerCase();
+  }
+  return /^#[0-9a-fA-F]{6}$/.test(withHash) ? withHash.toLowerCase() : "";
+}
+
+export function isHexColor(color?: string): boolean {
+  return Boolean(color && normalizeHexColor(color));
+}
+
+type ColorPresentation = {
+  bg: string;
+  text: string;
+  dot: string;
+  bgStyle?: CSSProperties;
+  textStyle?: CSSProperties;
+  dotStyle?: CSSProperties;
+};
+
+export function getColorClasses(color?: string): ColorPresentation {
   if (!color) return COLOR_MAP.blue;
-  return COLOR_MAP[color] || COLOR_MAP.blue;
+  if (COLOR_MAP[color]) return COLOR_MAP[color];
+
+  const hex = normalizeHexColor(color);
+  if (hex) {
+    return {
+      bg: "",
+      text: "",
+      dot: "",
+      bgStyle: { backgroundColor: `${hex}1a` },
+      textStyle: { color: hex },
+      dotStyle: { backgroundColor: hex },
+    };
+  }
+
+  return COLOR_MAP.blue;
 }
 
 export function getIconComponent(iconKey?: string): LucideIcon {

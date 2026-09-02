@@ -34,6 +34,7 @@ export function ContentTypeBadge({ contentType, size = "sm", clickable = false }
     return (
       <span
         onClick={handleClick}
+        style={{ ...colorClasses.bgStyle, ...colorClasses.textStyle }}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium ${colorClasses.bg} ${colorClasses.text}${clickClasses}`}
       >
         <Icon size={14} />
@@ -45,6 +46,7 @@ export function ContentTypeBadge({ contentType, size = "sm", clickable = false }
   return (
     <span
       onClick={handleClick}
+      style={{ ...colorClasses.bgStyle, ...colorClasses.textStyle }}
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${colorClasses.bg} ${colorClasses.text}${clickClasses}`}
     >
       <Icon size={12} />

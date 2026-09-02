@@ -82,7 +82,7 @@ function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: b
   const { pathname, search } = useLocation();
   const { href, external } = resolveFeaturedLinkHref(link);
   const IconComp = getIconComponent(link.icon || "star");
-  const iconClass = link.color ? getColorClasses(link.color).text : undefined;
+  const iconColor = link.color ? getColorClasses(link.color) : undefined;
   const isActive = !external && pathname + search === href;
 
   const className = cn(
@@ -103,7 +103,7 @@ function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: b
         aria-label={link.label}
         className={className}
       >
-        <span aria-hidden="true"><IconComp size={18} className={iconClass} /></span>
+        <span aria-hidden="true"><IconComp size={18} className={iconColor?.text} style={iconColor?.textStyle} /></span>
         {!collapsed && (
           <span className="flex items-center gap-1.5 min-w-0">
             <span className="truncate">{link.label}</span>
@@ -122,7 +122,7 @@ function FeaturedNavLink({ link, collapsed }: { link: FeaturedLink; collapsed: b
       aria-current={isActive ? "page" : undefined}
       className={className}
     >
-      <span aria-hidden="true"><IconComp size={18} className={iconClass} /></span>
+      <span aria-hidden="true"><IconComp size={18} className={iconColor?.text} style={iconColor?.textStyle} /></span>
       {!collapsed && <span className="truncate">{link.label}</span>}
     </Link>
   );

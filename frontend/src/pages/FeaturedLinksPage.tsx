@@ -235,7 +235,7 @@ export default function FeaturedLinksPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
-              <IconPicker value={newIcon} onChange={setNewIcon} />
+              <IconPicker value={newIcon} color={newColor} onChange={setNewIcon} />
             </div>
             <button
               onClick={handleAdd}
@@ -255,7 +255,7 @@ export default function FeaturedLinksPage() {
             const IconComp = getIconComponent(link.icon || "star");
             const colorClasses = link.color
               ? getColorClasses(link.color)
-              : { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-300" };
+              : { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-300", bgStyle: undefined, textStyle: undefined };
             const { href, external } = resolveFeaturedLinkHref(link);
             return (
               <div
@@ -266,8 +266,8 @@ export default function FeaturedLinksPage() {
               >
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${colorClasses.bg}`}>
-                      <IconComp size={16} className={colorClasses.text} />
+                    <span style={colorClasses.bgStyle} className={`inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${colorClasses.bg}`}>
+                      <IconComp size={16} className={colorClasses.text} style={colorClasses.textStyle} />
                     </span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -338,7 +338,7 @@ export default function FeaturedLinksPage() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
-                        <IconPicker value={editIcon} onChange={setEditIcon} />
+                        <IconPicker value={editIcon} color={editColor} onChange={setEditIcon} />
                       </div>
                       <div className="flex gap-2 ml-auto">
                         <button

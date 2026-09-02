@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, useEffect, useId } from "react";
 import { Search, Ban, ExternalLink, Check } from "lucide-react";
-import { COLOR_MAP, COLOR_KEYS, ALL_ICONS, getColorClasses, getIconComponent, hasIcon, normalizeIconName } from "../lib/lookup-utils";
+import { COLOR_MAP, COLOR_KEYS, ALL_ICONS, getColorClasses, getIconComponent, hasIcon, isHexColor, normalizeHexColor, normalizeIconName } from "../lib/lookup-utils";
 
 // ─── Color Picker ─────────────────────────────────────────────
 // With allowNone, an empty value means "no color" (inherit the default styling).
 export function ColorPicker({ value, onChange, allowNone = false }: { value: string; onChange: (color: string) => void; allowNone?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [customColor, setCustomColor] = useState(isHexColor(value) ? value : "");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,14 +17,20 @@ export function ColorPicker({ value, onChange, allowNone = false }: { value: str
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (open) setCustomColor(isHexColor(value) ? value : "");
+  }, [open, value]);
+
   const isNone = allowNone && !value;
   const current = getColorClasses(value);
+  const normalizedCustomColor = normalizeHexColor(customColor);
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        style={isNone ? undefined : current.dotStyle}
         className={`w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-700 ${
           isNone ? "bg-white dark:bg-zinc-800 flex items-center justify-center text-zinc-400" : current.dot
         } ring-2 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900 ring-zinc-300 dark:ring-zinc-600`}
@@ -32,7 +39,8 @@ export function ColorPicker({ value, onChange, allowNone = false }: { value: str
         {isNone && <Ban size={14} />}
       </button>
       {open && (
-        <div className="absolute z-50 top-10 left-0 p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg">
+        <div className="absolute z-50 top-10 left-0 w-64 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2">
           <div className="grid grid-cols-5 gap-1.5 w-fit">
             {allowNone && (
               <button
@@ -56,6 +64,58 @@ export function ColorPicker({ value, onChange, allowNone = false }: { value: str
               />
             ))}
           </div>
+          </div>
+          <div className="border-t border-zinc-100 p-3 dark:border-zinc-700">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Tüm renklerden seç</p>
+                <p className="text-[11px] text-zinc-400">Renk çarkından istediğiniz tonu belirleyin.</p>
+              </div>
+              <input
+                type="color"
+                value={normalizedCustomColor || "#2563eb"}
+                onChange={(event) => setCustomColor(event.target.value)}
+                aria-label="Tüm renklerden özel renk seç"
+                className="h-9 w-12 cursor-pointer rounded-lg border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </div>
+            <label htmlFor="custom-hex-color" className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              Özel HEX renk kodu
+            </label>
+            <div className={`flex items-center gap-1 rounded-lg border px-2 ${customColor && !normalizedCustomColor ? "border-red-300 dark:border-red-800" : "border-zinc-200 dark:border-zinc-700"}`}>
+              <span
+                className="h-6 w-6 shrink-0 rounded border border-black/10 dark:border-white/10"
+                style={{ backgroundColor: normalizedCustomColor || "transparent" }}
+                aria-hidden="true"
+              />
+              <input
+                id="custom-hex-color"
+                value={customColor}
+                onChange={(event) => setCustomColor(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && normalizedCustomColor) {
+                    event.preventDefault();
+                    onChange(normalizedCustomColor);
+                    setOpen(false);
+                  }
+                }}
+                placeholder="#2563eb"
+                aria-invalid={Boolean(customColor && !normalizedCustomColor)}
+                className="min-w-0 flex-1 bg-transparent py-1.5 font-mono text-sm text-zinc-700 outline-none placeholder:text-zinc-400 dark:text-zinc-200"
+              />
+              <button
+                type="button"
+                disabled={!normalizedCustomColor}
+                onClick={() => { onChange(normalizedCustomColor); setOpen(false); }}
+                className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-600 px-2 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Check size={12} /> Kullan
+              </button>
+            </div>
+            {customColor && !normalizedCustomColor && (
+              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">3 veya 6 haneli geçerli bir HEX kodu girin.</p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -63,7 +123,7 @@ export function ColorPicker({ value, onChange, allowNone = false }: { value: str
 }
 
 // ─── Icon Picker ──────────────────────────────────────────────
-export function IconPicker({ value, onChange }: { value: string; onChange: (icon: string) => void }) {
+export function IconPicker({ value, color, onChange }: { value: string; color?: string; onChange: (icon: string) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [customName, setCustomName] = useState(value);
@@ -100,6 +160,7 @@ export function IconPicker({ value, onChange }: { value: string; onChange: (icon
   const CurrentIcon = getIconComponent(value);
   const CustomIcon = isCustomNameValid ? getIconComponent(customName) : null;
   const selectedIconName = normalizeIconName(value) || "İkon seç";
+  const selectedColor = getColorClasses(color);
 
   return (
     <div className="relative" ref={ref}>
@@ -109,7 +170,13 @@ export function IconPicker({ value, onChange }: { value: string; onChange: (icon
         className="flex h-8 min-w-32 max-w-48 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         title={value || "Select icon"}
       >
-        <CurrentIcon size={16} className="shrink-0" />
+        <span
+          style={{ ...selectedColor.bgStyle, ...selectedColor.textStyle }}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${selectedColor.bg} ${selectedColor.text}`}
+          aria-hidden="true"
+        >
+          <CurrentIcon size={15} />
+        </span>
         <span className="truncate text-xs font-medium">{selectedIconName}</span>
       </button>
       {open && (
@@ -165,7 +232,8 @@ export function IconPicker({ value, onChange }: { value: string; onChange: (icon
               </label>
               <div className={`flex items-center gap-1 rounded-lg border px-2 ${customName && !isCustomNameValid ? "border-red-300 dark:border-red-800" : "border-zinc-200 dark:border-zinc-700"}`}>
                 <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${CustomIcon ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200" : "border border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-600"}`}
+                  style={CustomIcon ? { ...selectedColor.bgStyle, ...selectedColor.textStyle } : undefined}
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${CustomIcon ? `${selectedColor.bg} ${selectedColor.text}` : "border border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-600"}`}
                   title={CustomIcon ? `${normalizedCustomName} önizlemesi` : "Geçerli bir ikon adı girin"}
                   aria-hidden="true"
                 >

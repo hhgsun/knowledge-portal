@@ -203,7 +203,7 @@ export default function LookupsPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
-              <IconPicker value={newIcon} onChange={setNewIcon} />
+              <IconPicker value={newIcon} color={newColor} onChange={setNewIcon} />
             </div>
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>
@@ -335,8 +335,8 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
               >
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg ${colorClasses.bg}`}>
-                      <IconComp size={16} className={colorClasses.text} />
+                    <span style={colorClasses.bgStyle} className={`inline-flex items-center justify-center w-8 h-8 rounded-lg ${colorClasses.bg}`}>
+                      <IconComp size={16} className={colorClasses.text} style={colorClasses.textStyle} />
                     </span>
                     <div>
                       <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.label}</span>
@@ -378,7 +378,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Icon</label>
-                        <IconPicker value={editIcon} onChange={setEditIcon} />
+                        <IconPicker value={editIcon} color={editColor} onChange={setEditIcon} />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-zinc-500 block mb-1">Görünüm sırası</label>

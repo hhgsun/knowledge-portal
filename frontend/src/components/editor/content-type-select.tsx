@@ -42,6 +42,7 @@ export function ContentTypeSelect({ options, value, onChange }: ContentTypeSelec
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
+        style={{ ...selectedColors.bgStyle, ...selectedColors.textStyle }}
         className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium ring-1 ring-black/5 transition-all hover:-translate-y-px hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:ring-white/10 ${selectedColors.bg} ${selectedColors.text}`}
       >
         {createElement(getIconComponent(selected?.icon), { size: 14, "aria-hidden": true })}
@@ -83,10 +84,10 @@ export function ContentTypeSelect({ options, value, onChange }: ContentTypeSelec
                     : "hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
                     }`}
                 >
-                  <span className={`flex size-7 shrink-0 items-center justify-center rounded-md ${colors.bg} ${colors.text}`}>
+                  <span style={{ ...colors.bgStyle, ...colors.textStyle }} className={`flex size-7 shrink-0 items-center justify-center rounded-md ${colors.bg} ${colors.text}`}>
                     {createElement(getIconComponent(option.icon), { size: 14, "aria-hidden": true })}
                   </span>
-                  <span className={`min-w-0 flex-1 truncate text-xs font-medium ${colors.text}`}>
+                  <span style={colors.textStyle} className={`min-w-0 flex-1 truncate text-xs font-medium ${colors.text}`}>
                     {option.label}
                   </span>
                   {isSelected && <Check size={14} className="shrink-0 text-zinc-500" aria-hidden="true" />}
