@@ -186,6 +186,22 @@ public class ArticlesTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task CreateArticle_ExplicitlyClearedRequiredClassification_Returns400()
+    {
+        await AuthenticateAsAdmin();
+        var response = await _client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Missing required lookup {Guid.NewGuid():N}",
+            status = "draft",
+            classifications = new Dictionary<string, string[]> { ["content_type"] = [] }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("content_type", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task UpdateArticle_TitleCollision_GeneratesUniqueSlug()
     {
         await AuthenticateAsAdmin();

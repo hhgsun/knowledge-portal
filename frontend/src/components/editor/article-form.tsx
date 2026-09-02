@@ -5,6 +5,7 @@ import { TagSelector } from "./tag-selector";
 import { LookupValueSelector } from "../lookup-value-selector";
 import { useLookups } from "../../hooks/useLookups";
 import { useAutoResizeTextArea } from "../../hooks/useAutoResizeTextArea";
+import { missingRequiredClassifications, requiredClassificationMessage } from "../../lib/classification-validation";
 
 const MilkdownEditor = lazy(() => import("./milkdown-editor"));
 
@@ -34,6 +35,7 @@ export interface ArticleFormProps {
   onTagsChange: (v: string[]) => void;
   saving: boolean;
   error: string;
+  onValidationError?: (message: string) => void;
   onSave: () => void;
   isViewer: boolean;
   backLink: string;
@@ -70,6 +72,7 @@ export function ArticleForm({
   onTagsChange,
   saving,
   error,
+  onValidationError,
   onSave,
   isViewer,
   backLink,
@@ -87,6 +90,14 @@ export function ArticleForm({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   const requestSave = () => {
+    if (mode === "create") {
+      const missing = missingRequiredClassifications(
+        categories, lookups, classifications, contentType);
+      if (missing.length) {
+        onValidationError?.(requiredClassificationMessage(missing.map(category => category.label)));
+        return;
+      }
+    }
     if (mode === "edit" && onChangeSummaryChange && title.trim()) {
       setShowSaveDialog(true);
       return;

@@ -32,7 +32,6 @@ export default function NewArticlePage() {
       setError("Title is required");
       return;
     }
-
     setSaving(true);
     setError("");
 
@@ -122,6 +121,7 @@ export default function NewArticlePage() {
       onTagsChange={setTags}
       saving={saving}
       error={error}
+      onValidationError={setError}
       onSave={handleSave}
       isViewer={isViewer}
       backLink="/articles"

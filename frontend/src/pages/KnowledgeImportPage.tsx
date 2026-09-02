@@ -8,6 +8,7 @@ import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
 import { PendingFileList } from "../components/attachments/file-upload-zone";
 import type { PendingAttachment } from "../components/attachments/file-upload-zone";
+import { missingRequiredClassifications, requiredClassificationMessage } from "../lib/classification-validation";
 
 const MilkdownEditor = lazy(() => import("../components/editor/milkdown-editor"));
 
@@ -237,11 +238,28 @@ export default function KnowledgeImportPage() {
       setError(issueMessage(issues));
       return;
     }
-    const invalidDraft = drafts.find(draft => !draft.title.trim());
-    if (invalidDraft) {
-      setSelected(drafts.indexOf(invalidDraft));
-      setError("One source cannot be imported until the error below is fixed.");
-      setIssues([{ sourceIndex: invalidDraft.sourceIndex, fileName: invalidDraft.fileName, reason: "Article title is required.", severity: "error" }]);
+    const validationIssues = drafts.flatMap(draft => {
+      const reasons: string[] = [];
+      if (!draft.title.trim()) reasons.push("Makale başlığı zorunludur.");
+      const missing = missingRequiredClassifications(
+        categories, lookups, draft.classifications, draft.contentType);
+      if (missing.length)
+        reasons.push(requiredClassificationMessage(missing.map(category => category.label)));
+      return reasons.length ? [{
+        sourceIndex: draft.sourceIndex,
+        fileName: draft.fileName,
+        reason: reasons.join(" "),
+        severity: "error" as const,
+      }] : [];
+    });
+    if (validationIssues.length) {
+      const invalidDraftIndex = drafts.findIndex(draft =>
+        draft.sourceIndex === validationIssues[0].sourceIndex);
+      setSelected(Math.max(invalidDraftIndex, 0));
+      setError(validationIssues.length === 1
+        ? "Bir makale aşağıdaki hata düzeltilmeden içe aktarılamaz."
+        : `${validationIssues.length} makale aşağıdaki hatalar düzeltilmeden içe aktarılamaz.`);
+      setIssues(validationIssues);
       return;
     }
     setBusy(true); setError(""); setIssues([]);

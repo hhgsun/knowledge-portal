@@ -85,6 +85,35 @@ public class SourceImportsTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Commit_ExplicitlyClearedRequiredClassification_RejectsDraft()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        using var body = FileBody("Kaynak metin", "required-lookup.txt");
+        body.Add(new StringContent(JsonSerializer.Serialize(new
+        {
+            drafts = new[]
+            {
+                new
+                {
+                    sourceIndex = 0,
+                    title = $"Missing required source lookup {Guid.NewGuid():N}",
+                    contentMarkdown = "Kaynak metin",
+                    status = "draft",
+                    classifications = new Dictionary<string, string[]> { ["content_type"] = Array.Empty<string>() },
+                    keepOriginal = false
+                }
+            }
+        })), "manifest");
+
+        var response = await client.PostAsync("/api/source-imports/commit", body);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, result.GetProperty("created").GetInt32());
+        Assert.Equal(1, result.GetProperty("failed").GetInt32());
+        Assert.Contains("content_type", result.GetProperty("items")[0].GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Commit_DamagedSourceWithManualContent_CreatesArticleAndOriginalAttachment()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);
