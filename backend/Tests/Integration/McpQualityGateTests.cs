@@ -186,8 +186,8 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    [Trait("Gate", "DataIsolation")]
-    public async Task ApiKeyOwnContent_IsolatedAcrossTwoKeys()
+    [Trait("Gate", "PublishedCorpus")]
+    public async Task McpApiKey_SearchesPublishedCorpusAcrossCreatorKeys()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         var key1 = await CreateKeyClientAsync("quality-key-one");
@@ -198,7 +198,7 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
         var response = await McpTestClient.SendAsync(key1, new
         {
             jsonrpc = "2.0", id = 1, method = "tools/call",
-            @params = new { name = "search_articles", arguments = new { query = "qiso", only_own_content = true } }
+            @params = new { name = "search_articles", arguments = new { query = "qiso" } }
         });
         var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         Assert.True(envelope.TryGetProperty("result", out var result), envelope.GetRawText());
@@ -207,7 +207,7 @@ public class McpQualityGateTests : IClassFixture<TestWebApplicationFactory>
             .EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
 
         Assert.Contains("Key One Isolation Qiso", titles);
-        Assert.DoesNotContain("Key Two Isolation Qiso", titles);
+        Assert.Contains("Key Two Isolation Qiso", titles);
     }
 
     [Fact]

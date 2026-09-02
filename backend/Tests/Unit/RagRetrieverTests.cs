@@ -71,6 +71,36 @@ public class RagRetrieverTests
         Assert.Contains(result, x => x.Chunk.ArticleId == "semantic" && x.MatchType == "both");
     }
 
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("archived")]
+    public async Task HybridRetriever_NeverAdmitsNonPublishedArticle(string status)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
+        await using var db = new AppDbContext(options);
+        var published = Article("published-own", "Published knowledge", "owner marker knowledge");
+        var nonPublished = Article("non-published-own", "Non-published knowledge", "owner marker secret");
+        nonPublished.Status = status;
+        db.Articles.AddRange(published, nonPublished);
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        var vectors = new FakeVectors([
+            new VectorChunkResult("non-published-own", 0, .99, "owner marker secret"),
+            new VectorChunkResult("published-own", 0, .8, "owner marker knowledge")
+        ]);
+        var retriever = new HybridRagRetriever(vectors,
+            new FullTextSearchService(db, config, NullLogger<FullTextSearchService>.Instance),
+            db, new LocalRagChunkReranker(), config, NullLogger<HybridRagRetriever>.Instance);
+        var plan = new RagQueryPlan("owner marker", "owner marker", ["owner marker"],
+            new([], [], []), [], false, false, null);
+
+        var result = await retriever.RetrieveAsync(plan, 10, .3, 3);
+
+        Assert.Contains(result, item => item.Chunk.ArticleId == "published-own");
+        Assert.DoesNotContain(result, item => item.Chunk.ArticleId == "non-published-own");
+    }
+
     [Fact]
     public async Task HybridRetriever_UsesLegacyContentTypeLookupAuthorityWhenAssignmentsAreMissing()
     {

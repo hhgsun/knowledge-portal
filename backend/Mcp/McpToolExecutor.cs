@@ -94,8 +94,7 @@ public class McpToolExecutor
                             ["authors"] = CsvScopeProperty("Filter by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
                             ["content_type"] = CsvScopeProperty("Legacy scope field: content types, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
                             ["include_content"] = new() { Type = "boolean", Description = "Include full article content as plain text in results", Default = false },
-                            ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata in results", Default = false },
-                            ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict results to articles created by that key", Default = false }
+                            ["include_attachments"] = new() { Type = "boolean", Description = "Include attachment metadata in results", Default = false }
                         },
                         Required = new List<string> { "query" }
                     },
@@ -104,7 +103,7 @@ public class McpToolExecutor
                 new()
                 {
                     Name = "ask_knowledge",
-                    Description = "Generate a grounded AI answer from authorized Knowledge Portal evidence. Returns citations, claims, sources, and evidence; use search_articles when document retrieval is wanted instead.",
+                    Description = "Generate a grounded AI answer from published Knowledge Portal evidence. Draft and archived articles are never used, including content owned by the caller. Returns citations, claims, sources, and evidence; use search_articles when document retrieval is wanted instead.",
                     InputSchema = new McpInputSchema
                     {
                         Properties = new Dictionary<string, McpPropertySchema>
@@ -112,8 +111,7 @@ public class McpToolExecutor
                             ["question"] = new() { Type = "string", Description = "Question to answer from portal knowledge", MinLength = 1, MaxLength = maxQuestionCharacters },
                             ["answer_profile"] = new() { Type = "string", Description = "Answer breadth: compact, balanced, or comprehensive. Omit for automatic balanced/comprehensive routing.", Enum = ["compact", "balanced", "comprehensive"], Default = "balanced" },
                             ["scope"] = ScopePropertySchema(maxScopeItems, maxScopeValueCharacters),
-                            ["authors"] = CsvScopeProperty("Filter evidence by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters),
-                            ["only_own_content"] = new() { Type = "boolean", Description = "For API-key callers, restrict evidence to articles created by that key", Default = false }
+                            ["authors"] = CsvScopeProperty("Filter evidence by author slugs, comma-separated (OR logic)", maxScopeItems, maxScopeValueCharacters)
                         },
                         Required = ["question"]
                     },
@@ -420,7 +418,7 @@ public class McpToolExecutor
             GetString(args, "type") ?? "fulltext",
             GetInt(args, "limit", 20),
             GetInt(args, "page", 1),
-            GetBool(args, "only_own_content"),
+            false,
             GetBool(args, "include_content"),
             GetBool(args, "include_attachments"),
             scope.Tags,
@@ -465,7 +463,6 @@ public class McpToolExecutor
 
         var execution = await _knowledgeAnswers.ExecuteAsync(new KnowledgeAnswerRequest(
             question,
-            GetBool(args, "only_own_content"),
             scope.Tags,
             SplitCsv(GetString(args, "authors")),
             scope.ContentTypes,

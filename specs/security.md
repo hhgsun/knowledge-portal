@@ -104,7 +104,7 @@ Three static roles with a hardcoded permission matrix in `RbacService`:
 
 ### Bilgi Asistanı RAG Policy
 
-`POST /api/assistant` is authenticated and has one read-only behavior: grounded RAG over authorized portal content. It does not route to Search, analytics, general chat, mutation tools, or free-form SQL. `KnowledgeAnswerService` and MCP `ask_knowledge` apply the same article visibility, API-key ownership and explicit/inline scope filters. Search remains a separate document-retrieval API.
+`POST /api/assistant` is authenticated and has one read-only behavior: grounded RAG over the complete published portal corpus. `KnowledgeAnswerService`, REST Assistant and every MCP knowledge tool exclude every draft and archived article even when it belongs to the caller or is otherwise visible to an admin/editor. Creator/API-key ownership never narrows these surfaces; `onlyOwnContent` is supported only by the normal REST article/search APIs. Explicit topic/author/classification filters may narrow the published corpus. The Assistant does not route to Search, analytics, general chat, mutation tools, or free-form SQL. Search remains a separate document-retrieval API.
 
 User text and retrieved content are treated as untrusted data. The request has bounded message, queue, stage and total-time budgets; semantic Search and RAG answer generation have separate resilience lanes. Grounding/citation validation is fail-closed, and an AI failure never becomes a document-list or ungrounded-chat fallback. `/api/capabilities` lets the authenticated UI honor the runtime backend kill switch in addition to the compile-time flag.
 

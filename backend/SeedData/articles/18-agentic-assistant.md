@@ -37,7 +37,6 @@ POST /api/assistant
 {
   "message": "VPN politikasının istisnaları nelerdir?",
   "conversationId": null,
-  "onlyOwnContent": false,
   "tags": ["security"],
   "authors": [],
   "contentTypes": ["policy"]
@@ -58,13 +57,13 @@ Konuşma bağlamı yalnız interaktif oturumda kullanılabilir ve kullanıcı sa
 
 ## Yetki ve Fail-Closed Davranış
 
-Retrieval her aşamada yayın durumu, kullanıcı rolü, API-key sahipliği ve istek filtrelerini uygular; yalnız ACL tekrar kontrolünden geçen parent kanıtlar modele girer. Kaynak metindeki prompt-injection işaretleri, secret redaction, citation/claim doğrulaması, sayısal ve polarity çelişki denetimleri korunur.
+Retrieval her aşamada değişmez `published` koşulunu uygular. Taslak ve arşivlenmiş makaleler kullanıcıya ait olsa veya rolü nedeniyle normal makale ekranında görülebilse bile Assistant/RAG kaynağı olamaz. Creator veya API-key sahipliği yayınlanmış havuzu daraltmaz; Assistant ve RAG yayınlanmış tüm makaleleri görebilir. `onlyOwnContent` yalnız normal arayüz ile REST makale/arama API'lerinde kullanılır. Açık konu/yazar/sınıflandırma filtreleri published havuzu daraltabilir. Yalnız published kontrolünden geçen parent kanıtlar modele girer. Kaynak metindeki prompt-injection işaretleri, secret redaction, citation/claim doğrulaması, sayısal ve polarity çelişki denetimleri korunur.
 
 Yeterli kanıt yoksa Asistan uydurmaz. AI kapalıysa, kapasite doluysa, devre açıksa veya timeout oluşursa doküman aramasına sessizce düşmez; uygun `429`, `503` veya `504` hatası döner. Kullanıcı isterse ayrı Doküman Ara deneyimine geçer.
 
 ## MCP ve Entegrasyonlar
 
-MCP `search_articles` yalnız doküman sonuçları için `fulltext`, `semantic` ve `hybrid` modlarını kabul eder. Kaynaklı yanıt için `ask_knowledge` kullanılır. Araç; `question`, inline/açık filtreler ve `onlyOwnContent` alır, REST Assistant ile aynı `KnowledgeAnswerService` ve yetki sınırlarını kullanır. Semantic arama ve AI yanıtı ayrı concurrency/circuit-breaker havuzlarına sahiptir; bir AI darboğazı salt lexical aramayı etkilemez.
+MCP `search_articles` yalnız doküman sonuçları için `fulltext`, `semantic` ve `hybrid` modlarını kabul eder. Kaynaklı yanıt için `ask_knowledge` kullanılır. Bütün MCP bilgi araçları creator/API-key sahipliğinden bağımsız biçimde yayınlanmış tüm makaleleri görebilir ve `only_own_content` kabul etmez. `ask_knowledge`; `question` ile inline/açık konu kapsamlarını alır ve REST Assistant ile aynı `KnowledgeAnswerService` ve published-only sınırını kullanır. Semantic arama ve AI yanıtı ayrı concurrency/circuit-breaker havuzlarına sahiptir; bir AI darboğazı salt lexical aramayı etkilemez.
 
 ## Cache, Audit ve Geri Bildirim
 

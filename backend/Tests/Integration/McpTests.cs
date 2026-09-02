@@ -527,7 +527,11 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.DoesNotContain(properties.GetProperty("type").GetProperty("enum").EnumerateArray(),
             value => value.GetString() == "rag");
         Assert.True(properties.TryGetProperty("include_attachments", out _));
-        Assert.True(properties.TryGetProperty("only_own_content", out _));
+        Assert.False(properties.TryGetProperty("only_own_content", out _));
+        var askKnowledge = result.GetProperty("tools").EnumerateArray()
+            .First(t => t.GetProperty("name").GetString() == "ask_knowledge");
+        Assert.False(askKnowledge.GetProperty("inputSchema").GetProperty("properties")
+            .TryGetProperty("only_own_content", out _));
         var scope = properties.GetProperty("scope");
         Assert.Equal("object", scope.GetProperty("type").GetString());
         Assert.False(scope.GetProperty("additionalProperties").GetBoolean());
@@ -916,7 +920,7 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Mcp_SearchArticles_OnlyOwnContentScopesApiKeyCaller()
+    public async Task Mcp_SearchArticles_AlwaysSeesAllPublishedArticlesAcrossApiKeys()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         await _client.PostAsJsonAsync("/api/articles", new { title = "MCP Başkasının Qksp İçeriği", status = "published" });
@@ -930,17 +934,17 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
 
         var response = await McpTestClient.SendAsync(keyClient, ToolCall("search_articles",
-            new { query = "qksp", only_own_content = true }));
+            new { query = "qksp" }));
         var envelope = await McpTestClient.ReadEnvelopeAsync(response);
         var payload = JsonSerializer.Deserialize<JsonElement>(ToolText(envelope.GetProperty("result")));
         var titles = payload.GetProperty("results").EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
 
         Assert.Contains("MCP Kendi Qksp İçeriği", titles);
-        Assert.DoesNotContain("MCP Başkasının Qksp İçeriği", titles);
+        Assert.Contains("MCP Başkasının Qksp İçeriği", titles);
     }
 
     [Fact]
-    public async Task Mcp_DraftArticle_InvisibleToSearchAndGet()
+    public async Task Mcp_CallersOwnDraftArticle_IsInvisibleToSearchGetListAndRag()
     {
         await TestHelpers.AuthenticateAsAdminAsync(_client);
         var createResponse = await _client.PostAsJsonAsync("/api/articles", new
@@ -956,6 +960,19 @@ public class McpTests : IClassFixture<TestWebApplicationFactory>
 
         var getResult = await RpcResultAsync(ToolCall("get_article", new { id_or_slug = draftId }));
         Assert.True(getResult.GetProperty("isError").GetBoolean());
+
+        var listResult = await RpcResultAsync(ToolCall("list_articles", new { page = 1, limit = 50 }));
+        Assert.DoesNotContain("Gizli Taslak Mcp Zzkv", ToolText(listResult));
+
+        var ragResult = await RpcResultAsync(ToolCall("ask_knowledge",
+            new { question = "gizli taslak zzkv nedir?" }));
+        var ragPayload = JsonSerializer.Deserialize<JsonElement>(ToolText(ragResult));
+        Assert.DoesNotContain(ragPayload.GetProperty("sources").EnumerateArray(),
+            source => source.GetProperty("articleId").GetString() == draftId);
+        Assert.DoesNotContain(ragPayload.GetProperty("consultedSources").EnumerateArray(),
+            source => source.GetProperty("articleId").GetString() == draftId);
+        Assert.DoesNotContain(ragPayload.GetProperty("evidence").EnumerateArray(),
+            evidence => evidence.GetProperty("articleId").GetString() == draftId);
     }
 
     [Fact]

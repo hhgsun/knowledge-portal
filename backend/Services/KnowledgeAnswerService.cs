@@ -5,7 +5,6 @@ namespace KnowledgePortal.Api.Services;
 
 public sealed record KnowledgeAnswerRequest(
     string Question,
-    bool OnlyOwnContent = false,
     IEnumerable<string>? Tags = null,
     IEnumerable<string>? Authors = null,
     IEnumerable<string>? ContentTypes = null,
@@ -36,8 +35,9 @@ public sealed record KnowledgeAnswerResult(
 }
 
 /// <summary>
-/// Canonical grounded-answer pipeline for Assistant and MCP. Unlike document search,
-/// this service invokes the language model and never writes to search analytics.
+/// Canonical grounded-answer pipeline for Assistant and MCP. Evidence is always drawn from the
+/// complete published corpus; creator ownership never narrows it. Explicit topic/author scopes may.
+/// Unlike document search, this service invokes the language model and never writes to search analytics.
 /// </summary>
 public sealed class KnowledgeAnswerService(
     IConfiguration config,
@@ -61,7 +61,7 @@ public sealed class KnowledgeAnswerService(
         var stopwatch = Stopwatch.StartNew();
         var scope = await scopeResolver.ResolveAsync(new KnowledgeQueryScopeRequest(
             request.Question,
-            request.OnlyOwnContent,
+            OnlyOwnContent: false,
             request.Tags,
             request.Authors,
             request.ContentTypes,

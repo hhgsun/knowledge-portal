@@ -68,8 +68,8 @@ Exposes Knowledge Portal tools via the Model Context Protocol. Cursor, VS Code C
 **Supported Methods**: `server/discover` (2026 era), `initialize` and `notifications/initialized` (2025 era), `tools/list`, `tools/call`, `ping`
 
 **Available Tools**:
-- `search_articles` — Document retrieval across published articles. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`, `only_own_content`. Supports `@author`, `#tag`, and generic `+category:value` inline syntax. It never generates an AI answer.
-- `ask_knowledge` — Grounded AI-RAG answer from authorized portal evidence. Params: `question*` (shared configurable 1-4,000 character default), optional `answer_profile` (`compact|balanced|comprehensive`), `scope`, `authors`, `only_own_content`. Uses the same canonical answer pipeline and transport-independent input guard as REST Assistant and returns the effective `answerProfile`.
+- `search_articles` — Document retrieval across the complete published corpus. Params: `query*`, `type` (`fulltext|semantic|hybrid`, default `fulltext`), `page`, `limit`, `scope`, `authors`, `include_content`, `include_attachments`. Supports `@author`, `#tag`, and generic `+category:value` inline syntax. It deliberately has no `only_own_content` filter and never generates an AI answer.
+- `ask_knowledge` — Grounded AI-RAG answer from the complete published portal corpus. Draft and archived articles are excluded even when owned by the caller; creator ownership never narrows evidence. Params: `question*` (shared configurable 1-4,000 character default), optional `answer_profile` (`compact|balanced|comprehensive`), `scope`, `authors`. Uses the same canonical answer pipeline and transport-independent input guard as REST Assistant and returns the effective `answerProfile`.
 - `get_article` — Get article details by ID or slug (params: id_or_slug*)
 - `list_articles` — List published articles with pagination (params: page, limit, scope, sort; legacy `content_type` and `tags` remain accepted; sort is validated against `newest|oldest|most_viewed`)
 - `list_tags` — List all available tags with article counts
@@ -756,7 +756,7 @@ evidence remains, the Assistant returns insufficient context instead of filling 
 **Auth**: Bearer (JWT or API Key).
 **Rate limit**: `assistant`
 
-The Assistant has one purpose: produce a grounded answer from authorized portal evidence. It does not return document-search result lists, route to analytics/general chat, execute mutations, or run free-form SQL. `KnowledgeAnswerService` is the canonical RAG entry point shared with MCP `ask_knowledge`; `GET /api/search` remains a separate document-retrieval API.
+The Assistant has one purpose: produce a grounded answer from the complete published portal corpus. Draft and archived articles are never eligible, including articles owned by the caller or otherwise visible to an admin/editor. Creator ownership does not narrow the corpus, and `onlyOwnContent` is not part of the Assistant contract; topic/author/classification request scopes may still narrow it. It does not return document-search result lists, route to analytics/general chat, execute mutations, or run free-form SQL. `KnowledgeAnswerService` is the canonical RAG entry point shared with MCP `ask_knowledge`; `GET /api/search` remains a separate document-retrieval API.
 
 Chat model selection is dynamic and provider-discovered. The backend reads installed models from `Ollama:BaseUrl` via `GET /api/tags`, filters the configured/recognizable embedding-only models, and uses `POST /api/show` completion capabilities when available. The last successful catalog is cached; temporary provider failure returns stale cache or the configured chat fallback with `catalogSource` and `catalogWarning`. `GET /api/llm-models` returns `models`, `defaultModel`, and those catalog health fields. Session admins read/update the database-backed default through `GET/PUT /api/admin/llm-settings`; the update body is `{ "model": "<discovered-model-id>" }`. The Assistant screen stores its optional selection only in browser storage and sends it as `model` with every Assistant request. The backend rejects unavailable requested models; a missing selection uses the admin default, then `Ollama:ChatModel` or the first discovered model. MCP and system jobs use the admin default. Assistant responses expose the effective `model`, and semantic answer-cache identity includes it. No per-user model preference is persisted in the database. These settings never change the embedding model or attachment extraction profile.
 
@@ -768,7 +768,6 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
   "conversationId": null,
   "model": "qwen2.5vl:7b",
   "answerProfile": "comprehensive",
-  "onlyOwnContent": false,
   "tags": ["security"],
   "authors": [],
   "contentTypes": ["policy"]
@@ -781,7 +780,6 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 | `conversationId` | string | No | Owned session conversation; API keys cannot use history. Bounded recent user/assistant turns rewrite follow-ups into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
 | `model` | string | No | Ollama-discovered chat model selected on the Assistant screen. It is validated for every request; omission uses the admin default. |
 | `answerProfile` | string | No | `compact`, `balanced`, or `comprehensive`. Omission uses `balanced`, while an explicitly broad/detailed question may be promoted to `comprehensive`. The browser keeps the selector in local storage. |
-| `onlyOwnContent` | bool | No | With API-key auth, restricts evidence to content created by that key. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |
 | `contentTypes` | string[] | No | Legacy content-type values, OR semantics. Generic query filtering uses `facets` or inline `+content_type:value`. |

@@ -127,7 +127,7 @@ Etiketler serbest anlamlıdır; `project-`, `team-` veya benzeri bir ön ek zoru
 
 ### search_articles
 
-Knowledge Portal'ın REST Search yüzeyiyle aynı `fulltext`, `semantic` ve `hybrid` doküman aramasını kullanır. Yayınlanmış makaleler arasında arama yaparak başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. AI yanıtı üretmez. `@yazar`, `#etiket` ve tüm dinamik lookup kategorileri için `+kategori:değer` inline filtreleri desteklenir.
+Knowledge Portal'ın REST Search yüzeyiyle aynı `fulltext`, `semantic` ve `hybrid` doküman aramasını kullanır. API anahtarını oluşturan kullanıcıdan bağımsız olarak yayınlanmış tüm makaleler arasında arama yapar; MCP'de `only_own_content` yoktur. Başlık, özet, yazar, etiket ve istenirse içerik/ek bilgilerini döner. AI yanıtı üretmez. `@yazar`, `#etiket` ve tüm dinamik lookup kategorileri için `+kategori:değer` inline filtreleri desteklenir.
 
 Parametreler:
 
@@ -140,11 +140,10 @@ Parametreler:
 - `content_type` (string) — Geriye uyumlu düz kapsam alanı; virgülle ayrılmış içerik türleri
 - `include_content` (boolean) — Kanonik Markdown string'ini `contentMarkdown` alanında sonuçlara dahil et (varsayılan false)
 - `include_attachments` (boolean) — Ek dosya metadatasını sonuçlara dahil et (varsayılan false)
-- `only_own_content` (boolean) — API key ile çağrıldığında yalnızca o anahtarla oluşturulan içerikleri döndürür
 
 ### ask_knowledge
 
-Portal kanıtlarından doğrulanmış AI-RAG yanıtı üretir. REST'teki Bilgi Asistanı ile aynı `KnowledgeAnswerService`, filtre semantiği, ACL tekrar kontrolü, claim/citation doğrulaması ve fail-closed davranışı kullanır. `search_articles` sonuç listesi içindir; `ask_knowledge` kaynaklı yanıt içindir.
+API anahtarını oluşturan kullanıcıdan bağımsız olarak yayınlanmış tüm portal kanıtlarından doğrulanmış AI-RAG yanıtı üretir. Taslak ve arşivlenmiş makaleler çağırana ait olsa bile kaynak olamaz; MCP'de `only_own_content` yoktur. Konu/yazar/sınıflandırma kapsamları published havuzu daraltabilir. REST'teki Bilgi Asistanı ile aynı `KnowledgeAnswerService`, filtre semantiği, published tekrar kontrolü, claim/citation doğrulaması ve fail-closed davranışı kullanır. `search_articles` sonuç listesi içindir; `ask_knowledge` kaynaklı yanıt içindir.
 
 Parametreler:
 
@@ -152,7 +151,6 @@ Parametreler:
 - `scope` (object) — Ortak kapsam: `tags[]` (AND) ve `contentTypes[]` (OR)
 - `answer_profile` (string) — İsteğe bağlı `compact`, `balanced` veya `comprehensive`; varsayılan `balanced`
 - `authors` (string) — Virgülle ayrılmış yazar slug'ları (OR)
-- `only_own_content` (boolean) — API key ile yalnız o anahtarın oluşturduğu içerikler
 
 Yanıt; `answer`, etkin `answerProfile`, atıf yapılan `sources`, `consultedSources`, typed `claims`, provenance-bearing `evidence`, citation/claim coverage, `groundingStatus`, `insufficientContext`, `partialResult`, çatışma değerlendirmesi ve uyarıları döndürür. Profil Assistant ile aynı claim-only üretim ve doğrulama hattını kullanır.
 

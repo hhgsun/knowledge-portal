@@ -158,6 +158,68 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Assistant_NeverUsesCallersOwnDraftAsRagEvidence()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var marker = $"owndraft{Guid.NewGuid():N}";
+        var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Private owner draft {marker}",
+            contentMarkdown = $"Confidential draft evidence {marker}",
+            status = "draft"
+        });
+        create.EnsureSuccessStatusCode();
+        var articleId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        var response = await client.PostAsJsonAsync("/api/assistant", new
+            { message = $"What does {marker} say?" });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var rag = json.GetProperty("rag");
+
+        Assert.DoesNotContain(rag.GetProperty("sources").EnumerateArray(),
+            source => source.GetProperty("articleId").GetString() == articleId);
+        Assert.DoesNotContain(rag.GetProperty("consultedSources").EnumerateArray(),
+            source => source.GetProperty("articleId").GetString() == articleId);
+        Assert.DoesNotContain(rag.GetProperty("evidence").EnumerateArray(),
+            evidence => evidence.GetProperty("articleId").GetString() == articleId);
+    }
+
+    [Fact]
+    public async Task AssistantApiKey_UsesAllPublishedArticlesAndIgnoresLegacyOnlyOwnContent()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var marker = $"allpublished{Guid.NewGuid():N}";
+        var createArticle = await client.PostAsJsonAsync("/api/articles", new
+        {
+            title = $"Shared published knowledge {marker}",
+            contentMarkdown = $"Shared published evidence {marker}",
+            status = "published"
+        });
+        createArticle.EnsureSuccessStatusCode();
+        var articleId = (await createArticle.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString();
+        var keyResponse = await client.PostAsJsonAsync("/api/keys", new
+            { name = $"assistant-all-published-{marker}" });
+        keyResponse.EnsureSuccessStatusCode();
+        var rawKey = (await keyResponse.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("key").GetString();
+
+        using var keyClient = factory.CreateClient();
+        keyClient.DefaultRequestHeaders.Add("X-API-Key", rawKey);
+        var response = await keyClient.PostAsJsonAsync("/api/assistant", new
+        {
+            message = $"What does {marker} say?",
+            onlyOwnContent = true
+        });
+        response.EnsureSuccessStatusCode();
+        var rag = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rag");
+
+        Assert.Contains(rag.GetProperty("sources").EnumerateArray(),
+            source => source.GetProperty("articleId").GetString() == articleId);
+    }
+
+    [Fact]
     public async Task AssistantValidatesAndReturnsRequestedAnswerProfile()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);

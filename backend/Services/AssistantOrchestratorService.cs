@@ -71,7 +71,6 @@ public sealed class AssistantOrchestratorService(
 
             var execution = await knowledgeAnswers.ExecuteAsync(new KnowledgeAnswerRequest(
                 normalizedQuestion,
-                request.OnlyOwnContent,
                 request.Tags,
                 request.Authors,
                 request.ContentTypes,
@@ -169,7 +168,7 @@ public sealed class AssistantOrchestratorService(
         var facets = string.Join(';', (request.Facets ?? [])
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
-        return $"{request.Message.Trim()}\n[model:{model};profile:{request.AnswerProfile ?? "auto"};scope:own={request.OnlyOwnContent};tags={Join(request.Tags)};" +
+        return $"{request.Message.Trim()}\n[model:{model};profile:{request.AnswerProfile ?? "auto"};scope:tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 

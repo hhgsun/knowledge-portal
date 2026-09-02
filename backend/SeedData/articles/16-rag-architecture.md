@@ -15,7 +15,7 @@
 
 ## Amaç ve Sınır
 
-Knowledge Portal Bilgi Asistanı'nın RAG (Retrieval-Augmented Generation) akışı, yayınlanmış portal içeriğinden kanıt getirip bu kanıtlara dayalı bir yanıt üretir. RAG, Search'ün bir modu değildir; REST'te `/api/assistant`, MCP'de `ask_knowledge` üzerinden çalışır. Modelin genel bilgisini doğruluk kaynağı kabul etmez. Yeterli veya doğrulanabilir kanıt yoksa yanıt uydurmak yerine açıkça yetersiz bağlam sonucu döner.
+Knowledge Portal Bilgi Asistanı'nın RAG (Retrieval-Augmented Generation) akışı, yalnız yayınlanmış portal içeriğinden kanıt getirip bu kanıtlara dayalı bir yanıt üretir. Taslak ve arşivlenmiş makaleler kullanıcıya ait olsa veya admin/editor tarafından normal makale ekranında görülebilse bile Assistant, RAG ve MCP bilgi araçlarının kaynak havuzuna girmez. Buna karşılık creator/API-key sahipliği published havuzu daraltmaz: bu bilgi yüzeyleri yayınlanmış tüm makaleleri görebilir ve `onlyOwnContent` yalnız normal arayüz ile REST makale/arama API'lerine aittir. Açık konu/yazar/sınıflandırma filtreleri published havuzu daraltabilir. RAG, Search'ün bir modu değildir; REST'te `/api/assistant`, MCP'de `ask_knowledge` üzerinden çalışır. Modelin genel bilgisini doğruluk kaynağı kabul etmez. Yeterli veya doğrulanabilir kanıt yoksa yanıt uydurmak yerine açıkça yetersiz bağlam sonucu döner.
 
 RAG akışının ana adımları:
 
@@ -79,7 +79,7 @@ Lexical eşleşmeler de mümkün olduğunda kalıcı searchable child kayıtlar�
 - Aynı makaledeki yüksek Jaccard benzerliğine sahip yakın kopyalar bastırılır.
 - Sonuçlar makaleler arasında fair interleave edilir.
 - `RagMaxChunksPerArticle` sınırı tek bir makalenin bağlamı ele geçirmesini önler.
-- Etiket, yazar, içerik türü ve `onlyOwnContent` filtreleri retrieval içinde uygulanır ve makale metadata lookup'ında tekrar doğrulanır.
+- Önce değişmez `published` filtresi uygulanır. Etiket, yazar ve içerik türü filtreleri bunun üzerinde retrieval içinde uygulanır ve makale metadata lookup'ında tekrar doğrulanır. Creator/API-key sahiplik filtresi uygulanmaz; hiçbir filtre taslak veya arşivlenmiş içeriği kapsama alamaz.
 
 Sorgudan önce `KnowledgeQueryScopeService`, LLM maliyeti oluşturmadan explicit `#etiket`, `@yazar` ve generic `+kategori:değer` filtrelerini ayırır. `RagQueryUnderstandingService` kalan metinde yapılandırılmış acronym/synonym sözlüğünü genişletir ve yalnız karşılaştırma/bileşik soruları bounded alt sorgulara böler. Generic sınıflandırmalar inline token, REST/Assistant `facets` ve MCP `scope.facets` üzerinden canonical değerlerle doğrulanır; varsayılan `filter` davranışındaki explicit facet'ler retrieval sırasında kaynak modele girmeden önce uygulanır, `none` kategorileri AI kapsamına alınmaz. Aynı kategoride OR, kategoriler arasında AND kullanılır; bilinmeyen değer kapsamı genişletmez. Her alt sorgu aynı ACL ve facet filtresiyle çalışır; sonuçlar yeniden fusion ile birleşir. Güncellik sinyali exponential half-life, otorite sinyali makalenin aktif kategorilerdeki aktif lookup atamalarının en yüksek `lookup_values.authority_weight` değeri ve onay durumundan gelir; relevance ana sinyal olmaya devam eder. Henüz generic ataması olmayan eski kayıtlar `content_type` lookup ağırlığına geri döner. Böylece arama sıralaması ile yönetişim/reliability çıktısı aynı generic otorite kaynağını kullanır; kategori veya değer adlarına özel ikinci bir config matrisi yoktur.
 

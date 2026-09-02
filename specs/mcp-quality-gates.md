@@ -8,7 +8,7 @@ The CI test stage runs the complete Docker-free backend suite and then publishes
 | `McpConformance` | JSON-RPC behavior, modern/legacy negotiation, routing-header validation, invalid parameters, and a real MCP 2.0 C# SDK connect/list/call flow |
 | `McpSchema` | Tool discovery, bounded input schema, output schema and uniform structured error/result contract |
 | `GoldenRetrieval` | Deterministic technical queries: expected source recall@5, forbidden-source exclusion, evidence/governance/security metadata |
-| `DataIsolation` | API-key `only_own_content` isolation across independent keys |
+| `PublishedCorpus` | MCP API keys see the complete published corpus across creator keys; ownership never narrows MCP knowledge |
 | `McpSecurity` | Injection/secret corpus detection plus benign-text false-positive checks |
 | `McpConcurrency` | Concurrent read-only calls complete with correlated IDs and trace IDs |
 

@@ -50,11 +50,11 @@ public record CommentRequest(string Comment);
 // Search
 public record RecordClickRequest(string SearchQueryId, string ArticleId);
 
-// Assistant is a grounded AI/RAG surface. Its scope controls mirror search filters,
-// but it returns synthesized evidence-backed answers rather than document result lists.
+// Assistant is a grounded AI/RAG surface over the complete published corpus. Metadata scope
+// filters may narrow by topic/author, but ownership scoping belongs to article/search APIs only.
 public record AssistantRequest(string Message, string? ConversationId = null,
-    bool OnlyOwnContent = false, IEnumerable<string>? Tags = null,
-    IEnumerable<string>? Authors = null, IEnumerable<string>? ContentTypes = null,
+    IEnumerable<string>? Tags = null, IEnumerable<string>? Authors = null,
+    IEnumerable<string>? ContentTypes = null,
     Dictionary<string, string[]>? Facets = null, string? Model = null,
     string? AnswerProfile = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
