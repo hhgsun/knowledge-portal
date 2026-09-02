@@ -45,7 +45,7 @@ frontend/
     ├── LoginPage.tsx          # Email/password form → POST /api/auth/login
     ├── RegisterPage.tsx       # Registration-disabled notice; API endpoint remains available
     ├── HomePage.tsx           # Dashboard stats + recent articles + top searches
-    ├── ArticlesPage.tsx       # Article list with compact filters, TagSelector-style searchable lookup menus, colored/iconized chips, sorting and status badges
+    ├── ArticlesPage.tsx       # Article list with compact filters, searchable lookup menus, theme-aware dropdown scrollbars, colored/iconized chips and sorting
     ├── NewArticlePage.tsx     # Create article form with Milkdown editor
     ├── EditArticlePage.tsx    # Edit article form with versioning + change summary
     ├── ArticleViewPage.tsx    # Markdown article reader + feedback

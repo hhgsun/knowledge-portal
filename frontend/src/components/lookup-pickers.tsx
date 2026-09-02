@@ -193,7 +193,7 @@ export function IconPicker({ value, color, onChange }: { value: string; color?: 
               />
             </div>
           </div>
-          <div className="p-2 max-h-48 overflow-y-auto">
+          <div className="subtle-scrollbar p-2 max-h-48 overflow-y-auto">
             <div className="grid grid-cols-8 gap-1">
               {visibleMatches.map((item) => {
                 const Icon = item.component;

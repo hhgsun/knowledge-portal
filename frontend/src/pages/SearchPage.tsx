@@ -320,7 +320,7 @@ export default function SearchPage() {
 
           {/* Arama geçmişi dropdown */}
           {showHistory && !showSuggestions && history.length > 0 && (
-            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Arama geçmişi">
+            <div ref={suggestionsRef} className="subtle-scrollbar absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Arama geçmişi">
               <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
                 <span className="text-xs text-zinc-400 flex items-center gap-1">
                   <Clock size={12} aria-hidden="true" />
@@ -363,7 +363,7 @@ export default function SearchPage() {
           )}
 
           {showSuggestions && (
-            <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Otomatik tamamlama önerileri">
+            <div ref={suggestionsRef} className="subtle-scrollbar absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto" role="listbox" aria-label="Otomatik tamamlama önerileri">
               <div className="px-3 py-2 text-xs text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
                 {suggestionType === "tag" && "Etiket seç (#)"}
                 {suggestionType === "author" && "Yazar seç (@)"}

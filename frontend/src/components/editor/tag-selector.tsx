@@ -209,7 +209,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
   return (
     <div className="space-y-2">
       {selectedTagObjects.length > 0 && !hideSelectedTags && (
-        <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-lg pr-1">
+        <div className="subtle-scrollbar flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-lg pr-1">
           {selectedTagObjects.map((tag) => (
             <span
               key={tag.id}
@@ -269,7 +269,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
                 id={listboxId}
                 role="listbox"
                 aria-multiselectable="true"
-                className="max-h-60 overflow-y-auto p-1"
+                className="subtle-scrollbar max-h-60 overflow-y-auto p-1"
                 onScroll={(event) => {
                   const element = event.currentTarget;
                   if (hasMore && !isLoading && element.scrollHeight - element.scrollTop - element.clientHeight < 48) {

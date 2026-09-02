@@ -116,7 +116,7 @@ function MultiSelectDropdown({ label, icon, options, selected, onChange, renderO
               />
             </div>
           )}
-          <div id={listboxId} role="listbox" aria-multiselectable="true" className="max-h-60 overflow-y-auto p-1">
+          <div id={listboxId} role="listbox" aria-multiselectable="true" className="subtle-scrollbar max-h-60 overflow-y-auto p-1">
           {visibleOptions.map((opt) => {
             const isSelected = selected.includes(opt.value);
             return (
