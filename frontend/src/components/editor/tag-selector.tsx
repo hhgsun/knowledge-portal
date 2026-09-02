@@ -174,6 +174,7 @@ export function TagSelector({ selectedTags, onChange, valueField = "id", allowCr
     <div className="space-y-2">
       <DropdownSelector
         label={label}
+        className="w-fit"
         options={visibleTags.map((tag) => ({ value: tag[valueField], label: tag.name }))}
         selected={selectedTags}
         onChange={onChange}

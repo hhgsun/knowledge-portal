@@ -151,7 +151,7 @@ export function ArticleForm({
         />
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
-          <div className="inline-flex min-w-0 items-center gap-2">
+          <div className="inline-flex min-w-0 items-center gap-2 mr-auto">
             <ArticleStatusSelector
               value={status}
               onChange={(values) => onStatusChange(values[0] ?? "draft")}
@@ -163,6 +163,7 @@ export function ArticleForm({
               {STATUS_DESCRIPTIONS[status] ?? ""}
             </span>
           </div>
+          {statusIndicator}
           <label className="inline-flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
             Gözden geçirme
             <input
@@ -172,21 +173,14 @@ export function ArticleForm({
               value={reviewIntervalDays}
               onChange={(event) => onReviewIntervalDaysChange(Number(event.target.value))}
               aria-label="Gözden geçirme aralığı (gün)"
-              className="h-9 w-20 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+              className="h-6 w-14 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
             />
             gün
           </label>
-          {statusIndicator}
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            <span className="mb-1 block font-medium">Etiketler</span>
-            <TagSelector selectedTags={tags} onChange={onTagsChange} />
-          </div>
-
-          {categories.some((category) => category.isActive) && (
-            <>
+        {categories.some((category) => category.isActive) && (
+          <div className="mt-3 grid gap-x-2 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
             {categories
               .filter((category) => category.isActive)
               .map((category) => {
@@ -201,7 +195,7 @@ export function ArticleForm({
                 };
                 return (
                   <div key={category.id} className="text-xs text-zinc-500 dark:text-zinc-400">
-                    <span className="mb-1 block font-medium">
+                    <span className="mb-0.5 block font-medium">
                       {category.label}{category.isRequired ? " *" : ""}
                     </span>
                     <LookupValueSelector
@@ -212,12 +206,17 @@ export function ArticleForm({
                       multiple={category.cardinality === "multiple"}
                       required={category.isRequired}
                       showSelectedChips={category.cardinality === "multiple"}
+                      compact
                     />
                   </div>
                 );
               })}
-            </>
-          )}
+          </div>
+        )}
+
+        <div className="mt-3 max-w-md text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="mb-0.5 block font-medium">Etiketler</span>
+          <TagSelector selectedTags={tags} onChange={onTagsChange} compact />
         </div>
       </div>
 
