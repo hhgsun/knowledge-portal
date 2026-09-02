@@ -8,6 +8,7 @@ import { useCapabilities } from "../contexts/CapabilitiesContext";
 import { useApi } from "../hooks/useApi";
 import { readApiError, readApiJson } from "../lib/api-response";
 import { cn } from "../lib/utils";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import type { AssistantAnswerProfile, AssistantResponse, LlmModelSettings, RagSource } from "../types/api";
 
 const assistantModelStorageKey = "knowledge-portal.assistant.model";
@@ -204,22 +205,25 @@ function AssistantHeader({ settings, selectedModel, selectedProfile, profiles, d
     </div>
     <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">Tek oturum</span>
-      <label htmlFor="assistant-model" className="sr-only">Asistan modeli</label>
-      <select id="assistant-model" value={selectedModel} disabled={!settings || loading}
-        onChange={event => onModelChange(event.target.value)}
+      <DropdownSelector id="assistant-model" label={`Varsayılan Model${settings ? ` — ${settings.defaultModel}` : ""}`}
+        options={settings?.models.map(model => ({ value: model.id, label: `${model.label} (${model.id})`, searchText: model.id })) ?? []}
+        selected={selectedModel ? [selectedModel] : []}
+        onChange={values => onModelChange(values[0] ?? "")}
+        disabled={!settings || loading}
+        clearable
+        searchable={(settings?.models.length ?? 0) > 10}
         title={settings?.catalogWarning ?? "Bu seçim yalnızca bu tarayıcıda saklanır."}
-        className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 sm:max-w-56">
-        <option value="">Varsayılan Model{settings ? ` — ${settings.defaultModel}` : ""}</option>
-        {settings?.models.map(model => <option key={model.id} value={model.id}>{model.label} ({model.id})</option>)}
-      </select>
-      <label htmlFor="assistant-answer-profile" className="sr-only">Yanıt kapsamı</label>
-      <select id="assistant-answer-profile" value={selectedProfile} disabled={loading}
-        onChange={event => onProfileChange(event.target.value as AssistantAnswerProfile | "")}
+        panelAlign="end"
+        className="min-w-0 flex-1 sm:max-w-56" />
+      <DropdownSelector id="assistant-answer-profile" label={`Otomatik — ${answerProfileLabel(defaultProfile)}`}
+        options={profiles.map(profile => ({ value: profile, label: answerProfileLabel(profile) }))}
+        selected={selectedProfile ? [selectedProfile] : []}
+        onChange={values => onProfileChange((values[0] ?? "") as AssistantAnswerProfile | "")}
+        disabled={loading}
+        clearable
         title="Otomatik seçim, detaylı ve kapsamlı soruları geniş yanıta yükseltir."
-        className="h-9 min-w-32 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
-        <option value="">Otomatik — {answerProfileLabel(defaultProfile)}</option>
-        {profiles.map(profile => <option key={profile} value={profile}>{answerProfileLabel(profile)}</option>)}
-      </select>
+        panelAlign="end"
+        className="min-w-32" />
     </div>
     <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-full h-10 bg-gradient-to-b from-white to-transparent dark:from-zinc-950" />
   </header>;
@@ -277,7 +281,7 @@ function AssistantResult({ response, feedbackEnabled }: { response: AssistantRes
     {response.answer ? <div className="prose prose-sm max-w-none text-zinc-700 prose-a:font-semibold prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline dark:prose-invert dark:text-zinc-300 dark:prose-a:text-blue-400"><ReactMarkdown remarkPlugins={[remarkGfm]}>{answerMarkdown}</ReactMarkdown></div> : <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40">Bu soru için yeterli ve güvenilir bir yanıt üretilemedi.</div>}
     <AnswerSources response={response} />
     <AnswerWarnings warnings={response.warnings} />
-    {feedbackEnabled && response.interactionId && <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-4 text-xs dark:border-zinc-800"><span className="mr-1 text-zinc-500">Bu yanıt yararlı mıydı?</span><FeedbackButton active={feedback === "helpful"} positive disabled={submitting} onClick={() => void sendFeedback(true)} /><FeedbackButton active={feedback === "not_helpful"} disabled={submitting} onClick={() => void sendFeedback(false)} /><select value={feedbackReason} onChange={event => setFeedbackReason(event.target.value)} className="h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] text-zinc-600 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300" aria-label="Geri bildirim nedeni"><option value="">Neden? (isteğe bağlı)</option><option value="incorrect">Yanlış bilgi</option><option value="incomplete">Eksik yanıt</option><option value="wrong_source">Yanlış kaynak</option><option value="outdated">Güncel değil</option><option value="no_answer">Yanıt yok</option><option value="other">Diğer</option></select></div>}
+    {feedbackEnabled && response.interactionId && <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-4 text-xs dark:border-zinc-800"><span className="mr-1 text-zinc-500">Bu yanıt yararlı mıydı?</span><FeedbackButton active={feedback === "helpful"} positive disabled={submitting} onClick={() => void sendFeedback(true)} /><FeedbackButton active={feedback === "not_helpful"} disabled={submitting} onClick={() => void sendFeedback(false)} /><DropdownSelector label="Neden? (isteğe bağlı)" options={[{ value: "incorrect", label: "Yanlış bilgi" }, { value: "incomplete", label: "Eksik yanıt" }, { value: "wrong_source", label: "Yanlış kaynak" }, { value: "outdated", label: "Güncel değil" }, { value: "no_answer", label: "Yanıt yok" }, { value: "other", label: "Diğer" }]} selected={feedbackReason ? [feedbackReason] : []} onChange={values => setFeedbackReason(values[0] ?? "")} clearable compact /></div>}
   </section></div>;
 }
 

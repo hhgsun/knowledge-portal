@@ -5,6 +5,13 @@ import { useApi } from "../hooks/useApi";
 import { UsersListSkeleton } from "../components/ui/skeleton";
 import type { AdminUser } from "../types/api";
 import { apiErrorMessage } from "../lib/api-response";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
+
+const ROLE_OPTIONS = [
+  { value: "viewer", label: "Görüntüleyici" },
+  { value: "editor", label: "Editör" },
+  { value: "admin", label: "Yönetici" },
+];
 
 interface Pagination {
   page: number;
@@ -210,11 +217,7 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Role</label>
-              <select value={addRole} onChange={(e) => setAddRole(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-                <option value="viewer">Görüntüleyici</option>
-                <option value="editor">Editör</option>
-                <option value="admin">Yönetici</option>
-              </select>
+              <DropdownSelector label="Rol" options={ROLE_OPTIONS} selected={[addRole]} onChange={values => setAddRole(values[0] ?? "viewer")} />
             </div>
           </div>
           <div className="flex gap-2 mt-4">
@@ -245,11 +248,7 @@ export default function AdminUsersPage() {
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Role</label>
-              <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-                <option value="admin">Yönetici</option>
-                <option value="editor">Editör</option>
-                <option value="viewer">Görüntüleyici</option>
-              </select>
+              <DropdownSelector label="Rol" options={ROLE_OPTIONS} selected={[editRole]} onChange={values => setEditRole(values[0] ?? "viewer")} />
             </div>
           </div>
           <div className="flex gap-2 mt-4">

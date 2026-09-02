@@ -1,8 +1,10 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Paperclip, Tag, Upload, WandSparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Paperclip, Upload, WandSparkles, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { TagSelector } from "../components/editor/tag-selector";
+import { LookupValueSelector } from "../components/lookup-value-selector";
+import { ArticleStatusSelector } from "../components/article-status-selector";
 import { useApi } from "../hooks/useApi";
 import { useAutoResizeTextArea } from "../hooks/useAutoResizeTextArea";
 import { useLookups } from "../hooks/useLookups";
@@ -388,42 +390,42 @@ export default function KnowledgeImportPage() {
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
             <div className="inline-flex min-w-0 items-center gap-2">
-              <label>
-                <span className="sr-only">Yayın durumu</span>
-                <select value={current.status} onChange={event => update({ status: event.target.value })} aria-describedby="import-article-status-description" className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"><option value="draft">Taslak</option><option value="published">Yayımlandı</option></select>
-              </label>
+              <ArticleStatusSelector value={current.status} onChange={values => update({ status: values[0] ?? "draft" })} includeArchived={false} ariaDescribedBy="import-article-status-description" compact={false} />
               <span id="import-article-status-description" className="text-xs text-zinc-400 dark:text-zinc-500">{STATUS_DESCRIPTIONS[current.status] ?? ""}</span>
             </div>
           </div>
 
-          <div className="mt-3 flex items-start gap-2">
-            <Tag size={14} className="mt-2 shrink-0 text-zinc-400"/>
-            <TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/>
-          </div>
-          {categories.some(category => category.isActive) && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="text-xs text-zinc-500">
+              <span className="mb-1 block font-medium">Etiketler</span>
+              <TagSelector selectedTags={current.tags} onChange={tags => update({ tags })}/>
+            </div>
+            {categories.some(category => category.isActive) && (
+              <>
               {categories.filter(category => category.isActive).map(category => {
                 const options = lookups.filter(value => value.category === category.key && value.isActive);
                 const configuredDefault = options.find(option => option.id === category.defaultValueId)?.value;
                 const selected = current.classifications[category.key]
                   ?? (category.key === "content_type" && current.contentType ? [current.contentType] : configuredDefault ? [configuredDefault] : []);
-                return <label key={category.id} className="text-xs text-zinc-500">
+                return <div key={category.id} className="text-xs text-zinc-500">
                   <span className="mb-1 block font-medium">{category.label}{category.isRequired ? " *" : ""}</span>
-                  <select multiple={category.cardinality === "multiple"}
-                    value={category.cardinality === "multiple" ? selected : (selected[0] ?? "")}
-                    onChange={event => {
-                      const values = Array.from(event.target.selectedOptions, option => option.value).filter(Boolean);
+                  <LookupValueSelector
+                    label={category.label}
+                    options={options}
+                    selected={selected}
+                    multiple={category.cardinality === "multiple"}
+                    required={category.isRequired}
+                    showSelectedChips={category.cardinality === "multiple"}
+                    onChange={values => {
                       update({ classifications: { ...current.classifications, [category.key]: values },
                         ...(category.key === "content_type" ? { contentType: values[0] ?? "" } : {}) });
                     }}
-                    className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    {!category.isRequired && category.cardinality === "single" && <option value="">Seçilmedi</option>}
-                    {options.map(value => <option key={value.id} value={value.value}>{value.label}</option>)}
-                  </select>
-                </label>;
+                  />
+                </div>;
               })}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 dark:border-zinc-800 dark:bg-zinc-900">

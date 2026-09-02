@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bot, Save } from "lucide-react";
 import { toast } from "sonner";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import { useApi } from "../hooks/useApi";
 import type { LlmModelSettings } from "../types/api";
 
@@ -38,9 +39,7 @@ export default function LlmSettingsPage() {
       {!settings ? <p className="text-sm text-zinc-500">Modeller yükleniyor...</p> : <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-5">
         {settings.catalogWarning && <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">{settings.catalogWarning}</p>}
         <label className="block text-sm font-medium mb-1">Varsayılan model</label>
-        <select value={model} onChange={event => setModel(event.target.value)} className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-          {settings.models.map(item => <option key={item.id} value={item.id}>{item.label} ({item.id})</option>)}
-        </select>
+        <DropdownSelector label="Varsayılan model" options={settings.models.map(item => ({ value: item.id, label: `${item.label} (${item.id})`, searchText: item.id }))} selected={model ? [model] : []} onChange={values => setModel(values[0] ?? "")} searchable={settings.models.length > 10} />
         <p className="mt-2 text-xs text-zinc-500">Değişiklik yeni Assistant isteklerinde hemen uygulanır. Tarayıcıda model seçmiş kullanıcıların yerel tercihleri korunur.</p>
         <button onClick={() => void save()} disabled={saving || model === settings.defaultModel} className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">
           <Save size={16} /> {saving ? "Kaydediliyor..." : "Varsayılanı Kaydet"}

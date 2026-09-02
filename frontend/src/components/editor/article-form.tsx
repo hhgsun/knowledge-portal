@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Save, ArrowLeft, Tag, X } from "lucide-react";
+import { Save, ArrowLeft, X } from "lucide-react";
 import { TagSelector } from "./tag-selector";
 import { LookupValueSelector } from "../lookup-value-selector";
+import { ArticleStatusSelector } from "../article-status-selector";
 import { useLookups } from "../../hooks/useLookups";
 import { useAutoResizeTextArea } from "../../hooks/useAutoResizeTextArea";
 import { missingRequiredClassifications, requiredClassificationMessage } from "../../lib/classification-validation";
@@ -151,19 +152,13 @@ export function ArticleForm({
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
           <div className="inline-flex min-w-0 items-center gap-2">
-            <label>
-              <span className="sr-only">Yayın durumu</span>
-              <select
-                value={status}
-                onChange={(e) => onStatusChange(e.target.value)}
-                aria-describedby="article-status-description"
-                className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-              >
-                <option value="draft">Taslak</option>
-                <option value="published">Yayımlandı</option>
-                {!isViewer && mode === "edit" && <option value="archived">Arşivlendi</option>}
-              </select>
-            </label>
+            <ArticleStatusSelector
+              value={status}
+              onChange={(values) => onStatusChange(values[0] ?? "draft")}
+              includeArchived={!isViewer && mode === "edit"}
+              ariaDescribedBy="article-status-description"
+              compact={false}
+            />
             <span id="article-status-description" className="text-xs text-zinc-400 dark:text-zinc-500">
               {STATUS_DESCRIPTIONS[status] ?? ""}
             </span>
@@ -177,20 +172,21 @@ export function ArticleForm({
               value={reviewIntervalDays}
               onChange={(event) => onReviewIntervalDaysChange(Number(event.target.value))}
               aria-label="Gözden geçirme aralığı (gün)"
-              className="w-20 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+              className="h-9 w-20 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
             />
             gün
           </label>
           {statusIndicator}
         </div>
 
-        <div className="mt-3 flex items-start gap-2">
-          <Tag size={14} className="mt-2 shrink-0 text-zinc-400" />
-          <TagSelector selectedTags={tags} onChange={onTagsChange} />
-        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="mb-1 block font-medium">Etiketler</span>
+            <TagSelector selectedTags={tags} onChange={onTagsChange} />
+          </div>
 
-        {categories.some((category) => category.isActive) && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {categories.some((category) => category.isActive) && (
+            <>
             {categories
               .filter((category) => category.isActive)
               .map((category) => {
@@ -220,8 +216,9 @@ export function ArticleForm({
                   </div>
                 );
               })}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {error && (

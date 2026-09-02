@@ -7,6 +7,7 @@ import { AuthenticatedImage } from "../components/attachments/authenticated-imag
 import { useApi } from "../hooks/useApi";
 import { toast } from "sonner";
 import { VersionsListSkeleton } from "../components/ui/skeleton";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import type { ArticleVersionListItem } from "../types/api";
 
 interface ArticleInfo {
@@ -140,27 +141,9 @@ export default function VersionsPage() {
             Compare Versions
           </h3>
           <div className="flex items-center gap-3 flex-wrap">
-            <select
-              value={compareA || ""}
-              onChange={(e) => { setCompareA(e.target.value); setDiff(null); }}
-              className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-            >
-              <option value="">Sürüm seçin...</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>v{v.version} — {v.changeSummary || v.title}</option>
-              ))}
-            </select>
+            <DropdownSelector label="Sürüm seçin..." options={versions.map(version => ({ value: version.id, label: `v${version.version} — ${version.changeSummary || version.title}` }))} selected={compareA ? [compareA] : []} onChange={values => { setCompareA(values[0] ?? null); setDiff(null); }} searchable={versions.length > 10} clearable />
             <span className="text-zinc-400 text-sm">vs</span>
-            <select
-              value={compareB || ""}
-              onChange={(e) => { setCompareB(e.target.value); setDiff(null); }}
-              className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-            >
-              <option value="">Sürüm seçin...</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>v{v.version} — {v.changeSummary || v.title}</option>
-              ))}
-            </select>
+            <DropdownSelector label="Sürüm seçin..." options={versions.map(version => ({ value: version.id, label: `v${version.version} — ${version.changeSummary || version.title}` }))} selected={compareB ? [compareB] : []} onChange={values => { setCompareB(values[0] ?? null); setDiff(null); }} searchable={versions.length > 10} clearable />
             <button
               onClick={handleCompare}
               disabled={!compareA || !compareB || compareA === compareB}

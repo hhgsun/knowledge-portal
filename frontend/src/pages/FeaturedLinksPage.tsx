@@ -6,6 +6,7 @@ import { invalidateFeaturedLinksCache, resolveFeaturedLinkHref } from "../hooks/
 import { toast } from "sonner";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import { ColorPicker, IconPicker } from "../components/lookup-pickers";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import type { FeaturedLink, TagWithCount } from "../types/api";
 
 const LINK_TYPE_LABELS: Record<FeaturedLink["linkType"], string> = {
@@ -142,30 +143,25 @@ export default function FeaturedLinksPage() {
   const targetInput = () => {
     if (newLinkType === "content_type") {
       return (
-        <select
-          value={newTarget}
-          onChange={(e) => setNewTarget(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-        >
-          <option value="">Select content type…</option>
-          {contentTypes.filter((ct) => ct.isActive).map((ct) => (
-            <option key={ct.id} value={ct.value}>{ct.label}</option>
-          ))}
-        </select>
+        <DropdownSelector
+          label="Select content type…"
+          options={contentTypes.filter((ct) => ct.isActive).map((ct) => ({ value: ct.value, label: ct.label }))}
+          selected={newTarget ? [newTarget] : []}
+          onChange={values => setNewTarget(values[0] ?? "")}
+          clearable
+        />
       );
     }
     if (newLinkType === "tag") {
       return (
-        <select
-          value={newTarget}
-          onChange={(e) => setNewTarget(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-        >
-          <option value="">Select tag…</option>
-          {tags.map((t) => (
-            <option key={t.id} value={t.slug}>{t.name}</option>
-          ))}
-        </select>
+        <DropdownSelector
+          label="Select tag…"
+          options={tags.map((tag) => ({ value: tag.slug, label: tag.name }))}
+          selected={newTarget ? [newTarget] : []}
+          onChange={values => setNewTarget(values[0] ?? "")}
+          clearable
+          searchable={tags.length > 10}
+        />
       );
     }
     return (
@@ -201,18 +197,15 @@ export default function FeaturedLinksPage() {
           <div className="flex flex-wrap gap-3 items-end">
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Type</label>
-              <select
-                value={newLinkType}
-                onChange={(e) => {
-                  setNewLinkType(e.target.value as FeaturedLink["linkType"]);
+              <DropdownSelector
+                label="Type"
+                options={Object.entries(LINK_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                selected={[newLinkType]}
+                onChange={(values) => {
+                  setNewLinkType(values[0] as FeaturedLink["linkType"]);
                   setNewTarget("");
                 }}
-                className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-              >
-                <option value="content_type">Content Type</option>
-                <option value="tag">Tag</option>
-                <option value="custom">Custom Link</option>
-              </select>
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Target</label>

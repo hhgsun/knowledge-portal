@@ -6,6 +6,7 @@ import {
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { AnalyticsSkeleton } from "../components/ui/skeleton";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import type {
   AnalyticsDailyUsage, AnalyticsIntegrationUsage, AnalyticsOperationUsage,
   AnalyticsResponse, AnalyticsUserUsage,
@@ -58,16 +59,14 @@ export default function AnalyticsPage() {
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Analiz Paneli</h1>
           <p className="mt-1 text-sm text-zinc-500">Kullanıcı, entegrasyon ve işlem bazında portal kullanımı</p>
         </div>
-        <select
-          value={days}
-          onChange={(event) => { setLoading(true); setDays(Number(event.target.value)); }}
-          aria-label="Analiz dönemi"
-          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-        >
-          <option value={7}>Son 7 gün</option>
-          <option value={30}>Son 30 gün</option>
-          <option value={90}>Son 90 gün</option>
-        </select>
+        <DropdownSelector
+          label="Analiz dönemi"
+          options={[{ value: "7", label: "Son 7 gün" }, { value: "30", label: "Son 30 gün" }, { value: "90", label: "Son 90 gün" }]}
+          selected={[String(days)]}
+          onChange={values => { setLoading(true); setDays(Number(values[0] ?? 30)); }}
+          className="w-36"
+          panelAlign="end"
+        />
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

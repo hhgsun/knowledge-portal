@@ -7,6 +7,7 @@ import {
   Search, Trash2, X,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 
 interface LogFile { fileName: string; sizeBytes: number; createdAt: string; lastModifiedAt: string; isToday: boolean; canDelete: boolean }
 interface LogContent { fileName: string; totalLines: number; returnedLines: number; content: string }
@@ -157,9 +158,9 @@ export default function LogsPage() {
           <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[220px] flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Mesaj, hata, servis veya trace ara..." className="w-full rounded-lg border border-zinc-200 bg-transparent py-2 pl-9 pr-8 text-sm outline-none focus:border-blue-500 dark:border-zinc-700"/>{searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400"><X size={14}/></button>}</div>
-              <Filter size={14} className="ml-1 text-zinc-400"/><select value={level} onChange={(e) => setLevel(e.target.value)} className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"><option value="All">Tüm seviyeler</option>{levels.map((item) => <option key={item}>{item}</option>)}</select>
-              <select value={source} onChange={(e) => setSource(e.target.value)} className="max-w-[220px] rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"><option value="All">Tüm servisler</option>{sources.map((item) => <option key={item} value={item}>{shortSource(item)}</option>)}</select>
-              <select value={tail} onChange={(e) => setTail(Number(e.target.value))} className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"><option value={100}>Son 100</option><option value={500}>Son 500</option><option value={1000}>Son 1000</option><option value={0}>Tümü</option></select>
+              <Filter size={14} className="ml-1 text-zinc-400"/><DropdownSelector label="Log seviyesi" options={[{ value: "All", label: "Tüm seviyeler" }, ...levels.map(item => ({ value: item, label: item }))]} selected={[level]} onChange={values => setLevel(values[0] ?? "All")} />
+              <DropdownSelector label="Log servisi" options={[{ value: "All", label: "Tüm servisler" }, ...sources.map(item => ({ value: item, label: shortSource(item) ?? item, searchText: item }))]} selected={[source]} onChange={values => setSource(values[0] ?? "All")} searchable={sources.length > 10} className="max-w-[220px]" />
+              <DropdownSelector label="Log adedi" options={[{ value: "100", label: "Son 100" }, { value: "500", label: "Son 500" }, { value: "1000", label: "Son 1000" }, { value: "0", label: "Tümü" }]} selected={[String(tail)]} onChange={values => setTail(Number(values[0] ?? 100))} />
               <button onClick={() => setRawView((value) => !value)} className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-sm", rawView ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950" : "border-zinc-200 dark:border-zinc-700")}><FileJson size={14}/>Ham</button>
               <button onClick={download} title="İndir" className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-700"><Download size={16}/></button>
               <button onClick={() => void loadContent(selectedFile)} title="Yenile" className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-700"><RefreshCw size={16} className={cn(contentLoading && "animate-spin")}/></button>

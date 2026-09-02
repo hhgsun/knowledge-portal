@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi";
 import { KeysListSkeleton } from "../components/ui/skeleton";
 import type { AdminApiKey, AdminUser } from "../types/api";
 import { apiErrorMessage } from "../lib/api-response";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 
 interface Pagination {
   page: number;
@@ -230,12 +231,13 @@ export default function AdminApiKeysPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">User *</label>
-              <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
-                <option value="">Select user...</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                ))}
-              </select>
+              <DropdownSelector
+                label="Select user..."
+                options={users.map((user) => ({ value: user.id, label: `${user.name} (${user.email})`, searchText: user.email }))}
+                selected={addUserId ? [addUserId] : []}
+                onChange={values => setAddUserId(values[0] ?? "")}
+                searchable={users.length > 10}
+              />
             </div>
             <div>
               <label className="text-xs text-zinc-500 mb-1 block">Name *</label>

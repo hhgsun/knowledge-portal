@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import { ColorPicker, IconPicker } from "../components/lookup-pickers";
 import { LookupsListSkeleton } from "../components/ui/skeleton";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import type { LookupCategory, LookupValue } from "../types/api";
 
 export default function LookupsPage() {
@@ -151,12 +152,8 @@ export default function LookupsPage() {
         <div className="mb-6 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900">
           <input value={newCategoryKey} onChange={(event) => setNewCategoryKey(event.target.value)} placeholder="Anahtar (örn. department)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800" />
           <input value={newCategoryLabel} onChange={(event) => setNewCategoryLabel(event.target.value)} placeholder="Etiket (örn. Departman)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800" />
-          <select value={newCardinality} onChange={(event) => setNewCardinality(event.target.value as "single" | "multiple")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-            <option value="single">Tek değer</option><option value="multiple">Birden çok değer</option>
-          </select>
-          <select value={newRagBehavior} onChange={(event) => setNewRagBehavior(event.target.value as "none" | "filter")} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-            <option value="filter">AI filtresi</option><option value="none">AI dışında</option>
-          </select>
+          <DropdownSelector label="Kardinalite" options={[{ value: "single", label: "Tek değer" }, { value: "multiple", label: "Birden çok değer" }]} selected={[newCardinality]} onChange={values => setNewCardinality(values[0] as "single" | "multiple")} />
+          <DropdownSelector label="AI davranışı" options={[{ value: "filter", label: "AI filtresi" }, { value: "none", label: "AI dışında" }]} selected={[newRagBehavior]} onChange={values => setNewRagBehavior(values[0] as "none" | "filter")} />
           <input type="number" value={newCategorySortOrder} onChange={(event) => setNewCategorySortOrder(event.target.value)} placeholder="Görünüm sırası (otomatik)" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm sm:col-span-2 dark:border-zinc-700 dark:bg-zinc-800" />
           <button onClick={handleAddCategory} className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white sm:col-span-2">Kategori Ekle</button>
         </div>
@@ -167,15 +164,12 @@ export default function LookupsPage() {
           <div className="flex flex-wrap gap-3 items-end">
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Category</label>
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800"
-              >
-                {categories.filter((category) => category.isActive).map((category) => (
-                  <option key={category.id} value={category.key}>{category.label}</option>
-                ))}
-              </select>
+              <DropdownSelector
+                label="Kategori"
+                options={categories.filter((category) => category.isActive).map((category) => ({ value: category.key, label: category.label }))}
+                selected={newCategory ? [newCategory] : []}
+                onChange={values => setNewCategory(values[0] ?? "")}
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-zinc-500 block mb-1">Value (slug)</label>
@@ -305,15 +299,9 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
               if (sortOrder !== category.sortOrder) void updateCategory({ sortOrder });
             }} className="w-16 rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900" />
           </label>
-          <select value={category.cardinality} onChange={event => void updateCategory({ cardinality: event.target.value as "single" | "multiple" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
-            <option value="single">Tekli</option><option value="multiple">Çoklu</option>
-          </select>
-          <select value={category.ragBehavior} onChange={event => void updateCategory({ ragBehavior: event.target.value as "none" | "filter" })} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
-            <option value="filter">AI filter</option><option value="none">AI none</option>
-          </select>
-          <select value={category.defaultValueId ?? ""} onChange={event => { if (event.target.value) void updateCategory({ defaultValueId: event.target.value }); }} className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900">
-            <option value="">Varsayılan yok</option>{items.filter(item => item.isActive).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
+          <DropdownSelector label="Kardinalite" compact options={[{ value: "single", label: "Tekli" }, { value: "multiple", label: "Çoklu" }]} selected={[category.cardinality]} onChange={values => void updateCategory({ cardinality: values[0] as "single" | "multiple" })} />
+          <DropdownSelector label="AI davranışı" compact options={[{ value: "filter", label: "AI filter" }, { value: "none", label: "AI none" }]} selected={[category.ragBehavior]} onChange={values => void updateCategory({ ragBehavior: values[0] as "none" | "filter" })} />
+          <DropdownSelector label="Varsayılan değer" compact clearable emptySelectionLabel="Varsayılan yok" options={items.filter(item => item.isActive).map(item => ({ value: item.id, label: item.label }))} selected={category.defaultValueId ? [category.defaultValueId] : []} onChange={values => { if (values[0]) void updateCategory({ defaultValueId: values[0] }); }} />
           <label className="flex items-center gap-1 text-xs text-zinc-500"><input type="checkbox" checked={category.isRequired} onChange={event => void updateCategory({ isRequired: event.target.checked })}/> Zorunlu</label>
           <button onClick={() => void updateCategory({ isActive: !category.isActive })} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{category.isActive ? "Pasifleştir" : "Aktifleştir"}</button>
           <button onClick={() => void deleteCategory()} className="rounded px-2 py-1 text-xs text-red-600">Kategoriyi sil</button>

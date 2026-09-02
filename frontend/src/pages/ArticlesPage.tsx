@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useId, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown, ArrowUpDown, RotateCcw, FilePenLine, CircleCheck, Archive, Check } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown, ArrowUpDown, RotateCcw, CircleCheck } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
@@ -9,15 +9,13 @@ import { ArticleIndexStatusBadge } from "../components/ArticleIndexStatusBadge";
 import { ArticleListSkeleton } from "../components/ui/skeleton";
 import { TagSelector } from "../components/editor/tag-selector";
 import { LookupValueSelector } from "../components/lookup-value-selector";
+import { ArticleStatusSelector, ARTICLE_STATUS_OPTIONS } from "../components/article-status-selector";
+import { DropdownSelector } from "../components/ui/dropdown-selector";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
 import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
-const STATUS_OPTIONS = [
-  { value: "draft", label: "Taslak", icon: FilePenLine, color: "text-zinc-600 dark:text-zinc-300", bg: "bg-zinc-100 dark:bg-zinc-800" },
-  { value: "published", label: "Yayında", icon: CircleCheck, color: "text-emerald-700 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-950/50" },
-  { value: "archived", label: "Arşivlenmiş", icon: Archive, color: "text-rose-700 dark:text-rose-300", bg: "bg-rose-50 dark:bg-rose-950/50" },
-];
+const STATUS_OPTIONS = ARTICLE_STATUS_OPTIONS;
 
 function readFacetFilters(params: URLSearchParams): Record<string, string[]> {
   const result: Record<string, string[]> = {};
@@ -38,84 +36,6 @@ function readFacetFilters(params: URLSearchParams): Record<string, string[]> {
 function facetFiltersEqual(left: Record<string, string[]>, right: Record<string, string[]>) {
   const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]));
   return keys.every(key => (left[key] ?? []).join("\u0000") === (right[key] ?? []).join("\u0000"));
-}
-
-function MultiSelectDropdown({ label, icon, options, selected, onChange, renderOption }: {
-  label: string;
-  icon?: React.ReactNode;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (values: string[]) => void;
-  renderOption?: (opt: { value: string; label: string }) => React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  const toggle = (value: string) => {
-    onChange(selected.includes(value) ? selected.filter(v => v !== value) : [...selected, value]);
-  };
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen(current => !current)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        className={`flex h-8 min-w-36 items-center justify-between gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors ${selected.length > 0
-          ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
-          : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-          }`}
-      >
-        <span className="flex min-w-0 items-center gap-1.5">{icon}<span className="truncate">{label}{selected.length > 0 ? ` (${selected.length})` : ""}</span></span>
-        <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10 dark:border-zinc-700 dark:bg-zinc-900">
-          <div id={listboxId} role="listbox" aria-multiselectable="true" className="subtle-scrollbar max-h-60 overflow-y-auto p-1">
-          {options.map((opt) => {
-            const isSelected = selected.includes(opt.value);
-            return (
-            <button
-              type="button"
-              role="option"
-              aria-selected={isSelected}
-              key={opt.value}
-              onClick={() => toggle(opt.value)}
-              className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              {renderOption ? renderOption(opt) : <span className="text-zinc-700 dark:text-zinc-300">{opt.label}</span>}
-              {isSelected && <Check size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />}
-            </button>
-          );})}
-          {options.length === 0 && (
-            <div className="px-3 py-5 text-center text-xs text-zinc-500">Değer bulunamadı.</div>
-          )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function DateRangeDropdown({ from, to, onFromChange, onToChange }: {
@@ -319,36 +239,25 @@ export default function ArticlesPage() {
                 <RotateCcw size={12} /> <span className="hidden sm:inline">Temizle</span>
               </button>
             )}
-            <div className="relative flex items-center">
-              <ArrowUpDown size={13} className="pointer-events-none absolute left-2.5 text-zinc-400" />
-              <select
-                value={sortBy}
-                onChange={(event) => { setPage(1); setSortBy(event.target.value); }}
-                aria-label="Makaleleri sırala"
-                className="h-8 rounded-lg border border-zinc-300 bg-white pl-7 pr-7 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-              >
-                <option value="updatedAt">Son güncellenen</option>
-                <option value="wilsonScore">En faydalı</option>
-                <option value="viewCount">En çok görüntülenen</option>
-              </select>
-            </div>
+            <DropdownSelector
+              label="Makaleleri sırala"
+              options={[{ value: "updatedAt", label: "Son güncellenen" }, { value: "wilsonScore", label: "En faydalı" }, { value: "viewCount", label: "En çok görüntülenen" }]}
+              selected={[sortBy]}
+              onChange={values => { setPage(1); setSortBy(values[0] ?? "updatedAt"); }}
+              leadingIcon={<ArrowUpDown size={13} className="text-zinc-400" />}
+              compact
+              panelAlign="end"
+            />
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/30">
 
             {isApprover && (
-              <MultiSelectDropdown
-                label="Durum"
-                icon={<CircleCheck size={13} />}
-                options={STATUS_OPTIONS.map(({ value, label }) => ({ value, label }))}
-                selected={statusFilter}
+              <ArticleStatusSelector
+                values={statusFilter}
                 onChange={(values) => { setPage(1); setStatusFilter(values); }}
-                renderOption={(option) => {
-                  const status = STATUS_OPTIONS.find(item => item.value === option.value)!;
-                  const StatusIcon = status.icon;
-                  return <span className={`flex items-center gap-2 ${status.color}`}><span className={`flex h-6 w-6 items-center justify-center rounded-md ${status.bg}`}><StatusIcon size={13} /></span>{status.label}</span>;
-                }}
+                multiple
               />
             )}
 
@@ -359,6 +268,7 @@ export default function ArticlesPage() {
                 options={lookups.filter(value => value.category === category.key && value.isActive)}
                 selected={facetFilters[category.key] ?? []}
                 showSelectionInTrigger={false}
+                compact
                 className="w-auto"
                 onChange={(values) => {
                   setPage(1);
@@ -373,6 +283,8 @@ export default function ArticlesPage() {
               valueField="slug"
               allowCreate={false}
               hideSelectedTags={true}
+              label="Etiket"
+              compact
             />
 
             <DateRangeDropdown
@@ -403,7 +315,7 @@ export default function ArticlesPage() {
               const status = STATUS_OPTIONS.find(item => item.value === statusValue);
               const StatusIcon = status?.icon ?? CircleCheck;
               return (
-                <span key={statusValue} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${status?.bg ?? "bg-zinc-100"} ${status?.color ?? "text-zinc-600"}`}>
+                  <span key={statusValue} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${status?.background ?? "bg-zinc-100"} ${status?.color ?? "text-zinc-600"}`}>
                   <StatusIcon size={11} /> {status?.label ?? statusValue}
                   <button type="button" onClick={() => { setPage(1); setStatusFilter(current => current.filter(value => value !== statusValue)); }} aria-label={`${status?.label ?? statusValue} filtresini kaldır`} className="ml-0.5 rounded-full hover:text-rose-600"><X size={11} /></button>
                 </span>
