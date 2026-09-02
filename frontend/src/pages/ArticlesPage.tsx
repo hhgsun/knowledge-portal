@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown, ArrowUpDown, RotateCcw, FilePenLine, CircleCheck, Archive } from "lucide-react";
+import { PlusCircle, BookOpen, User, Key, Tag as TagIcon, ChevronLeft, ChevronRight, Eye, ThumbsUp, UserLockIcon, X, Filter, Calendar, ChevronDown, ArrowUpDown, RotateCcw, FilePenLine, CircleCheck, Archive, Search, Check } from "lucide-react";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLookups } from "../hooks/useLookups";
@@ -39,65 +39,102 @@ function facetFiltersEqual(left: Record<string, string[]>, right: Record<string,
   return keys.every(key => (left[key] ?? []).join("\u0000") === (right[key] ?? []).join("\u0000"));
 }
 
-function MultiSelectDropdown({ label, icon, options, selected, onChange, renderOption }: {
+function MultiSelectDropdown({ label, icon, options, selected, onChange, renderOption, searchable = false }: {
   label: string;
   icon?: React.ReactNode;
   options: { value: string; label: string }[];
   selected: string[];
   onChange: (values: string[]) => void;
   renderOption?: (opt: { value: string; label: string }) => React.ReactNode;
+  searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    if (open && searchable) searchInputRef.current?.focus();
+    const handlePointerDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+        setSearchQuery("");
+      }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setSearchQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, searchable]);
 
   const toggle = (value: string) => {
     onChange(selected.includes(value) ? selected.filter(v => v !== value) : [...selected, value]);
   };
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("tr-TR");
+  const visibleOptions = normalizedQuery
+    ? options.filter(option => option.label.toLocaleLowerCase("tr-TR").includes(normalizedQuery) || option.value.toLocaleLowerCase("tr-TR").includes(normalizedQuery))
+    : options;
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${selected.length > 0
+        onClick={() => { setOpen(current => !current); setSearchQuery(""); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        className={`flex h-8 min-w-36 items-center justify-between gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors ${selected.length > 0
           ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
           : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800"
           }`}
       >
-        {icon}
-        {label}
-        {selected.length > 0 && (
-          <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-200 dark:bg-blue-800 rounded-full">{selected.length}</span>
-        )}
-        <ChevronDown size={14} />
+        <span className="flex min-w-0 items-center gap-1.5">{icon}<span className="truncate">{label}{selected.length > 0 ? ` (${selected.length})` : ""}</span></span>
+        <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-60 max-h-64 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl p-1 shadow-xl shadow-zinc-950/10">
-          {options.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800"
-            >
+        <div className="absolute z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10 dark:border-zinc-700 dark:bg-zinc-900">
+          {searchable && (
+            <div className="relative border-b border-zinc-200 p-2 dark:border-zinc-700">
+              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input
-                type="checkbox"
-                checked={selected.includes(opt.value)}
-                onChange={() => toggle(opt.value)}
-                className="rounded border-zinc-300 dark:border-zinc-600"
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder={`${label} ara...`}
+                className="w-full rounded-md border border-zinc-300 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
               />
-              {renderOption ? renderOption(opt) : <span className="text-zinc-700 dark:text-zinc-300">{opt.label}</span>}
-            </label>
-          ))}
-          {options.length === 0 && (
-            <div className="px-3 py-2 text-sm text-zinc-400">No options</div>
+            </div>
           )}
+          <div id={listboxId} role="listbox" aria-multiselectable="true" className="max-h-60 overflow-y-auto p-1">
+          {visibleOptions.map((opt) => {
+            const isSelected = selected.includes(opt.value);
+            return (
+            <button
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              key={opt.value}
+              onClick={() => toggle(opt.value)}
+              className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              {renderOption ? renderOption(opt) : <span className="text-zinc-700 dark:text-zinc-300">{opt.label}</span>}
+              {isSelected && <Check size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />}
+            </button>
+          );})}
+          {visibleOptions.length === 0 && (
+            <div className="px-3 py-5 text-center text-xs text-zinc-500">Eşleşen değer bulunamadı.</div>
+          )}
+          </div>
         </div>
       )}
     </div>
@@ -342,6 +379,7 @@ export default function ArticlesPage() {
               <MultiSelectDropdown
                 key={category.id}
                 label={category.label}
+                searchable
                 options={lookups.filter(value => value.category === category.key && value.isActive)
                   .map(value => ({ value: value.value, label: value.label }))}
                 selected={facetFilters[category.key] ?? []}
