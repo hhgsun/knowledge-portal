@@ -243,7 +243,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
   const [editAuthorityWeight, setEditAuthorityWeight] = useState(50);
   const [editSortOrder, setEditSortOrder] = useState(0);
 
-  const updateCategory = async (patch: Partial<LookupCategory>) => {
+  const updateCategory = async (patch: Partial<LookupCategory> & { clearDefaultValue?: boolean }) => {
     const response = await fetchWithAuth("/api/lookups/categories", {
       method: "PUT", body: JSON.stringify({ id: category.id, ...patch }),
     });
@@ -301,7 +301,7 @@ function LookupSection({ category, items, onToggle, onDelete, onReload }: {
           </label>
           <DropdownSelector label="Kardinalite" compact options={[{ value: "single", label: "Tekli" }, { value: "multiple", label: "Çoklu" }]} selected={[category.cardinality]} onChange={values => void updateCategory({ cardinality: values[0] as "single" | "multiple" })} />
           <DropdownSelector label="AI davranışı" compact options={[{ value: "filter", label: "AI filter" }, { value: "none", label: "AI none" }]} selected={[category.ragBehavior]} onChange={values => void updateCategory({ ragBehavior: values[0] as "none" | "filter" })} />
-          <DropdownSelector label="Varsayılan değer" compact clearable emptySelectionLabel="Varsayılan yok" options={items.filter(item => item.isActive).map(item => ({ value: item.id, label: item.label }))} selected={category.defaultValueId ? [category.defaultValueId] : []} onChange={values => { if (values[0]) void updateCategory({ defaultValueId: values[0] }); }} />
+          <DropdownSelector label="Varsayılan değer" compact clearable emptySelectionLabel="Varsayılan yok" options={items.filter(item => item.isActive).map(item => ({ value: item.id, label: item.label }))} selected={category.defaultValueId ? [category.defaultValueId] : []} onChange={values => void updateCategory(values[0] ? { defaultValueId: values[0] } : { clearDefaultValue: true })} />
           <label className="flex items-center gap-1 text-xs text-zinc-500"><input type="checkbox" checked={category.isRequired} onChange={event => void updateCategory({ isRequired: event.target.checked })}/> Zorunlu</label>
           <button onClick={() => void updateCategory({ isActive: !category.isActive })} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{category.isActive ? "Pasifleştir" : "Aktifleştir"}</button>
           <button onClick={() => void deleteCategory()} className="rounded px-2 py-1 text-xs text-red-600">Kategoriyi sil</button>

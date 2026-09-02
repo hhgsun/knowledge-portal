@@ -112,4 +112,45 @@ public sealed class GenericClassificationsTests : IClassFixture<TestWebApplicati
         Assert.False(updated.GetProperty("isActive").GetBoolean());
         Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
     }
+
+    [Fact]
+    public async Task OptionalCategory_DefaultValueCanBeClearedExplicitly()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var categoryResponse = await client.PostAsJsonAsync("/api/lookups/categories", new
+        {
+            key = "clearable_default", label = "Clearable default"
+        });
+        Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
+        var category = await categoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var categoryId = category.GetProperty("id").GetString()!;
+
+        var valueResponse = await client.PostAsJsonAsync("/api/lookups", new
+        {
+            category = "clearable_default", value = "configured", label = "Configured"
+        });
+        Assert.Equal(HttpStatusCode.Created, valueResponse.StatusCode);
+        var value = await valueResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var valueId = value.GetProperty("id").GetString()!;
+
+        var setDefault = await client.PutAsJsonAsync("/api/lookups/categories", new
+        {
+            id = categoryId, defaultValueId = valueId
+        });
+        Assert.Equal(HttpStatusCode.OK, setDefault.StatusCode);
+
+        var requiredClear = await client.PutAsJsonAsync("/api/lookups/categories", new
+        {
+            id = categoryId, isRequired = true, clearDefaultValue = true
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, requiredClear.StatusCode);
+
+        var clearDefault = await client.PutAsJsonAsync("/api/lookups/categories", new
+        {
+            id = categoryId, clearDefaultValue = true
+        });
+        Assert.Equal(HttpStatusCode.OK, clearDefault.StatusCode);
+        var updated = await clearDefault.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, updated.GetProperty("defaultValueId").ValueKind);
+    }
 }

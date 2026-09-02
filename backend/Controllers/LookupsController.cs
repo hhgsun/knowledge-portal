@@ -107,7 +107,13 @@ public class LookupsController(AppDbContext db) : ControllerBase
                 return BadRequest(new { error = "ragBehavior must be none or filter" });
             category.RagBehavior = behavior;
         }
-        if (request.DefaultValueId != null)
+        if (request.ClearDefaultValue && request.DefaultValueId != null)
+            return BadRequest(new { error = "defaultValueId and clearDefaultValue cannot be used together" });
+        if (request.ClearDefaultValue)
+        {
+            category.DefaultValueId = null;
+        }
+        else if (request.DefaultValueId != null)
         {
             var defaultValue = await db.LookupValues.FirstOrDefaultAsync(value =>
                 value.Id == request.DefaultValueId && value.Category == category.Key && value.IsActive);
@@ -115,7 +121,8 @@ public class LookupsController(AppDbContext db) : ControllerBase
                 return BadRequest(new { error = "Default value must be active and belong to the category" });
             category.DefaultValueId = defaultValue.Id;
         }
-        if (request.IsRequired == true && category.DefaultValueId == null)
+        var isRequired = request.IsRequired ?? category.IsRequired;
+        if (isRequired && category.DefaultValueId == null)
             return BadRequest(new { error = "A required category must have a default value" });
         if (request.IsRequired.HasValue) category.IsRequired = request.IsRequired.Value;
         if (request.SortOrder.HasValue) category.SortOrder = request.SortOrder.Value;

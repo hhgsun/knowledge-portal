@@ -168,7 +168,7 @@ public record CreateLookupCategoryRequest(string Key, string Label, string Cardi
     bool IsRequired = false, string RagBehavior = "filter", int? SortOrder = null);
 public record UpdateLookupCategoryRequest(string Id, string? Label = null, string? Cardinality = null,
     bool? IsRequired = null, string? DefaultValueId = null, string? RagBehavior = null,
-    int? SortOrder = null, bool? IsActive = null);
+    int? SortOrder = null, bool? IsActive = null, bool ClearDefaultValue = false);
 public record CreateLookupRequest(string Category, string Value, string Label, string? Color = null,
     string? Icon = null, int? SortOrder = null, int? AuthorityWeight = null);
 public record UpdateLookupRequest(string Id, string? Label = null, string? Color = null,
