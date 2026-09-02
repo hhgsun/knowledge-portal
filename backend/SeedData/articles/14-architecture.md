@@ -57,7 +57,7 @@ Rate limiter authentication'dan sonra çalıştığı için isteği API key kiml
 - **Vite 8:** Geliştirme/build aracı ve Azure popup callback için multi-page entry.
 - **React Router 7:** `ProtectedRoute` ve `RoleRoute` ile istemci yönlendirmesi.
 - **Tailwind CSS 4:** Utility-first stil sistemi.
-- **Milkdown Crepe 7:** ProseMirror tabanlı CommonMark/GFM editörü.
+- **Milkdown Crepe 7:** ProseMirror tabanlı CommonMark/GFM editörü. Crepe'nin dolaylı Vue runtime bağımlılığı için Vite build'inde Options API açık, production devtools ve ayrıntılı hydration mismatch raporlaması kapalı compile-time feature flag'leri tanımlıdır.
 - **MSAL.js 5:** Azure AD redirect-bridge popup ve PKCE akışı.
 - **React Context:** Auth ve tema state'i; merkezi store kütüphanesi kullanılmaz.
 - **Sonner + lucide-react:** Bildirim ve ikon altyapısı.
