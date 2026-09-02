@@ -174,7 +174,6 @@ export default function ArticlesPage() {
   const [dateFrom, setDateFrom] = useState<string>(() => searchParams.get("dateFrom") || "");
   const [dateTo, setDateTo] = useState<string>(() => searchParams.get("dateTo") || "");
   const [allTags, setAllTags] = useState<Tag[]>([]);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Load tags
   useEffect(() => {
@@ -293,18 +292,12 @@ export default function ArticlesPage() {
 
       <section className="mb-4 rounded-xl border border-zinc-200 bg-white shadow-sm shadow-zinc-950/[0.02] dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2">
-          <button
-            type="button"
-            onClick={() => setFiltersOpen(current => !current)}
-            aria-expanded={filtersOpen}
-            className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-xs font-semibold transition-colors ${filtersOpen || hasActiveFilters
-              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
-              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
-          >
+          <div className={`inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-xs font-semibold ${hasActiveFilters
+            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+            : "text-zinc-600 dark:text-zinc-300"}`}>
             <Filter size={14} /> Filtreler
             {activeFilterCount > 0 && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] leading-none text-white">{activeFilterCount}</span>}
-            <ChevronDown size={13} className={`transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
-          </button>
+          </div>
           <span className="text-xs text-zinc-400">{loading ? "Yükleniyor…" : `${total} makale`}</span>
           <div className="ml-auto flex items-center gap-2">
             {hasActiveFilters && (
@@ -328,8 +321,7 @@ export default function ArticlesPage() {
           </div>
         </div>
 
-        {filtersOpen && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/30">
+        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/30">
 
             {isApprover && (
               <MultiSelectDropdown
@@ -393,8 +385,7 @@ export default function ArticlesPage() {
               Makalelerim
             </button>
 
-          </div>
-        )}
+        </div>
 
         {/* Active filter badges */}
         {hasActiveFilters && (
