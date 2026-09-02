@@ -274,6 +274,53 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ConversationHistoryAnswersFirstPersonMcpIntegrationFollowUpFromMcpEvidence()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString()!;
+
+        (await client.PostAsJsonAsync("/api/assistant",
+            new { message = "MCP nedir?", conversationId })).EnsureSuccessStatusCode();
+        var followUp = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "nasıl entegre ederim?", conversationId });
+        followUp.EnsureSuccessStatusCode();
+        var body = await followUp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Contains("MCP hakkında", body.GetProperty("normalizedQuery").GetString());
+        Assert.DoesNotContain("yeterli bilgi bulamadım", body.GetProperty("answer").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(body.GetProperty("rag").GetProperty("sources").EnumerateArray());
+        Assert.Contains(body.GetProperty("toolCalls").EnumerateArray(), item =>
+            item.GetString() == "query_contextualization:deterministic_fallback"
+            || item.GetString() == "query_contextualization:deterministic_topic_guard");
+    }
+
+    [Fact]
+    public async Task GroundedTopicSurvivesPresentationTurnBeforeKnowledgeFollowUp()
+    {
+        await TestHelpers.AuthenticateAsAdminAsync(client);
+        var created = await client.PostAsync("/api/assistant/conversations", null);
+        var conversationId = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetString()!;
+
+        (await client.PostAsJsonAsync("/api/assistant",
+            new { message = "MCP nedir?", conversationId })).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync("/api/assistant",
+            new { message = "sırala", conversationId })).EnsureSuccessStatusCode();
+        var followUp = await client.PostAsJsonAsync("/api/assistant",
+            new { message = "nasıl entegre ederim?", conversationId });
+        followUp.EnsureSuccessStatusCode();
+        var body = await followUp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Contains("MCP hakkında", body.GetProperty("normalizedQuery").GetString());
+        Assert.DoesNotContain("sırala hakkında", body.GetProperty("normalizedQuery").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(body.GetProperty("rag").GetProperty("sources").EnumerateArray());
+    }
+
+    [Fact]
     public async Task ConversationPresentationFollowUpReusesGroundedMcpAnswerWithoutNewRetrieval()
     {
         await TestHelpers.AuthenticateAsAdminAsync(client);

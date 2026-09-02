@@ -22,7 +22,8 @@ public sealed partial class AssistantQueryContextualizer(
     PortalMetrics metrics,
     ILogger<AssistantQueryContextualizer> logger)
 {
-    public const string Version = "2026-09-01.conversation-topic-guard-v2";
+    public const string Version = "2026-09-02.grounded-conversation-topic-v4";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly JsonElement ResponseSchema = JsonDocument.Parse("""
         {
           "type": "object",
@@ -217,24 +218,46 @@ public sealed partial class AssistantQueryContextualizer(
     private static string DeterministicRewrite(string message,
         IReadOnlyList<AssistantConversationTurn> history)
     {
-        var previousUser = history.LastOrDefault(turn => turn.Role == "user")?.Content?.Trim();
-        if (string.IsNullOrWhiteSpace(previousUser)) return message;
-        previousUser = Compact(previousUser);
-        previousUser = TrailingQuestionPattern().Replace(previousUser, "").Trim(' ', '.', '?', '!', ':', ';');
-        if (previousUser.Length == 0) previousUser = history.Last(turn => turn.Role == "user").Content.Trim();
-        previousUser = previousUser[..Math.Min(previousUser.Length, 500)];
-        return $"{previousUser} hakkında: {message}";
+        var previousTopic = PreviousGroundedTopic(history);
+        if (string.IsNullOrWhiteSpace(previousTopic)) return message;
+        var originalTopic = Compact(previousTopic);
+        previousTopic = TrailingQuestionPattern().Replace(originalTopic, "")
+            .Trim(' ', '.', '?', '!', ':', ';');
+        if (previousTopic.Length == 0) previousTopic = originalTopic;
+        previousTopic = previousTopic[..Math.Min(previousTopic.Length, 500)];
+        return $"{previousTopic} hakkında: {message}";
     }
 
     private static bool RetainsPriorUserTopic(IReadOnlyList<AssistantConversationTurn> history,
         string rewritten)
     {
-        var previousUser = history.LastOrDefault(turn => turn.Role == "user")?.Content;
-        if (string.IsNullOrWhiteSpace(previousUser)) return true;
-        var topicTokens = TopicTokens(previousUser);
+        var previousTopic = PreviousGroundedTopic(history);
+        if (string.IsNullOrWhiteSpace(previousTopic)) return true;
+        var topicTokens = TopicTokens(previousTopic);
         if (topicTokens.Count == 0) return true;
         var rewrittenTokens = TopicTokens(rewritten);
         return topicTokens.Any(rewrittenTokens.Contains);
+    }
+
+    private static string? PreviousGroundedTopic(IReadOnlyList<AssistantConversationTurn> history)
+    {
+        foreach (var turn in history.Reverse())
+        {
+            if (turn.Role != "assistant" || string.IsNullOrWhiteSpace(turn.TurnStateJson)) continue;
+            try
+            {
+                var state = JsonSerializer.Deserialize<AssistantStoredTurnState>(turn.TurnStateJson, Json);
+                if (state is { Version: 1, Rag.Claims.Length: > 0 } &&
+                    !string.IsNullOrWhiteSpace(state.NormalizedQuery))
+                    return state.NormalizedQuery;
+            }
+            catch (JsonException)
+            {
+                // Legacy/corrupt optional state falls back to the latest user turn.
+            }
+        }
+
+        return history.LastOrDefault(turn => turn.Role == "user")?.Content?.Trim();
     }
 
     private static HashSet<string> TopicTokens(string value)
@@ -275,7 +298,7 @@ public sealed partial class AssistantQueryContextualizer(
     [GeneratedRegex(@"[a-z0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 100)]
     private static partial Regex WordPattern();
 
-    [GeneratedRegex(@"^(?:peki\s+)?(?:nasil\s+(?:kullan[a-z]*|calis[a-z]*|uygulan[a-z]*|kurul[a-z]*|yap[a-z]*|entegre\s+edil[a-z]*)|nerede\s+kullan[a-z]*|ne\s+ise\s+yarar|ornek(?:ler)?\s+ver|avantajlari(?:\s+nelerdir)?|dezavantajlari(?:\s+nelerdir)?|detaylari(?:\s+nelerdir)?|sirala|listele|maddele|numaralandir|ozetle|kisalt|tablo\s+(?:yap|halinde)|akis\s+semasi\s+yap)\s*[?.!]*$",
+    [GeneratedRegex(@"^(?:peki\s+)?(?:nasil\s+(?:kullan[a-z]*|calis[a-z]*|uygulan[a-z]*|kurul[a-z]*|yap[a-z]*|entegre\s+(?:et|ed)[a-z]*)|nerede\s+kullan[a-z]*|ne\s+ise\s+yarar|ornek(?:ler)?\s+ver|avantajlari(?:\s+nelerdir)?|dezavantajlari(?:\s+nelerdir)?|detaylari(?:\s+nelerdir)?|sirala|listele|maddele|numaralandir|ozetle|kisalt|tablo\s+(?:yap|halinde)|akis\s+semasi\s+yap|infografik\s+yap)\s*[?.!]*$",
         RegexOptions.None, matchTimeoutMilliseconds: 100)]
     private static partial Regex EllipticalFollowUpPattern();
 }

@@ -887,7 +887,7 @@ only three actions: `retrieve`, `transform_previous`, and `clarify`. Commands su
 `maddele`, `tablo yap`, `özetle`, `akış şeması yap`, and `infografik yap` transform the previous validated claims and
 citations without invoking retrieval or chat generation. If no prior grounded answer exists, the
 Assistant asks what should be transformed instead of searching for the literal command. Subjectless
-knowledge follow-ups such as `nasıl kullanılır?`, `nasıl çalışır?`, and `örnek ver` continue through
+knowledge follow-ups such as `nasıl kullanılır?`, `nasıl çalışır?`, `nasıl entegre ederim?`, and `örnek ver` continue through
 standalone-query contextualization. If the model rewrite omits the previous topic, a deterministic
 topic-retention guard replaces it with a query derived from the prior user question and discards the
 potentially unrelated HyDE passage. Stored conversation prose never becomes evidence; only the

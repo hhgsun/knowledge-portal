@@ -83,6 +83,22 @@ public class AssistantQueryContextualizerTests
         Assert.Equal(1, chat.CallCount);
     }
 
+    [Fact]
+    public async Task ContextualizeAsync_CarriesMcpIntoFirstPersonIntegrationFollowUp()
+    {
+        var chat = new FakeChatClient { ResponseOverride = "not-json" };
+        var service = Create(chat);
+
+        var result = await service.ContextualizeAsync("nasıl entegre ederim?",
+        [
+            new("user", "MCP nedir?"),
+            new("assistant", "MCP standart bir entegrasyon protokolüdür.")
+        ]);
+
+        Assert.Equal("deterministic_fallback", result.Strategy);
+        Assert.Equal("MCP hakkında: nasıl entegre ederim?", result.StandaloneQuery);
+    }
+
     [Theory]
     [InlineData("nasıl kullanılır?")]
     [InlineData("nasıl çalışır?")]
@@ -91,6 +107,8 @@ public class AssistantQueryContextualizerTests
     [InlineData("sırala")]
     [InlineData("tablo yap")]
     [InlineData("özetle")]
+    [InlineData("nasıl entegre ederim?")]
+    [InlineData("nasıl entegre etmeliyim?")]
     public void LooksLikeFollowUp_RecognizesEllipticalQuestions(string message)
         => Assert.True(AssistantQueryContextualizer.LooksLikeFollowUp(message));
 
