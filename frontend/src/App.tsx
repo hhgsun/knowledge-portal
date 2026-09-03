@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import { AppShell } from "./components/layout/app-shell";
 import { AppLoadingSkeleton } from "./components/ui/skeleton";
@@ -28,6 +29,44 @@ import RagEvaluationsPage from "./pages/RagEvaluationsPage";
 import AssistantPage from "./pages/AssistantPage";
 import LlmSettingsPage from "./pages/LlmSettingsPage";
 import { useCapabilities } from "./contexts/CapabilitiesContext";
+import { APP_NAME } from "./config/app";
+
+function getPageTitle(pathname: string) {
+  if (pathname === "/") return "Ana Sayfa";
+  if (pathname === "/login") return "Giriş Yap";
+  if (pathname === "/register") return "Kayıt Ol";
+  if (pathname === "/articles") return "Makaleler";
+  if (pathname === "/articles/new") return "Yeni Makale";
+  if (pathname === "/articles/import") return "Bilgi İçe Aktar";
+  if (/^\/articles\/[^/]+\/edit$/.test(pathname)) return "Makale Düzenle";
+  if (/^\/articles\/[^/]+\/versions$/.test(pathname)) return "Sürüm Geçmişi";
+  if (/^\/articles\/[^/]+$/.test(pathname)) return "Makale";
+  if (pathname === "/search") return "Doküman Ara";
+  if (pathname === "/assistant") return "Bilgi Asistanı";
+  if (pathname === "/profile") return "Profil";
+  if (pathname === "/analytics") return "Analitik";
+  if (pathname === "/tags") return "Etiketler";
+  if (pathname === "/settings/bulk-transfer") return "Veri Aktarımı";
+  if (pathname === "/admin/users") return "Kullanıcı Yönetimi";
+  if (pathname === "/admin/keys") return "API Anahtarları";
+  if (pathname === "/settings/lookups") return "Sınıflandırmalar";
+  if (pathname === "/settings/featured-links") return "Öne Çıkan Bağlantılar";
+  if (pathname === "/settings/logs") return "Sistem Günlükleri";
+  if (pathname === "/settings/search") return "Arama Tanılama";
+  if (pathname === "/settings/rag-evaluations") return "RAG Değerlendirmeleri";
+  if (pathname === "/settings/llm") return "LLM Ayarları";
+  return "Sayfa Bulunamadı";
+}
+
+function DocumentTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    document.title = `${APP_NAME} - ${getPageTitle(pathname)}`;
+  }, [pathname]);
+
+  return null;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -57,6 +96,7 @@ export default function App() {
   const { assistantEnabled } = useCapabilities();
   return (
     <BrowserRouter>
+      <DocumentTitle />
       <Routes>
         {/* Auth pages — no shell */}
         <Route path="/login" element={<AppShell />}>

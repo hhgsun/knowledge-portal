@@ -13,6 +13,7 @@ import type { Article, VoteSummary, ArticleCommentItem, RelatedArticle } from ".
 import AttachmentList from "../components/attachments/attachment-list";
 import { AuthenticatedImage } from "../components/attachments/authenticated-image";
 import { useLookups } from "../hooks/useLookups";
+import { APP_NAME } from "../config/app";
 
 export default function ArticleViewPage() {
   const { categories, lookups } = useLookups();
@@ -74,6 +75,12 @@ export default function ArticleViewPage() {
         .catch(() => setLoading(false));
     }
   }, [params.slug, fetchWithAuth, loadVotes, loadComments, loadRelated]);
+
+  useEffect(() => {
+    if (article) {
+      document.title = `${APP_NAME} - ${article.title}`;
+    }
+  }, [article]);
 
   const handleVote = async (isHelpful: boolean) => {
     if (!article) return;

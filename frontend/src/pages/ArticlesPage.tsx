@@ -12,6 +12,7 @@ import { LookupValueSelector } from "../components/lookup-value-selector";
 import { ArticleStatusSelector, ARTICLE_STATUS_OPTIONS } from "../components/article-status-selector";
 import { DropdownSelector } from "../components/ui/dropdown-selector";
 import { getColorClasses, getIconComponent } from "../lib/lookup-utils";
+import { APP_NAME } from "../config/app";
 import type { ArticleListItem, Tag } from "../types/api";
 
 const LIMIT = 20;
@@ -197,6 +198,20 @@ export default function ArticlesPage() {
     + Number(Boolean(dateFrom))
     + Number(Boolean(dateTo))
     + Number(mineFilter);
+
+  useEffect(() => {
+    const selectedFilterLabels = [
+      ...statusFilter.map(status => STATUS_OPTIONS.find(option => option.value === status)?.label ?? status),
+      ...Object.entries(facetFilters)
+      .flatMap(([category, values]) => values.map(value =>
+        lookups.find(lookup => lookup.category === category && lookup.value === value)?.label))
+      .filter((label): label is string => Boolean(label)),
+      ...tagFilter.map(tag => allTags.find(item => item.slug === tag)?.name ?? tag),
+      ...(dateFrom || dateTo ? [`${dateFrom || "…"} - ${dateTo || "…"}`] : []),
+      ...(mineFilter ? ["Makalelerim"] : []),
+    ];
+    document.title = `${APP_NAME} - Makaleler${selectedFilterLabels.length ? ` - ${selectedFilterLabels.join(", ")}` : ""}`;
+  }, [statusFilter, facetFilters, lookups, tagFilter, allTags, dateFrom, dateTo, mineFilter]);
 
   const clearAllFilters = () => {
     setPage(1);
