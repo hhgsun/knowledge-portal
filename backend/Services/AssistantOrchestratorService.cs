@@ -153,7 +153,7 @@ public sealed class AssistantOrchestratorService(
             var ragDto = ToDto(result.Rag);
             progress?.Invoke(new("presentation", "Doğrulanmış yanıt sunuma hazırlanıyor."));
             var presentedResult = presentationService.Present(result.Rag.Answer, ragDto,
-                turnPlan.Presentation);
+                result.Rag.ResearchPlan?.Presentation ?? turnPlan.Presentation);
             try
             {
                 await answerCache.StoreAsync(cacheQuestion, principal,
@@ -183,8 +183,8 @@ public sealed class AssistantOrchestratorService(
                 Warnings = warnings.Distinct().ToArray(),
                 Model = effectiveModel,
                 AnswerProfile = result.Rag.AnswerProfile,
-                Intent = turnPlan.Intent,
-                Presentation = turnPlan.Presentation,
+                Intent = result.Rag.ResearchPlan?.Task ?? turnPlan.Intent,
+                Presentation = result.Rag.ResearchPlan?.Presentation ?? turnPlan.Presentation,
                 ContentBlocks = presentedResult.Blocks,
                 RetrievalStrategy = request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline,
                 TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,

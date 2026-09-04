@@ -40,6 +40,31 @@ public class RagQueryUnderstandingTests
     }
 
     [Fact]
+    public void AgenticPlanner_ParseResearchPlan_ValidatesTaskAndScopeCandidates()
+    {
+        var plan = AgenticRetrievalPlanner.ParseResearchPlan("""
+            {"task":"compare","presentation":"comparison_table","queries":["API key yetkileri","roller"],"scopeCandidates":["Finagoport","#yasak","https://example.test"],"requiresComprehensiveResearch":true}
+            """, "API key ile rolleri kıyasla", 4);
+
+        Assert.NotNull(plan);
+        Assert.Equal("compare", plan.Task);
+        Assert.Equal("comparison_table", plan.Presentation);
+        Assert.True(plan.RequiresComprehensiveResearch);
+        Assert.Equal(["API key ile rolleri kıyasla", "API key yetkileri", "roller"], plan.Queries);
+        Assert.Equal(["Finagoport"], plan.ScopeCandidates);
+    }
+
+    [Fact]
+    public void AgenticPlanner_ParseResearchPlan_RejectsUnknownTask()
+    {
+        var plan = AgenticRetrievalPlanner.ParseResearchPlan("""
+            {"task":"browse_database","presentation":"auto","queries":["VPN"],"scopeCandidates":[],"requiresComprehensiveResearch":false}
+            """, "VPN nedir?", 3);
+
+        Assert.Null(plan);
+    }
+
+    [Fact]
     public async Task Understand_ExpandsAcronymExtractsFiltersAndDecomposesCompoundQuestion()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

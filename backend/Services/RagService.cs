@@ -226,7 +226,7 @@ public partial class RagService(
         List<RagEvidence> Evidence, double CitationCoverage, string GroundingStatus,
         double ClaimSupportCoverage, bool InsufficientContext, bool PartialResult,
         RagConflictAssessment ConflictAssessment, List<string> Warnings, RagTokenUsage TokenUsage,
-        string AnswerProfile = "balanced");
+        string AnswerProfile = "balanced", AssistantResearchPlan? ResearchPlan = null);
     public record RagTokenUsage(long InputTokens, long OutputTokens, long TotalTokens, bool Estimated)
     {
         public static readonly RagTokenUsage None = new(0, 0, 0, false);
@@ -236,7 +236,8 @@ public partial class RagService(
     private record ArticleMeta(string Id, string Title, string Slug, RagSourceGovernance Governance);
     private sealed record PreparedRag(RagQueryPlan Plan, List<RagRetrievalChunk> Retrieved,
         List<VectorChunkResult> AuthorizedChunks, RagExpansionResult Expansion,
-        Dictionary<string, ArticleMeta> Articles, bool AnyIndexed);
+        Dictionary<string, ArticleMeta> Articles, bool AnyIndexed, bool Broad,
+        AssistantResearchPlan? ResearchPlan = null);
     public sealed record RagDebugCandidate(int Rank, string ArticleId, string Title, string? ChunkId,
         int ChunkIndex, string SourceType, string? SourceName, string? SourceLocation,
         double Score, string MatchType, string Passage);
@@ -254,7 +255,8 @@ public partial class RagService(
         string? answerProfile = null, string? originalRequest = null,
         string? answerIntent = null, string? presentation = null,
         Action<AssistantProgress>? progress = null,
-        string retrievalStrategy = AssistantRetrievalStrategies.Baseline)
+        string retrievalStrategy = AssistantRetrievalStrategies.Baseline, string? fallbackTask = null,
+        string? fallbackPresentation = null)
     {
         var profile = RagAnswerProfiles.Resolve(question, answerProfile, _defaultAnswerProfile);
         if (string.IsNullOrWhiteSpace(answerProfile) && IsBroadQuery(question))
@@ -349,7 +351,10 @@ public partial class RagService(
         Action<AssistantProgress>? progress, string retrievalStrategy)
     {
         var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument, progress,
-            retrievalStrategy);
+            retrievalStrategy, answerIntent, presentation);
+        broad = prepared.Broad;
+        answerIntent = prepared.ResearchPlan?.Task ?? answerIntent;
+        presentation = prepared.ResearchPlan?.Presentation ?? presentation;
         if (prepared.Retrieved.Count == 0)
         {
             return EmptyResult(prepared.AnyIndexed
@@ -378,7 +383,8 @@ public partial class RagService(
         return result with
         {
             TokenUsage = tokenUsage.Snapshot(),
-            AnswerProfile = profile.ToWireValue()
+            AnswerProfile = profile.ToWireValue(),
+            ResearchPlan = prepared.ResearchPlan
         };
     }
 
@@ -400,26 +406,38 @@ public partial class RagService(
 
     private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
         CancellationToken ct, string? hypotheticalDocument, Action<AssistantProgress>? progress = null,
-        string retrievalStrategy = AssistantRetrievalStrategies.Baseline)
+        string retrievalStrategy = AssistantRetrievalStrategies.Baseline, string? fallbackTask = null,
+        string? fallbackPresentation = null)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct,
             hypotheticalDocument);
+        AssistantResearchPlan? researchPlan = null;
         if (retrievalStrategy == AssistantRetrievalStrategies.Agentic && agenticPlanner != null)
         {
             progress?.Invoke(new("planning", "Kanıt toplama planı hazırlanıyor."));
-            plan = plan with { Queries = await agenticPlanner.PlanAsync(question, plan.Queries, ct) };
+            researchPlan = await agenticPlanner.PlanResearchAsync(question, plan.Queries,
+                fallbackTask ?? AssistantResearchTasks.Answer,
+                fallbackPresentation ?? AssistantPresentationModes.Auto, broad, ct);
+            var discovery = await scope.ServiceProvider.GetRequiredService<ResearchScopeResolver>()
+                .ResolveAsync(researchPlan.ScopeCandidates, ct);
+            plan = plan with
+            {
+                Queries = researchPlan.Queries,
+                EffectiveFilter = MergeDiscoveredScope(plan.EffectiveFilter, discovery)
+            };
         }
+        var effectiveBroad = broad || researchPlan?.RequiresComprehensiveResearch == true;
         progress?.Invoke(new("retrieval", "İlgili kaynaklar getiriliyor."));
         var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
-            token => retriever.RetrieveAsync(plan, broad ? _broadCandidateLimit : _candidateLimit,
+            token => retriever.RetrieveAsync(plan, effectiveBroad ? _broadCandidateLimit : _candidateLimit,
                 _ragMinScore, _maxChunksPerArticle, plan.EffectiveFilter, token), ct);
         var chunks = retrieved.Select(x => x.Chunk with { Score = x.Score }).ToList();
-        metrics.RagCandidates.Record(chunks.Count, Tags("mode", broad ? "broad" : "narrow"));
+        metrics.RagCandidates.Record(chunks.Count, Tags("mode", effectiveBroad ? "broad" : "narrow"));
         var anyIndexed = chunks.Count > 0 || await db.ArticleEmbeddings.AnyAsync(ct);
         if (chunks.Count == 0)
-            return new(plan, retrieved, [], new([], 0, []), [], anyIndexed);
+            return new(plan, retrieved, [], new([], 0, []), [], anyIndexed, effectiveBroad, researchPlan);
 
         var articleIds = chunks.Select(c => c.ArticleId).Distinct().ToList();
         progress?.Invoke(new("evidence", "Kaynaklar yetki ve güncellik açısından değerlendiriliyor."));
@@ -438,7 +456,21 @@ public partial class RagService(
         var authorized = chunks.Where(c => articles.ContainsKey(c.ArticleId)).ToList();
         var expansion = await contextExpansion.ExpandAsync(db, authorized,
             articles.Keys.ToHashSet(StringComparer.Ordinal), ct);
-        return new(plan, retrieved, authorized, expansion, articles, anyIndexed);
+        return new(plan, retrieved, authorized, expansion, articles, anyIndexed, effectiveBroad, researchPlan);
+    }
+
+    private static ArticleFilter MergeDiscoveredScope(ArticleFilter? existing,
+        ResearchScopeResolution discovery)
+    {
+        var tags = (existing?.TagSlugs ?? []).Concat(discovery.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var facets = (existing?.Facets ?? new Dictionary<string, string[]>())
+            .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+        foreach (var (category, values) in discovery.Facets)
+            if (!facets.ContainsKey(category)) facets[category] = values;
+        return new(existing?.OwnerIds, existing?.ContentTypes, existing?.ApiKeyId,
+            existing?.ArticleIds, tags.Length == 0 ? null : tags,
+            facets.Count == 0 ? null : facets);
     }
 
     /// <summary>Fast path: pack the top chunks (a few source articles, multiple chunks each) into
