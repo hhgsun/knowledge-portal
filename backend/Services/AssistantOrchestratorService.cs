@@ -20,7 +20,7 @@ public sealed class AssistantOrchestratorService(
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken cancellationToken = default,
         string? hypotheticalDocument = null, string contextualizationStrategy = "none",
-        AssistantTurnPlan? turnPlan = null)
+        AssistantTurnPlan? turnPlan = null, Action<AssistantProgress>? progress = null)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
             return (null, new ServiceError(400, "Message is required."));
@@ -86,6 +86,7 @@ public sealed class AssistantOrchestratorService(
             CachedAssistantAnswer? cached = null;
             try
             {
+                progress?.Invoke(new("cache", "Önceki doğrulanmış yanıtlar kontrol ediliyor."));
                 cached = await answerCache.TryGetAsync(cacheQuestion, principal, budget.Token);
             }
             catch (OperationCanceledException) { throw; }
@@ -118,6 +119,7 @@ public sealed class AssistantOrchestratorService(
                 }, null);
             }
 
+            progress?.Invoke(new("retrieval", "İlgili kaynaklar getiriliyor."));
             var execution = await knowledgeAnswers.ExecuteAsync(new KnowledgeAnswerRequest(
                 normalizedQuestion,
                 request.Tags,
@@ -128,7 +130,7 @@ public sealed class AssistantOrchestratorService(
                 request.AnswerProfile,
                 turnPlan.OriginalMessage,
                 turnPlan.Intent,
-                turnPlan.Presentation), principal, budget.Token);
+                turnPlan.Presentation), principal, budget.Token, progress);
             if (execution.Error != null) return (null, execution.Error);
 
             var result = execution.Result!;
@@ -142,6 +144,7 @@ public sealed class AssistantOrchestratorService(
             }
 
             var ragDto = ToDto(result.Rag);
+            progress?.Invoke(new("presentation", "Doğrulanmış yanıt sunuma hazırlanıyor."));
             var presentedResult = presentationService.Present(result.Rag.Answer, ragDto,
                 turnPlan.Presentation);
             try

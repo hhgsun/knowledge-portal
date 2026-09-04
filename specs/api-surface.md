@@ -876,7 +876,7 @@ Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, 
 ### `POST /api/assistant/stream`
 **Auth/policy/rate limit**: Same as `POST /api/assistant`.
 
-Returns `text/event-stream` events: `status`, `metadata`, zero or more `token`, then `complete`; validation failures use an SSE `error` event. Grounding remains fail-closed: raw model tokens are buffered and validated, then only the verified final answer is emitted as token chunks. `X-Accel-Buffering: no` and `no-transform` are set to prevent reverse-proxy buffering.
+Returns `text/event-stream` events: ordered `status` events (validation, conversation/model preparation, cache lookup, scope resolution, retrieval, evidence checks, generation, grounding, and presentation as applicable), `metadata`, zero or more `token`, then `complete`; validation failures use an SSE `error` event. Each status payload contains stable `stage` and localized `message` fields. Grounding remains fail-closed: raw model tokens are buffered and validated, then only the verified final answer is emitted as token chunks. `X-Accel-Buffering: no` and `no-transform` are set to prevent reverse-proxy buffering.
 
 ### Assistant conversations
 

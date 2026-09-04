@@ -26,6 +26,11 @@ interface SessionExchange {
   response: AssistantResponse;
 }
 
+interface StreamProgress {
+  stage: string;
+  message: string;
+}
+
 export default function AssistantPage() {
   const { fetchWithAuth } = useApi();
   const { capabilities } = useCapabilities();
@@ -34,7 +39,7 @@ export default function AssistantPage() {
   const [loading, setLoading] = useState(false);
   const [exchanges, setExchanges] = useState<SessionExchange[]>([]);
   const [streamedText, setStreamedText] = useState("");
-  const [streamStage, setStreamStage] = useState("");
+  const [streamProgress, setStreamProgress] = useState<StreamProgress[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [modelSettings, setModelSettings] = useState<LlmModelSettings>();
   const [selectedModel, setSelectedModel] = useState("");
@@ -109,7 +114,8 @@ export default function AssistantPage() {
     const text = rawText.trim();
     if (!text || loading) return;
     const controller = new AbortController(); abortRef.current = controller;
-    setLoading(true); setPendingQuestion(text); setMessage(""); setStreamedText(""); setStreamStage("Yetkili bilgi kapsamı denetleniyor");
+    setLoading(true); setPendingQuestion(text); setMessage(""); setStreamedText("");
+    setStreamProgress([{ stage: "validation", message: "Soru ve erişim kapsamı denetleniyor." }]);
     try {
       let activeConversation = conversationIdRef.current;
       if (capabilities?.conversationHistoryEnabled && !activeConversation) {
@@ -139,7 +145,12 @@ export default function AssistantPage() {
             const dataLine = lines.find(line => line.startsWith("data: "))?.slice(6);
             if (!event || !dataLine) continue;
             const data = JSON.parse(dataLine);
-            if (event === "status") setStreamStage(data.message);
+            if (event === "status") setStreamProgress(current => {
+              const update = data as StreamProgress;
+              const existing = current.findIndex(item => item.stage === update.stage);
+              if (existing < 0) return [...current, update];
+              return current.map((item, index) => index === existing ? update : item);
+            });
             if (event === "token") setStreamedText(current => current + data.text);
             if (event === "error") throw new Error(data.error);
             if (event === "complete") completedResponse = data as AssistantResponse;
@@ -158,7 +169,7 @@ export default function AssistantPage() {
       else { setMessage(current => current || text); toast.error(error instanceof Error ? error.message : "Asistan isteği tamamlanamadı."); }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setLoading(false); setPendingQuestion(null); setStreamedText(""); setStreamStage("");
+      setLoading(false); setPendingQuestion(null); setStreamedText(""); setStreamProgress([]);
     }
   };
 
@@ -179,7 +190,7 @@ export default function AssistantPage() {
               <AssistantResult response={exchange.response} feedbackEnabled={capabilities?.feedbackEnabled ?? true} />
             </Fragment>)}
             {pendingQuestion && <UserMessage content={pendingQuestion} />}
-            {loading && <StreamingAnswer text={streamedText} stage={streamStage} />}
+            {loading && <StreamingAnswer text={streamedText} progress={streamProgress} />}
             <div ref={endRef} />
           </div>}
       </div>
@@ -246,8 +257,34 @@ function WelcomeState({ onQuestion }: { onQuestion: (question: string) => void }
 
 function UserMessage({ content }: { content: string }) { return <div className="flex justify-end"><div className="max-w-[88%] rounded-2xl rounded-br-md bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900 sm:max-w-[76%]">{content}</div></div>; }
 function AssistantAvatar() { return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><Sparkles size={15} /></span>; }
-function StreamingAnswer({ text, stage }: { text: string; stage: string }) {
-  return <div className="flex items-start gap-3"><AssistantAvatar /><div className="min-w-0 flex-1 pt-1"><div className="mb-3 flex items-center gap-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı <span className="font-normal text-blue-600">çalışıyor</span></div>{text ? <div className="prose prose-sm max-w-none text-zinc-700 dark:prose-invert dark:text-zinc-300"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown><span className="ml-1 inline-block h-4 w-1 animate-pulse rounded-full bg-blue-500 align-middle" /></div> : <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/20"><div className="flex items-center gap-2 text-xs font-medium text-blue-700 dark:text-blue-300"><Loader2 size={14} className="animate-spin" />{stage || "Kaynaklar değerlendiriliyor"}</div><div className="mt-2 h-1 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-950"><div className="h-full w-1/3 animate-pulse rounded-full bg-blue-500" /></div></div>}</div></div>;
+function StreamingAnswer({ text, progress }: { text: string; progress: StreamProgress[] }) {
+  const active = progress.at(-1);
+  return <div className="flex items-start gap-3">
+    <AssistantAvatar />
+    <div className="min-w-0 flex-1 pt-1">
+      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200">Bilgi Asistanı <span className="font-normal text-blue-600">çalışıyor</span></div>
+      {text
+        ? <div className="prose prose-sm max-w-none text-zinc-700 dark:prose-invert dark:text-zinc-300">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          <span className="ml-1 inline-block h-4 w-1 animate-pulse rounded-full bg-blue-500 align-middle" />
+        </div>
+        : <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/20">
+          <div className="flex items-center gap-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+            <Loader2 size={14} className="animate-spin" />
+            {active?.message || "Kaynaklar değerlendiriliyor"}
+          </div>
+          {/* <div className="mt-2 h-1 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-950">
+            <div className="h-full w-1/3 animate-[assistant-progress_1.4s_ease-in-out_infinite] rounded-full bg-blue-500" />
+          </div> */}
+          {progress.length > 1 && <ol className="mt-3 space-y-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+            {progress.map((item, index) => <li key={item.stage} className="flex items-center gap-2"><span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-full", index === progress.length - 1 ? "bg-blue-600 text-white" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300")}>
+              {index === progress.length - 1 ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}</span>
+              <span className={index === progress.length - 1 ? "font-medium text-blue-700 dark:text-blue-300" : ""}>{item.message}</span>
+            </li>)}
+          </ol>}
+        </div>}
+    </div>
+  </div>;
 }
 
 type ComposerProps = { inputRef: React.RefObject<HTMLTextAreaElement | null>; message: string; loading: boolean; maxLength: number; onChange: (value: string) => void; onSubmit: () => void; onCancel: () => void };

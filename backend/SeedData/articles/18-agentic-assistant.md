@@ -54,7 +54,7 @@ Yanıt `normalizedQuery`, doğrulanmış `answer`, `intent`, `presentation`, all
 
 Model serbest bir tablo, HTML, SVG veya görselleştirme programı üretmez. Provider'dan yalnız kaynak kimliklerine bağlı atomik claim'ler alınır. Backend aynı doğrulanmış claim kümesinden geriye uyumlu Markdown `answer` ile `markdown`, `paragraph`, `bullet_list`, `ordered_list`, `table`, `process_flow` veya fact-card `infographic` typed bloklarını oluşturur. Frontend yalnız bu blok sözlüğünü render eder. Böylece tablo, infografik ve süreç şeması gibi zengin anlatımlar kullanılabilir, fakat sunum katmanı yeni olgu icat edemez veya çalıştırılabilir içerik taşıyamaz.
 
-`POST /api/assistant/stream` gerçek SSE kullanır. Doğrulanmamış model tokenları istemciye açılmaz; retrieval ve grounding durum olaylarından sonra yalnız doğrulanmış sonuç `token` ve `complete` olaylarıyla gönderilir.
+`POST /api/assistant/stream` gerçek SSE kullanır. İstemci; doğrulama, model/konuşma hazırlığı, önbellek, kapsam çözümleme, retrieval, kanıt değerlendirmesi, üretim, grounding ve sunum aşamalarını sıralı `status` olaylarıyla izler. Her olay kalıcı bir `stage` kimliği ve kullanıcıya gösterilecek `message` taşır. Doğrulanmamış model tokenları istemciye açılmaz; yalnız doğrulanmış sonuç `token` ve `complete` olaylarıyla gönderilir.
 
 Arama ekranındaki “Bilgi Asistanına sor” eylemi sorguyu metni korunarak `/assistant?q=...` adresine taşır. Bu bir uyumluluk yönlendirmesi değildir; kullanıcı tarafından seçilen iki ayrı ürün akışı arasındaki açık geçiştir.
 

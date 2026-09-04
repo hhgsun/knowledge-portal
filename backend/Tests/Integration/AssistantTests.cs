@@ -399,6 +399,8 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
         Assert.Contains("event: status", body);
+        Assert.Contains("\"stage\":\"validation\"", body);
+        Assert.Contains("\"stage\":\"grounding\"", body);
         Assert.Contains("event: complete", body);
         Assert.Contains("knowledge_rag", body);
         Assert.Contains("tokenUsage", body);

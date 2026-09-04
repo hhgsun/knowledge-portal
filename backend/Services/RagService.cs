@@ -251,7 +251,8 @@ public partial class RagService(
     public async Task<RagResult> AskAsync(string question, ArticleFilter? filter = null,
         CancellationToken ct = default, string? hypotheticalDocument = null,
         string? answerProfile = null, string? originalRequest = null,
-        string? answerIntent = null, string? presentation = null)
+        string? answerIntent = null, string? presentation = null,
+        Action<AssistantProgress>? progress = null)
     {
         var profile = RagAnswerProfiles.Resolve(question, answerProfile, _defaultAnswerProfile);
         if (string.IsNullOrWhiteSpace(answerProfile) && IsBroadQuery(question))
@@ -272,8 +273,9 @@ public partial class RagService(
             RagResult result;
             try
             {
+                progress?.Invoke(new("understanding", "Soru ve kaynak filtreleri anlaşılıyor."));
                 result = await AskCoreAsync(question, filter, broad, profile, budget.Token,
-                    hypotheticalDocument, originalRequest, answerIntent, presentation);
+                    hypotheticalDocument, originalRequest, answerIntent, presentation, progress);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested && budget.IsCancellationRequested)
             {
@@ -340,9 +342,10 @@ public partial class RagService(
 
     private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad,
         RagAnswerProfile profile, CancellationToken ct, string? hypotheticalDocument,
-        string? originalRequest, string? answerIntent, string? presentation)
+        string? originalRequest, string? answerIntent, string? presentation,
+        Action<AssistantProgress>? progress)
     {
-        var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument);
+        var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument, progress);
         if (prepared.Retrieved.Count == 0)
         {
             return EmptyResult(prepared.AnyIndexed
@@ -358,11 +361,14 @@ public partial class RagService(
                 answerProfile: profile.ToWireValue());
 
         var tokenUsage = new TokenUsageAccumulator();
+        progress?.Invoke(new("generation", broad
+            ? "Kapsamlı yanıt için kaynaklar analiz ediliyor."
+            : "Yanıt kaynaklardan oluşturuluyor."));
         var result = broad
             ? await AnswerBroadAsync(question, usableChunks, prepared.Articles, tokenUsage, profile, ct,
-                originalRequest, answerIntent, presentation)
+                originalRequest, answerIntent, presentation, progress)
             : await AnswerNarrowAsync(question, prepared.Plan, usableChunks, prepared.Articles,
-                tokenUsage, profile, ct, originalRequest, answerIntent, presentation);
+                tokenUsage, profile, ct, originalRequest, answerIntent, presentation, progress);
         logger.LogInformation("RAG answer generated queryHash={QueryHash} queryLength={QueryLength} mode={Mode} sources={SourceCount} partial={Partial}",
             QueryFingerprint(question), question.Length, broad ? "broad" : "narrow", result.Sources.Count, result.PartialResult);
         return result with
@@ -389,12 +395,13 @@ public partial class RagService(
     }
 
     private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
-        CancellationToken ct, string? hypotheticalDocument)
+        CancellationToken ct, string? hypotheticalDocument, Action<AssistantProgress>? progress = null)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct,
             hypotheticalDocument);
+        progress?.Invoke(new("retrieval", "İlgili kaynaklar getiriliyor."));
         var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
             token => retriever.RetrieveAsync(plan, broad ? _broadCandidateLimit : _candidateLimit,
                 _ragMinScore, _maxChunksPerArticle, plan.EffectiveFilter, token), ct);
@@ -405,6 +412,7 @@ public partial class RagService(
             return new(plan, retrieved, [], new([], 0, []), [], anyIndexed);
 
         var articleIds = chunks.Select(c => c.ArticleId).Distinct().ToList();
+        progress?.Invoke(new("evidence", "Kaynaklar yetki ve güncellik açısından değerlendiriliyor."));
         var allowed = await ArticleService.ApplyFilter(
                 db.Articles.Where(a => articleIds.Contains(a.Id) && a.Status == "published"), plan.EffectiveFilter)
             .ToListAsync(ct);
@@ -429,7 +437,7 @@ public partial class RagService(
         List<VectorChunkResult> chunks,
         Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
         RagAnswerProfile profile, CancellationToken ct, string? originalRequest,
-        string? answerIntent, string? presentation)
+        string? answerIntent, string? presentation, Action<AssistantProgress>? progress)
     {
         var evidenceIds = EvidenceIds(chunks);
         var adaptiveSourceLimit = AdaptiveSourceLimit(question, plan, chunks);
@@ -449,6 +457,7 @@ public partial class RagService(
             WithAnswerProfile(SystemPrompt, profile),
             BuildContextMessage(question, selection.SourceBlocks, originalRequest, answerIntent,
                 presentation), tokenUsage, ct);
+        progress?.Invoke(new("grounding", "Yanıt kanıtlarla doğrulanıyor."));
         return await BuildValidatedResultAsync(question, raw, selected, sourceScores, articles, evidenceIds,
             BuildContextMessage(question, selection.SourceBlocks, originalRequest, answerIntent,
                 presentation), tokenUsage, profile, ct);
@@ -459,7 +468,7 @@ public partial class RagService(
     private async Task<RagResult> AnswerBroadAsync(string question, List<VectorChunkResult> chunks,
         Dictionary<string, ArticleMeta> articles, TokenUsageAccumulator tokenUsage,
         RagAnswerProfile profile, CancellationToken ct, string? originalRequest,
-        string? answerIntent, string? presentation)
+        string? answerIntent, string? presentation, Action<AssistantProgress>? progress)
     {
         var sourceScores = new Dictionary<string, double>();
         var evidenceIds = EvidenceIds(chunks);
@@ -519,7 +528,10 @@ public partial class RagService(
         var reduceFailed = false;
         if (partials.Count > 1 && !ct.IsCancellationRequested)
         {
-            try { finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds,
+            try
+            {
+                progress?.Invoke(new("generation", "Kaynak bulguları tek yanıtta birleştiriliyor."));
+                finalAnswer = await CompleteAsync("reduce", resilience.ReduceTimeoutSeconds,
                 WithAnswerProfile(ReduceSystemPrompt, profile),
                 BuildReduceMessage(question, partials, originalRequest, answerIntent, presentation),
                 tokenUsage, ct); }
@@ -533,6 +545,7 @@ public partial class RagService(
         var repairSelection = contextBuilder.Build(successfulChunks,
             articles.ToDictionary(x => x.Key, x => x.Value.Title), evidenceIds,
             _maxContextTokens, int.MaxValue, Governance(articles));
+        progress?.Invoke(new("grounding", "Yanıt kanıtlarla doğrulanıyor."));
         return await BuildValidatedResultAsync(question, finalAnswer, successfulChunks, sourceScores, articles,
             evidenceIds, BuildContextMessage(question, repairSelection.SourceBlocks, originalRequest,
                 answerIntent, presentation), tokenUsage,

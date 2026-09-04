@@ -3,6 +3,8 @@ using KnowledgePortal.Api.Models;
 
 namespace KnowledgePortal.Api.Services;
 
+public sealed record AssistantProgress(string Stage, string Message);
+
 public sealed class AssistantRequestService(
     AssistantOrchestratorService orchestrator,
     AssistantInteractionService interactions,
@@ -12,19 +14,23 @@ public sealed class AssistantRequestService(
     ChatModelContext modelContext)
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
-        AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct)
+        AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct,
+        Action<AssistantProgress>? progress = null)
     {
+        progress?.Invoke(new("validation", "Soru ve erişim kapsamı denetleniyor."));
         var validationError = inputValidation.ValidateQuestion(request.Message, "Message")
                               ?? inputValidation.ValidateAnswerProfile(request.AnswerProfile)
                               ?? inputValidation.ValidateScope(request.Tags, request.Authors,
                                   request.ContentTypes, request.Facets);
         if (validationError != null) return (null, validationError);
+        progress?.Invoke(new("model", "Yanıt modeli hazırlanıyor."));
         var effectiveModel = string.IsNullOrWhiteSpace(request.Model)
             ? await modelSelection.GetDefaultModelAsync(ct)
             : await modelSelection.ResolveAsync(request.Model, ct);
         if (effectiveModel == null)
             return (null, new ServiceError(400, "Model is not available from the Ollama server."));
         modelContext.Model = effectiveModel;
+        progress?.Invoke(new("conversation", "Konuşma bağlamı hazırlanıyor."));
         var conversation = await conversations.ResolveAsync(request, principal, ct);
         if (conversation.Error != null) return (null, conversation.Error);
         var effective = request with
@@ -35,9 +41,10 @@ public sealed class AssistantRequestService(
         var execution = await orchestrator.ExecuteAsync(effective, principal, ct,
             conversation.Context.HypotheticalDocument,
             conversation.Context.ContextualizationStrategy,
-            conversation.Context.TurnPlan);
+            conversation.Context.TurnPlan, progress);
         if (execution.Error != null) return execution;
         var response = execution.Response! with { ConversationId = conversation.Context.ConversationId };
+        progress?.Invoke(new("finalizing", "Yanıt kaydediliyor ve hazırlanıyor."));
         var interactionId = await interactions.RecordAsync(effective.Message, response, principal, ct);
         response = response with { InteractionId = interactionId };
         if (conversation.Context.ConversationId != null)

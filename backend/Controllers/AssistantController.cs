@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace KnowledgePortal.Api.Controllers;
 
@@ -48,9 +49,12 @@ public sealed class AssistantController(
         {
             await WriteEventAsync("error", new { error = "Assistant is disabled.", status = 404 }); return;
         }
-        await WriteEventAsync("status", new { stage = "retrieval", message = "Yetkili kaynaklar getiriliyor." });
-        await WriteEventAsync("status", new { stage = "grounding", message = "Yanıt kanıtlarla doğrulanıyor." });
-        var execution = await requests.ExecuteAsync(request, User, HttpContext.RequestAborted);
+        var progressEvents = Channel.CreateUnbounded<AssistantProgress>();
+        var writer = WriteProgressEventsAsync(progressEvents.Reader);
+        Action<AssistantProgress> progress = update => progressEvents.Writer.TryWrite(update);
+        var execution = await requests.ExecuteAsync(request, User, HttpContext.RequestAborted, progress);
+        progressEvents.Writer.TryComplete();
+        await writer;
         if (execution.Error != null)
         {
             await WriteEventAsync("error", new { error = execution.Error.Message,
@@ -70,6 +74,12 @@ public sealed class AssistantController(
         await Response.WriteAsync($"event: {eventName}\n", HttpContext.RequestAborted);
         await Response.WriteAsync($"data: {JsonSerializer.Serialize(value, SseJson)}\n\n", HttpContext.RequestAborted);
         await Response.Body.FlushAsync(HttpContext.RequestAborted);
+    }
+
+    private async Task WriteProgressEventsAsync(ChannelReader<AssistantProgress> events)
+    {
+        await foreach (var update in events.ReadAllAsync(HttpContext.RequestAborted))
+            await WriteEventAsync("status", new { stage = update.Stage, message = update.Message });
     }
 
     private static IEnumerable<string> TokenChunks(string text, int wordsPerChunk)

@@ -53,7 +53,8 @@ public sealed class KnowledgeAnswerService(
     public async Task<(KnowledgeAnswerResult? Result, ServiceError? Error)> ExecuteAsync(
         KnowledgeAnswerRequest request,
         ClaimsPrincipal principal,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<AssistantProgress>? progress = null)
     {
         var validationError = inputValidation.ValidateQuestion(request.Question)
                               ?? inputValidation.ValidateAnswerProfile(request.AnswerProfile)
@@ -62,6 +63,7 @@ public sealed class KnowledgeAnswerService(
         if (validationError != null) return (null, validationError);
 
         var stopwatch = Stopwatch.StartNew();
+    progress?.Invoke(new("scope", "Yetkili bilgi kapsamı çözülüyor."));
         var scope = await scopeResolver.ResolveAsync(new KnowledgeQueryScopeRequest(
             request.Question,
             OnlyOwnContent: false,
@@ -88,9 +90,10 @@ public sealed class KnowledgeAnswerService(
 
         try
         {
+            progress?.Invoke(new("rag", "Kaynaklar ve kanıtlar değerlendiriliyor."));
             var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken,
                 request.HypotheticalDocument, request.AnswerProfile, request.OriginalRequest,
-                request.Intent, request.Presentation);
+                request.Intent, request.Presentation, progress);
             stopwatch.Stop();
             return (new KnowledgeAnswerResult(request.Question, rag, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString()), null);

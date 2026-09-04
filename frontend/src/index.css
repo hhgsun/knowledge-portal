@@ -1,4 +1,9 @@
 @import "tailwindcss";
+
+@keyframes assistant-progress {
+  from { transform: translateX(-125%); }
+  to { transform: translateX(425%); }
+}
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:where(.dark, .dark *));
