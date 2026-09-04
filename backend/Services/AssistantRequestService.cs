@@ -11,7 +11,8 @@ public sealed class AssistantRequestService(
     AssistantConversationService conversations,
     KnowledgeInputValidationService inputValidation,
     LlmModelSelectionService modelSelection,
-    ChatModelContext modelContext)
+    ChatModelContext modelContext,
+    IConfiguration config)
 {
     public async Task<(AssistantResponseDto? Response, ServiceError? Error)> ExecuteAsync(
         AssistantRequest request, ClaimsPrincipal principal, CancellationToken ct,
@@ -23,6 +24,14 @@ public sealed class AssistantRequestService(
                               ?? inputValidation.ValidateScope(request.Tags, request.Authors,
                                   request.ContentTypes, request.Facets);
         if (validationError != null) return (null, validationError);
+                var retrievalStrategy = string.IsNullOrWhiteSpace(request.RetrievalStrategy)
+                    ? AssistantRetrievalStrategies.Baseline
+                    : request.RetrievalStrategy.Trim().ToLowerInvariant();
+                if (!AssistantRetrievalStrategies.Allowed.Contains(retrievalStrategy, StringComparer.Ordinal))
+                    return (null, new ServiceError(400, "Retrieval strategy is invalid."));
+                if (retrievalStrategy == AssistantRetrievalStrategies.Agentic &&
+                    !config.GetValue("Assistant:AgenticRetrieval:Enabled", false))
+                    return (null, new ServiceError(400, "Agentic retrieval is not enabled."));
         progress?.Invoke(new("model", "Yanıt modeli hazırlanıyor."));
         var effectiveModel = string.IsNullOrWhiteSpace(request.Model)
             ? await modelSelection.GetDefaultModelAsync(ct)
@@ -36,7 +45,8 @@ public sealed class AssistantRequestService(
         var effective = request with
         {
             Message = conversation.Context!.EffectiveMessage,
-            Model = effectiveModel
+            Model = effectiveModel,
+            RetrievalStrategy = retrievalStrategy
         };
         var execution = await orchestrator.ExecuteAsync(effective, principal, ct,
             conversation.Context.HypotheticalDocument,

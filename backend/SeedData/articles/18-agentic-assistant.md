@@ -46,9 +46,12 @@ POST /api/assistant
   "conversationId": null,
   "tags": ["security"],
   "authors": [],
-  "contentTypes": ["policy"]
+        "contentTypes": ["policy"],
+        "retrievalStrategy": "baseline"
 }
 ```
+
+`retrievalStrategy` varsayılan olarak `baseline` değerindedir. Pilot için `Assistant:AgenticRetrieval:Enabled=true` açıldığında arayüzde `agentic` (Araştırmalı) seçeneği görünür. Bu mod, yanıt üretilmeden önce modelden en fazla dört kısa retrieval sorgusu önerisi alır. Öneriler yalnız sorgu metnidir; tag, yazar veya `+kategori:değer` kapsamını değiştiremez, SQL/URL/tool komutu içeremez ve doğrudan veriye erişemez. Sunucu özgün soruyu her zaman korur, plan bozuk veya zaman aşımındaysa baseline sorgularına geri döner ve her sorguyu aynı published-only, hibrit retrieval ve grounding kontrollerinden geçirir.
 
 Yanıt `normalizedQuery`, doğrulanmış `answer`, `intent`, `presentation`, allowlist edilmiş `contentBlocks`, `rag`, `toolCalls`, `warnings`, `interactionId`, `responseTimeMs`, `traceId`, `conversationId` ve `cacheHit` alanlarını taşır. `rag` içinde atıf yapılan `sources`, yalnız incelenen `consultedSources`, typed `claims`, provenance-bearing `evidence`, coverage değerleri, grounding durumu ve çatışma değerlendirmesi bulunur. Arama sonucu listesi dönmez; `intent` ve `presentation` yalnız cevap görevini ve görünümünü açıklar.
 
@@ -86,7 +89,7 @@ Semantic answer cache yalnız yeterli citation coverage sağlayan, partial/insuf
 
 ## Operasyon ve Yapılandırma
 
-`Assistant:Enabled=false` olduğunda Assistant endpoint'leri 404 döner; Search çalışmaya devam eder. `GET /api/capabilities` runtime enablement, grounded RAG, streaming, conversation, feedback ve semantic-cache durumunun yanında `FileStorage` kaynaklı attachment uzantı/boyut/adet sınırlarını bildirir. Frontend upload kontrolleri için endpoint'i Assistant build flag'inden bağımsız yükler; `VITE_ASSISTANT_ENABLED=false` yalnız Assistant route ve menüsünü build sırasında kaldırır.
+`Assistant:Enabled=false` olduğunda Assistant endpoint'leri 404 döner; Search çalışmaya devam eder. `Assistant:AgenticRetrieval:Enabled=false` varsayılandır; etkin olduğunda `MaxQueries` (1-4) ve `PlanningTimeoutSeconds` (1-30) planlama bütçesini sınırlar. `GET /api/capabilities` runtime enablement, grounded RAG, streaming, conversation, feedback, semantic-cache ve etkin `retrievalStrategies` listesinin yanında `FileStorage` kaynaklı attachment uzantı/boyut/adet sınırlarını bildirir. Frontend upload kontrolleri için endpoint'i Assistant build flag'inden bağımsız yükler; `VITE_ASSISTANT_ENABLED=false` yalnız Assistant route ve menüsünü build sırasında kaldırır.
 
 Search ve Assistant ayrı rate-limit politikaları kullanır. Assistant toplam süresi `Assistant:TotalTimeoutSeconds`, mesaj boyutu `Assistant:MaxMessageCharacters` ile sınırlıdır. RAG çalışma görünümü ve modelsiz debug endpoint'leri session-admin için sırasıyla `GET /api/admin/rag/observability` ve `GET /api/admin/rag/debug?q=...` adreslerindedir.
 

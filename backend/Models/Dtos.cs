@@ -56,14 +56,15 @@ public record AssistantRequest(string Message, string? ConversationId = null,
     IEnumerable<string>? Tags = null, IEnumerable<string>? Authors = null,
     IEnumerable<string>? ContentTypes = null,
     Dictionary<string, string[]>? Facets = null, string? Model = null,
-    string? AnswerProfile = null);
+    string? AnswerProfile = null, string? RetrievalStrategy = null);
 public record AssistantFeedbackRequest(string InteractionId, bool Helpful, string? Reason = null);
 public record AssistantSourceClickRequest(string InteractionId, string ArticleId);
 public record AssistantCapabilitiesDto(bool Enabled, bool GroundedRagEnabled,
     bool FeedbackEnabled, int MaxMessageCharacters, bool StreamingEnabled,
     bool ConversationHistoryEnabled, bool SemanticCacheEnabled,
     string[] AllowedAttachmentExtensions, int MaxAttachmentSizeMb,
-    int MaxAttachmentsPerArticle, string[] AnswerProfiles, string DefaultAnswerProfile);
+    int MaxAttachmentsPerArticle, string[] AnswerProfiles, string DefaultAnswerProfile,
+    string[] RetrievalStrategies, string DefaultRetrievalStrategy);
 public record AssistantSourceDto(string ArticleId, string Title, string Slug, double Score,
     int AuthorityWeight, bool Approved, string ReviewState, int ReliabilityScore, string UpdatedAt);
 public record AssistantClaimDto(string Text, string Role, string[] SourceIds);
@@ -105,7 +106,8 @@ public record AssistantResponseDto(
     string AnswerProfile = "balanced",
     string Intent = "answer",
     string Presentation = "auto",
-    AssistantContentBlockDto[]? ContentBlocks = null);
+    AssistantContentBlockDto[]? ContentBlocks = null,
+    string RetrievalStrategy = "baseline");
 
 // Articles — single summary shape shared by article lists, search results (REST) and MCP tools.
 // Score/MatchType only appear on scored (semantic/hybrid) results — hidden when null to keep the wire format per flow.

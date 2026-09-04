@@ -9,6 +9,37 @@ namespace KnowledgePortal.Api.Tests.Unit;
 public class RagQueryUnderstandingTests
 {
     [Fact]
+    public void AgenticPlanner_Parse_RejectsScopeAndCommandSyntax()
+    {
+        var plan = AgenticRetrievalPlanner.Parse("""{"queries":["API key permissions","#secret roles","SELECT * FROM users","https://example.test"]}""",
+            "API key ve rol karşılaştırması", 3);
+
+        Assert.Equal(["API key ve rol karşılaştırması", "API key permissions"], plan);
+    }
+
+    [Fact]
+    public void AgenticPlanner_Parse_HandlesMarkdownCodeFences()
+    {
+        var raw = """
+            ```json
+            {
+              "queries": ["VPN kurulumu", "OpenVPN ayarları"]
+            }
+            ```
+            """;
+        var plan = AgenticRetrievalPlanner.Parse(raw, "VPN nasıl kurulur?", 3);
+        Assert.Equal(["VPN nasıl kurulur?", "VPN kurulumu", "OpenVPN ayarları"], plan);
+    }
+
+    [Fact]
+    public void AgenticPlanner_Parse_AllowsTechnicalTermsWithSelect()
+    {
+        var raw = """{"queries":["css selector rehberi"]}""";
+        var plan = AgenticRetrievalPlanner.Parse(raw, "Frontend stilleri", 3);
+        Assert.Equal(["Frontend stilleri", "css selector rehberi"], plan);
+    }
+
+    [Fact]
     public async Task Understand_ExpandsAcronymExtractsFiltersAndDecomposesCompoundQuestion()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

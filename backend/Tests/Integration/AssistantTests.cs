@@ -89,6 +89,8 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("balanced", json.GetProperty("defaultAnswerProfile").GetString());
         Assert.Equal(["compact", "balanced", "comprehensive"], json.GetProperty("answerProfiles")
             .EnumerateArray().Select(value => value.GetString()!).ToArray());
+        Assert.Equal(["baseline", "agentic"], json.GetProperty("retrievalStrategies")
+            .EnumerateArray().Select(value => value.GetString()!).ToArray());
         Assert.False(json.TryGetProperty("supportedModes", out _));
         Assert.False(json.TryGetProperty("classifierEnabled", out _));
     }
@@ -233,6 +235,26 @@ public sealed class AssistantTests : IClassFixture<TestWebApplicationFactory>
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("comprehensive", json.GetProperty("answerProfile").GetString());
+    }
+
+
+    [Fact]
+    public async Task AssistantExecutesGroundedResponseWithAgenticRetrievalWhenEnabled()
+    {
+        using var enabledFactory = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Assistant:AgenticRetrieval:Enabled", "true"));
+        using var enabledClient = enabledFactory.CreateClient();
+        await TestHelpers.AuthenticateAsAdminAsync(enabledClient);
+
+        var response = await enabledClient.PostAsJsonAsync("/api/assistant",
+            new { message = "VPN politikası nedir?", retrievalStrategy = "agentic" });
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("agentic", body.GetProperty("retrievalStrategy").GetString());
+        Assert.Contains(body.GetProperty("toolCalls").EnumerateArray(), item =>
+            item.GetString() == "knowledge_rag_agentic");
+        Assert.False(body.TryGetProperty("results", out _));
     }
 
     [Fact]

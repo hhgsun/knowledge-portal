@@ -262,6 +262,7 @@ export interface AssistantEvidence {
 
 // ─── Grounded Knowledge Assistant ───────────────────────────
 export type AssistantAnswerProfile = "compact" | "balanced" | "comprehensive";
+export type AssistantRetrievalStrategy = "baseline" | "agentic";
 
 export interface AssistantCapabilities {
   enabled: boolean;
@@ -276,6 +277,8 @@ export interface AssistantCapabilities {
   maxAttachmentsPerArticle: number;
   answerProfiles: AssistantAnswerProfile[];
   defaultAnswerProfile: AssistantAnswerProfile;
+  retrievalStrategies: AssistantRetrievalStrategy[];
+  defaultRetrievalStrategy: AssistantRetrievalStrategy;
 }
 
 export interface AssistantResponse {
@@ -304,6 +307,7 @@ export interface AssistantResponse {
   intent: "answer" | "summarize" | "list" | "compare" | "explain" | "explain_process" | "procedure" | "analyze" | string;
   presentation: "auto" | "summary" | "bullet_list" | "ordered_list" | "comparison_table" | "process_flow" | "infographic" | string;
   contentBlocks?: AssistantContentBlock[] | null;
+  retrievalStrategy: AssistantRetrievalStrategy;
   tokenUsage: {
     inputTokens: number;
     outputTokens: number;

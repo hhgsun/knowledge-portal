@@ -21,10 +21,11 @@ public partial class RagService(
     RagQueryUnderstandingService queryUnderstanding,
     RagContextExpansionService contextExpansion,
     PortalMetrics metrics,
-    ILogger<RagService> logger)
+    ILogger<RagService> logger,
+    AgenticRetrievalPlanner? agenticPlanner = null)
 {
     public const string PromptVersion = "2026-09-02.task-aware-claim-synthesis-v18";
-    public const string RetrievalVersion = "2026-09-02.conversation-aware-routing-v7";
+    public const string RetrievalVersion = "2026-09-04.agentic-retrieval-planning-v8";
     // Distinct source articles for the fast (narrow) single-pass answer.
     private readonly int _sourceLimit = Math.Clamp(config.GetValue("Ollama:RagSourceLimit", 10), 1, 20);
     private readonly int _minimumSourceLimit = Math.Clamp(config.GetValue("Ollama:RagMinimumSourceLimit", 3), 1, 10);
@@ -252,7 +253,8 @@ public partial class RagService(
         CancellationToken ct = default, string? hypotheticalDocument = null,
         string? answerProfile = null, string? originalRequest = null,
         string? answerIntent = null, string? presentation = null,
-        Action<AssistantProgress>? progress = null)
+        Action<AssistantProgress>? progress = null,
+        string retrievalStrategy = AssistantRetrievalStrategies.Baseline)
     {
         var profile = RagAnswerProfiles.Resolve(question, answerProfile, _defaultAnswerProfile);
         if (string.IsNullOrWhiteSpace(answerProfile) && IsBroadQuery(question))
@@ -275,7 +277,8 @@ public partial class RagService(
             {
                 progress?.Invoke(new("understanding", "Soru ve kaynak filtreleri anlaşılıyor."));
                 result = await AskCoreAsync(question, filter, broad, profile, budget.Token,
-                    hypotheticalDocument, originalRequest, answerIntent, presentation, progress);
+                    hypotheticalDocument, originalRequest, answerIntent, presentation, progress,
+                    retrievalStrategy);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested && budget.IsCancellationRequested)
             {
@@ -343,9 +346,10 @@ public partial class RagService(
     private async Task<RagResult> AskCoreAsync(string question, ArticleFilter? filter, bool broad,
         RagAnswerProfile profile, CancellationToken ct, string? hypotheticalDocument,
         string? originalRequest, string? answerIntent, string? presentation,
-        Action<AssistantProgress>? progress)
+        Action<AssistantProgress>? progress, string retrievalStrategy)
     {
-        var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument, progress);
+        var prepared = await PrepareAsync(question, filter, broad, ct, hypotheticalDocument, progress,
+            retrievalStrategy);
         if (prepared.Retrieved.Count == 0)
         {
             return EmptyResult(prepared.AnyIndexed
@@ -395,12 +399,18 @@ public partial class RagService(
     }
 
     private async Task<PreparedRag> PrepareAsync(string question, ArticleFilter? filter, bool broad,
-        CancellationToken ct, string? hypotheticalDocument, Action<AssistantProgress>? progress = null)
+        CancellationToken ct, string? hypotheticalDocument, Action<AssistantProgress>? progress = null,
+        string retrievalStrategy = AssistantRetrievalStrategies.Baseline)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var plan = await queryUnderstanding.UnderstandAsync(db, question, filter, ct,
             hypotheticalDocument);
+        if (retrievalStrategy == AssistantRetrievalStrategies.Agentic && agenticPlanner != null)
+        {
+            progress?.Invoke(new("planning", "Kanıt toplama planı hazırlanıyor."));
+            plan = plan with { Queries = await agenticPlanner.PlanAsync(question, plan.Queries, ct) };
+        }
         progress?.Invoke(new("retrieval", "İlgili kaynaklar getiriliyor."));
         var retrieved = await resilience.ExecuteAsync("retrieval", resilience.RetrievalTimeoutSeconds, 0, false,
             token => retriever.RetrieveAsync(plan, broad ? _broadCandidateLimit : _candidateLimit,

@@ -25,5 +25,9 @@ public sealed class CapabilitiesController(IConfiguration config) : ControllerBa
         RagAnswerProfiles.Allowed,
         RagAnswerProfiles.TryParse(config["Assistant:DefaultAnswerProfile"], out var defaultProfile)
             ? defaultProfile.ToWireValue()
-            : "balanced"));
+            : "balanced",
+        config.GetValue("Assistant:AgenticRetrieval:Enabled", false)
+            ? AssistantRetrievalStrategies.Allowed
+            : new[] { AssistantRetrievalStrategies.Baseline },
+        AssistantRetrievalStrategies.Baseline));
 }

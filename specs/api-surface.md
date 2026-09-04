@@ -768,6 +768,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
   "conversationId": null,
   "model": "qwen2.5vl:7b",
   "answerProfile": "comprehensive",
+  "retrievalStrategy": "agentic",
   "tags": ["security"],
   "authors": [],
   "contentTypes": ["policy"]
@@ -780,6 +781,7 @@ Chat model selection is dynamic and provider-discovered. The backend reads insta
 | `conversationId` | string | No | Owned session conversation; API keys cannot use history. The bounded turn planner separates original request, retrieval query, task intent and presentation. Presentation-only follow-ups reuse prior validated claims without retrieval; knowledge follow-ups are rewritten into standalone queries. Optional HyDE is retrieval-only and model failure falls back deterministically. |
 | `model` | string | No | Ollama-discovered chat model selected on the Assistant screen. It is validated for every request; omission uses the admin default. |
 | `answerProfile` | string | No | `compact`, `balanced`, or `comprehensive`. Omission uses `balanced`, while an explicitly broad/detailed question may be promoted to `comprehensive`. The browser keeps the selector in local storage. |
+| `retrievalStrategy` | string | No | `baseline` (default) or the opt-in `agentic` pilot. Agentic mode uses a bounded model-generated query plan but cannot alter the supplied scope, invoke tools, execute SQL, or access non-published content. It is rejected unless `Assistant:AgenticRetrieval:Enabled=true`. |
 | `tags` | string[] | No | Tag slugs, AND semantics; merged with inline `#` filters. |
 | `authors` | string[] | No | Author slugs, OR semantics; merged with inline `@` filters. |
 | `contentTypes` | string[] | No | Legacy content-type values, OR semantics. Generic query filtering uses `facets` or inline `+content_type:value`. |
@@ -810,6 +812,7 @@ Inline and explicit filters use the same `KnowledgeQueryScopeService` as Search,
   "traceId": "...",
   "conversationId": null,
   "answerProfile": "comprehensive",
+  "retrievalStrategy": "agentic",
   "intent": "explain",
   "presentation": "auto",
   "contentBlocks": [
@@ -836,6 +839,8 @@ flows remain source-bound projections of validated claims rather than new factua
 Ollama generation explicitly receives `num_ctx=Ollama:RagModelContextTokens` (default 32,768), and
 `RagMaxOutputTokens` defaults to 4,096. Intent and presentation are part of semantic-cache identity.
 
+When `retrievalStrategy` is `agentic`, `AgenticRetrievalPlanner` first returns a schema-constrained list of at most four short retrieval queries. The server retains the original question, rejects scope syntax, SQL and URLs from planner output, and executes each accepted query through the same hybrid retrieval, explicit tag/author/facet filter and published-only recheck as baseline. Planning errors or timeouts fail open to the baseline query plan; answer generation and claim/citation grounding remain unchanged. The strategy is part of semantic-cache identity and is returned in the response.
+
 `tokenUsage`, cevabı üretmek için yapılan tüm RAG model çağrılarının toplamını içerir; geniş
 map-reduce ve grounding-repair çağrıları da toplama dahildir. Sağlayıcı input/output kullanımını
 döndürmezse eksik değerler Unicode-duyarlı sayaçla hesaplanır ve `estimated: true` olur. Semantik
@@ -846,6 +851,7 @@ Operational controls:
 
 - `Assistant:Enabled=false`: Assistant returns `404`; Search remains available. `VITE_ASSISTANT_ENABLED=false` removes the frontend route/menu.
 - `Assistant:TotalTimeoutSeconds` bounds the end-to-end operation.
+- `Assistant:AgenticRetrieval:Enabled=false` is the default; when enabled, `MaxQueries` (1-4) and `PlanningTimeoutSeconds` (1-30) bound the pilot planner.
 - RAG and semantic Search use separate resilience lanes.
 - Usage operations are `assistant.answer` and `assistant.stream.answer`.
 
@@ -871,7 +877,7 @@ Allowed reasons are `incorrect`, `incomplete`, `wrong_source`, `outdated`, `no_a
 ### `GET /api/capabilities`
 **Auth**: Bearer (JWT or API Key).
 
-Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, semantic-cache, `answerProfiles`, and `defaultAnswerProfile` capabilities. It also returns `allowedAttachmentExtensions`, `maxAttachmentSizeMb`, and `maxAttachmentsPerArticle`, allowing authenticated frontend upload controls to follow the backend `FileStorage` configuration without a duplicated hard-coded list. The frontend combines Assistant enablement with `VITE_ASSISTANT_ENABLED`; it fetches the endpoint independently of that compile-time Assistant flag because upload capabilities are portal-wide.
+Returns runtime enablement, grounded-RAG, feedback, maximum-message, streaming, conversation, semantic-cache, `answerProfiles`, `defaultAnswerProfile`, `retrievalStrategies`, and `defaultRetrievalStrategy` capabilities. `retrievalStrategies` exposes only `baseline` until the agentic pilot is enabled. It also returns `allowedAttachmentExtensions`, `maxAttachmentSizeMb`, and `maxAttachmentsPerArticle`, allowing authenticated frontend upload controls to follow the backend `FileStorage` configuration without a duplicated hard-coded list. The frontend combines Assistant enablement with `VITE_ASSISTANT_ENABLED`; it fetches the endpoint independently of that compile-time Assistant flag because upload capabilities are portal-wide.
 
 ### `POST /api/assistant/stream`
 **Auth/policy/rate limit**: Same as `POST /api/assistant`.

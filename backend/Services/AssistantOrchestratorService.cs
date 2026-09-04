@@ -56,6 +56,7 @@ public sealed class AssistantOrchestratorService(
                     Model = effectiveModel,
                     Intent = turnPlan.Intent,
                     Presentation = turnPlan.Presentation,
+                    RetrievalStrategy = request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline,
                     ContentBlocks = [new AssistantContentBlockDto("paragraph", Text: clarification)]
                 }, null);
             }
@@ -78,6 +79,7 @@ public sealed class AssistantOrchestratorService(
                     AnswerProfile = previous.AnswerProfile,
                     Intent = turnPlan.Intent,
                     Presentation = turnPlan.Presentation,
+                    RetrievalStrategy = request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline,
                     ContentBlocks = transformed.Blocks
                 }, null);
             }
@@ -114,6 +116,7 @@ public sealed class AssistantOrchestratorService(
                     AnswerProfile = cached.AnswerProfile,
                     Intent = turnPlan.Intent,
                     Presentation = turnPlan.Presentation,
+                    RetrievalStrategy = request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline,
                     ContentBlocks = presented.Blocks,
                     TokenUsage = new AssistantTokenUsageDto(0, 0, 0, false)
                 }, null);
@@ -130,14 +133,18 @@ public sealed class AssistantOrchestratorService(
                 request.AnswerProfile,
                 turnPlan.OriginalMessage,
                 turnPlan.Intent,
-                turnPlan.Presentation), principal, budget.Token, progress);
+                turnPlan.Presentation,
+                request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline), principal, budget.Token, progress);
             if (execution.Error != null) return (null, execution.Error);
 
             var result = execution.Result!;
+            var retrievalTool = request.RetrievalStrategy == AssistantRetrievalStrategies.Agentic
+                ? "knowledge_rag_agentic"
+                : "knowledge_rag";
             if (result.Failure != KnowledgeAnswerFailureKind.None || result.Rag == null)
             {
                 watch.Stop();
-                metrics.AssistantToolCalls.Add(1, new("tool", "knowledge_rag"), new("outcome", "failure"));
+                metrics.AssistantToolCalls.Add(1, new("tool", retrievalTool), new("outcome", "failure"));
                 metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
                     new("route", "knowledge_answer"), new("outcome", "failure"));
                 return (null, Failure(result.Failure));
@@ -162,7 +169,7 @@ public sealed class AssistantOrchestratorService(
             }
 
             watch.Stop();
-            metrics.AssistantToolCalls.Add(1, new("tool", "knowledge_rag"), new("outcome", "success"));
+            metrics.AssistantToolCalls.Add(1, new("tool", retrievalTool), new("outcome", "success"));
             metrics.AssistantDuration.Record(watch.Elapsed.TotalMilliseconds,
                 new("route", "knowledge_answer"), new("outcome", "success"));
             var warnings = result.Rag.Warnings.ToList();
@@ -172,13 +179,14 @@ public sealed class AssistantOrchestratorService(
             {
                 Answer = presentedResult.Answer,
                 Rag = ragDto,
-                ToolCalls = ToolCalls("knowledge_rag", contextualizationStrategy),
+                ToolCalls = ToolCalls(retrievalTool, contextualizationStrategy),
                 Warnings = warnings.Distinct().ToArray(),
                 Model = effectiveModel,
                 AnswerProfile = result.Rag.AnswerProfile,
                 Intent = turnPlan.Intent,
                 Presentation = turnPlan.Presentation,
                 ContentBlocks = presentedResult.Blocks,
+                RetrievalStrategy = request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline,
                 TokenUsage = new AssistantTokenUsageDto(result.Rag.TokenUsage.InputTokens,
                     result.Rag.TokenUsage.OutputTokens, result.Rag.TokenUsage.TotalTokens,
                     result.Rag.TokenUsage.Estimated)
@@ -229,8 +237,8 @@ public sealed class AssistantOrchestratorService(
         var facets = string.Join(';', (request.Facets ?? [])
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key.Trim().ToLowerInvariant()}={Join(entry.Value)}"));
-        return $"{request.Message.Trim()}\n[intent:{turnPlan.Intent};presentation:{turnPlan.Presentation};" +
-               $"model:{model};profile:{request.AnswerProfile ?? "auto"};scope:tags={Join(request.Tags)};" +
+         return $"{request.Message.Trim()}\n[intent:{turnPlan.Intent};presentation:{turnPlan.Presentation};" +
+             $"model:{model};profile:{request.AnswerProfile ?? "auto"};strategy:{request.RetrievalStrategy ?? AssistantRetrievalStrategies.Baseline};scope:tags={Join(request.Tags)};" +
                $"authors={Join(request.Authors)};types={Join(request.ContentTypes)};facets={facets}]";
     }
 

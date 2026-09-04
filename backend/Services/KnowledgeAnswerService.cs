@@ -13,7 +13,8 @@ public sealed record KnowledgeAnswerRequest(
     string? AnswerProfile = null,
     string? OriginalRequest = null,
     string? Intent = null,
-    string? Presentation = null);
+    string? Presentation = null,
+    string RetrievalStrategy = AssistantRetrievalStrategies.Baseline);
 
 public enum KnowledgeAnswerFailureKind
 {
@@ -93,7 +94,7 @@ public sealed class KnowledgeAnswerService(
             progress?.Invoke(new("rag", "Kaynaklar ve kanıtlar değerlendiriliyor."));
             var rag = await ragService.AskAsync(scope.QueryText, scope.Filter, cancellationToken,
                 request.HypotheticalDocument, request.AnswerProfile, request.OriginalRequest,
-                request.Intent, request.Presentation, progress);
+                request.Intent, request.Presentation, progress, request.RetrievalStrategy);
             stopwatch.Stop();
             return (new KnowledgeAnswerResult(request.Question, rag, coverage,
                 stopwatch.ElapsedMilliseconds, Activity.Current?.TraceId.ToString()), null);

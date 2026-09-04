@@ -210,6 +210,7 @@ if (builder.Configuration.GetValue("Ollama:Enabled", false))
     builder.Services.AddSingleton<IRagTokenCounter, RagTokenCounter>();
     builder.Services.AddSingleton<IRagContextBuilder, RagContextBuilder>();
     builder.Services.AddSingleton<RagQueryUnderstandingService>();
+        builder.Services.AddScoped<AgenticRetrievalPlanner>();
     builder.Services.AddScoped<AssistantQueryContextualizer>();
     builder.Services.AddScoped<AssistantTurnPlanningService>();
     builder.Services.AddSingleton<RagContextExpansionService>();
