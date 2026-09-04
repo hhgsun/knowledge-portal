@@ -311,11 +311,15 @@ function FeedbackButton({ active, positive = false, disabled, onClick }: { activ
 function AnswerSources({ response }: { response: AssistantResponse }) {
   const { fetchWithAuth } = useApi();
   const sources = response.rag?.sources ?? [];
+  const consultedSources = (response.rag?.consultedSources ?? []).filter(source =>
+    !sources.some(cited => cited.articleId === source.articleId));
   const recordClick = (articleId: string) => { if (response.interactionId) void fetchWithAuth("/api/assistant/source-click", { method: "POST", noRetry: true, body: JSON.stringify({ interactionId: response.interactionId, articleId }) }).catch(() => undefined); };
   return <section className="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800" aria-label="Yanıt kaynakları">
-    <div className="mb-2.5 flex items-center gap-2"><FileText size={14} className="text-zinc-400" /><h3 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Kaynaklar</h3></div>
+    <div className="mb-1 flex items-center gap-2"><FileText size={14} className="text-zinc-400" /><h3 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Kullanılan kaynaklar</h3></div>
+    <p className="mb-2.5 text-[10px] text-zinc-400">Cevaptaki iddiaları doğrudan destekleyen makaleler.</p>
     {sources.length > 0 ? <div className="grid gap-2 sm:grid-cols-2">{sources.map(source => <AnswerSourceLink key={source.articleId} source={source} sourceIds={sourceIdsFor(response, source)} onClick={() => recordClick(source.articleId)} />)}</div>
       : <p className="rounded-lg bg-zinc-50 px-3 py-2 text-[11px] text-zinc-500 dark:bg-zinc-800/50 dark:text-zinc-400">Bu yanıtla ilişkilendirilen bir kaynak bulunamadı.</p>}
+    {consultedSources.length > 0 && <details className="mt-3 rounded-lg border border-zinc-200 dark:border-zinc-700"><summary className="cursor-pointer px-3 py-2 text-[11px] font-medium text-zinc-600 dark:text-zinc-300">İncelenen diğer kaynaklar ({consultedSources.length})</summary><p className="border-t border-zinc-200 px-3 py-2 text-[10px] text-zinc-400 dark:border-zinc-700">Asistan bu makaleleri değerlendirdi, ancak cevaptaki iddialar için doğrudan dayanak olarak kullanmadı.</p><div className="grid gap-2 border-t border-zinc-100 p-2 dark:border-zinc-800 sm:grid-cols-2">{consultedSources.map(source => <AnswerSourceLink key={`consulted-${source.articleId}`} source={source} sourceIds={[]} onClick={() => recordClick(source.articleId)} />)}</div></details>}
   </section>;
 }
 
@@ -331,7 +335,15 @@ function AnswerSourceLink({ source, sourceIds, onClick }: { source: RagSource; s
     <ExternalLink size={12} className="shrink-0 text-zinc-300 group-hover:text-blue-500" />
   </Link>;
 }
-function GroundingBadge({ status, insufficient }: { status: string; insufficient: boolean }) { return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold capitalize", insufficient ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50")}><ShieldCheck size={10} />{insufficient ? "Sınırlı kaynak" : status.replaceAll("_", " ")}</span>; }
+function GroundingBadge({ status, insufficient }: { status: string; insufficient: boolean }) { return <span title={groundingDescription(status, insufficient)} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold", insufficient ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50")}><ShieldCheck size={10} />{groundingLabel(status, insufficient)}</span>; }
+function groundingLabel(status: string, insufficient: boolean) {
+  if (insufficient) return "Yeterli kaynak bulunamadı";
+  return status === "lexically_grounded" ? "Kaynaklarla doğrulandı" : status === "partially_grounded" ? "Kısmen doğrulandı" : "Kaynak kontrolü tamamlandı";
+}
+function groundingDescription(status: string, insufficient: boolean) {
+  if (insufficient) return "Asistan güvenilir bir cevap oluşturmak için yeterli destek bulamadı.";
+  return status === "lexically_grounded" ? "Cevaptaki iddialar portal kaynaklarıyla eşleşiyor." : status === "partially_grounded" ? "Cevabın bazı bölümleri kaynaklarla destekleniyor; dikkatle kontrol edin." : "Cevap kaynak kontrolünden geçirildi.";
+}
 function AnswerWarnings({ warnings }: { warnings: string[] }) {
   if (warnings.length === 0) return null;
   return <details className="group mt-4 rounded-lg border border-amber-200 bg-amber-50/70 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
@@ -343,9 +355,17 @@ function AnswerWarnings({ warnings }: { warnings: string[] }) {
       <ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" />
     </summary>
     <div className="max-h-56 space-y-2 overflow-y-auto border-t border-amber-200 px-3 py-3 leading-5 dark:border-amber-900">
-      {warnings.map((warning, index) => <p key={`${index}-${warning}`} className="flex items-start gap-2"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{warning}</span></p>)}
+      {warnings.map((warning, index) => <p key={`${index}-${warning}`} className="flex items-start gap-2"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{userWarning(warning)}</span></p>)}
     </div>
   </details>;
+}
+function userWarning(warning: string) {
+  if (warning === "At least one source is past its review date and may be outdated.") return "En az bir kaynak gözden geçirme tarihini geçmiş olabilir ve güncel olmayabilir.";
+  if (warning === "At least one source is approaching its review date.") return "En az bir kaynağın gözden geçirme tarihi yaklaşıyor.";
+  if (warning === "At least one source has no recorded review date.") return "En az bir kaynak için gözden geçirme tarihi kaydedilmemiş.";
+  if (warning === "Some sources have not been formally approved.") return "Bazı kaynaklar resmi olarak onaylanmamış.";
+  if (warning === "Sources contain competing policy or numeric statements; review the cited sources before acting.") return "Kaynaklarda farklı politika veya sayısal bilgiler bulundu; işlem yapmadan önce kaynakları kontrol edin.";
+  return warning;
 }
 function answerProfileLabel(profile: AssistantAnswerProfile) { return profile === "compact" ? "Kısa" : profile === "comprehensive" ? "Kapsamlı" : "Dengeli"; }
 function formatResponseTime(milliseconds: number) { return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(1)} sn` : `${milliseconds} ms`; }

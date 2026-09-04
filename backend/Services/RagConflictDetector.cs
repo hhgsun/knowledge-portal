@@ -11,9 +11,9 @@ public sealed record RagConflictAssessment(string Status, IReadOnlyList<RagConfl
 }
 
 /// <summary>
-/// Conservative deterministic conflict screening. It intentionally claims only numeric and explicit
-/// polarity conflicts between locally relevant evidence sentences; broader semantic contradiction is
-/// left to a future entailment evaluator.
+/// Conservative deterministic conflict screening. It compares locally relevant sentences from
+/// different sources and flags numeric, polarity, and common policy-modality conflicts. It does
+/// not claim to replace a full semantic entailment evaluator.
 /// </summary>
 public static partial class RagConflictDetector
 {
@@ -39,13 +39,14 @@ public static partial class RagConflictDetector
             var numeric = left.Numbers.Count > 0 && right.Numbers.Count > 0 &&
                           !left.Numbers.SetEquals(right.Numbers);
             var polarity = left.Negated != right.Negated && shared >= 2;
-            if (!numeric && !polarity) continue;
+            var modality = HasOpposingPolicyModality(left.Sentence, right.Sentence) && shared >= 2;
+            if (!numeric && !polarity && !modality) continue;
 
             var ids = new[] { left.Evidence.SourceId, right.Evidence.SourceId }
                 .Order(StringComparer.Ordinal).ToArray();
             if (conflicts.Any(conflict => conflict.SourceIds.SequenceEqual(ids))) continue;
             var preferred = Preferred(left.Evidence, right.Evidence);
-            conflicts.Add(new RagConflict(numeric ? "numeric" : "polarity", ids,
+            conflicts.Add(new RagConflict(numeric ? "numeric" : modality ? "policy_modality" : "polarity", ids,
                 preferred?.SourceId, preferred == null ? "unresolved_equal_governance" : "preferred_by_governance"));
         }
 
@@ -76,6 +77,15 @@ public static partial class RagConflictDetector
         .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
     private static bool HasNegation(string text) => NegationRegex().IsMatch(
         SlugHelper.Transliterate(text).ToLowerInvariant());
+    private static bool HasOpposingPolicyModality(string left, string right)
+    {
+        var leftText = SlugHelper.Transliterate(left).ToLowerInvariant();
+        var rightText = SlugHelper.Transliterate(right).ToLowerInvariant();
+        return (RequiredRegex().IsMatch(leftText) && OptionalRegex().IsMatch(rightText))
+            || (RequiredRegex().IsMatch(rightText) && OptionalRegex().IsMatch(leftText))
+            || (AllowedRegex().IsMatch(leftText) && ForbiddenRegex().IsMatch(rightText))
+            || (AllowedRegex().IsMatch(rightText) && ForbiddenRegex().IsMatch(leftText));
+    }
     private static IEnumerable<string> Sentences(string text) => SentenceRegex().Split(text)
         .Select(sentence => sentence.Trim()).Where(sentence => sentence.Length > 0);
 
@@ -90,6 +100,14 @@ public static partial class RagConflictDetector
     private static partial Regex NumberRegex();
     [GeneratedRegex(@"\b(?:not|never|no|degil|yok|hayir)\b|mamal[ıi]|memeli|maz\b|mez\b", RegexOptions.IgnoreCase)]
     private static partial Regex NegationRegex();
+    [GeneratedRegex(@"\b(?:zorunlu\w*|gerekli\w*|sart\w*|must|required|mandatory)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex RequiredRegex();
+    [GeneratedRegex(@"\b(?:istege bagli\w*|opsiyonel\w*|secimlik\w*|optional|may)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex OptionalRegex();
+    [GeneratedRegex(@"\b(?:izin ver\w*|izinli\w*|serbest\w*|allowed|permitted)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AllowedRegex();
+    [GeneratedRegex(@"\b(?:yasak\w*|izin verilmez|izinli degil\w*|forbidden|prohibited|not allowed)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ForbiddenRegex();
     [GeneratedRegex(@"(?<=[.!?])\s+|\r?\n+")]
     private static partial Regex SentenceRegex();
 }

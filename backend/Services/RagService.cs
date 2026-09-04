@@ -811,9 +811,10 @@ public partial class RagService(
         var normalizedClaims = RagCitationValidator.NormalizeRoles(validated.Claims);
         validated = validated with { Claims = normalizedClaims };
         var warnings = validated.Warnings.Concat(extraWarnings ?? []).Distinct().ToList();
+        AddGovernanceWarnings(warnings, BuildSources(scores, articles));
         if (conflictAssessment.Status == "conflicts_detected" &&
             validated.Claims.All(claim => claim.Role != "conflict"))
-            warnings.Add("Deterministic numeric/polarity screening found competing evidence; inspect conflictAssessment.");
+            warnings.Add("Sources contain competing policy or numeric statements; review the cited sources before acting.");
         var answer = RagCitationValidator.RenderSupportedAnswer(validated.Claims, question,
             validated.Answer, validated.InsufficientContext);
         var citedArticleIds = validated.Claims.SelectMany(claim => claim.SourceIds)
@@ -824,6 +825,18 @@ public partial class RagService(
             validated.CitationCoverage, validated.GroundingStatus, validated.ClaimSupportCoverage,
             validated.InsufficientContext, partialResult, conflictAssessment, warnings,
             RagTokenUsage.None, profile.ToWireValue());
+    }
+
+    private static void AddGovernanceWarnings(List<string> warnings, IReadOnlyCollection<RagSource> sources)
+    {
+        if (sources.Any(source => source.ReviewState == "overdue"))
+            warnings.Add("At least one source is past its review date and may be outdated.");
+        else if (sources.Any(source => source.ReviewState == "due_soon"))
+            warnings.Add("At least one source is approaching its review date.");
+        if (sources.Any(source => source.ReviewState == "not_recorded"))
+            warnings.Add("At least one source has no recorded review date.");
+        if (sources.Any(source => !source.Approved))
+            warnings.Add("Some sources have not been formally approved.");
     }
 
     private static bool IsAnswerCoverageIncomplete(ValidatedRagAnswer answer, int targetClaims) =>

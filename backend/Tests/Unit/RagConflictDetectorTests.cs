@@ -39,6 +39,21 @@ public class RagConflictDetectorTests
         Assert.Equal("unresolved_equal_governance", conflict.Resolution);
     }
 
+    [Fact]
+    public void Assess_DetectsOpposingPolicyModalities()
+    {
+        var evidence = new[]
+        {
+            Evidence("S1", "VPN kullanımı zorunludur."),
+            Evidence("S2", "VPN kullanımı isteğe bağlıdır.")
+        };
+
+        var result = RagConflictDetector.Assess("VPN kullanımı nasıl yapılır?", evidence);
+
+        var conflict = Assert.Single(result.Conflicts);
+        Assert.Equal("policy_modality", conflict.Kind);
+    }
+
     private static RagEvidence Evidence(string id, string passage, int authority = 50, bool approved = false) =>
         new(id, id, id, id, "article", null, null, null, passage, .9,
             AuthorityWeight: authority, Approved: approved, ReviewState: "current",
